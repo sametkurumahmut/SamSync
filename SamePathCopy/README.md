@@ -1,0 +1,200 @@
+# SamePathCopy
+
+Windows Explorer sağ tık menüsünden bir veya birden fazla dosya ya da klasörü seçilen bilgisayarlara kopyalar. Yapılandırılmış kök dizinler arasındaki göreli yolu korur; kaynak öğeleri silmez.
+
+Örnek:
+
+```text
+C:\ActiveRelease\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity
+```
+
+Yerel node'un `localRoot` değeri `C:\ActiveRelease`, uzak node'un `networkRoot` değeri `Sim\Samet` ise `10.10.2.181` hedefinde şuraya kopyalanır:
+
+```text
+\\10.10.2.181\Sim\Samet\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity
+```
+
+Klasör seçildiğinde klasörün kendisi ve bütün içeriği aynı konuma kopyalanır.
+
+## Sürüm takibi
+
+Uygulamanın sürümü `config.json` dosyasındaki `version` alanında tutulur:
+
+```json
+{
+  "version": "1.0.0",
+  "menuTitle": "SamePathCopy"
+}
+```
+
+Sürüm numarası `MAJOR.MINOR.PATCH` (SemVer) biçimindedir. Yeni paket paylaşılırken davranışı bozan değişikliklerde `MAJOR`, geriye uyumlu özelliklerde `MINOR`, hata düzeltmelerinde `PATCH` artırılmalıdır. Sürüm, kopyalama sonuç penceresinin başlığında ve yerel kök satırında görünür.
+
+Sürüm değişiklikleri [CHANGELOG.md](CHANGELOG.md) dosyasında listelenir.
+
+### Yerel kök dışındaki öğeler
+
+Seçilen öğe yerel node'un `localRoot` dizini içindeyse, `localRoot` altındaki göreli yol hedef `networkRoot` altında korunur.
+
+Öğe `localRoot` dışındaysa tam yerel yol sürücü harfi bir klasöre dönüştürülerek korunur:
+
+```text
+C:\Fraps\README.HTM
+→ \\10.10.2.181\Sim\Samet\C\Fraps\README.HTM
+```
+
+Bu sayede farklı sürücülerde aynı ada sahip yollar çakışmaz. UNC kaynakları `networkRoot\UNC\sunucu\paylaşım\...` altında saklanır.
+
+### Birden fazla dosya ve klasör
+
+Explorer'da birden fazla dosya, birden fazla klasör veya karışık dosya/klasör seçimi yapılabilir. Seçimler kısa bir kuyrukta birleştirilir ve tek sonuç penceresinde bütün kaynak-hedef kopyalamaları gösterilir.
+
+Registry tabanlı legacy Windows menü modelinin sınırı nedeniyle en fazla 15 öğelik seçim desteklenir. Daha fazla öğe seçildiğinde Windows menüyü göstermeyebilir.
+
+## Tek yapılandırmayı bütün bilgisayarlarda kullanma
+
+Aynı `config.json` eğitmen ve bütün IG bilgisayarlarında kullanılır. Eğitmen dahil her bilgisayar `nodes` listesinde bulunur ve kendi yerel/paylaşım köklerine sahiptir. Araç çalıştığı bilgisayarı şu bilgilerle otomatik tanır:
+
+1. `address` alanının yerel IP adreslerinden biriyle eşleşmesi,
+2. `address` alanının Windows bilgisayar adıyla eşleşmesi,
+3. İsteğe bağlı `localNames` değerlerinden birinin Windows bilgisayar adıyla eşleşmesi.
+
+Eşleşen node'un `localRoot` değeri kaynak kökü olarak kullanılır ve o node kendi hedef listesinden çıkarılır. Uzak node'a gönderimde `\\address\networkRoot` kullanılır. Eşleşme bulunamazsa araç kopyalama yapmaz.
+
+Örnek olarak IG-12 üzerinde çalışırken:
+
+```json
+{
+  "id": "sim-12",
+  "address": "10.10.2.12",
+  "localNames": ["IG-12"],
+  "localRoot": "E:\\Samet",
+  "networkRoot": "Sim\\Samet"
+}
+```
+
+Araç bu bilgisayarda `E:\Samet` dizinini göreli yol hesabının yerel kökü olarak kullanır. Kaynaklar bu kökün dışında da seçilebilir; bu durumda sürücü harfi dahil tam yol hedef altında korunur. Başka bilgisayarlar bu node'a `\\10.10.2.12\Sim\Samet` üzerinden gönderir.
+
+Eğitmen bilgisayar da aynı `nodes` listesinde olduğu için IG bilgisayarlarından eğitmene doğrudan dosya gönderilebilir.
+
+Dosyanın fiziksel olarak da tek kopya olması istenirse `config.json` ortak bir salt-okunur ağ paylaşımına konabilir ve her bilgisayarda kurulum şu şekilde yapılabilir:
+
+```bat
+Install-ContextMenu.bat -ConfigPath "\\dosya-sunucusu\ProjeConfig\config.json"
+```
+
+Kurulum, bu merkezi config yolunu sağ tık komutlarına kaydeder. Bilgisayarların paylaşımı okuyabilmesi gerekir. Menü yapısını etkileyen `menuTitle`, `allLabel`, node ekleme/silme, `name`, `id` veya `enabled` değişikliklerinden sonra kurulum tekrar çalıştırılmalıdır. Yerel node tespitini değiştirebileceği için `address` veya `localNames` değişikliklerinden sonra da kurulumu yenilemek en güvenli yöntemdir. `localRoot`, `networkRoot`, `version` ve `copy` ayarları her işlem başında config dosyasından yeniden okunur ve tek başlarına menünün yeniden kurulmasını gerektirmez.
+
+## Ön koşullar
+
+- Windows PowerShell 5.1 ve Windows Explorer kullanılmalıdır.
+- Hedef bilgisayarlarda `networkRoot` değerinin ilk parçasıyla aynı adda SMB paylaşımı bulunmalı. `Sim\Samet` için `Sim` paylaşımı gerekir.
+- İşlemi yapan Windows kullanıcısının hedef paylaşımına yazma yetkisi olmalı.
+- Güvenlik duvarında Windows Dosya ve Yazıcı Paylaşımı açık olmalı.
+- Her node'un yerel klasörü `localRoot`, ağdan erişilen paylaşım yolu `networkRoot` ile ayrı ayrı tanımlanır.
+
+Etki alanı dışındaki bilgisayarlarda kimlik bilgisini Windows Credential Manager'a bir kez kaydetmek gerekebilir:
+
+```powershell
+cmdkey /add:10.10.2.11 /user:HEDEF-BILGISAYAR\Kullanici /pass
+```
+
+Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
+
+## Node'ları ayarlama
+
+`config.json` içindeki `nodes` dizisine eğitmen dahil bütün bilgisayarları ekleyin:
+
+```json
+{
+  "id": "sim-14",
+  "name": "Operatör Kabini 14 (10.10.2.14)",
+  "address": "10.10.2.14",
+  "localNames": ["IG-14"],
+  "localRoot": "E:\\GuncelSurum",
+  "networkRoot": "Sim\\GuncelSurum",
+  "enabled": true
+}
+```
+
+- `id`: Menü komutunun kalıcı anahtarıdır. `Trainer`, `IG1`, `IG2` gibi büyük veya küçük İngilizce harfler, rakam, nokta, alt çizgi ve tire kullanılabilir. Baştaki/sondaki boşluklar otomatik temizlenir. Kimlikler büyük/küçük harfe duyarsız olarak benzersiz olmalıdır; örneğin `IG1` ile `ig1` aynı kimlik kabul edilir. `all` değeri “Tümü” işlemi için ayrılmıştır ve node kimliği olarak kullanılmamalıdır.
+- `name`: Menüde görünen serbest metindir.
+- `address`: IPv4 adresi veya DNS/Windows bilgisayar adıdır.
+- `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. Birden fazla ağ kartı ya da DNS adı kullanılıyorsa otomatik tanımayı güvenilir hâle getirir.
+- `localRoot`: Bu bilgisayar kaynak olduğunda göreli yol hesabının başlangıcı olan, sürücü harfiyle başlayan mutlak yerel yoldur. Örnek: `E:\Samet`. Bu dizin dışındaki öğeler de tam yolları korunarak kopyalanabilir.
+- `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
+- `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
+
+Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
+
+## Kurulum
+
+Önerilen yöntem `Install-ContextMenu.bat` dosyasına çift tıklamaktır. BAT dosyası PowerShell betiğini yalnızca bu işlem için `ExecutionPolicy Bypass` ile çalıştırır; bilgisayarın kalıcı PowerShell güvenlik politikasını değiştirmez.
+
+Komut satırından da çalıştırılabilir:
+
+```bat
+Install-ContextMenu.bat
+```
+
+Merkezi veya farklı bir config kullanılacaksa parametre BAT dosyasına verilebilir:
+
+```bat
+Install-ContextMenu.bat -ConfigPath "\\dosya-sunucusu\ProjeConfig\config.json"
+```
+
+PowerShell betiğini doğrudan çalıştırmak isterseniz execution policy engeline takılmamak için şu komutu kullanın:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Install-ContextMenu.ps1"
+```
+
+Kurulum yalnızca mevcut kullanıcıya, `HKCU` altında yapılır; yönetici yetkisi gerekmez. Menü yapısını etkileyen config değişikliklerinden sonra kurulum betiğini tekrar çalıştırın. Explorer'ı yeniden başlatmak normalde gerekmez.
+
+Kurulum, `assets\SamePathCopy.ico` dosyasını ana menüye ve hedef alt menülerine bağlar. Araç klasörü paylaşılırken `assets` klasörünü de pakete dahil edin.
+
+Windows 11'de klasik Explorer uzantısı ilk menü yerine **Daha fazla seçenek göster** (`Shift+F10`) altında görüntülenebilir.
+
+Araç klasörünü kurulumdan sonra taşımayın; kayıt defterindeki komut betiğin mevcut tam yolunu kullanır.
+
+## Kullanım
+
+1. Bir veya birden fazla dosya/klasör seçip sağ tıklayın.
+2. **SamePathCopy** menüsünü açın. Menü adı `config.json` içindeki `menuTitle` ile değiştirilmişse yapılandırılan adı kullanın.
+3. Tek bir bilgisayarı veya **Tümü** seçeneğini seçin.
+4. Açılan sonuç penceresinden her hedefin durumunu kontrol edin.
+
+`robocopy` dönüş kodu `0-7` başarılı, `8` ve üzeri hatalı kabul edilir. Var olan dosyalar gerektiğinde güncellenir; hedefte olup kaynakta bulunmayan dosyalar silinmez.
+
+Sonuç penceresi diğer uygulamaların üzerinde sabitlenmez; normal bir pencere gibi arkaya alınabilir. SMB paylaşımına erişilemiyorsa veya `robocopy` hata verirse sonuç alanında Windows'un ayrıntılı hata mesajı gösterilir.
+
+### Robocopy 16 ve erişim reddedildi
+
+`robocopy` kodu `16`, hedef yolun bulunamaması, hatalı kullanım veya yetersiz erişim yetkisi gibi ciddi bir hatayı belirtir. `Hedef SMB paylaşımına erişilemiyor` ya da `Access is denied` görülürse hedef bilgisayarda hem paylaşım izni hem de klasörün NTFS Güvenlik izni kontrol edilmelidir. Kaynak bilgisayardaki kullanıcıya hedef paylaşımda değiştirme/yazma yetkisi verilmelidir.
+
+Gerekirse doğru hedef hesabı Windows Credential Manager'a kaydedin:
+
+```bat
+cmdkey /add:10.10.2.182 /user:HEDEF-BILGISAYAR\Kullanici /pass
+```
+
+Önceden aynı IP için yanlış kimlik bilgisi kaydedilmişse `cmdkey /delete:10.10.2.182` ile kaldırıp yeniden ekleyin.
+
+## Yapılandırmayı değiştirmeden sınama
+
+Gerçek kopyalama yapmadan hedef yolu görmek için:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath.ps1" -SourcePath "C:\ActiveRelease\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity" -TargetId all -PlanOnly
+```
+
+`PlanOnly` kaynak öğenin varlığını ve yerel bilgisayarın config içindeki bir node ile eşleşmesini doğrular, hesaplanan hedefleri ekrana yazar ve `robocopy` çalıştırmaz. Tek hedefi sınamak için `all` yerine ilgili node kimliğini verin.
+
+## Kaldırma
+
+`Uninstall-ContextMenu.bat` dosyasına çift tıklayın veya komut satırından çalıştırın:
+
+```bat
+Uninstall-ContextMenu.bat
+```
+
+Bu işlem yalnızca sağ tık menüsü kayıtlarını kaldırır; betikleri, yapılandırmayı veya kopyalanmış dosyaları silmez.
