@@ -2,6 +2,7 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $paths = @(
     'HKCU:\Software\Classes\*\shell\SamePathCopy',
     'HKCU:\Software\Classes\Directory\shell\SamePathCopy',
@@ -24,3 +25,4 @@ Get-ChildItem -LiteralPath $commandStoreRoot -ErrorAction SilentlyContinue |
     }
 
 Write-Host 'Aynı Dizine Kopyala sağ tık menüsü kaldırıldı.'
+& (Join-Path $scriptDirectory 'NotepadPlusPlus-Integration.ps1') -Action Uninstall -WhatIf:$WhatIfPreference

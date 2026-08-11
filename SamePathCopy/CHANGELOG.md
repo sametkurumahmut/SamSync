@@ -1,5 +1,11 @@
 # Sürüm Geçmişi
 
+## 1.1.0
+
+- Notepad++ 8.4.8 ve üzerindeki sekme sağ tık menüsüne SamePathCopy hedefleri otomatik ekleniyor.
+- Kurulum, standart ve taşınabilir Notepad++ ayar konumlarını algılayıp mevcut `shortcuts.xml` ve `tabContextMenu.xml` özelleştirmelerini koruyor.
+- Kaldırma işlemi Notepad++ içindeki yalnızca SamePathCopy tarafından yönetilen komutları temizliyor.
+
 ## 1.0.0
 
 - İlk paylaşıma hazır sürüm.

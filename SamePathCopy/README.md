@@ -1,6 +1,6 @@
 # SamePathCopy
 
-Windows Explorer sağ tık menüsünden bir veya birden fazla dosya ya da klasörü seçilen bilgisayarlara kopyalar. Yapılandırılmış kök dizinler arasındaki göreli yolu korur; kaynak öğeleri silmez.
+Windows Explorer sağ tık menüsünden bir veya birden fazla dosya ya da klasörü seçilen bilgisayarlara kopyalar. Aynı hedefler Notepad++ sekme sağ tık menüsünde de kullanılabilir. Yapılandırılmış kök dizinler arasındaki göreli yolu korur; kaynak öğeleri silmez.
 
 Örnek:
 
@@ -87,6 +87,7 @@ Kurulum, bu merkezi config yolunu sağ tık komutlarına kaydeder. Bilgisayarlar
 ## Ön koşullar
 
 - Windows PowerShell 5.1 ve Windows Explorer kullanılmalıdır.
+- Notepad++ sekme menüsü bütünleşmesi için Notepad++ 8.4.8 veya üzeri gerekir. Notepad++ zorunlu değildir; bulunmazsa bu adım atlanır.
 - Hedef bilgisayarlarda `networkRoot` değerinin ilk parçasıyla aynı adda SMB paylaşımı bulunmalı. `Sim\Samet` için `Sim` paylaşımı gerekir.
 - İşlemi yapan Windows kullanıcısının hedef paylaşımına yazma yetkisi olmalı.
 - Güvenlik duvarında Windows Dosya ve Yazıcı Paylaşımı açık olmalı.
@@ -150,6 +151,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Install-Conte
 
 Kurulum yalnızca mevcut kullanıcıya, `HKCU` altında yapılır; yönetici yetkisi gerekmez. Menü yapısını etkileyen config değişikliklerinden sonra kurulum betiğini tekrar çalıştırın. Explorer'ı yeniden başlatmak normalde gerekmez.
 
+Kurulum sistemde Notepad++ 8.4.8 veya üzerini bulursa sekme sağ tık bütünleşmesini de otomatik kurar. Standart kurulumların `%APPDATA%\Notepad++` ayar klasörü ve `doLocalConf.xml` kullanan taşınabilir kurulumlar desteklenir. Mevcut `shortcuts.xml` ve `tabContextMenu.xml` içerikleri silinmez; yalnızca adı `[SamePathCopy]` ile başlayan yönetilen komutlar güncellenir. Notepad++ açıksa yeni menüyü görmek için uygulamayı kapatıp yeniden açın.
+
 Kurulum, `assets\SamePathCopy.ico` dosyasını ana menüye ve hedef alt menülerine bağlar. Araç klasörü paylaşılırken `assets` klasörünü de pakete dahil edin.
 
 Windows 11'de klasik Explorer uzantısı ilk menü yerine **Daha fazla seçenek göster** (`Shift+F10`) altında görüntülenebilir.
@@ -162,6 +165,8 @@ Araç klasörünü kurulumdan sonra taşımayın; kayıt defterindeki komut beti
 2. **SamePathCopy** menüsünü açın. Menü adı `config.json` içindeki `menuTitle` ile değiştirilmişse yapılandırılan adı kullanın.
 3. Tek bir bilgisayarı veya **Tümü** seçeneğini seçin.
 4. Açılan sonuç penceresinden her hedefin durumunu kontrol edin.
+
+Notepad++ içinde kaydedilmiş bir dosyanın sekmesine sağ tıklayıp **SamePathCopy** alt menüsünden aynı hedefler seçilebilir. İsimsiz, henüz kaydedilmemiş sekmelerin dosya sistemi yolu olmadığı için önce kaydedilmeleri gerekir. Sekmede kaydedilmemiş değişiklik varsa kopyalanan içerik diskteki son kaydedilmiş sürümdür.
 
 `robocopy` dönüş kodu `0-7` başarılı, `8` ve üzeri hatalı kabul edilir. Var olan dosyalar gerektiğinde güncellenir; hedefte olup kaynakta bulunmayan dosyalar silinmez.
 
@@ -197,4 +202,4 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath
 Uninstall-ContextMenu.bat
 ```
 
-Bu işlem yalnızca sağ tık menüsü kayıtlarını kaldırır; betikleri, yapılandırmayı veya kopyalanmış dosyaları silmez.
+Bu işlem Explorer sağ tık kayıtlarını ve Notepad++ içindeki SamePathCopy komutlarını kaldırır; diğer Notepad++ özelleştirmelerini, betikleri, yapılandırmayı veya kopyalanmış dosyaları silmez.
