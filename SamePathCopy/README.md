@@ -161,6 +161,23 @@ Notepad++ 8.9.6.2 ve üzeri, bir kullanıcı komutunu çalıştırmadan önce `s
 
 Kurulum ve kaldırma, `shortcuts.xml` dosyasını yazdıktan sonra bu imzayı `config.xml` içinde günceller; ek bir adım gerekmez. İmza yazılamazsa (`config.xml` bulunamaması veya makine GUID'inin okunamaması) betik uyarı verir; bu durumda Notepad++ içinde **Çalıştır (Run) > Validate shortcuts.xml** komutunu bir kez kullanmak yeterlidir.
 
+### Klavye kısayolu atama
+
+Notepad++ komutlarına klavye kısayolu `config.json` içindeki `notepadPlusPlusShortcuts` alanından atanır. Anahtar hedef kimliğidir; tüm hedeflere kopyalayan girdi için `all` kullanılır:
+
+```json
+"notepadPlusPlusShortcuts": {
+    "all": "Ctrl+Alt+W",
+    "IG1": "Ctrl+Alt+F5"
+}
+```
+
+Varsayılan yapılandırmada `all` için `Ctrl+Alt+W` tanımlıdır: Notepad++ içinde `Ctrl+Alt+W`, aktif sekmedeki kaydedilmiş dosyayı tüm hedeflere kopyalar. Değişikliğin etkin olması için kurulumu Notepad++ kapalıyken çalıştırın; kısayol Notepad++ açılışında yüklenir ve **Ayarlar > Kısayol Eşleyici > Run komutları** altında görünür.
+
+Kısayol metni `Ctrl`, `Alt`, `Shift` değiştiricilerini ve tek bir tuşu (`A-Z`, `0-9`, `F1-F24`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`, `Right`, `Space`, `Tab`, `Enter`, `Backspace`, `Esc`) kabul eder. Harf ve rakamlar en az bir değiştirici tuş gerektirir. Tanınmayan tuş, birden fazla tuş veya aynı kısayolun iki hedefe atanması kurulumu hatayla durdurur; menüde bulunmayan bir kimlik yalnızca uyarı üretir.
+
+Kurulum, istenen kısayolun `shortcuts.xml` içindeki başka bir makro/komutla çakışmasını denetleyip uyarır. Notepad++'ın kendi varsayılan kısayolları bu dosyada tutulmadığı için denetlenemez; `Ctrl+Alt+W` Notepad++ 8.9.7 varsayılanlarında boştur (`Ctrl+W` sekmeyi kapatır, `Ctrl+Shift+W` tümünü kapatır).
+
 ### Run komutu 260 karakter sınırı
 
 Notepad++, sekme menüsündeki komut satırını `$(FULL_CURRENT_PATH)` gibi değişkenleri açmadan önce 260 karaktere kırpar ve uyarı vermez; kırpılan komut çalıştığında "Cannot find path ... because it does not exist" gibi hatalar görülür. Kurulum bu yüzden komutu kısa tutar: kısa PowerShell anahtarları (`-nop -w hidden -ep bypass -f`) kullanılır ve `-ConfigPath` yalnızca betiğin yanındaki varsayılan `config.json` dışında bir dosya kullanıldığında yazılır. `Queue-SamePathCopy.ps1` çağrısında `-ConfigPath` verilmezse betiğin yanındaki `config.json` kullanılır.

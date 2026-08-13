@@ -83,6 +83,16 @@ try {
         throw 'Aktif dosya yolu Notepad++ komutuna bağlanmadı.'
     }
 
+    # config.json içindeki notepadPlusPlusShortcuts girdisi komuta klavye kısayolu olarak işlenmeli.
+    $allCommand = @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq '[SamePathCopy] all' })[0]
+    Assert-Equal 'yes' ([string]$allCommand.Ctrl) 'Tümü komutuna Ctrl atanmadı.'
+    Assert-Equal 'yes' ([string]$allCommand.Alt) 'Tümü komutuna Alt atanmadı.'
+    Assert-Equal 'no' ([string]$allCommand.Shift) 'Tümü komutuna beklenmeyen Shift atandı.'
+    Assert-Equal '87' ([string]$allCommand.Key) 'Tümü komutuna W tuşu (87) atanmadı.'
+    foreach ($managedCommand in @($managedCommands | Where-Object { $_.name -ne '[SamePathCopy] all' })) {
+        Assert-Equal '0' ([string]$managedCommand.Key) "$($managedCommand.name) komutuna kısayol atanmamalıydı."
+    }
+
     # Notepad++ Run komutunu 260 karakterde kesip sessizce bozar; varsayılan config yolu bu yüzden yazılmaz.
     foreach ($managedCommand in $managedCommands) {
         $commandText = [string]$managedCommand.'#text'
@@ -129,6 +139,32 @@ try {
     Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -like '[[]SamePathCopy[]]*' }).Count 'Sınırı aşan komut için sekme menüsü girdisi eklendi.'
     if (@($limitWarnings | Where-Object { [string]$_ -like '*Notepad++ sınırını aşıyor*' }).Count -eq 0) {
         throw 'Sınır aşımı için uyarı verilmedi.'
+    }
+
+    # Geçersiz kısayol metni sessizce yok sayılmamalı.
+    $invalidShortcutConfigPath = Join-Path $testDirectory 'config-invalid-shortcut.json'
+    $configObject = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $configObject | Add-Member -NotePropertyName 'notepadPlusPlusShortcuts' -NotePropertyValue ([pscustomobject]@{ all = 'Ctrl+Alt+YokTus' }) -Force
+    ($configObject | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $invalidShortcutConfigPath -Encoding UTF8
+    $invalidShortcutError = $null
+    try {
+        & $integrationScript -Action Install -ConfigPath $invalidShortcutConfigPath -ConfigurationDirectory $testDirectory -WarningAction SilentlyContinue
+    }
+    catch {
+        $invalidShortcutError = $_
+    }
+    if ($null -eq $invalidShortcutError -or [string]$invalidShortcutError.Exception.Message -notlike '*tanınmadı*') {
+        throw 'Geçersiz kısayol tuşu için hata verilmedi.'
+    }
+
+    # Menüde bulunmayan bir kimliğe atanan kısayol uyarı vermeli.
+    $unknownIdConfigPath = Join-Path $testDirectory 'config-unknown-shortcut.json'
+    $configObject | Add-Member -NotePropertyName 'notepadPlusPlusShortcuts' -NotePropertyValue ([pscustomobject]@{ YokHedef = 'Ctrl+Alt+Q' }) -Force
+    ($configObject | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $unknownIdConfigPath -Encoding UTF8
+    $unknownIdWarnings = @()
+    & $integrationScript -Action Install -ConfigPath $unknownIdConfigPath -ConfigurationDirectory $testDirectory -WarningVariable unknownIdWarnings -WarningAction SilentlyContinue
+    if (@($unknownIdWarnings | Where-Object { [string]$_ -like '*YokHedef*' }).Count -eq 0) {
+        throw 'Menüde olmayan kimlik için uyarı verilmedi.'
     }
 
     Write-Host 'Notepad++ bütünleşme testleri başarılı.'

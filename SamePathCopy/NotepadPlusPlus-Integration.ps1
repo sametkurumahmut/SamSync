@@ -296,6 +296,117 @@ function Remove-ManagedNodes {
     }
 }
 
+function ConvertTo-NotepadPlusPlusShortcut {
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$EntryId
+    )
+
+    # "Ctrl+Alt+W" gibi bir metni Notepad++ shortcuts.xml biçimine (Ctrl/Alt/Shift + sanal tuş kodu) çevirir.
+    $namedKeys = @{
+        'BACKSPACE' = 8; 'TAB' = 9; 'ENTER' = 13; 'RETURN' = 13; 'ESC' = 27; 'ESCAPE' = 27; 'SPACE' = 32
+        'PAGEUP' = 33; 'PAGEDOWN' = 34; 'END' = 35; 'HOME' = 36
+        'LEFT' = 37; 'UP' = 38; 'RIGHT' = 39; 'DOWN' = 40
+        'INSERT' = 45; 'INS' = 45; 'DELETE' = 46; 'DEL' = 46
+    }
+
+    $useCtrl = $false
+    $useAlt = $false
+    $useShift = $false
+    $keyToken = $null
+    foreach ($token in @($Text -split '\+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        $upperToken = $token.ToUpperInvariant()
+        if ($upperToken -eq 'CTRL' -or $upperToken -eq 'CONTROL') { $useCtrl = $true }
+        elseif ($upperToken -eq 'ALT') { $useAlt = $true }
+        elseif ($upperToken -eq 'SHIFT') { $useShift = $true }
+        elseif ($null -ne $keyToken) { throw "Kısayolda birden fazla tuş var ($EntryId): $Text" }
+        else { $keyToken = $upperToken }
+    }
+    if ($null -eq $keyToken) { throw "Kısayolda tuş belirtilmedi ($EntryId): $Text" }
+
+    $keyCode = 0
+    if ($keyToken -match '^[A-Z0-9]$') {
+        if (-not ($useCtrl -or $useAlt -or $useShift)) {
+            throw "Harf ve rakam kısayolları en az bir Ctrl/Alt/Shift tuşu gerektirir ($EntryId): $Text"
+        }
+        $keyCode = [int][char]$keyToken
+    }
+    elseif ($keyToken -match '^F([1-9]|1[0-9]|2[0-4])$') {
+        $keyCode = 111 + [int]$Matches[1]
+    }
+    elseif ($namedKeys.ContainsKey($keyToken)) {
+        $keyCode = $namedKeys[$keyToken]
+    }
+    else {
+        throw "Kısayoldaki tuş tanınmadı ($EntryId): $keyToken. Harf, rakam, F1-F24 veya $(($namedKeys.Keys | Sort-Object) -join ', ') kullanılabilir."
+    }
+
+    $displayParts = @()
+    if ($useCtrl) { $displayParts += 'Ctrl' }
+    if ($useAlt) { $displayParts += 'Alt' }
+    if ($useShift) { $displayParts += 'Shift' }
+    $displayParts += $keyToken
+    return [pscustomobject]@{
+        Ctrl = if ($useCtrl) { 'yes' } else { 'no' }
+        Alt = if ($useAlt) { 'yes' } else { 'no' }
+        Shift = if ($useShift) { 'yes' } else { 'no' }
+        Key = [string]$keyCode
+        Text = $displayParts -join '+'
+    }
+}
+
+function Get-NotepadPlusPlusShortcutAssignments {
+    param(
+        $Configuration,
+        [Parameter(Mandatory = $true)][string[]]$KnownIds
+    )
+
+    $assignments = @{}
+    if ($null -eq $Configuration -or -not $Configuration.PSObject.Properties['notepadPlusPlusShortcuts']) { return $assignments }
+    $shortcutConfiguration = $Configuration.notepadPlusPlusShortcuts
+    if ($null -eq $shortcutConfiguration) { return $assignments }
+
+    foreach ($property in @($shortcutConfiguration.PSObject.Properties)) {
+        $requestedId = ([string]$property.Name).Trim()
+        $shortcutText = [string]$property.Value
+        if ([string]::IsNullOrWhiteSpace($shortcutText)) { continue }
+
+        $matchedIds = @($KnownIds | Where-Object { $_.Equals($requestedId, [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($matchedIds.Count -eq 0) {
+            Write-Warning "notepadPlusPlusShortcuts içindeki '$requestedId' kimliği menüde bulunmadığı için kısayol atlandı. Kullanılabilir kimlikler: $($KnownIds -join ', ')"
+            continue
+        }
+
+        $shortcut = ConvertTo-NotepadPlusPlusShortcut -Text $shortcutText -EntryId $matchedIds[0]
+        foreach ($assignedId in @($assignments.Keys)) {
+            $assigned = $assignments[$assignedId]
+            if ($assigned.Key -eq $shortcut.Key -and $assigned.Ctrl -eq $shortcut.Ctrl -and $assigned.Alt -eq $shortcut.Alt -and $assigned.Shift -eq $shortcut.Shift) {
+                throw "Aynı kısayol birden fazla hedefe atandı ($assignedId ve $($matchedIds[0])): $($shortcut.Text)"
+            }
+        }
+        $assignments[$matchedIds[0]] = $shortcut
+    }
+    return $assignments
+}
+
+function Test-ShortcutConflict {
+    param(
+        [Parameter(Mandatory = $true)][System.Xml.XmlDocument]$ShortcutsDocument,
+        [Parameter(Mandatory = $true)]$Shortcut
+    )
+
+    # Notepad++ varsayılan kısayolları shortcuts.xml içinde tutulmaz; yalnızca dosyada yazılı olanlar denetlenebilir.
+    foreach ($node in @($ShortcutsDocument.SelectNodes('/NotepadPlus/*/*'))) {
+        if ($null -eq $node.Attributes['Key'] -or $node.GetAttribute('Key') -ne $Shortcut.Key) { continue }
+        if ($node.GetAttribute('Ctrl') -ne $Shortcut.Ctrl) { continue }
+        if ($node.GetAttribute('Alt') -ne $Shortcut.Alt) { continue }
+        if ($node.GetAttribute('Shift') -ne $Shortcut.Shift) { continue }
+        $conflictName = if ($node.Attributes['name']) { $node.GetAttribute('name') } else { $node.Name }
+        return $conflictName
+    }
+    return $null
+}
+
 function Update-NotepadPlusPlusConfiguration {
     param(
         [Parameter(Mandatory = $true)]$Target,
@@ -303,7 +414,8 @@ function Update-NotepadPlusPlusConfiguration {
         $Configuration,
         [object[]]$Targets,
         [string]$ResolvedConfigPath,
-        [string]$QueueScriptPath
+        [string]$QueueScriptPath,
+        [hashtable]$ShortcutAssignments = @{}
     )
 
     $configDirectory = $Target.ConfigurationDirectory
@@ -363,12 +475,19 @@ function Update-NotepadPlusPlusConfiguration {
                 Write-Warning "$commandName komutu Notepad++ sınırını aşıyor ($($commandText.Length) karakter, en fazla $notepadPlusPlusCommandLimit) ve eklenmedi. Aracı ve config dosyasını daha kısa bir yola taşıyın (örnek: C:\SamePathCopy)."
                 continue
             }
+            $shortcut = $ShortcutAssignments[$entry.Id]
+            if ($null -ne $shortcut) {
+                $conflictName = Test-ShortcutConflict -ShortcutsDocument $shortcutsDocument -Shortcut $shortcut
+                if ($null -ne $conflictName) {
+                    Write-Warning "$($shortcut.Text) kısayolu shortcuts.xml içinde '$conflictName' tarafından da kullanılıyor; Notepad++ içinde Ayarlar > Kısayol Eşleyici ile denetleyin."
+                }
+            }
             $command = $shortcutsDocument.CreateElement('Command')
             $command.SetAttribute('name', $commandName)
-            $command.SetAttribute('Ctrl', 'no')
-            $command.SetAttribute('Alt', 'no')
-            $command.SetAttribute('Shift', 'no')
-            $command.SetAttribute('Key', '0')
+            $command.SetAttribute('Ctrl', $(if ($null -ne $shortcut) { $shortcut.Ctrl } else { 'no' }))
+            $command.SetAttribute('Alt', $(if ($null -ne $shortcut) { $shortcut.Alt } else { 'no' }))
+            $command.SetAttribute('Shift', $(if ($null -ne $shortcut) { $shortcut.Shift } else { 'no' }))
+            $command.SetAttribute('Key', $(if ($null -ne $shortcut) { $shortcut.Key } else { '0' }))
             $command.InnerText = $commandText
             [void]$userCommands.AppendChild($command)
 
@@ -404,6 +523,7 @@ $configuration = $null
 $enabledTargets = @()
 $resolvedConfigPath = $null
 $queueScriptPath = $null
+$shortcutAssignments = @{}
 if ($Action -eq 'Install') {
     if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $scriptDirectory 'config.json' }
     . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
@@ -412,6 +532,7 @@ if ($Action -eq 'Install') {
     $enabledTargets = @(Get-EnabledSamePathCopyNodes -Configuration $configuration -ExcludeId $localIdentity.Id)
     $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
     $queueScriptPath = (Resolve-Path -LiteralPath (Join-Path $scriptDirectory 'Queue-SamePathCopy.ps1')).Path
+    $shortcutAssignments = Get-NotepadPlusPlusShortcutAssignments -Configuration $configuration -KnownIds (@('all') + @($enabledTargets | ForEach-Object { [string]$_.id }))
 }
 
 foreach ($target in $notepadPlusPlusTargets) {
@@ -419,7 +540,7 @@ foreach ($target in $notepadPlusPlusTargets) {
         Write-Warning "Notepad++ $($target.Version), özelleştirilebilir sekme menüsünü desteklemiyor (en az 8.4.8 gerekli): $($target.InstallationDirectory)"
         continue
     }
-    Update-NotepadPlusPlusConfiguration -Target $target -RequestedAction $Action -Configuration $configuration -Targets $enabledTargets -ResolvedConfigPath $resolvedConfigPath -QueueScriptPath $queueScriptPath
+    Update-NotepadPlusPlusConfiguration -Target $target -RequestedAction $Action -Configuration $configuration -Targets $enabledTargets -ResolvedConfigPath $resolvedConfigPath -QueueScriptPath $queueScriptPath -ShortcutAssignments $shortcutAssignments
 }
 
 if (Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue) {

@@ -1,5 +1,10 @@
 # Sürüm Geçmişi
 
+## 1.1.2
+
+- Notepad++ komutlarına `config.json` içindeki `notepadPlusPlusShortcuts` alanıyla klavye kısayolu atanabiliyor; varsayılan olarak `Ctrl+Alt+W` aktif dosyayı tüm hedeflere kopyalıyor.
+- Kısayol metni doğrulanıyor: tanınmayan tuş, birden fazla tuş, değiştiricisiz harf/rakam ve aynı kısayolun iki hedefte kullanılması kurulumu durduruyor; `shortcuts.xml` içindeki mevcut kısayollarla çakışma uyarı veriyor.
+
 ## 1.1.1
 
 - Notepad++ 8.9.6.2 ve üzerinde `shortcuts.xml` bütünlük imzası (`config.xml` içindeki `shortcutsXmlHMAC`) kurulum ve kaldırma sonrasında güncelleniyor; sekme menüsünden komut çalıştırırken çıkan **Security Warning** uyarısı ortadan kalkıyor.
