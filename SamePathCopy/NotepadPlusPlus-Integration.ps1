@@ -13,6 +13,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $commandPrefix = '[SamePathCopy] '
+# Notepad++ (RunDlg.cpp, Command::run) Run komut satırını MAX_PATH uzunluğundaki tampona kopyalar;
+# $(FULL_CURRENT_PATH) gibi değişkenler açılmadan önce ilk 260 karakter dışındaki kısım atılır.
+$notepadPlusPlusCommandLimit = 260
 
 function Get-NotepadPlusPlusTargets {
     param([string[]]$ExplicitConfigurationDirectory)
@@ -127,6 +130,109 @@ function Save-XmlDocument {
     }
 }
 
+function Get-NotepadPlusPlusIntegrityKey {
+    # Notepad++ 8.9.6.2 ve üzeri, shortcuts.xml imzasını makine GUID'ini HMAC anahtarı olarak kullanarak üretir.
+    $baseKey = $null
+    $cryptographyKey = $null
+    try {
+        $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+        $cryptographyKey = $baseKey.OpenSubKey('SOFTWARE\Microsoft\Cryptography')
+        if ($null -eq $cryptographyKey) { return $null }
+        $machineGuid = [string]$cryptographyKey.GetValue('MachineGuid')
+        if ([string]::IsNullOrWhiteSpace($machineGuid)) { return $null }
+        return [System.Text.Encoding]::ASCII.GetBytes($machineGuid)
+    }
+    catch {
+        return $null
+    }
+    finally {
+        if ($null -ne $cryptographyKey) { $cryptographyKey.Dispose() }
+        if ($null -ne $baseKey) { $baseKey.Dispose() }
+    }
+}
+
+function Get-ShortcutsXmlSignature {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShortcutsPath,
+        [Parameter(Mandatory = $true)][byte[]]$KeyBytes
+    )
+
+    # İmza, dosyanın ham baytları üzerinden HMAC-SHA256 olarak hesaplanır ve küçük harfli hex olarak yazılır.
+    $hmac = New-Object System.Security.Cryptography.HMACSHA256 -ArgumentList @(, $KeyBytes)
+    try {
+        $hash = $hmac.ComputeHash([System.IO.File]::ReadAllBytes($ShortcutsPath))
+    }
+    finally {
+        $hmac.Dispose()
+    }
+    return (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Update-ShortcutsXmlSignature {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigurationDirectory,
+        [Parameter(Mandatory = $true)][string]$ShortcutsPath
+    )
+
+    # Notepad++ 8.9.6.2 ve üzeri, bir kullanıcı komutunu çalıştırmadan önce shortcuts.xml imzasını
+    # config.xml içindeki "shortcutsXmlHMAC" değeriyle karşılaştırır (CVE-2026-48800). İmza güncellenmezse
+    # komut çalışmaz; Notepad++ "Security Warning" uyarısı gösterip shortcuts.xml dosyasını salt okunur açar.
+    $manualStep = 'Notepad++ içinde Çalıştır (Run) > Validate shortcuts.xml komutunu bir kez kullanın.'
+    if (-not (Test-Path -LiteralPath $ShortcutsPath -PathType Leaf)) { return }
+
+    $configXmlPath = Join-Path $ConfigurationDirectory 'config.xml'
+    if (-not (Test-Path -LiteralPath $configXmlPath -PathType Leaf)) {
+        Write-Warning "Notepad++ config.xml bulunamadı, shortcuts.xml imzası yazılamadı ($configXmlPath). $manualStep"
+        return
+    }
+
+    $keyBytes = Get-NotepadPlusPlusIntegrityKey
+    if ($null -eq $keyBytes) {
+        Write-Warning "Makine GUID okunamadı, shortcuts.xml imzası yazılamadı. $manualStep"
+        return
+    }
+
+    $element = '<GUIConfig name="shortcutsXmlHMAC" value="{0}" />' -f (Get-ShortcutsXmlSignature -ShortcutsPath $ShortcutsPath -KeyBytes $keyBytes)
+
+    # config.xml kullanıcının tüm Notepad++ ayarlarını taşıdığı için yeniden biçimlendirilmez; yalnızca ilgili satır değiştirilir.
+    $bytes = [System.IO.File]::ReadAllBytes($configXmlPath)
+    $hasByteOrderMark = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $contentOffset = if ($hasByteOrderMark) { 3 } else { 0 }
+    $content = [System.Text.Encoding]::UTF8.GetString($bytes, $contentOffset, $bytes.Length - $contentOffset)
+    $newLine = if ($content.Contains("`r`n")) { "`r`n" } else { "`n" }
+
+    $existingSignature = [regex]::Match($content, '<GUIConfig\s+name="shortcutsXmlHMAC"[^>]*>')
+    $guiConfigsEnd = [regex]::Match($content, '(?m)^([ \t]*)</GUIConfigs>')
+    $rootEnd = [regex]::Match($content, '(?m)^([ \t]*)</NotepadPlus>')
+    if ($existingSignature.Success) {
+        $updatedContent = $content.Remove($existingSignature.Index, $existingSignature.Length).Insert($existingSignature.Index, $element)
+    }
+    elseif ($guiConfigsEnd.Success) {
+        $indent = $guiConfigsEnd.Groups[1].Value
+        $updatedContent = $content.Insert($guiConfigsEnd.Index, "$indent    $element$newLine")
+    }
+    elseif ($rootEnd.Success) {
+        $indent = $rootEnd.Groups[1].Value
+        $updatedContent = $content.Insert($rootEnd.Index, "$indent    <GUIConfigs>$newLine$indent        $element$newLine$indent    </GUIConfigs>$newLine")
+    }
+    else {
+        Write-Warning "Notepad++ config.xml beklenen yapıda değil, shortcuts.xml imzası yazılamadı ($configXmlPath). $manualStep"
+        return
+    }
+    if ($updatedContent -eq $content) { return }
+
+    if ($PSCmdlet.ShouldProcess($configXmlPath, 'shortcuts.xml bütünlük imzasını güncelle')) {
+        $temporaryPath = "$configXmlPath.samepathcopy.tmp"
+        try {
+            [System.IO.File]::WriteAllText($temporaryPath, $updatedContent, (New-Object System.Text.UTF8Encoding($hasByteOrderMark)))
+            Move-Item -LiteralPath $temporaryPath -Destination $configXmlPath -Force
+        }
+        finally {
+            if (Test-Path -LiteralPath $temporaryPath) { Remove-Item -LiteralPath $temporaryPath -Force }
+        }
+    }
+}
+
 function New-ShortcutsDocument {
     $document = New-Object System.Xml.XmlDocument
     [void]$document.AppendChild($document.CreateXmlDeclaration('1.0', 'UTF-8', $null))
@@ -237,18 +343,33 @@ function Update-NotepadPlusPlusConfiguration {
 
     if ($RequestedAction -eq 'Install') {
         $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        # Notepad++ Run komutunu, değişkenleri açmadan önce 260 karakterde kesip sessizce bozar; komut bu yüzden
+        # olabildiğince kısa tutulur: kısa PowerShell anahtarları kullanılır ve config yolu yalnızca
+        # betiğin yanındaki varsayılan config.json dışında bir dosya kullanılıyorsa yazılır.
+        $defaultConfigPath = Join-Path (Split-Path -Parent $QueueScriptPath) 'config.json'
+        $configPathArgument = if ($ResolvedConfigPath -and -not $ResolvedConfigPath.Equals($defaultConfigPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            ' -ConfigPath "{0}"' -f $ResolvedConfigPath
+        }
+        else {
+            ''
+        }
         $entries = @([pscustomobject]@{ Id = 'all'; Label = [string]$Configuration.allLabel }) + @(
             $Targets | ForEach-Object { [pscustomobject]@{ Id = [string]$_.id; Label = [string]$_.name } }
         )
         foreach ($entry in $entries) {
             $commandName = "$commandPrefix$($entry.Id)"
+            $commandText = ('"{0}" -nop -w hidden -ep bypass -f "{1}" -TargetId {2} -SourcePath "$(FULL_CURRENT_PATH)"{3}' -f $powershellExe, $QueueScriptPath, $entry.Id, $configPathArgument)
+            if ($commandText.Length -gt $notepadPlusPlusCommandLimit) {
+                Write-Warning "$commandName komutu Notepad++ sınırını aşıyor ($($commandText.Length) karakter, en fazla $notepadPlusPlusCommandLimit) ve eklenmedi. Aracı ve config dosyasını daha kısa bir yola taşıyın (örnek: C:\SamePathCopy)."
+                continue
+            }
             $command = $shortcutsDocument.CreateElement('Command')
             $command.SetAttribute('name', $commandName)
             $command.SetAttribute('Ctrl', 'no')
             $command.SetAttribute('Alt', 'no')
             $command.SetAttribute('Shift', 'no')
             $command.SetAttribute('Key', '0')
-            $command.InnerText = ('"{0}" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" -SourcePath "$(FULL_CURRENT_PATH)" -TargetId "{2}" -ConfigPath "{3}"' -f $powershellExe, $QueueScriptPath, $entry.Id, $ResolvedConfigPath)
+            $command.InnerText = $commandText
             [void]$userCommands.AppendChild($command)
 
             $item = $tabMenuDocument.CreateElement('Item')
@@ -268,6 +389,8 @@ function Update-NotepadPlusPlusConfiguration {
             Save-XmlDocument -Document $file.Document -Path $file.Path
         }
     }
+    # İmza, shortcuts.xml son hâlini aldıktan sonra hesaplanmalıdır.
+    Update-ShortcutsXmlSignature -ConfigurationDirectory $configDirectory -ShortcutsPath $shortcutsPath
     Write-Host "Notepad++ bütünleşmesi $RequestedAction`: $configDirectory"
 }
 
@@ -300,5 +423,7 @@ foreach ($target in $notepadPlusPlusTargets) {
 }
 
 if (Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue) {
-    Write-Warning 'Yeni sekme menüsünün görünmesi için Notepad++ uygulamasını kapatıp yeniden açın.'
+    # Notepad++ kapanırken shortcuts.xml ve config.xml dosyalarını kendi belleğindeki içerikle yeniden yazar;
+    # bu yüzden açıkken yapılan değişiklikler ve bütünlük imzası kaybolur.
+    Write-Warning 'Notepad++ açık. Uygulamayı kapatıp bu betiği bir kez daha çalıştırın; aksi hâlde Notepad++ kapanırken yaptığı değişiklikleri geri yazar.'
 }

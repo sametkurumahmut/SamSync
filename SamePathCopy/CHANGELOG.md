@@ -1,5 +1,13 @@
 # Sürüm Geçmişi
 
+## 1.1.1
+
+- Notepad++ 8.9.6.2 ve üzerinde `shortcuts.xml` bütünlük imzası (`config.xml` içindeki `shortcutsXmlHMAC`) kurulum ve kaldırma sonrasında güncelleniyor; sekme menüsünden komut çalıştırırken çıkan **Security Warning** uyarısı ortadan kalkıyor.
+- İmza yazılamadığında betik uyarı verip Notepad++ içindeki **Çalıştır > Validate shortcuts.xml** adımını hatırlatıyor.
+- Notepad++ açıkken kurulum yapıldığında, uygulama kapanırken değişiklikleri geri yazdığı için betiğin tekrar çalıştırılması gerektiği uyarısı netleştirildi.
+- Notepad++ Run komutu 260 karakterde kırpıldığı için bozulan çağrı kısaltıldı: kısa PowerShell anahtarları kullanılıyor ve `-ConfigPath` yalnızca varsayılan dışındaki config dosyaları için yazılıyor. `Queue-SamePathCopy.ps1` içinde `-ConfigPath` isteğe bağlı hâle geldi; verilmezse betiğin yanındaki `config.json` kullanılıyor.
+- Komut yine de 260 karakteri aşarsa bozuk girdi yazılmıyor; kurulum o girdiyi atlayıp uyarı veriyor.
+
 ## 1.1.0
 
 - Notepad++ 8.4.8 ve üzerindeki sekme sağ tık menüsüne SamePathCopy hedefleri otomatik ekleniyor.

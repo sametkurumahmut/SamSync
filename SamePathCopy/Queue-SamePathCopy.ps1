@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$SourcePath,
     [Parameter(Mandatory = $true)][string]$TargetId,
-    [Parameter(Mandatory = $true)][string]$ConfigPath,
+    [string]$ConfigPath,
     [switch]$PlanOnly
 )
 
@@ -26,6 +26,10 @@ trap {
 }
 
 $copyScript = (Resolve-Path -LiteralPath (Join-Path $scriptDirectory 'Copy-SamePath.ps1')).Path
+# Notepad++ Run komutu 260 karakterle sınırlı olduğundan çağrı ConfigPath vermeden yapılabilir.
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $scriptDirectory 'config.json'
+}
 $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 
 $keyText = "$TargetId|$resolvedConfigPath|$([bool]$PlanOnly)"

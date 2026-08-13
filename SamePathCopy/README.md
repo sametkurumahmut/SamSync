@@ -151,7 +151,21 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Install-Conte
 
 Kurulum yalnızca mevcut kullanıcıya, `HKCU` altında yapılır; yönetici yetkisi gerekmez. Menü yapısını etkileyen config değişikliklerinden sonra kurulum betiğini tekrar çalıştırın. Explorer'ı yeniden başlatmak normalde gerekmez.
 
-Kurulum sistemde Notepad++ 8.4.8 veya üzerini bulursa sekme sağ tık bütünleşmesini de otomatik kurar. Standart kurulumların `%APPDATA%\Notepad++` ayar klasörü ve `doLocalConf.xml` kullanan taşınabilir kurulumlar desteklenir. Mevcut `shortcuts.xml` ve `tabContextMenu.xml` içerikleri silinmez; yalnızca adı `[SamePathCopy]` ile başlayan yönetilen komutlar güncellenir. Notepad++ açıksa yeni menüyü görmek için uygulamayı kapatıp yeniden açın.
+Kurulum sistemde Notepad++ 8.4.8 veya üzerini bulursa sekme sağ tık bütünleşmesini de otomatik kurar. Standart kurulumların `%APPDATA%\Notepad++` ayar klasörü ve `doLocalConf.xml` kullanan taşınabilir kurulumlar desteklenir. Mevcut `shortcuts.xml` ve `tabContextMenu.xml` içerikleri silinmez; yalnızca adı `[SamePathCopy]` ile başlayan yönetilen komutlar güncellenir.
+
+Notepad++ kapanırken `shortcuts.xml` ve `config.xml` dosyalarını kendi belleğindeki içerikle yeniden yazar. Bu nedenle kurulumu Notepad++ kapalıyken çalıştırın; açıkken çalıştırdıysanız uygulamayı kapatıp betiği bir kez daha çalıştırın.
+
+### shortcuts.xml bütünlük imzası
+
+Notepad++ 8.9.6.2 ve üzeri, bir kullanıcı komutunu çalıştırmadan önce `shortcuts.xml` dosyasının bütünlüğünü doğrular (CVE-2026-48800). İmza, makine GUID'i anahtarıyla üretilen HMAC-SHA256 değeridir ve `config.xml` içinde `<GUIConfig name="shortcutsXmlHMAC" value="..." />` olarak tutulur. İmza eksik ya da eşleşmiyorsa Notepad++ komutu çalıştırmaz; `shortcuts.xml` dosyasını salt okunur açıp **Security Warning** uyarısını gösterir.
+
+Kurulum ve kaldırma, `shortcuts.xml` dosyasını yazdıktan sonra bu imzayı `config.xml` içinde günceller; ek bir adım gerekmez. İmza yazılamazsa (`config.xml` bulunamaması veya makine GUID'inin okunamaması) betik uyarı verir; bu durumda Notepad++ içinde **Çalıştır (Run) > Validate shortcuts.xml** komutunu bir kez kullanmak yeterlidir.
+
+### Run komutu 260 karakter sınırı
+
+Notepad++, sekme menüsündeki komut satırını `$(FULL_CURRENT_PATH)` gibi değişkenleri açmadan önce 260 karaktere kırpar ve uyarı vermez; kırpılan komut çalıştığında "Cannot find path ... because it does not exist" gibi hatalar görülür. Kurulum bu yüzden komutu kısa tutar: kısa PowerShell anahtarları (`-nop -w hidden -ep bypass -f`) kullanılır ve `-ConfigPath` yalnızca betiğin yanındaki varsayılan `config.json` dışında bir dosya kullanıldığında yazılır. `Queue-SamePathCopy.ps1` çağrısında `-ConfigPath` verilmezse betiğin yanındaki `config.json` kullanılır.
+
+Aracın veya özel config dosyasının yolu yine de sınırı aşacak kadar uzunsa kurulum, bozuk bir menü girdisi yazmak yerine o girdiyi atlar ve uyarı verir. Bu durumda aracı daha kısa bir yola (örnek: `C:\SamePathCopy`) taşıyıp kurulumu yeniden çalıştırın.
 
 Kurulum, `assets\SamePathCopy.ico` dosyasını ana menüye ve hedef alt menülerine bağlar. Araç klasörü paylaşılırken `assets` klasörünü de pakete dahil edin.
 
