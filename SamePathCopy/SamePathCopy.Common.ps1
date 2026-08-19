@@ -101,11 +101,22 @@ function Get-EnabledSamePathCopyNodes {
     })
 }
 
+function ConvertTo-SamePathCopyIdentity {
+    param([Parameter(Mandatory = $true)]$Node)
+
+    return [pscustomobject]@{
+        Id = [string]$Node.id
+        Name = [string]$Node.name
+        Root = [string]$Node.localRoot
+    }
+}
+
 function Get-LocalSamePathCopyIdentity {
     param(
         [Parameter(Mandatory = $true)]$Configuration,
         [string]$LocalMachineName,
-        [string[]]$LocalAddresses
+        [string[]]$LocalAddresses,
+        [string]$NodeId
     )
 
     if (-not $PSBoundParameters.ContainsKey('LocalMachineName')) {
@@ -118,32 +129,54 @@ function Get-LocalSamePathCopyIdentity {
                 ForEach-Object { $_.Address.IPAddressToString }
         )
     }
-
-    $localValues = @($LocalAddresses) + @($LocalMachineName, "$LocalMachineName.$env:USERDNSDOMAIN")
-    $localValueSet = @{}
-    foreach ($value in $localValues) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
-            $localValueSet[[string]$value] = $true
-        }
+    if (-not $PSBoundParameters.ContainsKey('NodeId')) {
+        $NodeId = [string]$env:SAMEPATHCOPY_NODE_ID
     }
 
-    $matches = @($Configuration.nodes | Where-Object {
+    # Aynı config dosyası tüm bilgisayarlara olduğu gibi dağıtılabilsin diye kimlik en belirleyici ölçütten
+    # başlanarak çözülür: 1) SAMEPATHCOPY_NODE_ID, 2) IP adresi, 3) bilgisayar adı, 4) localRoot'un varlığı.
+    if (-not [string]::IsNullOrWhiteSpace($NodeId)) {
+        $requestedNodeId = $NodeId.Trim()
+        $requestedNodes = @($Configuration.nodes | Where-Object { ([string]$_.id).Equals($requestedNodeId, [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($requestedNodes.Count -ne 1) {
+            throw "SAMEPATHCOPY_NODE_ID / NodeId ile verilen '$requestedNodeId' config içindeki node kimlikleriyle eşleşmedi."
+        }
+        return ConvertTo-SamePathCopyIdentity -Node $requestedNodes[0]
+    }
+
+    $addressSet = @{}
+    foreach ($value in @($LocalAddresses)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$value)) { $addressSet[[string]$value] = $true }
+    }
+    $nameSet = @{}
+    foreach ($value in @($LocalMachineName, "$LocalMachineName.$env:USERDNSDOMAIN")) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$value)) { $nameSet[[string]$value] = $true }
+    }
+
+    $addressNodes = @($Configuration.nodes | Where-Object { $addressSet.ContainsKey([string]$_.address) })
+    $nameNodes = @($Configuration.nodes | Where-Object {
         $candidateValues = @([string]$_.address)
         if ($_.PSObject.Properties['localNames']) {
             $candidateValues += @($_.localNames | ForEach-Object { [string]$_ })
         }
-        @($candidateValues | Where-Object { $localValueSet.ContainsKey($_) }).Count -gt 0
+        @($candidateValues | Where-Object { $nameSet.ContainsKey($_) }).Count -gt 0
     })
 
-    if ($matches.Count -gt 1) {
-        throw "Bu bilgisayar birden fazla node ile eşleşti: $(@($matches | ForEach-Object { $_.id }) -join ', ')"
-    }
-    if ($matches.Count -eq 1) {
-        return [pscustomobject]@{
-            Id = [string]$matches[0].id
-            Name = [string]$matches[0].name
-            Root = [string]$matches[0].localRoot
+    foreach ($tier in @(
+        [pscustomobject]@{ Nodes = $addressNodes; Source = 'IP adresi' },
+        [pscustomobject]@{ Nodes = $nameNodes; Source = 'bilgisayar adı' }
+    )) {
+        $candidateNodes = @($tier.Nodes)
+        if ($candidateNodes.Count -eq 0) { continue }
+        if ($candidateNodes.Count -gt 1) {
+            # Birden fazla node aynı adresi/adı paylaşıyorsa, localRoot değeri bu bilgisayarda var olan tek node seçilir.
+            $existingRootNodes = @($candidateNodes | Where-Object { Test-Path -LiteralPath ([string]$_.localRoot) -PathType Container })
+            if ($existingRootNodes.Count -eq 1) { $candidateNodes = $existingRootNodes }
         }
+        if ($candidateNodes.Count -eq 1) {
+            return ConvertTo-SamePathCopyIdentity -Node $candidateNodes[0]
+        }
+        throw "Bu bilgisayar $($tier.Source) ile birden fazla node ile eşleşti: $(@($candidateNodes | ForEach-Object { $_.id }) -join ', '). Bu bilgisayarın adresi/adı yalnızca bir node içinde kalmalı, localRoot değerleri ayrışmalı ya da SAMEPATHCOPY_NODE_ID ortam değişkeniyle node kimliği verilmelidir."
     }
 
     $addressesText = @($LocalAddresses) -join ', '

@@ -35,6 +35,12 @@ function Get-WrittenShortcutsSignature {
     return [string]$signatureNodes[0].value
 }
 
+# Beklenen girdi sayısı config.json'dan türetilir; node listesi değiştiğinde test kırılmamalı.
+. (Join-Path $projectDirectory 'SamePathCopy.Common.ps1')
+$configuration = Get-SamePathCopyConfiguration -ConfigPath $configPath
+$localIdentity = Get-LocalSamePathCopyIdentity -Configuration $configuration
+$expectedCommandCount = 1 + @(Get-EnabledSamePathCopyNodes -Configuration $configuration -ExcludeId $localIdentity.Id).Count
+
 try {
     [void](New-Item -ItemType Directory -Path $testDirectory)
     @'
@@ -75,8 +81,8 @@ try {
     [xml]$tabMenu = Get-Content -LiteralPath (Join-Path $testDirectory 'tabContextMenu.xml') -Raw -Encoding UTF8
     $managedCommands = @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' })
     $managedItems = @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -like '[[]SamePathCopy[]]*' })
-    Assert-Equal 3 $managedCommands.Count 'Tümü ve iki uzak hedef komutu eklenmedi.'
-    Assert-Equal 3 $managedItems.Count 'Sekme menüsü girdileri eklenmedi.'
+    Assert-Equal $expectedCommandCount $managedCommands.Count 'Tümü ve uzak hedef komutları eklenmedi.'
+    Assert-Equal $expectedCommandCount $managedItems.Count 'Sekme menüsü girdileri eklenmedi.'
     Assert-Equal 1 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq 'Kullanıcı komutu' }).Count 'Mevcut kullanıcı komutu korunmadı.'
     Assert-Equal 1 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -eq 'Close' }).Count 'Mevcut sekme menüsü korunmadı.'
     if ($managedCommands[0].'#text' -notlike '*$(FULL_CURRENT_PATH)*') {
@@ -115,7 +121,7 @@ try {
     # Yeniden kurulum aynı girdileri çoğaltmamalı.
     & $integrationScript -Action Install -ConfigPath $configPath -ConfigurationDirectory $testDirectory
     [xml]$shortcuts = Get-Content -LiteralPath (Join-Path $testDirectory 'shortcuts.xml') -Raw -Encoding UTF8
-    Assert-Equal 3 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' }).Count 'Yeniden kurulum yinelenen komut oluşturdu.'
+    Assert-Equal $expectedCommandCount @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' }).Count 'Yeniden kurulum yinelenen komut oluşturdu.'
     Assert-Equal (Get-ExpectedShortcutsSignature -ShortcutsPath $shortcutsPath) (Get-WrittenShortcutsSignature -ConfigXmlPath $configXmlPath) 'Yeniden kurulum imzayı güncellemedi.'
 
     & $integrationScript -Action Uninstall -ConfigurationDirectory $testDirectory

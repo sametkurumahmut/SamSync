@@ -52,13 +52,18 @@ Registry tabanlı legacy Windows menü modelinin sınırı nedeniyle en fazla 15
 
 ## Tek yapılandırmayı bütün bilgisayarlarda kullanma
 
-Aynı `config.json` eğitmen ve bütün IG bilgisayarlarında kullanılır. Eğitmen dahil her bilgisayar `nodes` listesinde bulunur ve kendi yerel/paylaşım köklerine sahiptir. Araç çalıştığı bilgisayarı şu bilgilerle otomatik tanır:
+Aynı `config.json` eğitmen ve bütün IG bilgisayarlarında **hiç değiştirilmeden** kullanılır. Eğitmen dahil her bilgisayar `nodes` listesinde bulunur ve kendi yerel/paylaşım köklerine sahiptir. Araç çalıştığı bilgisayarı, en belirleyici ölçütten başlayarak otomatik tanır:
 
-1. `address` alanının yerel IP adreslerinden biriyle eşleşmesi,
-2. `address` alanının Windows bilgisayar adıyla eşleşmesi,
-3. İsteğe bağlı `localNames` değerlerinden birinin Windows bilgisayar adıyla eşleşmesi.
+1. `SAMEPATHCOPY_NODE_ID` ortam değişkeni (ya da `Get-LocalSamePathCopyIdentity -NodeId`) verilmişse doğrudan o node kullanılır.
+2. `address` alanının yerel IP adreslerinden biriyle eşleşmesi.
+3. `address` veya isteğe bağlı `localNames` değerlerinden birinin Windows bilgisayar adıyla eşleşmesi.
+4. Bir kademede birden fazla node eşleşirse, `localRoot` dizini bu bilgisayarda var olan tek node seçilir.
 
-Eşleşen node'un `localRoot` değeri kaynak kökü olarak kullanılır ve o node kendi hedef listesinden çıkarılır. Uzak node'a gönderimde `\\address\networkRoot` kullanılır. Eşleşme bulunamazsa araç kopyalama yapmaz.
+IP eşleşmesi ada göre eşleşmeyi ezdiği için, bilgisayar adları benzersiz olmasa bile (örneğin bütün makinelerin adı `MSI` olsa bile) her bilgisayar kendi node'unu bulur. Ada göre birden fazla eşleşme kalan durumda ayrımı `localRoot` yapar: eğitmen kökü `D:\Sim\ActiveRelease`, geliştirme makinesinin kökü `C:\E\repo\musteri\proje` ise yalnızca gerçekten var olan kökün node'u seçilir.
+
+Hiçbir kademe tek bir node'a inemezse araç kopyalama yapmaz ve hangi node'ların eşleştiğini söyler. Bu durumda ya bu bilgisayarın adresi/adı tek bir node'da bırakılır, ya `localRoot` değerleri ayrıştırılır, ya da yalnızca o bilgisayarda `setx SAMEPATHCOPY_NODE_ID Unit1Trainer` gibi bir ortam değişkeniyle kimlik sabitlenir; config dosyası ortak kalır.
+
+Eşleşen node'un `localRoot` değeri kaynak kökü olarak kullanılır ve o node kendi hedef listesinden çıkarılır. Uzak node'a gönderimde `\\address\networkRoot` kullanılır.
 
 Örnek olarak IG-12 üzerinde çalışırken:
 
@@ -120,7 +125,7 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 - `id`: Menü komutunun kalıcı anahtarıdır. `Trainer`, `IG1`, `IG2` gibi büyük veya küçük İngilizce harfler, rakam, nokta, alt çizgi ve tire kullanılabilir. Baştaki/sondaki boşluklar otomatik temizlenir. Kimlikler büyük/küçük harfe duyarsız olarak benzersiz olmalıdır; örneğin `IG1` ile `ig1` aynı kimlik kabul edilir. `all` değeri “Tümü” işlemi için ayrılmıştır ve node kimliği olarak kullanılmamalıdır.
 - `name`: Menüde görünen serbest metindir.
 - `address`: IPv4 adresi veya DNS/Windows bilgisayar adıdır.
-- `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. Birden fazla ağ kartı ya da DNS adı kullanılıyorsa otomatik tanımayı güvenilir hâle getirir.
+- `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. IP adresi değişken olan (DHCP ya da Wi-Fi ile bağlanan) bilgisayarların tanınmasını sağlar. Aynı adı birden fazla node'a yazmak eşleşmeyi belirsizleştirir; o durumda ayrımı IP eşleşmesi veya `localRoot` varlığı yapar.
 - `localRoot`: Bu bilgisayar kaynak olduğunda göreli yol hesabının başlangıcı olan, sürücü harfiyle başlayan mutlak yerel yoldur. Örnek: `E:\Samet`. Bu dizin dışındaki öğeler de tam yolları korunarak kopyalanabilir.
 - `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
 - `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
