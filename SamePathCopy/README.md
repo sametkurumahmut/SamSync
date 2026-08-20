@@ -157,6 +157,15 @@ Sırasıyla zaman damgası, seviye (`INFO` / `WARN` / `ERROR`), çalıştırma k
 
 `root.log` 5 MB'ı geçtiğinde `root.1.log`, `root.2.log`, `root.3.log` olarak kaydırılır; en eskisi silinir. Günlük klasörü sürüm denetimine girmez.
 
+### Kopyalama öncesi denetimler
+
+Kopyalama penceresi açıldıktan sonra, işlem başlamadan önce iki denetim yapılır:
+
+- **Ayna önizlemesi** — `Ayna` seçili her hedef için `robocopy /L /MIR` çalıştırılıp hedefte silinecek öğeler listelenir. Panelde hedef başına "N fazla öğe silinecek, M öğe güncellenecek" satırı ve ilk beş dosyanın yolu görünür; ardından toplam silme sayısını söyleyen bir onay istenir. Onay verilmezse hiçbir şey kopyalanmaz. Bütün liste günlüğe de yazılır.
+- **Disk alanı** — hedef paylaşımdaki boş alan kaynak boyutundan küçükse uyarı satırı eklenir (kopyalama engellenmez, çünkü hedefte üzerine yazılacak dosyalar da yer açar). Boş alan okunamayan paylaşımlar sessizce atlanır.
+
+`Deneme çalıştırması` seçiliyken her hedef için ne değişeceği de listelenir: "N öğe kopyalanacaktı, M öğe hedefte fazla" ve ilk beş yol.
+
 ### Gruplar
 
 Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:

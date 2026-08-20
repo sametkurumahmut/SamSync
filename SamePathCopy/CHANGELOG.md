@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Ayna artık kör çalışmıyor: kopyalama başlamadan `robocopy /L /MIR` ile hedefte silinecek öğeler listeleniyor, panelde ve günlükte gösteriliyor, toplam silme sayısıyla onay isteniyor. Onay verilmezse hiçbir şey kopyalanmıyor.
+- `Deneme çalıştırması` artık ne değişeceğini de listeliyor (kopyalanacak öğe sayısı, hedefte fazla öğe sayısı ve ilk beş yol).
+- Hedef paylaşımdaki boş alan kaynak boyutundan küçükse kopyalama öncesi uyarı satırı ekleniyor.
+
 - Kopyalama artık hedefler arasında eşzamanlı çalışıyor: varsayılan olarak 4 bilgisayara aynı anda gönderiliyor (sihirbazdaki `Eşzamanlı hedef` alanından 1-16 arası ayarlanır). Bir hedefin planları kendi içinde sıralı kaldığı için `Ayna` gibi parametreler güvenliğini koruyor; iptal bütün çalışan robocopy süreçlerini durduruyor.
 - Kopyalama betiği uçtan uca sınanıyor ([tests/Test-CopyRun.ps1](tests/Test-CopyRun.ps1)): gerçek robocopy ile paralel kopyalama, göreli yol, süzgeç, yedek + temizlik, deneme çalıştırması ve ayna davranışı.
 - Hata günlüğü artık hata türünü ve yığın izini de yazıyor; otomatik kapanma kipinde (test/otomasyon) hata penceresi açılmıyor.

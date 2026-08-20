@@ -133,6 +133,52 @@ try {
     try { [void](Get-SamePathCopyConfiguration -ConfigPath $configPath) } catch { $keepError = [string]$_.Exception.Message }
     if ($keepError -notlike '*backupKeep*') { throw "Sınır dışı backupKeep için hata verilmedi. Alınan: $keepError" }
 
+    # robocopy /L çıktısı: fazla (silinecek) ve değişecek öğeler ayrıştırılmalı.
+    $listingLines = @(
+        '',
+        '   *EXTRA File  \\ip\pay\Data\fazla.txt',
+        '    New File    C:\Kaynak\Data\yeni.txt',
+        '    Newer       C:\Kaynak\Data\guncel.txt',
+        '   *EXTRA Dir   \\ip\pay\Data\FazlaKlasor\',
+        '    Older       C:\Kaynak\Data\eski.txt',
+        '  100%',
+        'Toplam    Kopyalanan'
+    )
+    $summary = Get-SamePathCopyListingSummary -Lines $listingLines
+    Assert-Equal 2 $summary.ExtraCount 'Fazla öğe sayısı yanlış.'
+    Assert-Equal 3 $summary.ChangeCount 'Değişecek öğe sayısı yanlış.'
+    Assert-Equal '\\ip\pay\Data\fazla.txt' ([string]$summary.Extras[0]) 'Fazla öğe yolu yanlış ayrıştırıldı.'
+    Assert-Equal 'C:\Kaynak\Data\yeni.txt' ([string]$summary.Changes[0]) 'Değişecek öğe yolu yanlış ayrıştırıldı.'
+    $emptySummary = Get-SamePathCopyListingSummary -Lines @()
+    Assert-Equal 0 $emptySummary.ExtraCount 'Boş çıktı için fazla sayısı 0 olmalı.'
+
+    # Listeleme kipi robocopy argümanları: /L ve dosya listesi açık, sessiz anahtarlar kapalı.
+    $listingArguments = (Get-SamePathCopyRobocopyArguments -SourceDirectory 'C:\Kaynak' -DestinationDirectory '\\ip\pay' `
+        -IsDirectory $true -RetryCount 0 -WaitSeconds 0 -Options ([pscustomobject]@{ Mirror = $true }) -Listing) -join ' '
+    if ($listingArguments -notlike '*/L*') { throw "Listeleme kipinde /L yok: $listingArguments" }
+    if ($listingArguments -notlike '*/MIR*') { throw "Listeleme kipinde ayna anahtarı korunmadı: $listingArguments" }
+    if ($listingArguments -like '*/NFL*' -or $listingArguments -like '*/NDL*') { throw "Listeleme kipinde dosya listesi kapatıldı: $listingArguments" }
+    if ($listingArguments -notlike '*/FP*') { throw "Listeleme kipinde tam yol (/FP) yok: $listingArguments" }
+
+    # Kaynak boyutu: dosya ve klasör.
+    $sizeDirectory = Join-Path $temporaryDirectory 'boyut'
+    [void](New-Item -ItemType Directory -Path $sizeDirectory -Force)
+    [System.IO.File]::WriteAllBytes((Join-Path $sizeDirectory 'a.bin'), (New-Object byte[] 1024))
+    [System.IO.File]::WriteAllBytes((Join-Path $sizeDirectory 'b.bin'), (New-Object byte[] 2048))
+    Assert-Equal 3072 (Get-SamePathCopySourceSize -Path $sizeDirectory) 'Klasör boyutu yanlış hesaplandı.'
+    Assert-Equal 1024 (Get-SamePathCopySourceSize -Path (Join-Path $sizeDirectory 'a.bin')) 'Dosya boyutu yanlış hesaplandı.'
+    Assert-Equal $null (Get-SamePathCopySourceSize -Path (Join-Path $temporaryDirectory 'yok-boyle-bir-sey')) 'Olmayan yol için boyut null olmalı.'
+
+    # Boş alan sorgusu: yerel sürücüde bir değer dönmeli, geçersiz yolda null.
+    $freeSpace = Get-SamePathCopyFreeSpace -Path $temporaryDirectory
+    if ($null -eq $freeSpace -or [long]$freeSpace -le 0) { throw "Yerel sürücüde boş alan okunamadı: $freeSpace" }
+    Assert-Equal $null (Get-SamePathCopyFreeSpace -Path '\\10.255.255.1\YokPaylasim') 'Erişilemeyen paylaşım için null dönmeli.'
+
+    # Boyut biçimlendirme.
+    Assert-Equal '1,0 KB' (Format-SamePathCopySize -Bytes 1024) 'KB biçimlendirme yanlış.'
+    Assert-Equal '512 B' (Format-SamePathCopySize -Bytes 512) 'Bayt biçimlendirme yanlış.'
+    Assert-Equal '2,0 GB' (Format-SamePathCopySize -Bytes (2GB)) 'GB biçimlendirme yanlış.'
+
     Write-Host 'Hedef yolu ve çoklu kök testleri başarılı.'
 }
 finally {

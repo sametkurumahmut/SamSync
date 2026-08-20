@@ -522,11 +522,141 @@ $closeButton.Add_Click({ $window.Close() })
 $script:windowClosed = $false
 $window.Add_Closed({ $script:windowClosed = $true })
 
+function Invoke-SamePathCopyListing {
+    param(
+        [Parameter(Mandatory = $true)]$Plan,
+        [Parameter(Mandatory = $true)][int]$RetryCount,
+        [Parameter(Mandatory = $true)][int]$WaitSeconds,
+        [int]$TimeoutSeconds = 120
+    )
+
+    # robocopy /L ile hiçbir şey yazmadan "ne olurdu" listesi alınır; ayna onayında ve deneme kipinde kullanılır.
+    $isDirectory = [bool]$Plan.IsDirectory
+    if ($isDirectory) {
+        $sourceDirectory = $Plan.SourceItem.FullName
+        $destinationDirectory = $Plan.Destination
+        $fileFilter = $null
+    }
+    else {
+        $sourceDirectory = [System.IO.Path]::GetDirectoryName($Plan.SourceItem.FullName)
+        $destinationDirectory = [System.IO.Path]::GetDirectoryName($Plan.Destination)
+        $fileFilter = [System.IO.Path]::GetFileName($Plan.SourceItem.FullName)
+    }
+
+    $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Listing-{0}.log" -f [guid]::NewGuid().ToString('N'))
+    $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory `
+        -FileFilter $fileFilter -IsDirectory $isDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds `
+        -Options $Plan.Options -LogPath $logPath -Listing)
+    try {
+        $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while (-not $process.WaitForExit(120)) {
+            Invoke-SamePathCopyUiPump
+            if ([DateTime]::UtcNow -gt $deadline) {
+                try { $process.Kill() } catch { }
+                break
+            }
+        }
+        $process.WaitForExit()
+        $lines = @()
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            $lines = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue)
+        }
+        return (Get-SamePathCopyListingSummary -Lines $lines)
+    }
+    finally {
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # Kopyalama döngüsü olay işleyicisi içinde değil, betik akışında çalışır: böylece buradaki yardımcı
 # fonksiyonlar ve değişkenler doğrudan görünür. Pencere modelsiz açılıp döngü boyunca beslenir.
 $window.Show()
 [void]$window.Activate()
 Invoke-SamePathCopyUiPump
+
+# Ön uçuş denetimleri: ayna silmeleri ve yetersiz disk alanı kopyalama başlamadan gösterilir.
+$preflightWarnings = New-Object System.Collections.Generic.List[string]
+$mirrorPlans = @($plans | Where-Object {
+    (Get-SamePathCopyOptionValue -Options $_.Options -Name 'Mirror') -and
+    -not (Get-SamePathCopyOptionValue -Options $_.Options -Name 'DryRun') -and
+    [bool]$_.IsDirectory
+})
+if ($mirrorPlans.Count -gt 0) {
+    $headerText.Text = 'Ayna önizlemesi hazırlanıyor'
+    $progressLabel.Text = 'robocopy /L ile hedefteki fazla dosyalar listeleniyor...'
+    Invoke-SamePathCopyUiPump
+    $mirrorEntry = New-SamePathCopyLogEntry -Title 'Ayna önizlemesi' -Detail 'Hedeflerde silinecek dosyalar hesaplanıyor' -Kind 'Info'
+    $totalExtras = 0
+    foreach ($mirrorPlan in $mirrorPlans) {
+        $summary = Invoke-SamePathCopyListing -Plan $mirrorPlan -RetryCount 0 -WaitSeconds 0
+        $totalExtras += [int]$summary.ExtraCount
+        Add-SamePathCopyLogNote -Entry $mirrorEntry -Text ("{0}: {1} fazla öğe silinecek, {2} öğe güncellenecek" -f
+            $mirrorPlan.Target.name, $summary.ExtraCount, $summary.ChangeCount)
+        foreach ($extra in @($summary.Extras | Select-Object -First 5)) {
+            Add-SamePathCopyLogNote -Entry $mirrorEntry -Text ("    silinecek: {0}" -f $extra) -Brush 'WarningBrush'
+        }
+        if ([int]$summary.ExtraCount -gt 5) {
+            Add-SamePathCopyLogNote -Entry $mirrorEntry -Text ("    ... ve {0} öğe daha" -f ([int]$summary.ExtraCount - 5)) -Brush 'WarningBrush'
+        }
+        Write-SamePathCopyLog -Component 'Ayna' -Message ("{0}: {1} fazla, {2} değişecek | ilk örnekler: {3}" -f
+            $mirrorPlan.Target.name, $summary.ExtraCount, $summary.ChangeCount, ((@($summary.Extras | Select-Object -First 3)) -join ' | '))
+    }
+    # Otomatik kapanma kipinde (test/otomasyon) onay penceresi açılmaz: kimse tıklayamaz, süreç kilitlenir.
+    $autoConfirm = -not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)
+    if ($totalExtras -gt 0 -and $autoConfirm) {
+        Write-SamePathCopyLog -Component 'Ayna' -Level 'WARN' -Message ("Otomatik kip: {0} silme onay istenmeden kabul edildi." -f $totalExtras)
+    }
+    if ($totalExtras -gt 0 -and -not $autoConfirm) {
+        $mirrorNames = (@($mirrorPlans | ForEach-Object { [string]$_.Target.name } | Select-Object -Unique) -join ', ')
+        $confirmed = Show-SamePathCopyConfirm -Title 'Ayna onayı' `
+            -Message ("Ayna seçili hedeflerde toplam {0} dosya/klasör SİLİNECEK.`r`n`r`nHedefler: {1}`r`n`r`nAyrıntılı liste pencerede duruyor. Devam edilsin mi?" -f $totalExtras, $mirrorNames) `
+            -ConfirmText 'Devam et' -CancelText 'Vazgeç' -Owner $window -IconPath $iconPath
+        if (-not $confirmed) {
+            Write-SamePathCopyLog -Component 'Ayna' -Level 'WARN' -Message ("Kullanıcı ayna onayını reddetti; {0} silme yapılmadı." -f $totalExtras)
+            Set-SamePathCopyLogEntryState -Entry $mirrorEntry -Kind 'Skipped'
+            Add-SamePathCopyLogNote -Entry $mirrorEntry -Text 'Vazgeçildi, hiçbir şey kopyalanmadı.'
+            $headerText.Text = 'Vazgeçildi'
+            $progressLabel.Text = 'Ayna onayı verilmedi'
+            $cancelButton.IsEnabled = $false
+            $closeButton.IsEnabled = $true
+            if (-not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) { $window.Close() }
+            while (-not $script:windowClosed) {
+                Invoke-SamePathCopyUiPump
+                Start-Sleep -Milliseconds 30
+            }
+            exit 0
+        }
+    }
+    Set-SamePathCopyLogEntryState -Entry $mirrorEntry -Kind 'Info'
+}
+
+# Disk alanı: hedef paylaşımdaki boş alan kaynak boyutundan küçükse uyarı satırı eklenir (kopyalama engellenmez).
+$sourceTotalSize = 0
+foreach ($sourceItem in $sourceItems) {
+    $itemSize = Get-SamePathCopySourceSize -Path $sourceItem.FullName
+    if ($null -ne $itemSize) { $sourceTotalSize += [long]$itemSize }
+}
+if ($sourceTotalSize -gt 0) {
+    foreach ($target in @($plans | Group-Object -Property { [string]$_.Target.id } | ForEach-Object { $_.Group[0].Target })) {
+        $shareRoot = "\\{0}\{1}" -f [string]$target.address, ([string]$target.networkRoot).Trim('\').Split('\')[0]
+        $freeSpace = Get-SamePathCopyFreeSpace -Path $shareRoot
+        if ($null -eq $freeSpace) { continue }
+        if ($freeSpace -lt $sourceTotalSize) {
+            $preflightWarnings.Add(("{0}: paylaşımda {1} boş alan var, kaynak {2}" -f
+                $target.name, (Format-SamePathCopySize -Bytes $freeSpace), (Format-SamePathCopySize -Bytes $sourceTotalSize)))
+        }
+    }
+}
+if ($preflightWarnings.Count -gt 0) {
+    $spaceEntry = New-SamePathCopyLogEntry -Title 'Disk alanı uyarısı' -Detail 'Hedefte boş alan kaynak boyutundan küçük görünüyor' -Kind 'Skipped'
+    foreach ($warning in $preflightWarnings) {
+        Add-SamePathCopyLogNote -Entry $spaceEntry -Text $warning -Brush 'WarningBrush'
+        Write-SamePathCopyLog -Component 'Kopyala' -Level 'WARN' -Message ("Disk alanı uyarısı: {0}" -f $warning)
+    }
+}
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $successCount = 0
@@ -593,6 +723,17 @@ function Complete-SamePathCopyPlanStep {
     }
     if ([int]$result.ExitCode -le 7) {
         Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Success'
+        # Deneme çalıştırmasında sonuç panelinde ne değişeceği de gösterilir.
+        if (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun') {
+            $listing = Invoke-SamePathCopyListing -Plan $plan -RetryCount 0 -WaitSeconds 0
+            Add-SamePathCopyLogNote -Entry $entry -Text ("Deneme: {0} öğe kopyalanacaktı, {1} öğe hedefte fazla" -f $listing.ChangeCount, $listing.ExtraCount)
+            foreach ($change in @($listing.Changes | Select-Object -First 5)) {
+                Add-SamePathCopyLogNote -Entry $entry -Text ("    {0}" -f $change)
+            }
+            if ([int]$listing.ChangeCount -gt 5) {
+                Add-SamePathCopyLogNote -Entry $entry -Text ("    ... ve {0} öğe daha" -f ([int]$listing.ChangeCount - 5))
+            }
+        }
         $script:successCount++
         return $true
     }

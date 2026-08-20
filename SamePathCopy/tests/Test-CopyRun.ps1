@@ -153,6 +153,12 @@ try {
         throw 'Ayna kipinde yeni dosya kopyalanmadı.'
     }
 
+    # Ön uçuş: ayna önizlemesi silinecek dosyayı kopyalamadan önce bulmalı, deneme kipi ne değişeceğini yazmalı.
+    $finalLog = [string](Get-Content -LiteralPath $env:SAMEPATHCOPY_LOG -Raw -Encoding UTF8)
+    if ($finalLog -notlike '*[Ayna]*fazla*') { throw 'Ayna önizlemesi günlüğe yazılmadı.' }
+    if ($finalLog -notlike '*fazla.txt*') { throw 'Ayna önizlemesi silinecek dosyayı listelemedi.' }
+    if ($finalLog -notlike '*Deneme: *öğe kopyalanacaktı*') { throw 'Deneme çalıştırması listesi günlüğe yazılmadı.' }
+
     Write-Host 'Kopyalama çalıştırma testleri başarılı.'
 }
 finally {

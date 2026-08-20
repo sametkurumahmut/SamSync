@@ -319,7 +319,9 @@ function Get-SamePathCopyRobocopyArguments {
         [Parameter(Mandatory = $true)][int]$RetryCount,
         [Parameter(Mandatory = $true)][int]$WaitSeconds,
         $Options,
-        [string]$LogPath
+        [string]$LogPath,
+        # Listeleme kipinde robocopy hiçbir şey kopyalamaz, değişecek öğeleri satır satır yazar.
+        [switch]$Listing
     )
 
     $quote = { param([string]$Value) '"' + $Value.Replace('"', '""') + '"' }
@@ -354,7 +356,13 @@ function Get-SamePathCopyRobocopyArguments {
     if ($effectiveRetryCount -lt 0) { $effectiveRetryCount = $RetryCount }
     $effectiveWaitSeconds = Get-SamePathCopyOptionNumber -Options $Options -Name 'WaitSeconds' -Default -1
     if ($effectiveWaitSeconds -lt 0) { $effectiveWaitSeconds = $WaitSeconds }
-    $arguments += @('/COPY:DAT', '/FFT', "/R:$effectiveRetryCount", "/W:$effectiveWaitSeconds", '/NP', '/NJH', '/NJS', '/NFL', '/NDL')
+    if ($Listing) {
+        # Önizleme/deneme kipi: hiçbir şey yazılmaz ve değişecek öğeler tek tek listelenir.
+        $arguments += @('/L', '/COPY:DAT', '/FFT', "/R:$effectiveRetryCount", "/W:$effectiveWaitSeconds", '/NP', '/NJH', '/NJS', '/FP', '/NS')
+    }
+    else {
+        $arguments += @('/COPY:DAT', '/FFT', "/R:$effectiveRetryCount", "/W:$effectiveWaitSeconds", '/NP', '/NJH', '/NJS', '/NFL', '/NDL')
+    }
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
         $arguments += ('/UNILOG:' + (& $quote $LogPath))
     }
@@ -425,6 +433,78 @@ function Test-SamePathCopyTargetReachability {
         $status[$probe.Id] = [pscustomobject]@{ Reachable = $reachable; Address = $probe.Address; Port = $Port }
     }
     return $status
+}
+
+function Get-SamePathCopyListingSummary {
+    param([string[]]$Lines)
+
+    # robocopy /L çıktısında her satırın başında sınıf adı olur: "*EXTRA File" hedefte fazla olanı,
+    # "New File" / "Newer" / "Older" / "Changed" ise kopyalanacak olanı gösterir. Sayılar ve örnek
+    # yollar buradan çıkarılır; ayna onayında ve deneme çalıştırmasında kullanılır.
+    $extras = New-Object System.Collections.Generic.List[string]
+    $changes = New-Object System.Collections.Generic.List[string]
+    foreach ($line in @($Lines)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\*EXTRA (File|Dir)\s+(?<path>.+)$') {
+            $extras.Add($Matches['path'].Trim())
+            continue
+        }
+        if ($trimmed -match '^(New File|Newer|Older|Changed|New Dir)\s+(?<path>.+)$') {
+            $changes.Add($Matches['path'].Trim())
+        }
+    }
+    return [pscustomobject]@{
+        ExtraCount = $extras.Count
+        ChangeCount = $changes.Count
+        Extras = @($extras)
+        Changes = @($changes)
+    }
+}
+
+function Get-SamePathCopyFreeSpace {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # UNC paylaşımlarında da çalışan boş alan sorgusu; okunamazsa $null döner (denetim atlanır).
+    try {
+        $fileSystem = New-Object -ComObject Scripting.FileSystemObject
+        try {
+            $drive = $fileSystem.GetDrive($fileSystem.GetDriveName($Path))
+            if ($null -eq $drive) { return $null }
+            return [long]$drive.FreeSpace
+        }
+        finally {
+            [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($fileSystem)
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-SamePathCopySourceSize {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # Kaynak boyutu: dosya ise kendi boyutu, klasör ise altındaki bütün dosyaların toplamı.
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if (-not $item.PSIsContainer) { return [long]$item.Length }
+        return [long](@(Get-ChildItem -LiteralPath $Path -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum).Sum)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Format-SamePathCopySize {
+    param([Parameter(Mandatory = $true)][long]$Bytes)
+
+    if ($Bytes -ge 1TB) { return "{0:0.0} TB" -f ($Bytes / 1TB) }
+    if ($Bytes -ge 1GB) { return "{0:0.0} GB" -f ($Bytes / 1GB) }
+    if ($Bytes -ge 1MB) { return "{0:0.0} MB" -f ($Bytes / 1MB) }
+    if ($Bytes -ge 1KB) { return "{0:0.0} KB" -f ($Bytes / 1KB) }
+    return "$Bytes B"
 }
 
 function Get-SamePathCopyNodeGroup {
