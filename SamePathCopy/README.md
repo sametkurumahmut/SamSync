@@ -104,6 +104,12 @@ Bütün hedefler için geçerli parametreler:
 
 Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
 
+#### Son ayarla gönderme
+
+`Wizard` girdisinin hemen ardından gelen `Wizard (son ayar)` girdisi pencereyi hiç açmaz: sihirbazda en son kaydedilen hedef seçimini ve parametreleri olduğu gibi uygulayıp kopyalamayı başlatır. Komutlara `-TargetId wizard:last` olarak geçer, etiketi `config.json` içindeki `wizardLastLabel` alanından değiştirilebilir.
+
+Bu girdi özellikle klavye kısayolu için düşünülmüştür: hedefler bir kez sihirbazdan seçilir, sonrasında Notepad++ içinde tek tuşla aynı hedeflere gönderilir. Kopyalama penceresi bu durumda `Son sihirbaz ayarı` etiketiyle açılır. Henüz sihirbaz kullanılmamışsa varsayılan geçerlidir (bütün hedefler, parametreler kapalı). Son ayarda hiçbir hedef seçili değilse kopyalama yapılmaz ve sihirbazı açıp seçim yapılması istenir.
+
 ### Gruplar
 
 Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:
@@ -141,7 +147,7 @@ Klavye kısayolu da atanabilir; `notepadPlusPlusShortcuts` anahtarı grup kimli�
 
 ```json
 "notepadPlusPlusShortcuts": {
-    "all": "Ctrl+Alt+W",
+    "wizard:last": "Ctrl+Alt+W",
     "group:Unit1": "Ctrl+Alt+1"
 }
 ```
@@ -234,7 +240,7 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 - `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
 - `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
 
-Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel`, sihirbaz girdisinin adı `wizardLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
+Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel`, sihirbaz girdisinin adı `wizardLabel`, son ayarla gönderen girdinin adı `wizardLastLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
 
 ## Kurulum
 
@@ -276,12 +282,12 @@ Notepad++ komutlarına klavye kısayolu `config.json` içindeki `notepadPlusPlus
 
 ```json
 "notepadPlusPlusShortcuts": {
-    "all": "Ctrl+Alt+W",
+    "wizard:last": "Ctrl+Alt+W",
     "IG1": "Ctrl+Alt+F5"
 }
 ```
 
-Varsayılan yapılandırmada `all` için `Ctrl+Alt+W` tanımlıdır: Notepad++ içinde `Ctrl+Alt+W`, aktif sekmedeki kaydedilmiş dosyayı tüm hedeflere kopyalar. Değişikliğin etkin olması için kurulumu Notepad++ kapalıyken çalıştırın; kısayol Notepad++ açılışında yüklenir ve **Ayarlar > Kısayol Eşleyici > Run komutları** altında görünür.
+Varsayılan yapılandırmada `wizard:last` için `Ctrl+Alt+W` tanımlıdır: Notepad++ içinde `Ctrl+Alt+W`, aktif sekmedeki kaydedilmiş dosyayı **sihirbaz penceresini açmadan**, sihirbazda en son kaydedilen hedef seçimi ve parametrelerle kopyalar. Böylece hedefleri bir kez sihirbazdan seçip sonra tek tuşla göndermek mümkün olur; kopyalama penceresi `Son sihirbaz ayarı` etiketiyle açılır. Bütün hedeflere göndermek isteniyorsa kısayol `all` girdisine bağlanabilir. Değişikliğin etkin olması için kurulumu Notepad++ kapalıyken çalıştırın; kısayol Notepad++ açılışında yüklenir ve **Ayarlar > Kısayol Eşleyici > Run komutları** altında görünür.
 
 Kısayol metni `Ctrl`, `Alt`, `Shift` değiştiricilerini ve tek bir tuşu (`A-Z`, `0-9`, `F1-F24`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`, `Right`, `Space`, `Tab`, `Enter`, `Backspace`, `Esc`) kabul eder. Harf ve rakamlar en az bir değiştirici tuş gerektirir. Tanınmayan tuş, birden fazla tuş veya aynı kısayolun iki hedefe atanması kurulumu hatayla durdurur; menüde bulunmayan bir kimlik yalnızca uyarı üretir.
 

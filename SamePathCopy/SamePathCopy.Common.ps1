@@ -320,9 +320,18 @@ function Get-SamePathCopyMenuEntries {
     else {
         'Wizard'
     }
+    # "wizard:last" sihirbaz penceresini açmaz: son kaydedilen seçim ve parametrelerle doğrudan kopyalar.
+    # Klavye kısayolu bu girdiye bağlandığında tek tuşla, hedef seçmeye uğraşmadan gönderim yapılır.
+    $wizardLastLabel = if ($Configuration.PSObject.Properties['wizardLastLabel'] -and -not [string]::IsNullOrWhiteSpace([string]$Configuration.wizardLastLabel)) {
+        [string]$Configuration.wizardLastLabel
+    }
+    else {
+        'Wizard (son ayar)'
+    }
     $entries = @(
         [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true }
         [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true }
+        [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true }
     )
 
     $groupKeys = New-Object System.Collections.Generic.List[string]
@@ -362,7 +371,8 @@ function Resolve-SamePathCopyTargets {
 
     $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $LocalIdentity.Id)
     # Sihirbaz bütün hedeflerle açılır; hangilerine gönderileceğini kullanıcı arayüzde seçer.
-    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard') { return $targets }
+    # wizard:last aynı listeyle başlar, seçim kaydedilmiş sihirbaz ayarından uygulanır.
+    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard' -or $TargetId -eq 'wizard:last') { return $targets }
 
     if ($TargetId.StartsWith('group:', [System.StringComparison]::OrdinalIgnoreCase)) {
         $groupName = $TargetId.Substring(6).Trim()

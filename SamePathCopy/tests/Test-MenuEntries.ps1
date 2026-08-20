@@ -47,14 +47,15 @@ $configuration = New-TestConfiguration
 
 # Root üzerinde çalışırken: Tümü, her grup kendi makinelerinin başında, gruba ait olmayanlar sonda.
 $entries = @(Get-SamePathCopyMenuEntries -Configuration $configuration -ExcludeId 'Root')
-$expectedOrder = @('all', 'wizard', 'group:Unit1', 'U1Trainer', 'U1IG1', 'group:unit2', 'U2Trainer', 'U2IG1', 'Arsiv')
+$expectedOrder = @('all', 'wizard', 'wizard:last', 'group:Unit1', 'U1Trainer', 'U1IG1', 'group:unit2', 'U2Trainer', 'U2IG1', 'Arsiv')
 Assert-Equal ($expectedOrder -join ' > ') (@($entries | ForEach-Object { $_.Id }) -join ' > ') 'Menü sırası beklenenden farklı.'
 Assert-Equal 'Tümü' ([string]$entries[0].Label) 'İlk girdi allLabel etiketini taşımalı.'
 Assert-Equal 'Wizard' ([string]$entries[1].Label) 'Sihirbaz girdisi Tümü''den hemen sonra gelmeli.'
-Assert-Equal 'Unit1' ([string]$entries[2].Label) 'Grup girdisinin etiketi grup adı olmalı.'
+Assert-Equal 'Wizard (son ayar)' ([string]$entries[2].Label) 'Son ayar girdisi sihirbazdan hemen sonra gelmeli.'
+Assert-Equal 'Unit1' ([string]$entries[3].Label) 'Grup girdisinin etiketi grup adı olmalı.'
 
 # İkon yalnızca toplu girdilerde: Tümü, sihirbaz ve gruplar.
-Assert-Equal 'all wizard group:Unit1 group:unit2' (@($entries | Where-Object { $_.IsAggregate } | ForEach-Object { $_.Id }) -join ' ') 'Toplu girdiler yalnızca Tümü, sihirbaz ve gruplar olmalı.'
+Assert-Equal 'all wizard wizard:last group:Unit1 group:unit2' (@($entries | Where-Object { $_.IsAggregate } | ForEach-Object { $_.Id }) -join ' ') 'Toplu girdiler yalnızca Tümü, sihirbaz ve gruplar olmalı.'
 Assert-Equal 0 @($entries | Where-Object { $_.Kind -eq 'node' -and $_.IsAggregate }).Count 'Tek makine girdileri toplu işaretlenmemeli.'
 
 # Devre dışı node ne menüde ne de grupta görünür.

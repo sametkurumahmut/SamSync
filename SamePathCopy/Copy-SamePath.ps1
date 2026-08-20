@@ -139,13 +139,16 @@ $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $config
 $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 $isWizard = $TargetId -eq 'wizard'
+# wizard:last, sihirbaz penceresini açmadan son kaydedilen seçim ve parametrelerle kopyalar (klavye kısayolu için).
+$isWizardLast = $TargetId -eq 'wizard:last'
+$useWizardSettings = $isWizard -or $isWizardLast
 $targets = @(Resolve-SamePathCopyTargets -Configuration $config -TargetId $TargetId -LocalIdentity $localIdentity)
 if ($targets.Count -eq 0) {
     throw "Kopyalama için etkin hedef yok."
 }
 
 $wizardSettings = $null
-if ($isWizard) {
+if ($useWizardSettings) {
     . (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
     $wizardSettings = Get-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Targets $targets
 }
@@ -165,8 +168,8 @@ if ($sourceItems.Count -eq 0) {
 }
 
 $globalOptions = $null
-if ($isWizard) {
-    if (-not $PlanOnly) {
+if ($useWizardSettings) {
+    if ($isWizard -and -not $PlanOnly) {
         # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
         $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -LocalRoots $localIdentity.Roots -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
         Save-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Settings $wizardResult.Settings
@@ -176,6 +179,9 @@ if ($isWizard) {
     $globalOptions = $wizardSettings.Global
     $targets = @($targets | Where-Object { [bool]$wizardSettings.Targets[[string]$_.id].Selected })
     if ($targets.Count -eq 0) {
+        if ($isWizardLast) {
+            throw 'Son sihirbaz ayarında hiçbir bilgisayar seçili değil. Sihirbazı açıp hedef seçin; kısayol bir dahaki sefere o seçimi kullanır.'
+        }
         throw 'Sihirbazda hiçbir bilgisayar seçilmedi.'
     }
 }
@@ -184,7 +190,7 @@ $backupStamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
 $plans = @(foreach ($target in $targets) {
     $targetId = [string]$target.id
     # Hedef başına parametreler sihirbazdan gelir; sihirbaz dışı çağrılarda hepsi kapalıdır (eski davranış).
-    $targetOptions = if ($isWizard) { $wizardSettings.Targets[$targetId] } else { $null }
+    $targetOptions = if ($useWizardSettings) { $wizardSettings.Targets[$targetId] } else { $null }
     $options = [pscustomobject]@{
         Backup = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'Backup'
         OnlyNewer = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'OnlyNewer'
@@ -323,6 +329,9 @@ function Add-SamePathCopyChip {
 }
 
 Add-SamePathCopyChip -Text ("{0} işlem" -f $plans.Count)
+if ($isWizardLast) {
+    Add-SamePathCopyChip -Text 'Son sihirbaz ayarı' -ToolTip 'Hedefler ve parametreler sihirbazda en son kaydedilen hâlden alındı; pencere açılmadı.'
+}
 Add-SamePathCopyChip -Text ("Yerel kök: {0}" -f (@($localIdentity.Roots) -join '  •  ')) -ToolTip (@($localIdentity.Roots) -join "`r`n")
 $activeGlobalOptions = @(@('DryRun', 'FastCopy') | Where-Object { Get-SamePathCopyOptionValue -Options $globalOptions -Name $_ })
 if ($activeGlobalOptions -contains 'DryRun') { Add-SamePathCopyChip -Text 'Deneme çalıştırması' -ToolTip 'Hedefe hiçbir şey yazılmaz (robocopy /L).' }

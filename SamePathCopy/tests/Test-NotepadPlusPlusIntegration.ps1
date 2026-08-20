@@ -102,12 +102,17 @@ try {
     }
 
     # config.json içindeki notepadPlusPlusShortcuts girdisi komuta klavye kısayolu olarak işlenmeli.
-    $allCommand = @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq '[SamePathCopy] all' })[0]
-    Assert-Equal 'yes' ([string]$allCommand.Ctrl) 'Tümü komutuna Ctrl atanmadı.'
-    Assert-Equal 'yes' ([string]$allCommand.Alt) 'Tümü komutuna Alt atanmadı.'
-    Assert-Equal 'no' ([string]$allCommand.Shift) 'Tümü komutuna beklenmeyen Shift atandı.'
-    Assert-Equal '87' ([string]$allCommand.Key) 'Tümü komutuna W tuşu (87) atanmadı.'
-    foreach ($managedCommand in @($managedCommands | Where-Object { $_.name -ne '[SamePathCopy] all' })) {
+    # Kısayol, sihirbaz penceresini açmadan son ayarla kopyalayan girdide olmalı.
+    $shortcutCommandName = '[SamePathCopy] wizard:last'
+    $shortcutCommand = @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq $shortcutCommandName })[0]
+    Assert-Equal 'yes' ([string]$shortcutCommand.Ctrl) 'Kısayol komutuna Ctrl atanmadı.'
+    Assert-Equal 'yes' ([string]$shortcutCommand.Alt) 'Kısayol komutuna Alt atanmadı.'
+    Assert-Equal 'no' ([string]$shortcutCommand.Shift) 'Kısayol komutuna beklenmeyen Shift atandı.'
+    Assert-Equal '87' ([string]$shortcutCommand.Key) 'Kısayol komutuna W tuşu (87) atanmadı.'
+    if (([string]$shortcutCommand.'#text') -notlike '*-TargetId wizard:last *') {
+        throw "Kısayol komutu wizard:last hedefini geçirmiyor: $($shortcutCommand.'#text')"
+    }
+    foreach ($managedCommand in @($managedCommands | Where-Object { $_.name -ne $shortcutCommandName })) {
         Assert-Equal '0' ([string]$managedCommand.Key) "$($managedCommand.name) komutuna kısayol atanmamalıydı."
     }
 
