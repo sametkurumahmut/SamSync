@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 1.1.3
 
 - Node'lara `localRoots` alanı eklendi: bir bilgisayar birden fazla kaynak kökü tanımlayabiliyor. Kaynak hangi kökün altındaysa göreli yol o köke göre hesaplanıp hedefin `networkRoot` değeri altına yazılıyor; iç içe köklerde en uzun eşleşen kök kullanılıyor. Tek `localRoot` kullanan yapılandırmalar aynen çalışmaya devam ediyor.
 - Sonuç penceresi ve `-PlanOnly` çıktısı her öğe için eşleşen kökü gösteriyor; kökler dışındaki öğeler eskisi gibi tam yolunu koruyor.
