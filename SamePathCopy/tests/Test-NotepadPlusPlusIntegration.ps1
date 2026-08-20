@@ -11,6 +11,14 @@ function Assert-Equal {
     }
 }
 
+function Get-XmlAttributeValue {
+    param($Node, [Parameter(Mandatory = $true)][string]$Name)
+
+    # Katı kipte olmayan niteliğe erişmek hata verir; ayırıcı girdiler MenuItemName taşımaz.
+    if ($null -eq $Node -or $null -eq $Node.Attributes -or $null -eq $Node.Attributes[$Name]) { return '' }
+    return [string]$Node.Attributes[$Name].Value
+}
+
 function Get-ExpectedShortcutsSignature {
     param([Parameter(Mandatory = $true)][string]$ShortcutsPath)
 
@@ -81,24 +89,64 @@ try {
     [xml]$shortcuts = Get-Content -LiteralPath (Join-Path $testDirectory 'shortcuts.xml') -Raw -Encoding UTF8
     [xml]$tabMenu = Get-Content -LiteralPath (Join-Path $testDirectory 'tabContextMenu.xml') -Raw -Encoding UTF8
     $managedCommands = @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' })
-    $managedItems = @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -like '[[]SamePathCopy[]]*' })
+    $tabMenuItems = @($tabMenu.NotepadPlus.TabContextMenu.Item)
+    $managedItems = @($tabMenuItems | Where-Object { (Get-XmlAttributeValue -Node $_ -Name 'MenuItemName') -like '[[]SamePathCopy[]]*' })
+    # Ayırıcılar (id="0") MenuItemName taşımaz; kendi klasörümüzdeki ayırıcılar ayrı sayılır.
+    $managedSeparators = @($tabMenuItems | Where-Object {
+        (Get-XmlAttributeValue -Node $_ -Name 'id') -eq '0' -and
+        (Get-XmlAttributeValue -Node $_ -Name 'FolderName') -eq [string]$configuration.menuTitle })
     Assert-Equal $expectedCommandCount $managedCommands.Count 'Tümü ve uzak hedef komutları eklenmedi.'
     Assert-Equal $expectedCommandCount $managedItems.Count 'Sekme menüsü girdileri eklenmedi.'
     Assert-Equal 1 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq 'Kullanıcı komutu' }).Count 'Mevcut kullanıcı komutu korunmadı.'
-    Assert-Equal 1 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -eq 'Close' }).Count 'Mevcut sekme menüsü korunmadı.'
+    Assert-Equal 1 @($tabMenuItems | Where-Object { (Get-XmlAttributeValue -Node $_ -Name 'MenuItemName') -eq 'Close' }).Count 'Mevcut sekme menüsü korunmadı.'
     if ($managedCommands[0].'#text' -notlike '*$(FULL_CURRENT_PATH)*') {
         throw 'Aktif dosya yolu Notepad++ komutuna bağlanmadı.'
     }
 
     # Sekme menüsü, Explorer menüsüyle aynı sırayı ve etiketleri kullanmalı (grup girdileri kendi makinelerinin başında).
     Assert-Equal (@($expectedEntries | ForEach-Object { $_.Id }) -join ' > ') (@($managedCommands | ForEach-Object { ([string]$_.name) -replace '^\[SamePathCopy\] ', '' }) -join ' > ') 'Notepad++ komut sırası menü sırasından farklı.'
-    Assert-Equal (@($expectedEntries | ForEach-Object { $_.Label }) -join ' > ') (@($managedItems | ForEach-Object { [string]$_.ItemNameAs }) -join ' > ') 'Sekme menüsü etiketleri menü sırasından farklı.'
+    Assert-Equal (@($expectedEntries | ForEach-Object { $_.Label }) -join ' > ') (@($managedItems | ForEach-Object { Get-XmlAttributeValue -Node $_ -Name 'ItemNameAs' }) -join ' > ') 'Sekme menüsü etiketleri menü sırasından farklı.'
     foreach ($groupEntry in @($expectedEntries | Where-Object { $_.Kind -eq 'group' })) {
         $groupCommand = @($managedCommands | Where-Object { $_.name -eq "[SamePathCopy] $($groupEntry.Id)" })
         Assert-Equal 1 $groupCommand.Count "$($groupEntry.Id) grup komutu eklenmedi."
         if (([string]$groupCommand[0].'#text') -notlike "*-TargetId $($groupEntry.Id) *") {
             throw "$($groupEntry.Id) grup komutu grup hedefini geçirmiyor: $($groupCommand[0].'#text')"
         }
+    }
+
+    # Bölümler arasına ayırıcı konur: Tümü | sihirbaz girdileri | geri alma | profiller | gruplar | tek makineler.
+    $expectedSeparatorCount = @($expectedEntries | ForEach-Object { [string]$_.Section } |
+        Select-Object -Unique).Count - 1
+    Assert-Equal $expectedSeparatorCount $managedSeparators.Count 'Sekme menüsünde ayırıcı sayısı bölüm sayısıyla uyuşmuyor.'
+
+    # Ayırıcılar doğru yerde mi: her ayırıcıdan sonraki girdi yeni bölümün ilk girdisi olmalı.
+    $tabMenuNodes = @($tabMenuItems | Where-Object {
+        (Get-XmlAttributeValue -Node $_ -Name 'MenuItemName') -like '[[]SamePathCopy[]]*' -or
+        ((Get-XmlAttributeValue -Node $_ -Name 'id') -eq '0' -and
+         (Get-XmlAttributeValue -Node $_ -Name 'FolderName') -eq [string]$configuration.menuTitle) })
+    $sectionByCommandName = @{}
+    foreach ($expectedEntry in $expectedEntries) { $sectionByCommandName["[SamePathCopy] $($expectedEntry.Id)"] = [string]$expectedEntry.Section }
+    $previousSection = ''
+    $separatorPending = $false
+    foreach ($node in $tabMenuNodes) {
+        if ((Get-XmlAttributeValue -Node $node -Name 'id') -eq '0') {
+            if ($separatorPending) { throw 'Sekme menüsünde üst üste iki ayırıcı var.' }
+            $separatorPending = $true
+            continue
+        }
+        $nodeName = Get-XmlAttributeValue -Node $node -Name 'MenuItemName'
+        $nodeSection = [string]$sectionByCommandName[$nodeName]
+        if ($separatorPending -and $previousSection -eq $nodeSection) {
+            throw "Aynı bölümün içine ayırıcı konuldu: $nodeName"
+        }
+        if (-not $separatorPending -and $previousSection -ne '' -and $previousSection -ne $nodeSection) {
+            throw "Bölüm değişiminde ayırıcı yok: $nodeName"
+        }
+        $separatorPending = $false
+        $previousSection = $nodeSection
+    }
+    if ($tabMenuNodes.Count -gt 0 -and (Get-XmlAttributeValue -Node $tabMenuNodes[0] -Name 'id') -eq '0') {
+        throw 'Sekme menüsü ayırıcı ile başlıyor.'
     }
 
     # config.json içindeki notepadPlusPlusShortcuts girdisi komuta klavye kısayolu olarak işlenmeli.
@@ -145,7 +193,10 @@ try {
     [xml]$shortcuts = Get-Content -LiteralPath (Join-Path $testDirectory 'shortcuts.xml') -Raw -Encoding UTF8
     [xml]$tabMenu = Get-Content -LiteralPath (Join-Path $testDirectory 'tabContextMenu.xml') -Raw -Encoding UTF8
     Assert-Equal 0 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' }).Count 'Kaldırma, yönetilen komutları temizlemedi.'
-    Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -like '[[]SamePathCopy[]]*' }).Count 'Kaldırma, yönetilen menü girdilerini temizlemedi.'
+    Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { (Get-XmlAttributeValue -Node $_ -Name 'MenuItemName') -like '[[]SamePathCopy[]]*' }).Count 'Kaldırma, yönetilen menü girdilerini temizlemedi.'
+    Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object {
+        (Get-XmlAttributeValue -Node $_ -Name 'id') -eq '0' -and
+        (Get-XmlAttributeValue -Node $_ -Name 'FolderName') -eq [string]$configuration.menuTitle }).Count 'Kaldırma, eklenen ayırıcıları temizlemedi.'
     Assert-Equal 1 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -eq 'Kullanıcı komutu' }).Count 'Kaldırma kullanıcı komutunu sildi.'
     Assert-Equal (Get-ExpectedShortcutsSignature -ShortcutsPath $shortcutsPath) (Get-WrittenShortcutsSignature -ConfigXmlPath $configXmlPath) 'Kaldırma sonrası imza güncellenmedi; kalan kullanıcı komutları çalışmazdı.'
 
@@ -159,7 +210,7 @@ try {
     [xml]$shortcuts = Get-Content -LiteralPath $shortcutsPath -Raw -Encoding UTF8
     [xml]$tabMenu = Get-Content -LiteralPath (Join-Path $testDirectory 'tabContextMenu.xml') -Raw -Encoding UTF8
     Assert-Equal 0 @($shortcuts.NotepadPlus.UserDefinedCommands.Command | Where-Object { $_.name -like '[[]SamePathCopy[]]*' }).Count 'Sınırı aşan komut shortcuts.xml içine yazıldı.'
-    Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -like '[[]SamePathCopy[]]*' }).Count 'Sınırı aşan komut için sekme menüsü girdisi eklendi.'
+    Assert-Equal 0 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { (Get-XmlAttributeValue -Node $_ -Name 'MenuItemName') -like '[[]SamePathCopy[]]*' }).Count 'Sınırı aşan komut için sekme menüsü girdisi eklendi.'
     if (@($limitWarnings | Where-Object { [string]$_ -like '*Notepad++ sınırını aşıyor*' }).Count -eq 0) {
         throw 'Sınır aşımı için uyarı verilmedi.'
     }

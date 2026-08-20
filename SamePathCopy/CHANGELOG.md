@@ -2,6 +2,9 @@
 
 ## Yayımlanmamış
 
+- Notepad++ sekme menüsünde de bölümler ayırıcıyla ayrılıyor (`tabContextMenu.xml` içine `<Item id="0" />` yazılıyor): `Tümü` | sihirbaz girdileri | geri alma | profiller | gruplar | tek makineler.
+- Kaldırma, eklenen ayırıcıları da temizliyor: yönetilen girdilerin klasör adı toplanıp o klasördeki `id="0"` girdileri kaldırılıyor (config.json'a ihtiyaç duymadan).
+
 - Explorer menüsündeki 16 öğe sınırı ağacın tamamı için geçerli olduğu ortaya çıktı (alt menü bütçeyi artırmıyor): `Unit3` grubu 17. öğe olduğu için görünmüyordu. Kurulum artık öğe sayısını önceden hesaplıyor ve sığmıyorsa tek makine girdilerini menüye koymuyor, grup girdilerini doğrudan komuta bağlıyor; hangi girdilerin çıkarıldığını yazıyor. Davranış `config.json` içindeki `menuShowNodes` (auto/always/never) alanıyla değiştirilebiliyor.
 - Ayırıcılar artık `Tümü`, sihirbaz girdileri ve `Yedekten geri al` arasına da konuyor.
 - Explorer menü testi bütçe davranışını da kapsıyor: sığan/sığmayan yapılandırma, `always`, `never`, grupsuz yapılandırma ve geçersiz `menuShowNodes` değeri.

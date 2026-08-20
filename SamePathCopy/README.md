@@ -243,7 +243,23 @@ Arşiv sunucusu                             IG2 - 10.10.1.12
 
 Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): `Tümü`, sihirbaz girdileri, geri alma, profiller, gruplar ve tek makineler arasında. İkon yalnızca toplu girdilerde durur; tek makine girdileri ikonsuzdur.
 
-Notepad++ sekme menüsünde böyle bir sınır olmadığı için orada liste düzdür ve bütün makineler görünür: grup girdileri kendi makinelerinin başında durur.
+Notepad++ sekme menüsünde böyle bir sınır olmadığı için orada liste düzdür ve bütün makineler görünür: grup girdileri kendi makinelerinin başında durur. Bölümler orada da ayırıcıyla ayrılır — `tabContextMenu.xml` içine `<Item FolderName="SamePathCopy" id="0" />` girdileri yazılır (`id="0"` Notepad++'ta ayırıcı anlamına gelir):
+
+```text
+Tümü
+────────────────
+Wizard
+Wizard (son ayar)
+────────────────
+Yedekten geri al
+────────────────
+Unit1
+  Eğitmen - 10.10.1.10
+  IG1 - 10.10.1.11
+  ...
+```
+
+Kaldırma bu ayırıcıları da temizler: yönetilen girdiler silinirken bulundukları klasör adı toplanır ve o klasördeki `id="0"` girdileri de kaldırılır.
 
 Grup girdileri komutlara `-TargetId group:Unit1` biçiminde geçer; `Queue-SamePathCopy.ps1` ve `Copy-SamePath.ps1` bu kimliği doğrudan kabul eder. Yerel bilgisayar kendi grubunun girdisinden de çıkarıldığı için, Unit1 eğitmeninde `Unit1` seçmek yalnızca o setin IG'lerine gönderir. Grubun bu bilgisayar dışında etkin üyesi kalmazsa grup girdisi menüde hiç oluşmaz.
 

@@ -290,9 +290,24 @@ function Remove-ManagedNodes {
         [Parameter(Mandatory = $true)][string]$AttributeName
     )
 
+    # Yönetilen girdiler kaldırılırken bulundukları klasör adları toplanır: eklediğimiz ayırıcılar
+    # (id="0") MenuItemName taşımadığı için ancak klasör adından tanınabiliyor. Böylece kaldırma
+    # config.json'a ihtiyaç duymadan ayırıcıları da temizler.
+    $managedFolders = @{}
     foreach ($node in @($Parent.SelectNodes("Item|Command"))) {
         $attribute = $node.Attributes[$AttributeName]
         if ($null -ne $attribute -and $attribute.Value.StartsWith($commandPrefix, [System.StringComparison]::Ordinal)) {
+            $folderAttribute = $node.Attributes['FolderName']
+            if ($null -ne $folderAttribute) { $managedFolders[[string]$folderAttribute.Value] = $true }
+            [void]$Parent.RemoveChild($node)
+        }
+    }
+    if ($managedFolders.Count -eq 0) { return }
+    foreach ($node in @($Parent.SelectNodes("Item"))) {
+        $idAttribute = $node.Attributes['id']
+        $folderAttribute = $node.Attributes['FolderName']
+        if ($null -ne $idAttribute -and [string]$idAttribute.Value -eq '0' -and
+            $null -ne $folderAttribute -and $managedFolders.ContainsKey([string]$folderAttribute.Value)) {
             [void]$Parent.RemoveChild($node)
         }
     }
@@ -467,6 +482,8 @@ function Update-NotepadPlusPlusConfiguration {
         else {
             ''
         }
+        # Bölümler arasına Notepad++ ayırıcısı konur: <Item id="0"/> (tabContextMenu.xml sözdizimi).
+        $previousSection = ''
         foreach ($entry in $MenuEntries) {
             $commandName = "$commandPrefix$($entry.Id)"
             $commandText = ('"{0}" -nop -w hidden -ep bypass -f "{1}" -TargetId {2} -SourcePath "$(FULL_CURRENT_PATH)"{3}' -f $powershellExe, $QueueScriptPath, $entry.Id, $configPathArgument)
@@ -490,6 +507,14 @@ function Update-NotepadPlusPlusConfiguration {
             $command.SetAttribute('Key', $(if ($null -ne $shortcut) { $shortcut.Key } else { '0' }))
             $command.InnerText = $commandText
             [void]$userCommands.AppendChild($command)
+
+            if ($previousSection -ne '' -and $previousSection -ne [string]$entry.Section) {
+                $separator = $tabMenuDocument.CreateElement('Item')
+                $separator.SetAttribute('FolderName', [string]$Configuration.menuTitle)
+                $separator.SetAttribute('id', '0')
+                [void]$tabMenu.AppendChild($separator)
+            }
+            $previousSection = [string]$entry.Section
 
             $item = $tabMenuDocument.CreateElement('Item')
             $item.SetAttribute('FolderName', [string]$Configuration.menuTitle)
