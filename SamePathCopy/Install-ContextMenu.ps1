@@ -114,6 +114,6 @@ foreach ($menuRoot in $menuRoots) {
 
 Write-Host "Sağ tık menüsü kuruldu: $($config.menuTitle)"
 Write-Host "Sürüm: v$($config.version)"
-Write-Host "Bu bilgisayar: $($localIdentity.Name) | Yerel kök: $($localIdentity.Root)"
+Write-Host "Bu bilgisayar: $($localIdentity.Name) | Yerel kök: $(@($localIdentity.Roots) -join ' ; ')"
 & (Join-Path $scriptDirectory 'NotepadPlusPlus-Integration.ps1') -Action Install -ConfigPath $resolvedConfigPath -WhatIf:$WhatIfPreference
 Write-Host 'config.json değişince menüyü yenilemek için bu betiği tekrar çalıştırın.'

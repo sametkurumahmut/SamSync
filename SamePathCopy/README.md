@@ -31,11 +31,42 @@ Sürüm numarası `MAJOR.MINOR.PATCH` (SemVer) biçimindedir. Yeni paket paylaş
 
 Sürüm değişiklikleri [CHANGELOG.md](CHANGELOG.md) dosyasında listelenir.
 
-### Yerel kök dışındaki öğeler
+### Birden fazla kaynak kökü
 
-Seçilen öğe yerel node'un `localRoot` dizini içindeyse, `localRoot` altındaki göreli yol hedef `networkRoot` altında korunur.
+Bir node birden fazla kaynak kökü tanımlayabilir. Kaynak hangi kökün altındaysa göreli yol o köke göre hesaplanır ve hedefte aynı `networkRoot` altına yazılır:
 
-Öğe `localRoot` dışındaysa tam yerel yol sürücü harfi bir klasöre dönüştürülerek korunur:
+```json
+{
+  "id": "Root",
+  "name": "Root - 10.10.2.82",
+  "address": "10.10.2.82",
+  "localRoots": [
+    "C:\\E\\repo\\musteri\\proje",
+    "C:\\E\\repo\\musteri\\simulatorexternaldata",
+    "C:\\E\\repo\\musteri\\simcontents"
+  ],
+  "networkRoot": "proje",
+  "enabled": true
+}
+```
+
+Hedefin `networkRoot` değeri `Sim\ActiveRelease` ise:
+
+```text
+proje\Data\x.entity            -> \\10.10.1.11\Sim\ActiveRelease\Data\x.entity
+simulatorexternaldata\ses\a.wav -> \\10.10.1.11\Sim\ActiveRelease\ses\a.wav
+simcontents\model\b.fbx        -> \\10.10.1.11\Sim\ActiveRelease\model\b.fbx
+```
+
+Göreli yol doğrudan `networkRoot` altına yazıldığı için iki kökte aynı göreli yol varsa (`proje\Data\x` ve `simcontents\Data\x`) hedefte aynı dosyaya denk gelirler; kökleri buna göre seçin. Sonuç penceresi ve `-PlanOnly` çıktısı her öğe için hangi kökün eşleştiğini gösterir.
+
+İç içe kökler tanımlanabilir; en uzun eşleşen kök kullanılır. Tek köklü eski yapılandırmalar `localRoot` alanıyla çalışmaya devam eder; iki alan birlikte verilirse `localRoot` ilk kök olur.
+
+### Kökler dışındaki öğeler
+
+Seçilen öğe yerel node'un köklerinden birinin içindeyse, o kökün altındaki göreli yol hedef `networkRoot` altında korunur.
+
+Öğe köklerin hiçbirinin altında değilse tam yerel yol sürücü harfi bir klasöre dönüştürülerek korunur:
 
 ```text
 C:\Fraps\README.HTM
@@ -170,6 +201,7 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 - `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. IP adresi değişken olan (DHCP ya da Wi-Fi ile bağlanan) bilgisayarların tanınmasını sağlar. Aynı adı birden fazla node'a yazmak eşleşmeyi belirsizleştirir; o durumda ayrımı IP eşleşmesi veya `localRoot` varlığı yapar.
 - `group`: İsteğe bağlı grup adıdır. Aynı grup adını taşıyan node'lar için menüde tek tıkla o grubun tamamına gönderen bir girdi oluşur. Node kimliğiyle aynı karakterler kullanılabilir (`Unit1` gibi; boşluk yok). Büyük/küçük harf farkı gözetilmez.
 - `localRoot`: Bu bilgisayar kaynak olduğunda göreli yol hesabının başlangıcı olan, sürücü harfiyle başlayan mutlak yerel yoldur. Örnek: `E:\Samet`. Bu dizin dışındaki öğeler de tam yolları korunarak kopyalanabilir.
+- `localRoots`: Birden fazla kaynak kökü için kullanılan listedir; `localRoot` yerine ya da onunla birlikte verilebilir. Her kök sürücü harfiyle başlayan mutlak bir yoldur. Ayrıntı için [Birden fazla kaynak kökü](#birden-fazla-kaynak-kökü) bölümüne bakın.
 - `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
 - `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
 

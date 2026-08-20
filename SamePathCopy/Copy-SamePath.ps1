@@ -142,11 +142,14 @@ if ($sourceItems.Count -eq 0) {
 
 $plans = @(foreach ($target in $targets) {
     foreach ($sourceItem in $sourceItems) {
+        # Kaynak hangi yerel kökün altındaysa göreli yol o köke göre hesaplanır; hiçbirinin altında değilse tam yol korunur.
+        $matchedRoot = Get-SamePathCopyMatchingRoot -FullPath ([System.IO.Path]::GetFullPath($sourceItem.FullName)) -LocalRoots $localIdentity.Roots
         [pscustomobject]@{
             SourceItem = $sourceItem
             IsDirectory = [bool]$sourceItem.PSIsContainer
             Target = $target
-            Destination = Get-SamePathCopyDestination -SourcePath $sourceItem.FullName -LocalRoot $localIdentity.Root -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot)
+            MatchedRoot = $matchedRoot
+            Destination = Get-SamePathCopyDestination -SourcePath $sourceItem.FullName -LocalRoots $localIdentity.Roots -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot)
         }
     }
 })
@@ -155,7 +158,7 @@ if ($PlanOnly) {
     $plans | ForEach-Object {
         [pscustomobject]@{
             Source = $_.SourceItem.FullName
-            LocalRoot = $localIdentity.Root
+            LocalRoot = if ($_.MatchedRoot) { $_.MatchedRoot } else { '(kök dışı)' }
             LocalMachine = $localIdentity.Name
             Target = $_.Target.name
             Destination = $_.Destination
@@ -197,7 +200,7 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Location = New-Object System.Drawing.Point(18, 50)
 $statusLabel.Size = New-Object System.Drawing.Size(670, 22)
 $statusLabel.Anchor = 'Top, Left, Right'
-$statusLabel.Text = "Yerel kök: $($localIdentity.Root) | Sürüm: v$($config.version)"
+$statusLabel.Text = "Yerel kök: $(@($localIdentity.Roots) -join ' ; ') | Sürüm: v$($config.version)"
 $form.Controls.Add($statusLabel)
 
 $progress = New-Object System.Windows.Forms.ProgressBar

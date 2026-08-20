@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- Node'lara `localRoots` alanı eklendi: bir bilgisayar birden fazla kaynak kökü tanımlayabiliyor. Kaynak hangi kökün altındaysa göreli yol o köke göre hesaplanıp hedefin `networkRoot` değeri altına yazılıyor; iç içe köklerde en uzun eşleşen kök kullanılıyor. Tek `localRoot` kullanan yapılandırmalar aynen çalışmaya devam ediyor.
+- Sonuç penceresi ve `-PlanOnly` çıktısı her öğe için eşleşen kökü gösteriyor; kökler dışındaki öğeler eskisi gibi tam yolunu koruyor.
 - Node'lara `group` alanı eklendi. Menüde her grup için o gruptaki bütün makinelere gönderen bir girdi oluşuyor; grup girdisi kendi makinelerinin başında duruyor ve komutlara `-TargetId group:<ad>` olarak geçiyor. Yerel bilgisayar kendi grubunun hedeflerinden de çıkarıldığı için her eğitmen `Unit1` gibi bir girdiyle yalnızca kendi setine gönderiyor.
 - İkon artık yalnızca toplu girdilerde (`Tümü` ve gruplar) görünüyor; tek makine girdileri ikonsuz.
 - Explorer ve Notepad++ menüleri aynı `Get-SamePathCopyMenuEntries` listesinden üretiliyor; sıra ve etiketler iki menüde birebir aynı.

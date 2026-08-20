@@ -48,14 +48,27 @@ function Get-SamePathCopyConfiguration {
         $seenIds[$nodeId] = $true
         $node.id = $nodeId
 
-        if (-not $node.PSObject.Properties['name'] -or -not $node.PSObject.Properties['address'] -or -not $node.PSObject.Properties['localRoot'] -or -not $node.PSObject.Properties['networkRoot'] -or -not $node.name -or -not $node.address -or -not $node.localRoot -or -not $node.networkRoot) {
-            throw "Her node içinde id, name, address, localRoot ve networkRoot alanları bulunmalı."
+        if (-not $node.PSObject.Properties['name'] -or -not $node.PSObject.Properties['address'] -or -not $node.PSObject.Properties['networkRoot'] -or -not $node.name -or -not $node.address -or -not $node.networkRoot) {
+            throw "Her node içinde id, name, address, networkRoot ve localRoot/localRoots alanları bulunmalı."
         }
         if ([string]$node.address -match '[\\/:*?"<>|]') {
             throw "Node address alanı yalnızca bilgisayar adı veya IP adresi olmalı: $($node.address)"
         }
-        if ([string]$node.localRoot -notmatch '^[A-Za-z]:\\') {
-            throw "Node localRoot değeri sürücü harfiyle başlayan mutlak bir yol olmalı: $($node.localRoot)"
+        # Yerel kök tek bir localRoot ya da localRoots listesiyle verilebilir; ikisi birlikte de kullanılabilir.
+        $declaredRoots = @(
+            $(if ($node.PSObject.Properties['localRoot']) { [string]$node.localRoot }),
+            $(if ($node.PSObject.Properties['localRoots']) { @($node.localRoots | ForEach-Object { [string]$_ }) })
+        ) | ForEach-Object { $_ } | Where-Object { $null -ne $_ }
+        if (@($declaredRoots).Count -eq 0) {
+            throw "Node içinde localRoot ya da localRoots alanlarından biri bulunmalı: $nodeId"
+        }
+        foreach ($declaredRoot in @($declaredRoots)) {
+            if ([string]::IsNullOrWhiteSpace($declaredRoot)) {
+                throw "Node yerel kök değeri boş olamaz: $nodeId"
+            }
+            if ($declaredRoot -notmatch '^[A-Za-z]:\\') {
+                throw "Node yerel kök değeri sürücü harfiyle başlayan mutlak bir yol olmalı: $declaredRoot"
+            }
         }
         $networkRoot = ([string]$node.networkRoot).Trim('\')
         if ([string]::IsNullOrWhiteSpace($networkRoot) -or $networkRoot -match '[:*?"<>|]' -or $networkRoot -match '(^|\\)\.\.?($|\\)') {
@@ -115,10 +128,13 @@ function Get-EnabledSamePathCopyNodes {
 function ConvertTo-SamePathCopyIdentity {
     param([Parameter(Mandatory = $true)]$Node)
 
+    $roots = @(Get-SamePathCopyLocalRoots -Node $Node)
     return [pscustomobject]@{
         Id = [string]$Node.id
         Name = [string]$Node.name
-        Root = [string]$Node.localRoot
+        Roots = $roots
+        # Root, tek köklü kullanımlar ve ekranda gösterim için ilk kökü verir.
+        Root = if ($roots.Count -gt 0) { [string]$roots[0] } else { '' }
     }
 }
 
@@ -180,8 +196,10 @@ function Get-LocalSamePathCopyIdentity {
         $candidateNodes = @($tier.Nodes)
         if ($candidateNodes.Count -eq 0) { continue }
         if ($candidateNodes.Count -gt 1) {
-            # Birden fazla node aynı adresi/adı paylaşıyorsa, localRoot değeri bu bilgisayarda var olan tek node seçilir.
-            $existingRootNodes = @($candidateNodes | Where-Object { Test-Path -LiteralPath ([string]$_.localRoot) -PathType Container })
+            # Birden fazla node aynı adresi/adı paylaşıyorsa, köklerinden biri bu bilgisayarda var olan tek node seçilir.
+            $existingRootNodes = @($candidateNodes | Where-Object {
+                @(Get-SamePathCopyLocalRoots -Node $_ | Where-Object { Test-Path -LiteralPath $_ -PathType Container }).Count -gt 0
+            })
             if ($existingRootNodes.Count -eq 1) { $candidateNodes = $existingRootNodes }
         }
         if ($candidateNodes.Count -eq 1) {
@@ -270,30 +288,70 @@ function Resolve-SamePathCopyTargets {
     return $nodeTargets
 }
 
+function Get-SamePathCopyLocalRoots {
+    param([Parameter(Mandatory = $true)]$Node)
+
+    # Tek köklü eski yapılandırmalar da desteklenir: localRoot ilk kök, localRoots ek kökler.
+    $roots = New-Object System.Collections.Generic.List[string]
+    $seen = @{}
+    foreach ($candidate in @(
+        $(if ($Node.PSObject.Properties['localRoot']) { [string]$Node.localRoot }),
+        $(if ($Node.PSObject.Properties['localRoots']) { @($Node.localRoots | ForEach-Object { [string]$_ }) })
+    ) | ForEach-Object { $_ }) {
+        $root = ([string]$candidate).Trim()
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $normalized = [System.IO.Path]::GetFullPath($root)
+        if ($normalized.Length -gt 3) { $normalized = $normalized.TrimEnd('\') }
+        $key = $normalized.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $roots.Add($normalized)
+    }
+    return @($roots)
+}
+
+function Get-SamePathCopyMatchingRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$FullPath,
+        [string[]]$LocalRoots
+    )
+
+    # İç içe kökler tanımlanmışsa en uzun eşleşen kök kullanılır; göreli yol böylece en yakın köke göre hesaplanır.
+    $bestRoot = $null
+    foreach ($root in @($LocalRoots)) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $isMatch = $FullPath.Equals($root, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $FullPath.StartsWith(($root.TrimEnd('\') + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+        if (-not $isMatch) { continue }
+        if ($null -eq $bestRoot -or $root.Length -gt $bestRoot.Length) { $bestRoot = $root }
+    }
+    return $bestRoot
+}
+
 function Get-SamePathCopyDestination {
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$LocalRoot,
+        [Parameter(Mandatory = $true)][string[]]$LocalRoots,
         [Parameter(Mandatory = $true)][string]$Address,
         [Parameter(Mandatory = $true)][string]$NetworkRoot
     )
 
     $fullPath = [System.IO.Path]::GetFullPath($SourcePath)
-    $fullLocalRoot = [System.IO.Path]::GetFullPath($LocalRoot)
-    if ($fullLocalRoot.Length -gt 3) {
-        $fullLocalRoot = $fullLocalRoot.TrimEnd('\')
-    }
+    $normalizedRoots = @(@($LocalRoots) | ForEach-Object {
+        if ([string]::IsNullOrWhiteSpace($_)) { return }
+        $normalized = [System.IO.Path]::GetFullPath([string]$_)
+        if ($normalized.Length -gt 3) { $normalized = $normalized.TrimEnd('\') }
+        $normalized
+    })
+    $matchedRoot = Get-SamePathCopyMatchingRoot -FullPath $fullPath -LocalRoots $normalizedRoots
 
-    $isInsideLocalRoot = $false
-    if ($fullPath.Equals($fullLocalRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $isInsideLocalRoot = $true
-        $relativePath = ''
-    }
-    else {
-        $localPrefix = $fullLocalRoot.TrimEnd('\') + '\'
-        if ($fullPath.StartsWith($localPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $isInsideLocalRoot = $true
-            $relativePath = $fullPath.Substring($localPrefix.Length)
+    $isInsideLocalRoot = $null -ne $matchedRoot
+    if ($isInsideLocalRoot) {
+        $relativePath = if ($fullPath.Equals($matchedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            ''
+        }
+        else {
+            $fullPath.Substring(($matchedRoot.TrimEnd('\') + '\').Length)
         }
     }
 
