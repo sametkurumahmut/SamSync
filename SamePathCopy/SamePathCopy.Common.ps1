@@ -276,6 +276,21 @@ function Get-SamePathCopyRobocopyArguments {
     return @($arguments)
 }
 
+function Get-SamePathCopyOptionLabel {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    # Arayüzde gösterilen kısa adlar; -PlanOnly çıktısı makine tarafından okunabilir kalsın diye İngilizce adları korur.
+    $labels = @{
+        Backup = 'yedek'
+        OnlyNewer = 'yalnızca yeni'
+        Mirror = 'ayna'
+        DryRun = 'deneme'
+        FastCopy = 'hızlı'
+    }
+    if ($labels.ContainsKey($Name)) { return [string]$labels[$Name] }
+    return $Name
+}
+
 function Get-SamePathCopyOptionValue {
     param($Options, [Parameter(Mandatory = $true)][string]$Name)
 

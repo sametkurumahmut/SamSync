@@ -90,27 +90,54 @@ try {
     $rootBackupPath = Get-SamePathCopyBackupPath -Destination '\\10.10.1.11\Sim\ActiveRelease' -Address '10.10.1.11' -NetworkRoot 'Sim\ActiveRelease' -Stamp '20260820-101500'
     Assert-Equal "\\10.10.1.11\Sim\ActiveRelease\$(Get-SamePathCopyBackupFolderName)\20260820-101500" $rootBackupPath 'Kök hedefi için yedek yolu yanlış.'
 
-    # Arayüz gerçekten açılıp tek bir sonuç nesnesi döndürmeli: WinForms çağrılarının çıktı akışına
-    # sızması (EndEdit gibi) sonucu diziye çevirip Copy-SamePath'i kırıyordu.
-    $previousAutoClose = $env:SAMEPATHCOPY_WIZARD_AUTOCLOSE
-    try {
-        $env:SAMEPATHCOPY_WIZARD_AUTOCLOSE = '300'
-        $uiConfiguration = [pscustomobject]@{ menuTitle = 'SamePathCopy'; allLabel = 'Tümü' }
-        $uiTargets = @(
-            [pscustomobject]@{ id = 'IG1'; name = 'IG1'; group = 'Unit1' }
-            [pscustomobject]@{ id = 'IG2'; name = 'IG2' }
-        )
-        $uiSettings = Get-SamePathCopyWizardSettings -ConfigPath $configPath -Targets $uiTargets
-        $uiSourceItems = @(Get-Item -LiteralPath (Join-Path $projectDirectory 'README.md'))
-        $dialogResult = Show-SamePathCopyWizard -Configuration $uiConfiguration -Targets $uiTargets -SourceItems $uiSourceItems -Settings $uiSettings
-        Assert-Equal 1 @($dialogResult).Count 'Sihirbaz tek bir sonuç nesnesi döndürmeli.'
-        Assert-Equal $true ([bool]$dialogResult.Confirmed) 'Onaylanan diyalog Confirmed=true döndürmeli.'
-        Assert-Equal 2 @($dialogResult.Settings.Targets.Keys).Count 'Sihirbaz sonucu bütün hedefleri taşımalı.'
-        Assert-Equal $true ([bool]$dialogResult.Settings.Targets['IG1'].Selected) 'Hedefler varsayılan olarak seçili gelmeli.'
+    # Arayüz gerçekten açılıp tek bir sonuç nesnesi döndürmeli. Bu, olay işleyicilerinin betik kapsamını
+    # görmesini ve WPF çağrılarının çıktı akışına sızmamasını (sonucu diziye çevirmemesini) doğrular.
+    # WPF STA kipi gerektirdiği için ayrı bir powershell -sta süreci kullanılır.
+    $uiScriptPath = Join-Path $testDirectory 'ui-smoke.ps1'
+    $uiOutputPath = Join-Path $testDirectory 'ui-smoke-output.txt'
+    $uiScript = @"
+`$ErrorActionPreference = 'Stop'
+. '$projectDirectory\SamePathCopy.Common.ps1'
+. '$projectDirectory\SamePathCopy.Ui.ps1'
+. '$projectDirectory\SamePathCopy.Wizard.ps1'
+`$env:SAMEPATHCOPY_WIZARD_STATE = '$($env:SAMEPATHCOPY_WIZARD_STATE)'
+`$env:SAMEPATHCOPY_WIZARD_AUTOCLOSE = '400'
+`$configuration = [pscustomobject]@{ menuTitle = 'SamePathCopy'; allLabel = 'Tumu' }
+`$targets = @(
+    [pscustomobject]@{ id = 'IG1'; name = 'IG1'; group = 'Unit1' }
+    [pscustomobject]@{ id = 'IG2'; name = 'IG2' }
+)
+`$settings = Get-SamePathCopyWizardSettings -ConfigPath '$configPath' -Targets `$targets
+`$sourceItems = @(Get-Item -LiteralPath '$projectDirectory\README.md')
+`$result = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems `$sourceItems -Settings `$settings -LocalRoots @('C:\Kok')
+"sonuc sayisi=`$(@(`$result).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8
+"confirmed=`$(`$result.Confirmed)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"hedef sayisi=`$(@(`$result.Settings.Targets.Keys).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"ig1 secili=`$(`$result.Settings.Targets['IG1'].Selected)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"@
+    Set-Content -LiteralPath $uiScriptPath -Value $uiScript -Encoding UTF8
+
+    $uiErrorPath = Join-Path $testDirectory 'ui-smoke-error.txt'
+    $uiProcess = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+        -ArgumentList @('-sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $uiScriptPath) `
+        -PassThru -WindowStyle Hidden -RedirectStandardError $uiErrorPath
+    if (-not $uiProcess.WaitForExit(60000)) {
+        try { $uiProcess.Kill() } catch { }
+        throw 'Sihirbaz penceresi kendi kendine kapanmadı.'
     }
-    finally {
-        $env:SAMEPATHCOPY_WIZARD_AUTOCLOSE = $previousAutoClose
+    $uiProcess.WaitForExit()
+    $uiErrorText = if (Test-Path -LiteralPath $uiErrorPath) { [string](Get-Content -LiteralPath $uiErrorPath -Raw) } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($uiErrorText)) {
+        throw "Sihirbaz arayüzü hata verdi: $uiErrorText"
     }
+    if (-not (Test-Path -LiteralPath $uiOutputPath -PathType Leaf)) {
+        throw 'Sihirbaz arayüzü sonuç üretmeden kapandı.'
+    }
+    $uiOutput = @(Get-Content -LiteralPath $uiOutputPath -Encoding UTF8)
+    Assert-Equal 'sonuc sayisi=1' $uiOutput[0] 'Sihirbaz tek bir sonuç nesnesi döndürmeli.'
+    Assert-Equal 'confirmed=True' $uiOutput[1] 'Onaylanan pencere Confirmed=true döndürmeli.'
+    Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
+    Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
 
     Write-Host 'Sihirbaz testleri başarılı.'
 }

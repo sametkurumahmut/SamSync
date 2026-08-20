@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Sihirbaz ve kopyalama penceresi WPF ile baştan tasarlandı: sistem temasına (açık/koyu) ve Windows vurgu rengine uyan renkler, yuvarlatılmış kart yüzeyleri, özel onay kutusu/düğme/ilerleme çubuğu şablonları ve ince kaydırma çubukları. Ortak tema [SamePathCopy.Ui.ps1](SamePathCopy.Ui.ps1) içinde tanımlanıyor.
+- Sihirbaz penceresi: kaynak özeti ve yerel kök bilgisi, grup kolonlu hedef tablosu, canlı `N / M seçili` göstergesi, parametre açıklamalarını gösteren başlık ipuçları. Parametre kolonları tanım listesinden üretiliyor.
+- Kopyalama penceresi: durum işaretli günlük satırları (sürüyor/başarılı/hatalı/atlandı), yedek ve hata ayrıntıları alt satır olarak, ilerleme sayacı, süre ve sonuç özeti, `Günlüğü kopyala` düğmesi.
+- Kopyalama sırasında `İptal` düğmesi eklendi: çalışan `robocopy` süreci durduruluyor, kalan hedefler atlandı olarak işaretleniyor.
 - Menüde `Tümü`'nün ardından `Wizard` girdisi eklendi: hedefler listeden işaretlenerek seçiliyor (varsayılan olarak hepsi işaretli) ve her bilgisayar için parametreler ayrı ayrı veriliyor.
 - Bilgisayar başına parametreler: `Yedek al` (hedefteki önceki hâli `_SamePathCopyYedek\<tarih-saat>` altına alır), `Yalnızca yeni` (`/XO`), `Ayna` (`/MIR`, yalnızca klasörlerde ve ek onayla). Bütün hedefler için: `Deneme çalıştırması` (`/L`), `Hızlı kopyalama` (`/MT:8`).
 - Sihirbaz ayarları `%LOCALAPPDATA%\SamePathCopy\wizard-state.json` içinde config yoluna göre saklanıyor; pencere son hâliyle açılıyor. Yeni eklenen bilgisayar işaretli gelir, silinen düşer. Yol `SAMEPATHCOPY_WIZARD_STATE` ile değiştirilebilir.

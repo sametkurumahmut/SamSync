@@ -75,9 +75,15 @@ C:\Fraps\README.HTM
 
 Bu sayede farklı sürücülerde aynı ada sahip yollar çakışmaz. UNC kaynakları `networkRoot\UNC\sunucu\paylaşım\...` altında saklanır.
 
+### Arayüz
+
+Sihirbaz ve kopyalama penceresi WPF ile yazılmıştır ([SamePathCopy.Ui.ps1](SamePathCopy.Ui.ps1) ortak temayı üretir). Renkler Windows ayarlarından okunur: açık/koyu tema `AppsUseLightTheme` değerine, vurgu rengi `DWM\AccentColor` değerine göre belirlenir (okunabilirlik için çok açık vurgu renkleri yerine varsayılan mavi kullanılır). Arayüz PowerShell'in STA kipini gerektirir; `powershell.exe` varsayılan olarak STA çalışır, kurulumun ürettiği komutlar da bu yüzden olduğu gibi çalışır.
+
 ### Sihirbaz
 
 Menüde `Tümü`'nün hemen ardından gelen `Wizard` girdisi, göndermeden önce bir pencere açar: hangi bilgisayarlara gönderileceği listeden işaretlenir ve her bilgisayar için parametreler ayrı ayrı seçilir. Etiket `config.json` içindeki `wizardLabel` alanından değiştirilebilir.
+
+Pencerede kaynak özeti ve yerel kökler üstte, hedef tablosu ortada (grup adıyla birlikte), `Tümünü seç` / `Hiçbirini seçme` ve canlı `N / M seçili` göstergesi tablonun başlığında durur. Parametre kolonları [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1) içindeki tanım listesinden üretilir; yeni bir parametre eklemek için o listeye bir satır yazmak yeterlidir, kolon ve onay kutuları kendiliğinden oluşur. Kolon başlıklarında parametrenin ne yaptığını anlatan ipuçları vardır.
 
 Bilgisayar başına parametreler:
 
@@ -305,6 +311,8 @@ Notepad++ içinde kaydedilmiş bir dosyanın sekmesine sağ tıklayıp **SamePat
 `robocopy` dönüş kodu `0-7` başarılı, `8` ve üzeri hatalı kabul edilir. Var olan dosyalar gerektiğinde güncellenir; hedefte olup kaynakta bulunmayan dosyalar silinmez.
 
 Sonuç penceresi diğer uygulamaların üzerinde sabitlenmez; normal bir pencere gibi arkaya alınabilir. SMB paylaşımına erişilemiyorsa veya `robocopy` hata verirse sonuç alanında Windows'un ayrıntılı hata mesajı gösterilir.
+
+Kopyalama penceresi her işlem için tek satır gösterir: soldaki işaret durumu verir (`⋯` sürüyor, `✓` başarılı, `✕` hatalı, `–` atlandı), altında kaynak → hedef yolu, hata ya da yedek bilgisi ek satır olarak eklenir. Üstte ilerleme çubuğu ve `3 / 12` sayacı, altta `N başarılı • N hatalı • süre` özeti durur. `İptal` düğmesi çalışan `robocopy` sürecini durdurur ve kalan hedefleri atlanmış olarak işaretler; `Günlüğü kopyala` bütün satırları panoya alır.
 
 ### Robocopy 16 ve erişim reddedildi
 

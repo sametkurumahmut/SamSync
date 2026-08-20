@@ -11,18 +11,24 @@ function Get-SamePathCopyWizardStatePath {
 }
 
 function Get-SamePathCopyWizardOptionDefinitions {
-    # Kolon başlıkları ve varsayılanlar tek yerde durur; yeni parametre eklemek için buraya bir satır yetiyor.
+    # Hedef başına parametreler: kolon başlığı, varsayılan ve açıklama tek yerde durur.
+    # Yeni parametre eklemek için buraya bir satır yetiyor; kolon ve onay kutuları buradan üretilir.
     return @(
-        [pscustomobject]@{ Name = 'Backup'; Key = 'backup'; Header = 'Yedek al'; Default = $false; Width = 80 }
-        [pscustomobject]@{ Name = 'OnlyNewer'; Key = 'onlyNewer'; Header = 'Yalnızca yeni'; Default = $false; Width = 100 }
-        [pscustomobject]@{ Name = 'Mirror'; Key = 'mirror'; Header = 'Ayna (fazlayı sil)'; Default = $false; Width = 120 }
+        [pscustomobject]@{ Name = 'Backup'; Key = 'backup'; Header = 'Yedek al'; Default = $false; Width = 92
+            Description = 'Hedefte aynı yolda duran öğeyi, üzerine yazmadan önce _SamePathCopyYedek klasörüne kopyalar.' }
+        [pscustomobject]@{ Name = 'OnlyNewer'; Key = 'onlyNewer'; Header = 'Yalnızca yeni'; Default = $false; Width = 112
+            Description = 'Hedefteki dosya kaynaktan yeni ya da aynı yaştaysa dokunmaz (robocopy /XO).' }
+        [pscustomobject]@{ Name = 'Mirror'; Key = 'mirror'; Header = 'Ayna'; Default = $false; Width = 92
+            Description = 'Hedefi kaynağın aynası yapar: kaynakta olmayan dosyalar hedefte silinir (robocopy /MIR). Yalnızca klasör kopyalamada uygulanır.' }
     )
 }
 
 function Get-SamePathCopyWizardGlobalDefinitions {
     return @(
-        [pscustomobject]@{ Name = 'DryRun'; Key = 'dryRun'; Header = 'Deneme çalıştırması (hiçbir şey kopyalanmaz)'; Default = $false }
-        [pscustomobject]@{ Name = 'FastCopy'; Key = 'fastCopy'; Header = 'Hızlı kopyalama (çok iş parçacıklı)'; Default = $false }
+        [pscustomobject]@{ Name = 'DryRun'; Key = 'dryRun'; Header = 'Deneme çalıştırması — hiçbir şey kopyalanmaz'; Default = $false
+            Description = 'Ne kopyalanacağını hesaplar, hedefe yazmaz (robocopy /L). Yedek adımı da atlanır.' }
+        [pscustomobject]@{ Name = 'FastCopy'; Key = 'fastCopy'; Header = 'Hızlı kopyalama — çok iş parçacıklı'; Default = $false
+            Description = 'robocopy /MT:8 kullanır. Yeniden başlatılabilir kip (/Z) bu durumda devre dışı kalır.' }
     )
 }
 
@@ -127,239 +133,273 @@ function Save-SamePathCopyWizardSettings {
     Move-Item -LiteralPath $temporaryPath -Destination $statePath -Force
 }
 
+function Get-SamePathCopyWizardBodyXaml {
+    return @'
+    <Grid Margin="20,18,20,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock x:Name="HeaderText" Style="{StaticResource TitleText}" Text="Kopyalama sihirbazı" />
+            <TextBlock x:Name="SourceText" Style="{StaticResource SubtitleText}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <Border Style="{StaticResource Chip}">
+                <TextBlock x:Name="SourceCountText" Style="{StaticResource MutedText}" />
+            </Border>
+            <Border Style="{StaticResource Chip}">
+                <TextBlock x:Name="LocalRootText" Style="{StaticResource MutedText}" MaxWidth="420" />
+            </Border>
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,16,0,8">
+            <TextBlock Style="{StaticResource SectionText}" Text="Hedefler" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" Margin="0,0,10,0" />
+                <Button x:Name="SelectAllButton" Style="{StaticResource GhostButton}" Content="Tümünü seç" />
+                <Button x:Name="SelectNoneButton" Style="{StaticResource GhostButton}" Content="Hiçbirini seçme" />
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="6">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="False" Padding="0,0,4,0">
+                <Grid x:Name="TargetGrid">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="*" MinWidth="180" />
+                        <ColumnDefinition Width="104" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="30" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource ColumnHeaderText}" Text="Gönder"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource ColumnHeaderText}" Text="Bilgisayar" Margin="6,0,0,0" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource ColumnHeaderText}" Text="Grup" />
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="16,12,16,12">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionText}" Text="Bütün hedefler için" Margin="0,0,0,8" />
+                <StackPanel x:Name="GlobalOptionPanel" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="5" Margin="0,16,0,0">
+            <TextBlock x:Name="HintText" Style="{StaticResource MutedText}" VerticalAlignment="Center"
+                       Text="Seçimler bu bilgisayarda saklanır; pencere bir dahaki açılışta aynı gelir." />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Style="{StaticResource SecondaryButton}" Content="Vazgeç" Margin="0,0,10,0" />
+                <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Content="Kopyalamayı başlat" MinWidth="150" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+'@
+}
+
 function Show-SamePathCopyWizard {
     param(
         [Parameter(Mandatory = $true)]$Configuration,
         [Parameter(Mandatory = $true)][object[]]$Targets,
         [Parameter(Mandatory = $true)][object[]]$SourceItems,
         [Parameter(Mandatory = $true)]$Settings,
+        [string[]]$LocalRoots,
         [string]$IconPath
     )
-
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
 
     $optionDefinitions = @(Get-SamePathCopyWizardOptionDefinitions)
     $globalDefinitions = @(Get-SamePathCopyWizardGlobalDefinitions)
 
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "{0} - Sihirbaz" -f ([string]$Configuration.menuTitle)
-    $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(880, 580)
-    $form.MinimumSize = New-Object System.Drawing.Size(720, 460)
-    $formIcon = $null
-    if ($IconPath -and (Test-Path -LiteralPath $IconPath -PathType Leaf)) {
-        $formIcon = New-Object System.Drawing.Icon($IconPath)
-        $form.Icon = $formIcon
-    }
+    $window = New-SamePathCopyWindow -Title ("{0} - Sihirbaz" -f [string]$Configuration.menuTitle) `
+        -BodyXaml (Get-SamePathCopyWizardBodyXaml) -Width 940 -Height 660 -MinWidth 760 -MinHeight 520 -IconPath $IconPath
 
-    $sourceLabel = New-Object System.Windows.Forms.Label
-    $sourceLabel.Location = New-Object System.Drawing.Point(18, 16)
-    $sourceLabel.Size = New-Object System.Drawing.Size(830, 20)
-    $sourceLabel.Anchor = 'Top, Left, Right'
-    $sourceLabel.AutoEllipsis = $true
-    $sourceLabel.Text = if ($SourceItems.Count -eq 1) {
-        "Kaynak: $($SourceItems[0].FullName)"
+    $window.FindName('SourceText').Text = if ($SourceItems.Count -eq 1) {
+        [string]$SourceItems[0].FullName
     }
     else {
-        "Kaynaklar: $($SourceItems.Count) öğe (ilk: $($SourceItems[0].FullName))"
+        "{0} öğe seçildi (ilk: {1})" -f $SourceItems.Count, $SourceItems[0].FullName
     }
-    $form.Controls.Add($sourceLabel)
+    $window.FindName('SourceCountText').Text = "{0} kaynak öğe" -f $SourceItems.Count
+    $localRootText = if ($LocalRoots -and @($LocalRoots).Count -gt 0) { @($LocalRoots) -join '  •  ' } else { 'Yerel kök tanımsız' }
+    $window.FindName('LocalRootText').Text = "Yerel kök: $localRootText"
 
-    $grid = New-Object System.Windows.Forms.DataGridView
-    $grid.Location = New-Object System.Drawing.Point(18, 44)
-    $grid.Size = New-Object System.Drawing.Size(830, 300)
-    $grid.Anchor = 'Top, Bottom, Left, Right'
-    $grid.AllowUserToAddRows = $false
-    $grid.AllowUserToDeleteRows = $false
-    $grid.AllowUserToResizeRows = $false
-    $grid.RowHeadersVisible = $false
-    $grid.SelectionMode = 'CellSelect'
-    $grid.EditMode = 'EditOnEnter'
-    # Kolonlar mevcut genişliği paylaşır; böylece pencere boyutundan bağımsız olarak hiçbir parametre kolonu kırpılmaz.
-    $grid.AutoSizeColumnsMode = 'Fill'
-    $grid.ColumnHeadersHeightSizeMode = 'AutoSize'
-    $grid.BackgroundColor = [System.Drawing.SystemColors]::Window
+    # Satırlar XAML'deki başlık ızgarasına eklenir; böylece başlık ve hücreler aynı kolon genişliklerini paylaşır.
+    # Parametre kolonları tanımlardan üretilir: yeni bir parametre eklendiğinde kolon ve başlık kendiliğinden oluşur.
+    $targetGrid = $window.FindName('TargetGrid')
+    $firstOptionColumn = $targetGrid.ColumnDefinitions.Count
+    foreach ($optionDefinition in $optionDefinitions) {
+        $column = New-Object System.Windows.Controls.ColumnDefinition
+        $column.Width = [System.Windows.GridLength]::new([double]$optionDefinition.Width)
+        [void]$targetGrid.ColumnDefinitions.Add($column)
 
-    $idColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $idColumn.Name = 'NodeId'
-    $idColumn.Visible = $false
-    [void]$grid.Columns.Add($idColumn)
+        $headerText = New-Object System.Windows.Controls.TextBlock
+        $headerText.Style = $window.FindResource('ColumnHeaderText')
+        $headerText.Text = [string]$optionDefinition.Header
+        $headerText.HorizontalAlignment = 'Center'
+        $headerText.ToolTip = [string]$optionDefinition.Description
+        [System.Windows.Controls.Grid]::SetRow($headerText, 0)
+        [System.Windows.Controls.Grid]::SetColumn($headerText, ($firstOptionColumn + $optionDefinitions.IndexOf($optionDefinition)))
+        [void]$targetGrid.Children.Add($headerText)
+    }
+    # Olay işleyicileri betik kapsamındaki değişkenleri ve fonksiyonları görür. Kapanış (GetNewClosure)
+    # kullanılmaz: kapanışlar ayrı bir modül kapsamına bağlanır ve betikte tanımlı fonksiyonlara erişemez.
+    $script:wizardWindow = $window
+    $script:wizardIconPath = $IconPath
+    $script:wizardOptionDefinitions = $optionDefinitions
+    $script:wizardSelectionCountText = $window.FindName('SelectionCountText')
+    $script:wizardRows = New-Object System.Collections.Generic.List[object]
+    $rows = $script:wizardRows
 
-    $selectedColumn = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
-    $selectedColumn.Name = 'Selected'
-    $selectedColumn.HeaderText = 'Gönder'
-    $selectedColumn.FillWeight = 60
-    $selectedColumn.MinimumWidth = 58
-    [void]$grid.Columns.Add($selectedColumn)
-
-    $nameColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $nameColumn.Name = 'DisplayName'
-    $nameColumn.HeaderText = 'Bilgisayar'
-    $nameColumn.FillWeight = 230
-    $nameColumn.MinimumWidth = 160
-    $nameColumn.ReadOnly = $true
-    [void]$grid.Columns.Add($nameColumn)
-
-    $groupColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $groupColumn.Name = 'GroupName'
-    $groupColumn.HeaderText = 'Grup'
-    $groupColumn.FillWeight = 90
-    $groupColumn.MinimumWidth = 70
-    $groupColumn.ReadOnly = $true
-    [void]$grid.Columns.Add($groupColumn)
-
-    foreach ($definition in $optionDefinitions) {
-        $optionColumn = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
-        $optionColumn.Name = $definition.Name
-        $optionColumn.HeaderText = $definition.Header
-        $optionColumn.FillWeight = [int]$definition.Width
-        $optionColumn.MinimumWidth = [int]$definition.Width
-        [void]$grid.Columns.Add($optionColumn)
+    $updateSelectionCount = {
+        $selected = @($script:wizardRows | Where-Object { [bool]$_.Controls['Selected'].IsChecked }).Count
+        $script:wizardSelectionCountText.Text = "{0} / {1} seçili" -f $selected, $script:wizardRows.Count
     }
 
+    $rowIndex = 1
     foreach ($target in $Targets) {
         $targetId = [string]$target.id
         $entry = $Settings.Targets[$targetId]
-        $groupName = if ($target.PSObject.Properties['group']) { [string]$target.group } else { '' }
-        $values = New-Object System.Collections.Generic.List[object]
-        $values.Add($targetId)
-        $values.Add([bool]$entry.Selected)
-        $values.Add([string]$target.name)
-        $values.Add($groupName)
-        foreach ($definition in $optionDefinitions) {
-            $values.Add([bool]$entry.($definition.Name))
+        $definition = New-Object System.Windows.Controls.RowDefinition
+        $definition.Height = [System.Windows.GridLength]::new(34)
+        [void]$targetGrid.RowDefinitions.Add($definition)
+
+        $rowBorder = New-Object System.Windows.Controls.Border
+        $rowBorder.Style = $window.FindResource('RowBorder')
+        [System.Windows.Controls.Grid]::SetRow($rowBorder, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($rowBorder, 0)
+        [System.Windows.Controls.Grid]::SetColumnSpan($rowBorder, $targetGrid.ColumnDefinitions.Count)
+        if ($rowIndex % 2 -eq 0) {
+            $rowBorder.Background = $window.FindResource('SurfaceAltBrush')
         }
-        [void]$grid.Rows.Add($values.ToArray())
-    }
-    $form.Controls.Add($grid)
+        [void]$targetGrid.Children.Add($rowBorder)
 
-    $selectAllButton = New-Object System.Windows.Forms.Button
-    $selectAllButton.Location = New-Object System.Drawing.Point(18, 352)
-    $selectAllButton.Size = New-Object System.Drawing.Size(110, 26)
-    $selectAllButton.Anchor = 'Bottom, Left'
-    $selectAllButton.Text = 'Tümünü seç'
-    $form.Controls.Add($selectAllButton)
+        $controls = @{}
+        $selectedBox = New-Object System.Windows.Controls.CheckBox
+        $selectedBox.Style = $window.FindResource('ModernCheckBox')
+        $selectedBox.IsChecked = [bool]$entry.Selected
+        $selectedBox.HorizontalAlignment = 'Center'
+        $selectedBox.VerticalAlignment = 'Center'
+        $selectedBox.Add_Checked($updateSelectionCount)
+        $selectedBox.Add_Unchecked($updateSelectionCount)
+        [System.Windows.Controls.Grid]::SetRow($selectedBox, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($selectedBox, 0)
+        [void]$targetGrid.Children.Add($selectedBox)
+        $controls['Selected'] = $selectedBox
 
-    $selectNoneButton = New-Object System.Windows.Forms.Button
-    $selectNoneButton.Location = New-Object System.Drawing.Point(134, 352)
-    $selectNoneButton.Size = New-Object System.Drawing.Size(110, 26)
-    $selectNoneButton.Anchor = 'Bottom, Left'
-    $selectNoneButton.Text = 'Hiçbirini seçme'
-    $form.Controls.Add($selectNoneButton)
+        $nameText = New-Object System.Windows.Controls.TextBlock
+        $nameText.Style = $window.FindResource('BodyText')
+        $nameText.Text = [string]$target.name
+        $nameText.Margin = New-Object System.Windows.Thickness(6, 0, 8, 0)
+        [System.Windows.Controls.Grid]::SetRow($nameText, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($nameText, 1)
+        [void]$targetGrid.Children.Add($nameText)
 
-    $setSelection = {
-        param([bool]$Value)
-        [void]$grid.EndEdit()
-        foreach ($row in $grid.Rows) {
-            $row.Cells['Selected'].Value = $Value
+        $groupText = New-Object System.Windows.Controls.TextBlock
+        $groupText.Style = $window.FindResource('MutedText')
+        $groupText.Text = if ($target.PSObject.Properties['group']) { [string]$target.group } else { '' }
+        [System.Windows.Controls.Grid]::SetRow($groupText, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($groupText, 2)
+        [void]$targetGrid.Children.Add($groupText)
+
+        $optionColumn = $firstOptionColumn
+        foreach ($optionDefinition in $optionDefinitions) {
+            $optionBox = New-Object System.Windows.Controls.CheckBox
+            $optionBox.Style = $window.FindResource('ModernCheckBox')
+            $optionBox.IsChecked = [bool]$entry.($optionDefinition.Name)
+            $optionBox.HorizontalAlignment = 'Center'
+            $optionBox.VerticalAlignment = 'Center'
+            $optionBox.ToolTip = [string]$optionDefinition.Description
+            [System.Windows.Controls.Grid]::SetRow($optionBox, $rowIndex)
+            [System.Windows.Controls.Grid]::SetColumn($optionBox, $optionColumn)
+            [void]$targetGrid.Children.Add($optionBox)
+            $controls[[string]$optionDefinition.Name] = $optionBox
+            $optionColumn++
         }
+
+        $rows.Add([pscustomobject]@{ Id = $targetId; Name = [string]$target.name; Controls = $controls })
+        $rowIndex++
     }
-    $selectAllButton.Add_Click({ & $setSelection $true }.GetNewClosure())
-    $selectNoneButton.Add_Click({ & $setSelection $false }.GetNewClosure())
+    & $updateSelectionCount
 
-    $parameterGroup = New-Object System.Windows.Forms.GroupBox
-    $parameterGroup.Location = New-Object System.Drawing.Point(18, 386)
-    $parameterGroup.Size = New-Object System.Drawing.Size(830, 84)
-    $parameterGroup.Anchor = 'Bottom, Left, Right'
-    $parameterGroup.Text = 'Parametreler (bütün hedefler için)'
-    $form.Controls.Add($parameterGroup)
-
-    $globalCheckBoxes = @{}
-    $offsetY = 22
-    foreach ($definition in $globalDefinitions) {
-        $checkBox = New-Object System.Windows.Forms.CheckBox
-        $checkBox.Location = New-Object System.Drawing.Point(14, $offsetY)
-        $checkBox.Size = New-Object System.Drawing.Size(660, 22)
-        $checkBox.Text = [string]$definition.Header
-        $checkBox.Checked = [bool]$Settings.Global.($definition.Name)
-        $parameterGroup.Controls.Add($checkBox)
-        $globalCheckBoxes[[string]$definition.Name] = $checkBox
-        $offsetY += 26
+    $globalPanel = $window.FindName('GlobalOptionPanel')
+    $globalBoxes = @{}
+    foreach ($globalDefinition in $globalDefinitions) {
+        $globalBox = New-Object System.Windows.Controls.CheckBox
+        $globalBox.Style = $window.FindResource('ModernCheckBox')
+        $globalBox.Content = [string]$globalDefinition.Header
+        $globalBox.IsChecked = [bool]$Settings.Global.($globalDefinition.Name)
+        $globalBox.Margin = New-Object System.Windows.Thickness(0, 4, 0, 4)
+        $globalBox.ToolTip = [string]$globalDefinition.Description
+        [void]$globalPanel.Children.Add($globalBox)
+        $globalBoxes[[string]$globalDefinition.Name] = $globalBox
     }
 
-    $startButton = New-Object System.Windows.Forms.Button
-    $startButton.Location = New-Object System.Drawing.Point(628, 480)
-    $startButton.Size = New-Object System.Drawing.Size(105, 30)
-    $startButton.Anchor = 'Bottom, Right'
-    $startButton.Text = 'Başlat'
-    $form.Controls.Add($startButton)
+    $window.FindName('SelectAllButton').Add_Click({
+        foreach ($row in $script:wizardRows) { $row.Controls['Selected'].IsChecked = $true }
+    })
+    $window.FindName('SelectNoneButton').Add_Click({
+        foreach ($row in $script:wizardRows) { $row.Controls['Selected'].IsChecked = $false }
+    })
 
-    $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Location = New-Object System.Drawing.Point(743, 480)
-    $cancelButton.Size = New-Object System.Drawing.Size(105, 30)
-    $cancelButton.Anchor = 'Bottom, Right'
-    $cancelButton.Text = 'İptal'
-    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $form.Controls.Add($cancelButton)
-    $form.CancelButton = $cancelButton
-
-    $startButton.Add_Click({
-        [void]$grid.EndEdit()
-        $selectedRows = @($grid.Rows | Where-Object { [bool]$_.Cells['Selected'].Value })
+    $window.FindName('CancelButton').Add_Click({ $script:wizardWindow.DialogResult = $false })
+    $window.FindName('StartButton').Add_Click({
+        $selectedRows = @($script:wizardRows | Where-Object { [bool]$_.Controls['Selected'].IsChecked })
         if ($selectedRows.Count -eq 0) {
-            [void][System.Windows.Forms.MessageBox]::Show(
-                'En az bir bilgisayar seçilmeli.',
-                'Sihirbaz',
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Warning)
+            [void](Show-SamePathCopyConfirm -Title 'Hedef seçilmedi' -Message 'Kopyalamak için en az bir bilgisayar işaretlenmeli.' -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
             return
         }
-        # Ayna, hedefte kaynakta olmayan dosyaları sildiği için ayrıca onay ister.
-        $mirrorRows = @($selectedRows | Where-Object { [bool]$_.Cells['Mirror'].Value })
+        # Ayna, hedefte kaynakta bulunmayan dosyaları sildiği için ayrıca onay ister.
+        $mirrorRows = @($selectedRows | Where-Object { [bool]$_.Controls['Mirror'].IsChecked })
         if ($mirrorRows.Count -gt 0) {
-            $mirrorNames = (@($mirrorRows | ForEach-Object { [string]$_.Cells['DisplayName'].Value }) -join ', ')
-            $answer = [System.Windows.Forms.MessageBox]::Show(
-                "Ayna seçili hedeflerde, kaynakta bulunmayan dosyalar silinecek:`r`n`r`n$mirrorNames`r`n`r`nDevam edilsin mi?",
-                'Ayna onayı',
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Warning)
-            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            $mirrorNames = (@($mirrorRows | ForEach-Object { $_.Name }) -join ', ')
+            $confirmed = Show-SamePathCopyConfirm -Title 'Ayna onayı' -Owner $script:wizardWindow -IconPath $script:wizardIconPath `
+                -Message "Şu hedeflerde, kaynakta bulunmayan dosyalar silinecek:`r`n`r`n$mirrorNames" `
+                -ConfirmText 'Sil ve kopyala' -CancelText 'Vazgeç'
+            if (-not $confirmed) { return }
         }
-        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $form.Close()
-    }.GetNewClosure())
+        $script:wizardWindow.DialogResult = $true
+    })
 
-    # Arayüzün etkileşimsiz sınanabilmesi için: değer verilirse diyalog o kadar milisaniye sonra kendini onaylayıp kapatır.
-    $autoCloseTimer = $null
+    # Arayüzün etkileşimsiz sınanabilmesi için: değer verilirse pencere o kadar milisaniye sonra kendini onaylayıp kapanır.
     if (-not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_WIZARD_AUTOCLOSE)) {
-        $autoCloseTimer = New-Object System.Windows.Forms.Timer
-        $autoCloseTimer.Interval = [Math]::Max(1, [int]$env:SAMEPATHCOPY_WIZARD_AUTOCLOSE)
-        $autoCloseTimer.Add_Tick({
-            $autoCloseTimer.Stop()
-            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-            $form.Close()
-        }.GetNewClosure())
-        $autoCloseTimer.Start()
+        $timer = New-Object System.Windows.Threading.DispatcherTimer
+        $timer.Interval = [TimeSpan]::FromMilliseconds([Math]::Max(1, [int]$env:SAMEPATHCOPY_WIZARD_AUTOCLOSE))
+        $script:wizardAutoCloseTimer = $timer
+        $timer.Add_Tick({
+            $script:wizardAutoCloseTimer.Stop()
+            $script:wizardWindow.DialogResult = $true
+        })
+        $timer.Start()
     }
 
-    try {
-        $dialogResult = $form.ShowDialog()
-        [void]$grid.EndEdit()
+    $dialogResult = $window.ShowDialog()
 
-        # Kullanıcı vazgeçse de tablodaki seçimler saklanır; bir sonraki açılış son hâliyle gelir.
-        $updatedTargets = @{}
-        foreach ($row in $grid.Rows) {
-            $targetId = [string]$row.Cells['NodeId'].Value
-            $entry = [pscustomobject]@{ Selected = [bool]$row.Cells['Selected'].Value }
-            foreach ($definition in $optionDefinitions) {
-                $entry | Add-Member -NotePropertyName $definition.Name -NotePropertyValue ([bool]$row.Cells[$definition.Name].Value)
-            }
-            $updatedTargets[$targetId] = $entry
+    # Vazgeçilse bile tablodaki son hâl saklanır; pencere bir sonraki açılışta aynı gelir.
+    $updatedTargets = @{}
+    foreach ($row in $rows) {
+        $entry = [pscustomobject]@{ Selected = [bool]$row.Controls['Selected'].IsChecked }
+        foreach ($optionDefinition in $optionDefinitions) {
+            $entry | Add-Member -NotePropertyName $optionDefinition.Name -NotePropertyValue ([bool]$row.Controls[[string]$optionDefinition.Name].IsChecked)
         }
-        $updatedGlobal = [pscustomobject]@{}
-        foreach ($definition in $globalDefinitions) {
-            $updatedGlobal | Add-Member -NotePropertyName $definition.Name -NotePropertyValue ([bool]$globalCheckBoxes[[string]$definition.Name].Checked)
-        }
-
-        return [pscustomobject]@{
-            Confirmed = ($dialogResult -eq [System.Windows.Forms.DialogResult]::OK)
-            Settings = [pscustomobject]@{ Global = $updatedGlobal; Targets = $updatedTargets }
-        }
+        $updatedTargets[$row.Id] = $entry
     }
-    finally {
-        if ($null -ne $autoCloseTimer) { $autoCloseTimer.Dispose() }
-        if ($null -ne $formIcon) { $formIcon.Dispose() }
-        $form.Dispose()
+    $updatedGlobal = [pscustomobject]@{}
+    foreach ($globalDefinition in $globalDefinitions) {
+        $updatedGlobal | Add-Member -NotePropertyName $globalDefinition.Name -NotePropertyValue ([bool]$globalBoxes[[string]$globalDefinition.Name].IsChecked)
+    }
+
+    return [pscustomobject]@{
+        Confirmed = ($dialogResult -eq $true)
+        Settings = [pscustomobject]@{ Global = $updatedGlobal; Targets = $updatedTargets }
     }
 }
