@@ -85,6 +85,14 @@ Menüde `Tümü`'nün hemen ardından gelen `Wizard` girdisi, göndermeden önce
 
 Pencerede kaynak özeti ve yerel kökler üstte, hedef tablosu ortada (grup adıyla birlikte), canlı `N / M seçili` göstergesi tablonun sağ üstünde durur. Her onay kutusu kolonunun başlığının altında iki küçük ikon vardır: `☑` o kolonun tamamını işaretler, `☐` tamamını temizler. Yani `Gönder`, `Yedek al`, `Yalnızca yeni` ve `Ayna` kolonları ayrı ayrı topluca açılıp kapatılabilir; ne yaptıkları ikonların ipucunda yazar. Parametre kolonları [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1) içindeki tanım listesinden üretilir; yeni bir parametre eklemek için o listeye bir satır yazmak yeterlidir, kolon ve onay kutuları kendiliğinden oluşur. Kolon başlıklarında parametrenin ne yaptığını anlatan ipuçları vardır.
 
+Hedef listesinin üstünde üç yardımcı vardır:
+
+- **Filtre kutusu** — ada, gruba veya node kimliğine göre süzer. Süzme sırasında kolon başlığındaki toplu seçim ikonları yalnızca görünen satırlara uygulanır: `Unit2` yazıp `Gönder` kolonunu işaretlemek o gruba ait satırları seçer. Gizlenen satırların seçim durumu korunur.
+- **Grup çipleri** — her grup için `☑` / `☐` ikon çifti; o gruptaki bütün bilgisayarları tek tıkla seçer veya bırakır.
+- **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler, `Erişilebilirleri seç` yalnızca yanıt veren hedefleri işaretler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
+
+Üst satırdaki `Son gönderim` çipi, günlükteki en son kopyalama özetini gösterir (tarih, başarılı/hatalı sayıları, süre).
+
 Bilgisayar başına parametreler:
 
 | Parametre | Ne yapar |

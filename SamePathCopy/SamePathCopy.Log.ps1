@@ -122,6 +122,40 @@ function Write-SamePathCopyLog {
     }
 }
 
+function Get-SamePathCopyLastRunSummary {
+    # Sihirbaz açılışında "en son ne oldu" bilgisini göstermek için günlüğün sonundaki özet satırı okunur.
+    try {
+        $path = Get-SamePathCopyLogPath
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+
+        $stream = [System.IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
+        try {
+            # Dosyanın yalnızca son parçası okunur; günlük büyüdüğünde de hızlı kalır.
+            $tailLength = [Math]::Min($stream.Length, 64KB)
+            [void]$stream.Seek(-$tailLength, [System.IO.SeekOrigin]::End)
+            $buffer = New-Object byte[] $tailLength
+            [void]$stream.Read($buffer, 0, $buffer.Length)
+            $text = [System.Text.Encoding]::UTF8.GetString($buffer)
+        }
+        finally {
+            $stream.Dispose()
+        }
+
+        $lastLine = @($text -split '\r?\n' | Where-Object { $_ -match '\[Kopyala\] Bitti: ' })[-1]
+        if ([string]::IsNullOrWhiteSpace($lastLine)) { return $null }
+        if ($lastLine -notmatch '^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\.\d{3} .*\[Kopyala\] (?<summary>Bitti: .+)$') { return $null }
+
+        return [pscustomobject]@{
+            Timestamp = $Matches['stamp']
+            Summary = $Matches['summary']
+            Text = "{0} — {1}" -f $Matches['stamp'], $Matches['summary']
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
 function Write-SamePathCopyLogStart {
     param(
         [Parameter(Mandatory = $true)][string]$Component,

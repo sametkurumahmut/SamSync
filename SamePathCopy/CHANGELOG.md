@@ -2,6 +2,11 @@
 
 ## Yayımlanmamış
 
+- Sihirbaza filtre kutusu eklendi: ad, grup veya node kimliğine göre süzme; süzme sırasında toplu seçim ikonları yalnızca görünen satırlara uygulanıyor, gizli satırların seçimi korunuyor.
+- Sihirbaza grup çipleri eklendi: her grup tek tıkla topluca seçilip bırakılabiliyor.
+- Sihirbaz açılışında hedeflerin SMB portuna eşzamanlı TCP yoklaması yapılıyor; bilgisayar adının yanındaki nokta erişilebilirliği gösteriyor. `Erişimi sına` yoklamayı yeniliyor, `Erişilebilirleri seç` yalnızca yanıt verenleri işaretliyor.
+- Sihirbaz üst satırında günlükten okunan `Son gönderim` özeti gösteriliyor.
+
 - Dosya günlüğü eklendi ([SamePathCopy.Log.ps1](SamePathCopy.Log.ps1)): araç klasörünün altındaki `log\root.log` dosyasına yazılıyor, klasör yazılamıyorsa `%LOCALAPPDATA%` ve `%TEMP%` altına düşülüyor, `SAMEPATHCOPY_LOG` ile yol değiştirilebiliyor.
 - Kopyalama panelinde görünen bütün satırlar (hedef, kaynak → hedef, etkin parametreler, yedek yolu, başarılı/hatalı/atlandı durumu, robocopy hata kodu ve ayrıntıları, özet) günlüğe de yazılıyor.
 - Ayrıca oturum başlığı, yerel node ve kökler, çözülen hedefler, sihirbaz seçimleri, hesaplanan plan, kuyruk birleştirme, kurulum/kaldırma ve Notepad++ bütünleşmesi kaydediliyor; hatalar yığın konumuyla birlikte düşüyor.

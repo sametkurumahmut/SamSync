@@ -298,6 +298,50 @@ function Get-SamePathCopyOptionValue {
     return [bool]$Options.$Name
 }
 
+function Test-SamePathCopyTargetReachability {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Targets,
+        [int]$TimeoutMilliseconds = 900,
+        [int]$Port = 445
+    )
+
+    # SMB portuna eşzamanlı TCP yoklaması yapılır: kapalı bir eğitmen bilgisayarı kopyalama başlamadan görülür.
+    # Paylaşım ve yetki denetimi kopyalama anında zaten yapılıyor; buradaki amaç yalnızca makinenin ayakta olması.
+    $probes = @()
+    foreach ($target in $Targets) {
+        # Adresi olmayan girdi yoklanmaz; sonuç kümesinde yer almaz ve arayüzde "sınanmadı" olarak kalır.
+        if (-not $target.PSObject.Properties['address'] -or [string]::IsNullOrWhiteSpace([string]$target.address)) { continue }
+        $address = [string]$target.address
+        $client = New-Object System.Net.Sockets.TcpClient
+        $async = $null
+        try { $async = $client.BeginConnect($address, $Port, $null, $null) } catch { $async = $null }
+        $probes += [pscustomobject]@{ Id = [string]$target.id; Address = $address; Client = $client; Async = $async }
+    }
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    $status = @{}
+    foreach ($probe in $probes) {
+        $reachable = $false
+        try {
+            if ($null -ne $probe.Async) {
+                $remaining = [int][Math]::Max(0, ($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+                if ($probe.Async.AsyncWaitHandle.WaitOne($remaining)) {
+                    $probe.Client.EndConnect($probe.Async)
+                    $reachable = [bool]$probe.Client.Connected
+                }
+            }
+        }
+        catch {
+            $reachable = $false
+        }
+        finally {
+            try { $probe.Client.Close() } catch { }
+        }
+        $status[$probe.Id] = [pscustomobject]@{ Reachable = $reachable; Address = $probe.Address; Port = $Port }
+    }
+    return $status
+}
+
 function Get-SamePathCopyNodeGroup {
     param([Parameter(Mandatory = $true)]$Node)
 

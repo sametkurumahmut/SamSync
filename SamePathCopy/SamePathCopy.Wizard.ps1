@@ -1,5 +1,10 @@
 ﻿Set-StrictMode -Version 2.0
 
+# Sihirbaz günlüğe yazar; dosya tek başına dot-source edildiğinde (testler, demo) günlük katmanı da yüklenir.
+if (-not (Get-Command -Name 'Write-SamePathCopyLog' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot 'SamePathCopy.Log.ps1')
+}
+
 # Sihirbaz ayarları config.json'a değil, bilgisayara özel bir duruma yazılır: config ortak (hatta salt okunur ağ)
 # olabilir ve seçimler kullanıcıya göre değişir. SAMEPATHCOPY_WIZARD_STATE ortam değişkeni yolu değiştirir (testler kullanır).
 function Get-SamePathCopyWizardStatePath {
@@ -141,8 +146,75 @@ function Set-SamePathCopyWizardColumnState {
     )
 
     # Kolon başlığındaki toplu seçim ikonlarının yaptığı iş; arayüzden ayrı sınanabilmesi için burada durur.
+    # Filtre uygulanmışsa yalnızca görünen satırlar etkilenir: "Unit2 yaz, tümünü seç" böyle çalışır.
     foreach ($row in @($Rows)) {
+        if ($row.PSObject.Properties['Visible'] -and -not [bool]$row.Visible) { continue }
         $row.Controls[$Key].IsChecked = $Value
+    }
+}
+
+function Test-SamePathCopyWizardRowMatch {
+    param(
+        [Parameter(Mandatory = $true)]$Row,
+        [string]$Filter
+    )
+
+    # Filtre metni ad, grup ve node kimliğinde aranır; boş filtre bütün satırları gösterir.
+    if ([string]::IsNullOrWhiteSpace($Filter)) { return $true }
+    $needle = $Filter.Trim()
+    foreach ($candidate in @([string]$Row.Name, [string]$Row.Group, [string]$Row.Id)) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and
+            $candidate.IndexOf($needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Set-SamePathCopyWizardRowFilter {
+    param(
+        [object[]]$Rows,
+        [string]$Filter
+    )
+
+    # Gizlenen satırın seçim durumu korunur; yalnızca görünürlüğü ve satır yüksekliği değişir.
+    $visibleCount = 0
+    foreach ($row in @($Rows)) {
+        $isVisible = Test-SamePathCopyWizardRowMatch -Row $row -Filter $Filter
+        $row.Visible = $isVisible
+        if ($isVisible) { $visibleCount++ }
+        foreach ($element in @($row.Elements)) {
+            $element.Visibility = $(if ($isVisible) { 'Visible' } else { 'Collapsed' })
+        }
+        if ($row.PSObject.Properties['RowDefinition'] -and $null -ne $row.RowDefinition) {
+            $row.RowDefinition.Height = [System.Windows.GridLength]::new($(if ($isVisible) { 34 } else { 0 }))
+        }
+    }
+    return $visibleCount
+}
+
+function Set-SamePathCopyWizardReachabilityState {
+    param(
+        [object[]]$Rows,
+        [Parameter(Mandatory = $true)][hashtable]$Status,
+        $Window
+    )
+
+    # Erişilemeyen hedefler kırmızı, erişilebilenler yeşil noktayla işaretlenir; yoklanmayanlar nötr kalır.
+    foreach ($row in @($Rows)) {
+        if (-not $Status.ContainsKey([string]$row.Id)) { continue }
+        $entry = $Status[[string]$row.Id]
+        $row.Reachable = [bool]$entry.Reachable
+        if ($row.PSObject.Properties['ReachabilityDot'] -and $null -ne $row.ReachabilityDot -and $null -ne $Window) {
+            $row.ReachabilityDot.Text = '●'
+            $row.ReachabilityDot.Foreground = $Window.FindResource($(if ($row.Reachable) { 'SuccessBrush' } else { 'DangerBrush' }))
+            $row.ReachabilityDot.ToolTip = if ($row.Reachable) {
+                "{0}: SMB portu (445) yanıt veriyor" -f $entry.Address
+            }
+            else {
+                "{0}: SMB portu (445) yanıt vermiyor. Bilgisayar kapalı, ağ dışı ya da paylaşım kapalı olabilir." -f $entry.Address
+            }
+        }
     }
 }
 
@@ -170,12 +242,25 @@ function Get-SamePathCopyWizardBodyXaml {
             <Border Style="{StaticResource Chip}">
                 <TextBlock x:Name="LocalRootText" Style="{StaticResource MutedText}" MaxWidth="420" />
             </Border>
+            <Border x:Name="LastRunChip" Style="{StaticResource Chip}" Visibility="Collapsed">
+                <TextBlock x:Name="LastRunText" Style="{StaticResource MutedText}" MaxWidth="320" />
+            </Border>
         </StackPanel>
 
         <Grid Grid.Row="2" Margin="0,16,0,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <TextBlock Style="{StaticResource SectionText}" Text="Hedefler" VerticalAlignment="Center" />
-            <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" HorizontalAlignment="Right"
-                       VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBox x:Name="FilterBox" Style="{StaticResource SearchBox}" Width="200" Margin="0,0,10,0" />
+                <Button x:Name="ProbeButton" Style="{StaticResource GhostButton}" Content="Erişimi sına" Margin="0,0,8,0" />
+                <Button x:Name="SelectReachableButton" Style="{StaticResource GhostButton}" Content="Erişilebilirleri seç"
+                        Margin="0,0,10,0" />
+                <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel x:Name="GroupTogglePanel" Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0" />
         </Grid>
 
         <Border Grid.Row="3" Style="{StaticResource Card}" Padding="6">
@@ -268,12 +353,19 @@ function Show-SamePathCopyWizard {
     $script:wizardIconPath = $IconPath
     $script:wizardOptionDefinitions = $optionDefinitions
     $script:wizardSelectionCountText = $window.FindName('SelectionCountText')
+    $script:wizardFilterBox = $window.FindName('FilterBox')
+    $script:wizardFilterBox.Tag = 'Ada, gruba ya da kimliğe göre süz'
+    $script:wizardTargets = $Targets
+    $script:wizardReachabilityStatus = @{}
     $script:wizardRows = New-Object System.Collections.Generic.List[object]
     $rows = $script:wizardRows
 
     $updateSelectionCount = {
         $selected = @($script:wizardRows | Where-Object { [bool]$_.Controls['Selected'].IsChecked }).Count
-        $script:wizardSelectionCountText.Text = "{0} / {1} seçili" -f $selected, $script:wizardRows.Count
+        $text = "{0} / {1} seçili" -f $selected, $script:wizardRows.Count
+        $hidden = @($script:wizardRows | Where-Object { -not [bool]$_.Visible }).Count
+        if ($hidden -gt 0) { $text += "  •  filtre: {0} satır" -f ($script:wizardRows.Count - $hidden) }
+        $script:wizardSelectionCountText.Text = $text
     }
 
     # Her onay kutusu kolonunun başlığının altına, o kolonun tamamını işaretleyen/temizleyen iki küçük ikon konur.
@@ -282,6 +374,23 @@ function Show-SamePathCopyWizard {
         param($sender, $eventArgs)
         $tag = $sender.Tag
         Set-SamePathCopyWizardColumnState -Rows $script:wizardRows -Key ([string]$tag.Key) -Value ([bool]$tag.Value)
+    }
+
+    $groupToggleHandler = {
+        param($sender, $eventArgs)
+        $tag = $sender.Tag
+        foreach ($row in $script:wizardRows) {
+            if ([string]$row.Group -ne [string]$tag.Group) { continue }
+            $row.Controls['Selected'].IsChecked = [bool]$tag.Value
+        }
+    }
+
+    $script:wizardUpdateSelectionCount = $updateSelectionCount
+    $script:wizardProbeReachability = {
+        $script:wizardReachabilityStatus = Test-SamePathCopyTargetReachability -Targets $script:wizardTargets
+        Set-SamePathCopyWizardReachabilityState -Rows $script:wizardRows -Status $script:wizardReachabilityStatus -Window $script:wizardWindow
+        $unreachable = @($script:wizardRows | Where-Object { $_.Reachable -eq $false }).Count
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Erişim yoklaması: {0} hedef, {1} erişilemez" -f $script:wizardRows.Count, $unreachable)
     }
 
     $addColumnToggles = {
@@ -321,6 +430,7 @@ function Show-SamePathCopyWizard {
         $definition.Height = [System.Windows.GridLength]::new(34)
         [void]$targetGrid.RowDefinitions.Add($definition)
 
+        $rowElements = New-Object System.Collections.Generic.List[object]
         $rowBorder = New-Object System.Windows.Controls.Border
         $rowBorder.Style = $window.FindResource('RowBorder')
         [System.Windows.Controls.Grid]::SetRow($rowBorder, $rowIndex)
@@ -330,6 +440,7 @@ function Show-SamePathCopyWizard {
             $rowBorder.Background = $window.FindResource('SurfaceAltBrush')
         }
         [void]$targetGrid.Children.Add($rowBorder)
+        [void]$rowElements.Add($rowBorder)
 
         $controls = @{}
         $selectedBox = New-Object System.Windows.Controls.CheckBox
@@ -342,22 +453,39 @@ function Show-SamePathCopyWizard {
         [System.Windows.Controls.Grid]::SetRow($selectedBox, $rowIndex)
         [System.Windows.Controls.Grid]::SetColumn($selectedBox, 0)
         [void]$targetGrid.Children.Add($selectedBox)
+        [void]$rowElements.Add($selectedBox)
         $controls['Selected'] = $selectedBox
 
+        # Ad hücresi, erişilebilirlik noktası ile adı yan yana taşır; nokta yoklama sonucuna göre renklenir.
+        $namePanel = New-Object System.Windows.Controls.StackPanel
+        $namePanel.Orientation = 'Horizontal'
+        $namePanel.Margin = New-Object System.Windows.Thickness(6, 0, 8, 0)
+        $reachabilityDot = New-Object System.Windows.Controls.TextBlock
+        $reachabilityDot.Style = $window.FindResource('MutedText')
+        $reachabilityDot.Text = '○'
+        $reachabilityDot.FontSize = 11
+        $reachabilityDot.VerticalAlignment = 'Center'
+        $reachabilityDot.Margin = New-Object System.Windows.Thickness(0, 0, 7, 0)
+        $reachabilityDot.ToolTip = 'Erişim henüz sınanmadı'
+        [void]$namePanel.Children.Add($reachabilityDot)
         $nameText = New-Object System.Windows.Controls.TextBlock
         $nameText.Style = $window.FindResource('BodyText')
         $nameText.Text = [string]$target.name
-        $nameText.Margin = New-Object System.Windows.Thickness(6, 0, 8, 0)
-        [System.Windows.Controls.Grid]::SetRow($nameText, $rowIndex)
-        [System.Windows.Controls.Grid]::SetColumn($nameText, 1)
-        [void]$targetGrid.Children.Add($nameText)
+        $nameText.VerticalAlignment = 'Center'
+        [void]$namePanel.Children.Add($nameText)
+        [System.Windows.Controls.Grid]::SetRow($namePanel, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($namePanel, 1)
+        [void]$targetGrid.Children.Add($namePanel)
+        [void]$rowElements.Add($namePanel)
 
+        $groupName = if ($target.PSObject.Properties['group']) { [string]$target.group } else { '' }
         $groupText = New-Object System.Windows.Controls.TextBlock
         $groupText.Style = $window.FindResource('MutedText')
-        $groupText.Text = if ($target.PSObject.Properties['group']) { [string]$target.group } else { '' }
+        $groupText.Text = $groupName
         [System.Windows.Controls.Grid]::SetRow($groupText, $rowIndex)
         [System.Windows.Controls.Grid]::SetColumn($groupText, 2)
         [void]$targetGrid.Children.Add($groupText)
+        [void]$rowElements.Add($groupText)
 
         $optionColumn = $firstOptionColumn
         foreach ($optionDefinition in $optionDefinitions) {
@@ -370,14 +498,88 @@ function Show-SamePathCopyWizard {
             [System.Windows.Controls.Grid]::SetRow($optionBox, $rowIndex)
             [System.Windows.Controls.Grid]::SetColumn($optionBox, $optionColumn)
             [void]$targetGrid.Children.Add($optionBox)
+            [void]$rowElements.Add($optionBox)
             $controls[[string]$optionDefinition.Name] = $optionBox
             $optionColumn++
         }
 
-        $rows.Add([pscustomobject]@{ Id = $targetId; Name = [string]$target.name; Controls = $controls })
+        $rows.Add([pscustomobject]@{
+            Id = $targetId
+            Name = [string]$target.name
+            Group = $groupName
+            Controls = $controls
+            Elements = $rowElements
+            RowDefinition = $definition
+            Visible = $true
+            Reachable = $null
+            ReachabilityDot = $reachabilityDot
+        })
         $rowIndex++
     }
     & $updateSelectionCount
+
+    # Filtre kutusu: her tuş vuruşunda satırlar süzülür, seçim durumları korunur.
+    $script:wizardFilterBox.Add_TextChanged({
+        [void](Set-SamePathCopyWizardRowFilter -Rows $script:wizardRows -Filter $script:wizardFilterBox.Text)
+        & $script:wizardUpdateSelectionCount
+    })
+
+    # Grup başına toplu seçim: her grup için işaretle/temizle ikon çifti.
+    $groupTogglePanel = $window.FindName('GroupTogglePanel')
+    $groupNames = @($script:wizardRows | ForEach-Object { [string]$_.Group } | Where-Object { $_ } | Select-Object -Unique)
+    if ($groupNames.Count -gt 0) {
+        $groupLabel = New-Object System.Windows.Controls.TextBlock
+        $groupLabel.Style = $window.FindResource('MutedText')
+        $groupLabel.Text = 'Gruplar:'
+        $groupLabel.VerticalAlignment = 'Center'
+        $groupLabel.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
+        [void]$groupTogglePanel.Children.Add($groupLabel)
+    }
+    foreach ($groupName in $groupNames) {
+        $groupChip = New-Object System.Windows.Controls.Border
+        $groupChip.Style = $window.FindResource('Chip')
+        $chipPanel = New-Object System.Windows.Controls.StackPanel
+        $chipPanel.Orientation = 'Horizontal'
+        $chipText = New-Object System.Windows.Controls.TextBlock
+        $chipText.Style = $window.FindResource('MutedText')
+        $chipText.Text = $groupName
+        $chipText.VerticalAlignment = 'Center'
+        $chipText.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+        [void]$chipPanel.Children.Add($chipText)
+        foreach ($toggle in @(
+            [pscustomobject]@{ Glyph = '☑'; Value = $true; ToolTip = "$groupName grubundaki bütün bilgisayarları seç" }
+            [pscustomobject]@{ Glyph = '☐'; Value = $false; ToolTip = "$groupName grubundaki seçimleri kaldır" }
+        )) {
+            $groupButton = New-Object System.Windows.Controls.Button
+            $groupButton.Style = $window.FindResource('IconButton')
+            $groupButton.Content = [string]$toggle.Glyph
+            $groupButton.ToolTip = [string]$toggle.ToolTip
+            $groupButton.Tag = [pscustomobject]@{ Group = [string]$groupName; Value = [bool]$toggle.Value }
+            $groupButton.Add_Click($groupToggleHandler)
+            [void]$chipPanel.Children.Add($groupButton)
+        }
+        $groupChip.Child = $chipPanel
+        [void]$groupTogglePanel.Children.Add($groupChip)
+    }
+
+    # Erişim yoklaması: pencere açılırken bir kez, sonra düğmeyle yeniden çalıştırılabilir.
+    $window.FindName('ProbeButton').Add_Click({ & $script:wizardProbeReachability })
+    $window.FindName('SelectReachableButton').Add_Click({
+        if ($script:wizardReachabilityStatus.Count -eq 0) { & $script:wizardProbeReachability }
+        foreach ($row in $script:wizardRows) {
+            if (-not [bool]$row.Visible) { continue }
+            if ($null -eq $row.Reachable) { continue }
+            $row.Controls['Selected'].IsChecked = [bool]$row.Reachable
+        }
+        & $script:wizardUpdateSelectionCount
+    })
+
+    # Son çalıştırma özeti günlükten okunur; henüz kopyalama yapılmadıysa chip görünmez.
+    $lastRun = Get-SamePathCopyLastRunSummary
+    if ($null -ne $lastRun) {
+        $window.FindName('LastRunText').Text = "Son gönderim: {0}" -f $lastRun.Text
+        $window.FindName('LastRunChip').Visibility = 'Visible'
+    }
 
     $globalPanel = $window.FindName('GlobalOptionPanel')
     $globalBoxes = @{}
@@ -422,6 +624,9 @@ function Show-SamePathCopyWizard {
         })
         $timer.Start()
     }
+
+    # İlk erişim yoklaması pencere açılmadan yapılır: satırlar açılışta doğru renkle gelir.
+    & $script:wizardProbeReachability
 
     $dialogResult = $window.ShowDialog()
 

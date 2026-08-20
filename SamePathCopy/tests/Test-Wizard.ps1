@@ -118,8 +118,8 @@ try {
 `$env:SAMEPATHCOPY_WIZARD_AUTOCLOSE = '400'
 `$configuration = [pscustomobject]@{ menuTitle = 'SamePathCopy'; allLabel = 'Tumu' }
 `$targets = @(
-    [pscustomobject]@{ id = 'IG1'; name = 'IG1'; group = 'Unit1' }
-    [pscustomobject]@{ id = 'IG2'; name = 'IG2' }
+    [pscustomobject]@{ id = 'IG1'; name = 'IG1'; group = 'Unit1'; address = '127.0.0.1' }
+    [pscustomobject]@{ id = 'IG2'; name = 'IG2'; address = '10.255.255.1' }
 )
 `$settings = Get-SamePathCopyWizardSettings -ConfigPath '$configPath' -Targets `$targets
 `$sourceItems = @(Get-Item -LiteralPath '$projectDirectory\README.md')
@@ -152,6 +152,53 @@ try {
     Assert-Equal 'confirmed=True' $uiOutput[1] 'Onaylanan pencere Confirmed=true döndürmeli.'
     Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
     Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
+
+    # Filtre: ada, gruba ve kimliğe göre süzer; boş filtre bütün satırları gösterir.
+    $filterRows = @(
+        [pscustomobject]@{ Id = 'U1IG1'; Name = 'IG1 - 10.10.1.11'; Group = 'Unit1'; Visible = $true; Elements = @(); RowDefinition = $null; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $false } } }
+        [pscustomobject]@{ Id = 'U2IG1'; Name = 'IG1 - 10.10.1.31'; Group = 'Unit2'; Visible = $true; Elements = @(); RowDefinition = $null; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $false } } }
+        [pscustomobject]@{ Id = 'Yedek'; Name = 'Yedek sunucu'; Group = ''; Visible = $true; Elements = @(); RowDefinition = $null; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $false } } }
+    )
+    Assert-Equal 3 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter '') 'Boş filtre bütün satırları göstermeli.'
+    Assert-Equal 1 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'unit2') 'Grup adına göre süzme çalışmadı.'
+    Assert-Equal 1 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter '46.31') 'Bilgisayar adına göre süzme çalışmadı.'
+    Assert-Equal 1 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'yedek') 'Node kimliğine göre süzme çalışmadı.'
+    Assert-Equal 0 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'yokböylebir') 'Eşleşmeyen filtre satır bırakmamalı.'
+
+    # Toplu seçim yalnızca görünen satırlara uygulanır: filtre varken tümünü seç gizli satırlara dokunmaz.
+    [void](Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'unit2')
+    Set-SamePathCopyWizardColumnState -Rows $filterRows -Key 'Selected' -Value $true
+    Assert-Equal $true ([bool]$filterRows[1].Controls['Selected'].IsChecked) 'Görünen satır işaretlenmeliydi.'
+    Assert-Equal $false ([bool]$filterRows[0].Controls['Selected'].IsChecked) 'Filtre dışındaki satır işaretlenmemeliydi.'
+
+    # Erişilebilirlik yoklaması: açık bir port erişilebilir, kapalı port erişilemez sayılmalı.
+    $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    try {
+        $openPort = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+        $probeTargets = @([pscustomobject]@{ id = 'Acik'; address = '127.0.0.1' })
+        $status = Test-SamePathCopyTargetReachability -Targets $probeTargets -Port $openPort -TimeoutMilliseconds 1500
+        Assert-Equal $true ([bool]$status['Acik'].Reachable) 'Açık port erişilebilir sayılmalı.'
+    }
+    finally {
+        $listener.Stop()
+    }
+    $closedStatus = Test-SamePathCopyTargetReachability -Targets @([pscustomobject]@{ id = 'Kapali'; address = '127.0.0.1' }) -Port 1 -TimeoutMilliseconds 800
+    Assert-Equal $false ([bool]$closedStatus['Kapali'].Reachable) 'Kapalı port erişilemez sayılmalı.'
+    $unroutableStatus = Test-SamePathCopyTargetReachability -Targets @([pscustomobject]@{ id = 'Yok'; address = '10.255.255.1' }) -TimeoutMilliseconds 600
+    Assert-Equal $false ([bool]$unroutableStatus['Yok'].Reachable) 'Erişilemeyen adres zaman aşımıyla erişilemez sayılmalı.'
+
+    # Yoklama sonucu satırlara işlenir.
+    $reachRows = @(
+        [pscustomobject]@{ Id = 'Acik'; Reachable = $null; ReachabilityDot = $null }
+        [pscustomobject]@{ Id = 'Yok'; Reachable = $null; ReachabilityDot = $null }
+    )
+    Set-SamePathCopyWizardReachabilityState -Rows $reachRows -Status @{
+        'Acik' = [pscustomobject]@{ Reachable = $true; Address = '127.0.0.1'; Port = 445 }
+        'Yok' = [pscustomobject]@{ Reachable = $false; Address = '10.255.255.1'; Port = 445 }
+    } -Window $null
+    Assert-Equal $true ([bool]$reachRows[0].Reachable) 'Erişilebilir satır işaretlenmedi.'
+    Assert-Equal $false ([bool]$reachRows[1].Reachable) 'Erişilemez satır işaretlenmedi.'
 
     Write-Host 'Sihirbaz testleri başarılı.'
 }
