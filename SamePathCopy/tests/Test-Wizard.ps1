@@ -158,6 +158,7 @@ try {
 "confirmed=`$(`$result.Confirmed)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "hedef sayisi=`$(@(`$result.Settings.Targets.Keys).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "ig1 secili=`$(`$result.Settings.Targets['IG1'].Selected)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"kaynak yolu=`$(@(`$result.SourcePaths) -join ';')" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "@
     Set-Content -LiteralPath $uiScriptPath -Value $uiScript -Encoding UTF8
 
@@ -182,6 +183,7 @@ try {
     Assert-Equal 'confirmed=True' $uiOutput[1] 'Onaylanan pencere Confirmed=true döndürmeli.'
     Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
     Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
+    if ($uiOutput[4] -notlike '*README.md') { throw "Sihirbaz sonucu kaynak listesini taşımalı: $($uiOutput[4])" }
 
     # Kimliğe göre seçim: küme tam uygulanır (filtreden bağımsız), eşleşen satır sayısı döner.
     $selectionRows = @(
@@ -200,6 +202,34 @@ try {
     Assert-Equal $true ([bool]$selectionRows[1].Controls['Selected'].IsChecked) 'Gizli satır ters çevirmeden etkilenmemeli.'
     Assert-Equal $true ([bool]$selectionRows[2].Controls['Selected'].IsChecked) 'Görünen satır ters çevrilmedi.'
 
+    # Kaynak listesi düzenleme yardımcıları: dışlama süzer, bırakılan yol eklenir/yinelenmez/geri işaretlenir.
+    $editSourceDir = Join-Path $testDirectory 'kaynak-duzenleme'
+    [void](New-Item -ItemType Directory -Path $editSourceDir)
+    Set-Content -LiteralPath (Join-Path $editSourceDir 'a.txt') -Value 'a' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $editSourceDir 'b.txt') -Value 'b' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $editSourceDir 'c.txt') -Value 'c' -Encoding UTF8
+
+    $editList = New-Object System.Collections.Generic.List[object]
+    $editList.Add((Get-Item -LiteralPath (Join-Path $editSourceDir 'a.txt')))
+    $editList.Add((Get-Item -LiteralPath (Join-Path $editSourceDir 'b.txt')))
+    $editExcluded = @{}
+    Assert-Equal 2 @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $editList -ExcludedPaths $editExcluded).Count 'Dışlama yokken bütün öğeler etkin olmalı.'
+    $editExcluded[(Join-Path $editSourceDir 'b.txt').ToLowerInvariant()] = $true
+    $effectiveAfterExclude = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $editList -ExcludedPaths $editExcluded)
+    Assert-Equal 1 $effectiveAfterExclude.Count 'Dışlanan öğe etkin listeden düşmedi.'
+    Assert-Equal 'a.txt' ([string]$effectiveAfterExclude[0].Name) 'Yanlış öğe dışlandı.'
+
+    # Bırakma: yeni yol eklenir, var olan yinelenmez, dışlanmış yol bırakılırsa işareti geri gelir, olmayan yol atlanır.
+    $addedCount = Add-SamePathCopyWizardSourcePaths -SourceItems $editList -ExcludedPaths $editExcluded -Paths @(
+        (Join-Path $editSourceDir 'c.txt'),
+        (Join-Path $editSourceDir 'a.txt'),
+        (Join-Path $editSourceDir 'b.txt'),
+        (Join-Path $editSourceDir 'olmayan.txt')
+    )
+    Assert-Equal 2 $addedCount 'Eklenen sayısı yanlış: c.txt yeni, b.txt geri işaretlenen.'
+    Assert-Equal 3 $editList.Count 'Liste c.txt ile üçe çıkmalı; a.txt yinelenmemeli.'
+    Assert-Equal 0 $editExcluded.Count 'Bırakılan b.txt yeniden işaretlenmeliydi.'
+
     # Başlıktaki kaynak ve yerel kök çipleri: tıklanınca açılan listede öğelerin göreli yolları ve
     # köklerin tamamı görünmeli. Popup gerçekten açılabilmeli; bu yüzden pencere STA sürecinde gösterilir.
     $chipScriptPath = Join-Path $testDirectory 'chip-smoke.ps1'
@@ -217,6 +247,9 @@ Add-Type -AssemblyName PresentationFramework
 )
 `$summary = Get-SamePathCopySourceSummary -SourceItems `$items -LocalRoots @('C:\Kok', 'D:\Baska')
 `$panel = `$window.FindName('ChipPanel')
+`$script:chipToggled = @()
+`$toggleHandler = { param(`$sender, `$eventArgs) `$script:chipToggled += [string]`$sender.Tag }
+`$selectableChip = New-SamePathCopySourceChip -Window `$window -Summary `$summary -Selectable -ToggleHandler `$toggleHandler -ExcludedPaths @{}
 `$sourceChip = New-SamePathCopySourceChip -Window `$window -Summary `$summary
 `$rootChip = New-SamePathCopyLocalRootChip -Window `$window -Summary `$summary
 [void]`$panel.Children.Add(`$sourceChip)
@@ -240,6 +273,13 @@ Invoke-SamePathCopyUiPump
 "popup acik=`$(`$sourceChip.Tag.IsOpen)" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8
 "kaynak satir=`$(`$sourceTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
 "kok satir=`$(`$rootTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+`$selectableList = Get-ChipListPanel -Chip `$selectableChip
+`$firstRow = @(`$selectableList.Children | Where-Object { `$_.Children.Count -gt 0 -and `$_.Children[0] -is [System.Windows.Controls.CheckBox] })[0]
+`$firstCheck = `$firstRow.Children[0]
+"kutu tipi=`$(`$firstCheck.GetType().Name)" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+`$firstCheck.IsChecked = `$false
+`$firstCheck.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+"kutu tag=`$(`$script:chipToggled -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
 `$sourceChip.Tag.IsOpen = `$false
 Invoke-SamePathCopyUiPump
 `$window.Close()
@@ -266,6 +306,8 @@ Invoke-SamePathCopyUiPump
     if ($chipOutput[1] -notlike '*Data\Sahneler\*') { throw "Klasör satırı ters bölü ile bitmiyor: $($chipOutput[1])" }
     if ($chipOutput[1] -notlike '*C\Gecici\z.txt*') { throw "Kök dışı öğe listede yok: $($chipOutput[1])" }
     if ($chipOutput[2] -notlike '*C:\Kok*' -or $chipOutput[2] -notlike '*D:\Baska*') { throw "Kök listesi eksik: $($chipOutput[2])" }
+    Assert-Equal 'kutu tipi=CheckBox' $chipOutput[3] 'Seçilebilir çipte satır başında onay kutusu olmalı.'
+    if ($chipOutput[4] -notlike '*C:\Kok\Data\*') { throw "Onay kutusu işleyicisi öğe yolunu taşımalı: $($chipOutput[4])" }
 
     # Filtre: ada, gruba ve kimliğe göre süzer; boş filtre bütün satırları gösterir.
     $filterRows = @(

@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- Sihirbazda kaynak listesi artık düzenlenebiliyor: kaynak çipinin açılır listesindeki onay kutusuyla öğe o kopyalamadan düşürülüyor (çip `Kaynak: 7 / 9 öğe` gösteriyor), pencereye sürüklenip bırakılan dosya/klasör listeye ekleniyor. Başlık, yerel kök çipi ve `Hedefi incele` rozetleri yalnızca kalan öğeleri sayıyor; kopyalama sihirbazın döndürdüğü son listeyle yapılıyor. Bütün öğelerin işareti kaldırılırsa kopyalama başlamıyor; değişiklik yalnızca o çalıştırma için geçerli.
+
 - `-CheckOnly` kipi eklendi: hedeflere hiçbir şey yazmadan her hedef için `Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata` durumu ve sayı dökümü (`Changes`, `Missing`, `DestNewer`, `Extras`) yazılıyor. Çıkış kodu 0 = bütün hedefler aynı, 1 = fark var; eğitim öncesi "12 makine senkron mu" denetimi betikten çalıştırılabiliyor. Erişilemeyen hedefte robocopy zaman aşımı beklenmiyor; sihirbazdaki `Hedefi incele` ile aynı inceleme işlevini kullanıyor.
 
 - Sihirbaz tablosuna `Hedefte` kolonu ve `Hedefi incele` düğmesi eklendi: seçili hedeflerde `robocopy /L` çalıştırılıp her satıra durum rozeti yazılıyor — `aynı`, `N değişecek`, `hedefte yok`, `erişilemedi`. Hedefteki dosya kaynaktan daha yeniyse rozet `!` ile uyarı rengine dönüyor (kopyalama üzerine yazar); ipucunda sınıf dökümü duruyor. İnceleme hedefe hiçbir şey yazmıyor, erişilemeyen hedefleri atlıyor. Listeleme özeti artık sınıf dökümü de veriyor (yeni / kaynak daha yeni / hedef daha yeni / boyutu farklı); inceleme mantığı [SamePathCopy.Common.ps1](SamePathCopy.Common.ps1) içinde ve gerçek robocopy ile test ediliyor.

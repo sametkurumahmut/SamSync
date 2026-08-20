@@ -99,6 +99,8 @@ Hedef listesinin üstünde üç yardımcı vardır:
 Başlık satırı seçimi tek satırda özetler: tek öğede tam yol ve türü, çok öğede ortak klasör ile sayı dökümü (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), öğeler ayrı klasörlerden geliyorsa klasör sayısı. Ayrıntı, altındaki iki tıklanabilir çipte durur — böylece kalabalık seçimlerde satır uzayıp kesilmez:
 
 - **`Kaynak: N öğe`** — açılan listede öğeler ait oldukları yerel köke göre gruplanır ve her öğe **hedefte oluşacak göreli yoluyla** yazılır (klasörler `\` ile biter, satır ipucunda tam yol görünür). Hiçbir kökün altında olmayan öğeler `Yerel kök dışında (sürücü adıyla kopyalanır)` başlığı altında toplanır. Liste en fazla 200 satır gösterir, kalanı `... ve N öğe daha` diye bildirir; `Yolları panoya kopyala` düğmesi seçimin tamamını panoya yazar.
+
+  Sihirbazda bu liste düzenlenebilir: her satırın başındaki **onay kutusunun işareti kaldırılan öğe o kopyalamaya girmez** (çip `Kaynak: 7 / 9 öğe` der, başlık ve inceleme yalnızca kalanları sayar) ve **pencereye dosya/klasör bırakmak** öğeyi listeye ekler. Değişiklik yalnızca o çalıştırma içindir, kayıtlı ayarlara yazılmaz; bütün öğelerin işareti kaldırılırsa kopyalama başlatılmaz. İlk 200 satırın dışında kalan öğeler tek tek düşürülemez.
 - **`Yerel kök: <yol>` / `N yerel kök`** — bir kök varsa yolu çipte görünür, birden fazla kök varsa yalnızca sayı yazar; açılan listede bütün kökler tam yolla ve her birinden kaç öğe seçildiğiyle (`3 öğe` / `seçimde yok`) durur. Yol artık çipin içinde yarıda kesilmiyor.
 
 Aynı iki çip kopyalama penceresinin başlığında da vardır; geri alma penceresi de aynı özet satırını kullanır.

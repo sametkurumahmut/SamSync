@@ -408,6 +408,60 @@ function Set-SamePathCopyWizardRowFilter {
     return $visibleCount
 }
 
+function Get-SamePathCopyWizardEffectiveSourceItems {
+    param(
+        $SourceItems,
+        [hashtable]$ExcludedPaths
+    )
+
+    # Çipte işareti kaldırılan öğeler düşülür; anahtarlar küçük harfli tam yollardır.
+    # Liste @() ile sarılmaz: List[object] üzerinde "bağımsız değişken türleri eşleşmiyor" hatası veriyor.
+    $effective = New-Object System.Collections.Generic.List[object]
+    foreach ($item in $SourceItems) {
+        if ($null -eq $item) { continue }
+        if ($null -ne $ExcludedPaths -and $ExcludedPaths.ContainsKey(([string]$item.FullName).ToLowerInvariant())) { continue }
+        $effective.Add($item)
+    }
+    return $effective.ToArray()
+}
+
+function Add-SamePathCopyWizardSourcePaths {
+    param(
+        [Parameter(Mandatory = $true)]$SourceItems,
+        [string[]]$Paths,
+        [hashtable]$ExcludedPaths
+    )
+
+    # Pencereye bırakılan yolları kaynak listesine ekler: var olmayan ya da dosya sistemi dışındaki
+    # yollar atlanır, zaten listede olan yol yinelenmez (dışlanmışsa işareti geri gelir).
+    # Dönen sayı gerçekten eklenen öğe sayısıdır; işareti geri gelenler de sayılır ki liste tazelensin.
+    $known = @{}
+    foreach ($item in $SourceItems) {
+        if ($null -ne $item) { $known[([string]$item.FullName).ToLowerInvariant()] = $true }
+    }
+    $changed = 0
+    foreach ($path in @($Paths)) {
+        if ([string]::IsNullOrWhiteSpace([string]$path)) { continue }
+        $item = $null
+        try { $item = Get-Item -LiteralPath ([string]$path) -Force -ErrorAction Stop } catch { continue }
+        if ($item.PSProvider.Name -ne 'FileSystem') { continue }
+        $key = ([string]$item.FullName).ToLowerInvariant()
+        if ($known.ContainsKey($key)) {
+            # Yinelenen yol eklenmez; ama dışlanmışsa bırakma "bunu da gönder" demektir, işareti geri gelir.
+            if ($null -ne $ExcludedPaths -and $ExcludedPaths.ContainsKey($key)) {
+                $ExcludedPaths.Remove($key)
+                $changed++
+            }
+            continue
+        }
+        $known[$key] = $true
+        [void]$SourceItems.Add($item)
+        if ($null -ne $ExcludedPaths -and $ExcludedPaths.ContainsKey($key)) { $ExcludedPaths.Remove($key) }
+        $changed++
+    }
+    return $changed
+}
+
 function Set-SamePathCopyWizardSelectionById {
     param(
         [object[]]$Rows,
@@ -573,15 +627,76 @@ function Show-SamePathCopyWizard {
         -BodyXaml (Get-SamePathCopyWizardBodyXaml) -Width 940 -Height 660 -MinWidth 760 -MinHeight 520 -IconPath $IconPath
 
     # Başlık, seçimi tek satırda özetler; ayrıntı (hangi öğe, hangi kök, hedefte hangi göreli yol)
-    # tıklanan çiplerin açılır listesinde durur. Seçim kalabalık olduğunda satır uzayıp kesilmez.
-    $sourceSummary = Get-SamePathCopySourceSummary -SourceItems $SourceItems -LocalRoots $LocalRoots
-    $sourceTextBlock = $window.FindName('SourceText')
-    $sourceTextBlock.Text = [string]$sourceSummary.HeadlineText
-    $sourceTextBlock.ToolTip = [string]$sourceSummary.ToolTipText
-    $wizardChipPanel = $window.FindName('ChipPanel')
+    # tıklanan çiplerin açılır listesinde durur. Kaynak listesi burada değişebilir: çipteki onay
+    # kutusu öğeyi kopyalamadan düşürür, pencereye bırakılan dosya listeye eklenir. Sonuç nesnesi
+    # kopyalamaya girecek son listeyi taşır.
+    $script:wizardWindow = $window
+    $script:wizardIconPath = $IconPath
+    $script:wizardSourceItems = New-Object System.Collections.Generic.List[object]
+    foreach ($sourceItem in @($SourceItems)) { if ($null -ne $sourceItem) { $script:wizardSourceItems.Add($sourceItem) } }
+    $script:wizardExcludedSources = @{}
+    $script:wizardLocalRoots = @($LocalRoots)
+    $script:wizardHeadlineText = $window.FindName('SourceText')
+    $script:wizardChipPanel = $window.FindName('ChipPanel')
+
+    $script:wizardSourceToggleHandler = {
+        param($sender, $eventArgs)
+        $key = ([string]$sender.Tag).ToLowerInvariant()
+        if ([bool]$sender.IsChecked) { $script:wizardExcludedSources.Remove($key) }
+        else { $script:wizardExcludedSources[$key] = $true }
+        # Açık duran liste yeniden kurulmaz (kapanırdı); başlık ve çip metinleri tazelenir.
+        & $script:wizardRefreshSourceTexts
+    }
+
     # Çipler "son çalıştırma" çipinin önüne eklenir: sıra kaynak, yerel kök, son çalıştırma olur.
-    $wizardChipPanel.Children.Insert(0, (New-SamePathCopySourceChip -Window $window -Summary $sourceSummary))
-    $wizardChipPanel.Children.Insert(1, (New-SamePathCopyLocalRootChip -Window $window -Summary $sourceSummary))
+    $script:wizardRebuildSourceChips = {
+        while ($script:wizardChipPanel.Children.Count -gt 1) { $script:wizardChipPanel.Children.RemoveAt(0) }
+        $effectiveItems = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources)
+        $summary = Get-SamePathCopySourceSummary -SourceItems $script:wizardSourceItems.ToArray() -LocalRoots $script:wizardLocalRoots
+        $script:wizardSourceChip = New-SamePathCopySourceChip -Window $script:wizardWindow -Summary $summary `
+            -Selectable -ToggleHandler $script:wizardSourceToggleHandler -ExcludedPaths $script:wizardExcludedSources
+        $script:wizardChipPanel.Children.Insert(0, $script:wizardSourceChip)
+        $script:wizardChipPanel.Children.Insert(1, (New-SamePathCopyLocalRootChip -Window $script:wizardWindow `
+            -Summary (Get-SamePathCopySourceSummary -SourceItems $effectiveItems -LocalRoots $script:wizardLocalRoots)))
+        & $script:wizardRefreshSourceTexts
+    }
+
+    $script:wizardRefreshSourceTexts = {
+        # Başlık ve çip metni etkin listeden hesaplanır; dışlanan öğe varsa çip "X / Y öğe" der.
+        $effectiveItems = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources)
+        $effectiveSummary = Get-SamePathCopySourceSummary -SourceItems $effectiveItems -LocalRoots $script:wizardLocalRoots
+        $script:wizardHeadlineText.Text = [string]$effectiveSummary.HeadlineText
+        $script:wizardHeadlineText.ToolTip = $(if ([string]$effectiveSummary.ToolTipText) { [string]$effectiveSummary.ToolTipText } else { $null })
+        $chipTextBlock = $script:wizardSourceChip.Child.Children[0]
+        $chipTextBlock.Text = if ($effectiveItems.Count -ne $script:wizardSourceItems.Count) {
+            "Kaynak: {0} / {1} öğe" -f $effectiveItems.Count, $script:wizardSourceItems.Count
+        }
+        else {
+            [string]$effectiveSummary.ChipText
+        }
+    }
+    & $script:wizardRebuildSourceChips
+
+    # Sürükle-bırak: pencereye bırakılan dosya/klasör kaynak listesine eklenir, çipler yeniden kurulur.
+    $window.AllowDrop = $true
+    $window.Add_PreviewDragOver({
+        param($sender, $eventArgs)
+        if ($eventArgs.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) {
+            $eventArgs.Effects = [System.Windows.DragDropEffects]::Copy
+            $eventArgs.Handled = $true
+        }
+    })
+    $window.Add_Drop({
+        param($sender, $eventArgs)
+        if (-not $eventArgs.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { return }
+        $droppedPaths = @($eventArgs.Data.GetData([System.Windows.DataFormats]::FileDrop))
+        $addedCount = Add-SamePathCopyWizardSourcePaths -SourceItems $script:wizardSourceItems `
+            -Paths $droppedPaths -ExcludedPaths $script:wizardExcludedSources
+        if ($addedCount -gt 0) {
+            & $script:wizardRebuildSourceChips
+            Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Sürükle-bırak: {0} öğe eklendi (toplam {1})." -f $addedCount, $script:wizardSourceItems.Count)
+        }
+    })
 
     # Satırlar XAML'deki başlık ızgarasına eklenir; böylece başlık ve hücreler aynı kolon genişliklerini paylaşır.
     # Parametre kolonları tanımlardan üretilir: yeni bir parametre eklendiğinde kolon ve başlık kendiliğinden oluşur.
@@ -838,8 +953,6 @@ function Show-SamePathCopyWizard {
 
     # Hedef inceleme: görünen ve seçili satırlarda robocopy /L çalıştırıp "Hedefte" rozetini doldurur.
     # Erişilemeyen hedef atlanır (robocopy'nin ağ zaman aşımı beklenmez); sonuçlar sırayla gelir.
-    $script:wizardSourceItems = $SourceItems
-    $script:wizardLocalRoots = @($LocalRoots)
     $script:wizardInspectButton = $window.FindName('InspectButton')
     $script:wizardInspectTargets = {
         if ($script:wizardReachabilityStatus.Count -eq 0) { & $script:wizardProbeReachability }
@@ -865,7 +978,9 @@ function Show-SamePathCopyWizard {
                     continue
                 }
                 $target = @($script:wizardTargets | Where-Object { [string]$_.id -eq [string]$row.Id })[0]
-                $inspection = Invoke-SamePathCopyTargetInspection -SourceItems $script:wizardSourceItems `
+                # İnceleme, çipte işareti kaldırılan öğeleri saymaz: rozet gerçekten kopyalanacak kümeyi anlatır.
+                $inspection = Invoke-SamePathCopyTargetInspection `
+                    -SourceItems @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources) `
                     -LocalRoots $script:wizardLocalRoots -Target $target -PumpAction { Invoke-SamePathCopyUiPump }
                 $badge = Get-SamePathCopyInspectionText -Inspection $inspection
                 $row.InspectText.Text = [string]$badge.Text
@@ -1111,6 +1226,11 @@ function Show-SamePathCopyWizard {
 
     $window.FindName('CancelButton').Add_Click({ $script:wizardWindow.DialogResult = $false })
     $window.FindName('StartButton').Add_Click({
+        $effectiveSourceCount = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources).Count
+        if ($effectiveSourceCount -eq 0) {
+            [void](Show-SamePathCopyConfirm -Title 'Kaynak kalmadı' -Message 'Kaynak çipindeki bütün öğelerin işareti kaldırılmış. Kopyalamak için en az bir öğe işaretli kalmalı.' -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
+            return
+        }
         $selectedRows = @($script:wizardRows | Where-Object { [bool]$_.Controls['Selected'].IsChecked })
         if ($selectedRows.Count -eq 0) {
             [void](Show-SamePathCopyConfirm -Title 'Hedef seçilmedi' -Message 'Kopyalamak için en az bir bilgisayar işaretlenmeli.' -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
@@ -1162,5 +1282,8 @@ function Show-SamePathCopyWizard {
     return [pscustomobject]@{
         Confirmed = ($dialogResult -eq $true)
         Settings = [pscustomobject]@{ Global = $updatedGlobal; Targets = $updatedTargets }
+        # Çipte bırakılan ve pencereye eklenen öğelerden sonra kopyalamaya girecek liste.
+        SourcePaths = @(@(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources) |
+            ForEach-Object { [string]$_.FullName })
     }
 }

@@ -512,7 +512,9 @@ function New-SamePathCopyDetailChip {
         $Sections,
         [string]$ClipboardText,
         [string]$ClipboardLabel = 'Yolları panoya kopyala',
-        [double]$MaxTextWidth = 320
+        [double]$MaxTextWidth = 320,
+        # CheckTag taşıyan satırlara onay kutusu konur; tıklanınca bu işleyici çağrılır ($sender.Tag = CheckTag).
+        [scriptblock]$ItemToggleHandler
     )
 
     # Uzun listeler ve uzun yollar çipin içine sığmıyor; çip yalnızca özeti gösterir, tıklandığında
@@ -630,6 +632,18 @@ function New-SamePathCopyDetailChip {
             $rowPanel.Orientation = 'Horizontal'
             $rowPanel.Margin = New-Object System.Windows.Thickness($(if ($sectionHeader) { 12 } else { 0 }), 2, 0, 2)
 
+            if ($null -ne $ItemToggleHandler -and $entry.PSObject.Properties['CheckTag'] -and [string]$entry.CheckTag) {
+                $rowCheck = New-Object System.Windows.Controls.CheckBox
+                $rowCheck.Style = $Window.FindResource('ModernCheckBox')
+                $rowCheck.IsChecked = [bool]$entry.Checked
+                $rowCheck.Tag = [string]$entry.CheckTag
+                $rowCheck.VerticalAlignment = 'Center'
+                $rowCheck.Margin = New-Object System.Windows.Thickness(0, 0, 7, 0)
+                $rowCheck.ToolTip = 'İşareti kaldırılan öğe bu kopyalamaya girmez.'
+                $rowCheck.Add_Click($ItemToggleHandler)
+                [void]$rowPanel.Children.Add($rowCheck)
+            }
+
             $rowText = New-Object System.Windows.Controls.TextBlock
             $rowText.Style = $Window.FindResource('BodyText')
             $rowText.Text = [string]$entry.Text
@@ -668,7 +682,12 @@ function New-SamePathCopyDetailChip {
 function New-SamePathCopySourceChip {
     param(
         [Parameter(Mandatory = $true)]$Window,
-        [Parameter(Mandatory = $true)]$Summary
+        [Parameter(Mandatory = $true)]$Summary,
+        # Seçilebilir kipte her satıra onay kutusu konur: işareti kaldırılan öğe kopyalamaya girmez.
+        # ExcludedPaths anahtarları küçük harfli tam yollardır; ToggleHandler $sender.Tag ile yolu alır.
+        [switch]$Selectable,
+        [scriptblock]$ToggleHandler,
+        [hashtable]$ExcludedPaths
     )
 
     # Kaynak listesi, öğelerin hedefte oluşacak göreli yoluyla gösterilir: kullanıcı hangi dosyanın
@@ -684,6 +703,10 @@ function New-SamePathCopySourceChip {
                 Text = $displayPath
                 Note = $(if ([bool]$entry.IsDirectory) { 'klasör' } else { '' })
                 ToolTip = [string]$entry.FullPath
+                CheckTag = $(if ($Selectable) { [string]$entry.FullPath } else { '' })
+                Checked = $(if ($Selectable) {
+                    -not ($null -ne $ExcludedPaths -and $ExcludedPaths.ContainsKey(([string]$entry.FullPath).ToLowerInvariant()))
+                } else { $true })
             }
         })
         if ([int]$group.HiddenCount -gt 0) {
@@ -701,10 +724,15 @@ function New-SamePathCopySourceChip {
         }
     })
 
+    $description = 'Yollar yerel köke göre gösteriliyor; hedefte aynı göreli yol oluşturulur.'
+    if ($Selectable) {
+        $description += ' İşareti kaldırılan öğe bu kopyalamaya girmez; pencereye dosya bırakarak öğe eklenebilir.'
+    }
     return New-SamePathCopyDetailChip -Window $Window -Text ([string]$Summary.ChipText) `
         -Title ("Kopyalanacak öğeler - {0}" -f [string]$Summary.KindText) `
-        -Description 'Yollar yerel köke göre gösteriliyor; hedefte aynı göreli yol oluşturulur.' `
-        -Sections $sections -ClipboardText ([string]$Summary.ClipboardText)
+        -Description $description `
+        -Sections $sections -ClipboardText ([string]$Summary.ClipboardText) `
+        -ItemToggleHandler $(if ($Selectable) { $ToggleHandler } else { $null })
 }
 
 function New-SamePathCopyLocalRootChip {

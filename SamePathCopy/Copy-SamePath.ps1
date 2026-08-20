@@ -207,6 +207,20 @@ if ($useWizardSettings) {
             (@(@('DryRun', 'FastCopy') | Where-Object { Get-SamePathCopyOptionValue -Options $wizardResult.Settings.Global -Name $_ }) -join ', '))
         if (-not $wizardResult.Confirmed) { exit 0 }
         $wizardSettings = $wizardResult.Settings
+        # Sihirbazda kaynak listesi değişmiş olabilir: çipte işareti kaldırılan öğe düşer,
+        # pencereye bırakılan öğe eklenir. Kopyalama sihirbazın döndürdüğü son listeyle yapılır.
+        if ($wizardResult.PSObject.Properties['SourcePaths']) {
+            $wizardSourcePaths = @($wizardResult.SourcePaths)
+            if ($wizardSourcePaths.Count -eq 0) {
+                throw 'Sihirbazda kopyalanacak öğe kalmadı.'
+            }
+            if ($wizardSourcePaths.Count -ne $sourceItems.Count) {
+                Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Kaynak listesi sihirbazda değişti: {0} -> {1} öğe." -f $sourceItems.Count, $wizardSourcePaths.Count)
+            }
+            $sourceItems = @(foreach ($wizardSourcePath in $wizardSourcePaths) {
+                Get-Item -LiteralPath $wizardSourcePath -Force
+            })
+        }
     }
     $globalOptions = $wizardSettings.Global
     $targets = @($targets | Where-Object { [bool]$wizardSettings.Targets[[string]$_.id].Selected })
