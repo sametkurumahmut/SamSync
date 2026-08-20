@@ -450,13 +450,7 @@ function Get-SamePathCopyWizardBodyXaml {
             <TextBlock x:Name="SourceText" Style="{StaticResource SubtitleText}" Margin="0,4,0,0" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
-            <Border Style="{StaticResource Chip}">
-                <TextBlock x:Name="SourceCountText" Style="{StaticResource MutedText}" />
-            </Border>
-            <Border Style="{StaticResource Chip}">
-                <TextBlock x:Name="LocalRootText" Style="{StaticResource MutedText}" MaxWidth="420" />
-            </Border>
+        <StackPanel x:Name="ChipPanel" Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
             <Border x:Name="LastRunChip" Style="{StaticResource Chip}" Visibility="Collapsed">
                 <TextBlock x:Name="LastRunText" Style="{StaticResource MutedText}" MaxWidth="320" />
             </Border>
@@ -543,15 +537,16 @@ function Show-SamePathCopyWizard {
     $window = New-SamePathCopyWindow -Title ("{0} - Sihirbaz" -f [string]$Configuration.menuTitle) `
         -BodyXaml (Get-SamePathCopyWizardBodyXaml) -Width 940 -Height 660 -MinWidth 760 -MinHeight 520 -IconPath $IconPath
 
-    $window.FindName('SourceText').Text = if ($SourceItems.Count -eq 1) {
-        [string]$SourceItems[0].FullName
-    }
-    else {
-        "{0} öğe seçildi (ilk: {1})" -f $SourceItems.Count, $SourceItems[0].FullName
-    }
-    $window.FindName('SourceCountText').Text = "{0} kaynak öğe" -f $SourceItems.Count
-    $localRootText = if ($LocalRoots -and @($LocalRoots).Count -gt 0) { @($LocalRoots) -join '  •  ' } else { 'Yerel kök tanımsız' }
-    $window.FindName('LocalRootText').Text = "Yerel kök: $localRootText"
+    # Başlık, seçimi tek satırda özetler; ayrıntı (hangi öğe, hangi kök, hedefte hangi göreli yol)
+    # tıklanan çiplerin açılır listesinde durur. Seçim kalabalık olduğunda satır uzayıp kesilmez.
+    $sourceSummary = Get-SamePathCopySourceSummary -SourceItems $SourceItems -LocalRoots $LocalRoots
+    $sourceTextBlock = $window.FindName('SourceText')
+    $sourceTextBlock.Text = [string]$sourceSummary.HeadlineText
+    $sourceTextBlock.ToolTip = [string]$sourceSummary.ToolTipText
+    $wizardChipPanel = $window.FindName('ChipPanel')
+    # Çipler "son çalıştırma" çipinin önüne eklenir: sıra kaynak, yerel kök, son çalıştırma olur.
+    $wizardChipPanel.Children.Insert(0, (New-SamePathCopySourceChip -Window $window -Summary $sourceSummary))
+    $wizardChipPanel.Children.Insert(1, (New-SamePathCopyLocalRootChip -Window $window -Summary $sourceSummary))
 
     # Satırlar XAML'deki başlık ızgarasına eklenir; böylece başlık ve hücreler aynı kolon genişliklerini paylaşır.
     # Parametre kolonları tanımlardan üretilir: yeni bir parametre eklendiğinde kolon ve başlık kendiliğinden oluşur.

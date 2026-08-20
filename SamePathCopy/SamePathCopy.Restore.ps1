@@ -106,12 +106,10 @@ function Show-SamePathCopyRestore {
     $window = New-SamePathCopyWindow -Title ("{0} - Yedekten geri al" -f [string]$Configuration.menuTitle) `
         -BodyXaml (Get-SamePathCopyRestoreBodyXaml) -Width 880 -Height 620 -MinWidth 720 -MinHeight 480 -IconPath $IconPath
 
-    $window.FindName('SourceText').Text = if ($SourceItems.Count -eq 1) {
-        "Geri alınacak öğe: {0}" -f [string]$SourceItems[0].FullName
-    }
-    else {
-        "{0} öğe seçildi (ilk: {1})" -f $SourceItems.Count, [string]$SourceItems[0].FullName
-    }
+    $restoreSummary = Get-SamePathCopySourceSummary -SourceItems $SourceItems
+    $restoreSourceText = $window.FindName('SourceText')
+    $restoreSourceText.Text = "Geri alınacak: {0}" -f [string]$restoreSummary.HeadlineText
+    $restoreSourceText.ToolTip = [string]$restoreSummary.ToolTipText
     $window.FindName('HintText').Text = 'Yedekler kopyalama sırasında "Yedek al" seçiliyken oluşur.'
     $backupCurrentBox = $window.FindName('BackupCurrentBox')
     $backupCurrentBox.IsChecked = $true

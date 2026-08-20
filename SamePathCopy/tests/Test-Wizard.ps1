@@ -183,6 +183,73 @@ try {
     Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
     Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
 
+    # Başlıktaki kaynak ve yerel kök çipleri: tıklanınca açılan listede öğelerin göreli yolları ve
+    # köklerin tamamı görünmeli. Popup gerçekten açılabilmeli; bu yüzden pencere STA sürecinde gösterilir.
+    $chipScriptPath = Join-Path $testDirectory 'chip-smoke.ps1'
+    $chipOutputPath = Join-Path $testDirectory 'chip-smoke-output.txt'
+    $chipScript = @"
+`$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName PresentationFramework
+. '$projectDirectory\SamePathCopy.Common.ps1'
+. '$projectDirectory\SamePathCopy.Ui.ps1'
+`$window = New-SamePathCopyWindow -Title 'Cip' -BodyXaml '<StackPanel x:Name="ChipPanel" Orientation="Horizontal" />' -Width 500 -Height 220
+`$items = @(
+    [pscustomobject]@{ FullName = 'C:\Kok\Data\x.entity'; PSIsContainer = `$false }
+    [pscustomobject]@{ FullName = 'C:\Kok\Data\Sahneler'; PSIsContainer = `$true }
+    [pscustomobject]@{ FullName = 'C:\Gecici\z.txt'; PSIsContainer = `$false }
+)
+`$summary = Get-SamePathCopySourceSummary -SourceItems `$items -LocalRoots @('C:\Kok', 'D:\Baska')
+`$panel = `$window.FindName('ChipPanel')
+`$sourceChip = New-SamePathCopySourceChip -Window `$window -Summary `$summary
+`$rootChip = New-SamePathCopyLocalRootChip -Window `$window -Summary `$summary
+[void]`$panel.Children.Add(`$sourceChip)
+[void]`$panel.Children.Add(`$rootChip)
+function Get-ChipListPanel {
+    param(`$Chip)
+    `$layout = `$Chip.Tag.Child.Child
+    foreach (`$child in `$layout.Children) {
+        if (`$child -is [System.Windows.Controls.ScrollViewer]) { return `$child.Content }
+    }
+    return `$null
+}
+`$sourceList = Get-ChipListPanel -Chip `$sourceChip
+`$rootList = Get-ChipListPanel -Chip `$rootChip
+`$sourceTexts = @(foreach (`$row in `$sourceList.Children) { [string]`$row.Children[0].Text })
+`$rootTexts = @(foreach (`$row in `$rootList.Children) { [string]`$row.Children[0].Text })
+`$window.Show()
+Invoke-SamePathCopyUiPump
+`$sourceChip.Tag.IsOpen = `$true
+Invoke-SamePathCopyUiPump
+"popup acik=`$(`$sourceChip.Tag.IsOpen)" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8
+"kaynak satir=`$(`$sourceTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+"kok satir=`$(`$rootTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+`$sourceChip.Tag.IsOpen = `$false
+Invoke-SamePathCopyUiPump
+`$window.Close()
+"@
+    Set-Content -LiteralPath $chipScriptPath -Value $chipScript -Encoding UTF8
+
+    $chipErrorPath = Join-Path $testDirectory 'chip-smoke-error.txt'
+    $chipProcess = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+        -ArgumentList @('-sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $chipScriptPath) `
+        -PassThru -WindowStyle Hidden -RedirectStandardError $chipErrorPath
+    if (-not $chipProcess.WaitForExit(60000)) {
+        try { $chipProcess.Kill() } catch { }
+        throw 'Çip penceresi kapanmadı.'
+    }
+    $chipProcess.WaitForExit()
+    $chipErrorText = if (Test-Path -LiteralPath $chipErrorPath) { [string](Get-Content -LiteralPath $chipErrorPath -Raw) } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($chipErrorText)) {
+        throw "Başlık çipleri hata verdi: $chipErrorText"
+    }
+    $chipOutput = @(Get-Content -LiteralPath $chipOutputPath -Encoding UTF8)
+    Assert-Equal 'popup acik=True' $chipOutput[0] 'Çipe tıklanınca açılan liste açılamadı.'
+    # Kaynak listesi: kök başlığı + iki öğe, kök dışı başlığı + bir öğe (başlık satırları da aynı panelde durur).
+    if ($chipOutput[1] -notlike '*Data\x.entity*') { throw "Kaynak listesinde göreli yol yok: $($chipOutput[1])" }
+    if ($chipOutput[1] -notlike '*Data\Sahneler\*') { throw "Klasör satırı ters bölü ile bitmiyor: $($chipOutput[1])" }
+    if ($chipOutput[1] -notlike '*C\Gecici\z.txt*') { throw "Kök dışı öğe listede yok: $($chipOutput[1])" }
+    if ($chipOutput[2] -notlike '*C:\Kok*' -or $chipOutput[2] -notlike '*D:\Baska*') { throw "Kök listesi eksik: $($chipOutput[2])" }
+
     # Filtre: ada, gruba ve kimliğe göre süzer; boş filtre bütün satırları gösterir.
     $filterRows = @(
         [pscustomobject]@{ Id = 'U1IG1'; Name = 'IG1 - 10.10.1.11'; Group = 'Unit1'; Visible = $true; Elements = @(); RowDefinition = $null; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $false } } }

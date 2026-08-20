@@ -1,4 +1,4 @@
-# SamePathCopy
+﻿# SamePathCopy
 
 Windows Explorer sağ tık menüsünden bir veya birden fazla dosya ya da klasörü seçilen bilgisayarlara kopyalar. Aynı hedefler Notepad++ sekme sağ tık menüsünde de kullanılabilir. Yapılandırılmış kök dizinler arasındaki göreli yolu korur; kaynak öğeleri silmez.
 
@@ -83,13 +83,20 @@ Sihirbaz ve kopyalama penceresi WPF ile yazılmıştır ([SamePathCopy.Ui.ps1](S
 
 Menüde `Tümü`'nün hemen ardından gelen `Wizard` girdisi, göndermeden önce bir pencere açar: hangi bilgisayarlara gönderileceği listeden işaretlenir ve her bilgisayar için parametreler ayrı ayrı seçilir. Etiket `config.json` içindeki `wizardLabel` alanından değiştirilebilir.
 
-Pencerede kaynak özeti ve yerel kökler üstte, hedef tablosu ortada (grup adıyla birlikte), canlı `N / M seçili` göstergesi tablonun sağ üstünde durur. Her onay kutusu kolonunun başlığının altında o kolonun tamamını çeviren **tek bir onay kutusu** vardır: basıldığında hepsi işaretlenir, hepsi işaretliyken basıldığında temizlenir. Kutu kolonun durumunu da gösterir — hepsi işaretliyse işaretli, hiçbiri değilse boş, bir kısmı işaretliyse belirsiz. Böylece `Gönder`, `Yedek al`, `Yalnızca yeni` ve `Ayna` kolonları ayrı ayrı topluca açılıp kapatılabilir; ne yaptıkları kutunun ipucunda yazar. Filtre uygulanmışsa yalnızca görünen satırlar hem sayıma hem toplu işleme girer. Parametre kolonları [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1) içindeki tanım listesinden üretilir; yeni bir parametre eklemek için o listeye bir satır yazmak yeterlidir, kolon ve onay kutuları kendiliğinden oluşur. Kolon başlıklarında parametrenin ne yaptığını anlatan ipuçları vardır.
+Pencerede kaynak özeti ve yerel kök çipi üstte, hedef tablosu ortada (grup adıyla birlikte), canlı `N / M seçili` göstergesi tablonun sağ üstünde durur. Her onay kutusu kolonunun başlığının altında o kolonun tamamını çeviren **tek bir onay kutusu** vardır: basıldığında hepsi işaretlenir, hepsi işaretliyken basıldığında temizlenir. Kutu kolonun durumunu da gösterir — hepsi işaretliyse işaretli, hiçbiri değilse boş, bir kısmı işaretliyse belirsiz. Böylece `Gönder`, `Yedek al`, `Yalnızca yeni` ve `Ayna` kolonları ayrı ayrı topluca açılıp kapatılabilir; ne yaptıkları kutunun ipucunda yazar. Filtre uygulanmışsa yalnızca görünen satırlar hem sayıma hem toplu işleme girer. Parametre kolonları [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1) içindeki tanım listesinden üretilir; yeni bir parametre eklemek için o listeye bir satır yazmak yeterlidir, kolon ve onay kutuları kendiliğinden oluşur. Kolon başlıklarında parametrenin ne yaptığını anlatan ipuçları vardır.
 
 Hedef listesinin üstünde üç yardımcı vardır:
 
 - **Filtre kutusu** — ada, gruba veya node kimliğine göre süzer. Süzme sırasında kolon başlığındaki toplu seçim ikonları yalnızca görünen satırlara uygulanır: `Unit2` yazıp `Gönder` kolonunu işaretlemek o gruba ait satırları seçer. Gizlenen satırların seçim durumu korunur.
 - **Grup çipleri** — her grubun adının solunda tek bir onay kutusu; o gruptaki bütün bilgisayarları tek tıkla seçer veya bırakır. Kutu grubun durumunu da gösterir: hepsi seçiliyse işaretli, hiçbiri seçili değilse boş, bir kısmı seçiliyse belirsiz.
 - **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler, `Erişilebilirleri seç` yalnızca yanıt veren hedefleri işaretler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
+
+Başlık satırı seçimi tek satırda özetler: tek öğede tam yol ve türü, çok öğede ortak klasör ile sayı dökümü (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), öğeler ayrı klasörlerden geliyorsa klasör sayısı. Ayrıntı, altındaki iki tıklanabilir çipte durur — böylece kalabalık seçimlerde satır uzayıp kesilmez:
+
+- **`Kaynak: N öğe`** — açılan listede öğeler ait oldukları yerel köke göre gruplanır ve her öğe **hedefte oluşacak göreli yoluyla** yazılır (klasörler `\` ile biter, satır ipucunda tam yol görünür). Hiçbir kökün altında olmayan öğeler `Yerel kök dışında (sürücü adıyla kopyalanır)` başlığı altında toplanır. Liste en fazla 200 satır gösterir, kalanı `... ve N öğe daha` diye bildirir; `Yolları panoya kopyala` düğmesi seçimin tamamını panoya yazar.
+- **`Yerel kök: <yol>` / `N yerel kök`** — bir kök varsa yolu çipte görünür, birden fazla kök varsa yalnızca sayı yazar; açılan listede bütün kökler tam yolla ve her birinden kaç öğe seçildiğiyle (`3 öğe` / `seçimde yok`) durur. Yol artık çipin içinde yarıda kesilmiyor.
+
+Aynı iki çip kopyalama penceresinin başlığında da vardır; geri alma penceresi de aynı özet satırını kullanır.
 
 Üst satırdaki `Son gönderim` çipi, günlükteki en son kopyalama özetini gösterir (tarih, başarılı/hatalı sayıları, süre).
 

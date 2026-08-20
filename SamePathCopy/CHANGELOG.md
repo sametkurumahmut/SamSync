@@ -2,6 +2,12 @@
 
 ## Yayımlanmamış
 
+- Pencere başlığındaki kaynak özeti yeniden tasarlandı. `9 kaynak öğe` gibi bir sayı ne kopyalanacağını anlatmıyordu, `... (ilk: <yol>)` satırı ise yalnızca ilk öğeyi gösteriyordu: başlık artık ortak klasörü ve sayı dökümünü veriyor (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), ayrıntı ise tıklanınca açılan listede duruyor. Liste, öğeleri yerel köke göre gruplayıp her birinin hedefte oluşacak göreli yolunu yazıyor (klasörler `\` ile bitiyor, satır ipucunda tam yol duruyor); hiçbir kökün altında olmayan öğeler ayrı başlıkta toplanıyor. Kalabalık seçimlerde liste 200 satırda kesiliyor, kalan sayı bildiriliyor ve `Yolları panoya kopyala` ile seçimin tamamı panoya alınabiliyor.
+- `Yerel kök` çipi birden çok kök tanımlıyken yolu yarıda kesiyordu; artık tek kökte yolu, çok kökte kök sayısını gösteriyor. Tam liste açılır pencerede, her kökün yanında o kökten kaç öğe seçildiğiyle (`3 öğe` / `seçimde yok`) duruyor.
+- Aynı iki çip kopyalama penceresinin başlığında da kullanılıyor; geri alma penceresi de aynı özet satırını gösteriyor.
+- Göreli yol hesabı tek yere alındı (`Get-SamePathCopySourceRelativePath`): hedef yolu da başlıktaki liste de aynı işlevi kullanıyor, kök dışı öğelerin sürücü adına çevrilmesi tek yerde duruyor.
+- Yeni testler: kaynak özeti (başlık metinleri, kök gruplaması, kök dışı öğeler, liste sınırı, pano metni) [tests/Test-Destination.ps1](tests/Test-Destination.ps1) içinde; çiplerin açılır listesi gerçek WPF penceresinde [tests/Test-Wizard.ps1](tests/Test-Wizard.ps1) içinde sınanıyor.
+
 - Sihirbazdaki toplu seçim ikon çiftleri (`☑` / `☐`) tek onay kutusuna indirildi: hem kolon başlıklarında hem grup çiplerinde. Kutu üç durumlu — hepsi işaretli, hiçbiri, karışık — ve basıldığında hepsini işaretler ya da temizler. Satırlar değiştikçe ve filtre uygulandıkça durumu kendini güncelliyor.
 
 - Notepad++ sekme menüsünde gruplar da birbirinden ayırıcıyla ayrılıyor: her grubun önüne bir ayırıcı konuyor, grubun kendi girdisi ile makineleri aynı bölümde kalıyor.

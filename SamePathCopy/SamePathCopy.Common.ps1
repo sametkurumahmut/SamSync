@@ -775,14 +775,15 @@ function Get-SamePathCopyMatchingRoot {
     return $bestRoot
 }
 
-function Get-SamePathCopyDestination {
+function Get-SamePathCopySourceRelativePath {
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string[]]$LocalRoots,
-        [Parameter(Mandatory = $true)][string]$Address,
-        [Parameter(Mandatory = $true)][string]$NetworkRoot
+        [string[]]$LocalRoots
     )
 
+    # Bir kaynak öğenin hedefte hangi göreli yolla oluşacağını hesaplar. Öğe bir yerel kökün altındaysa
+    # kökten sonraki yol korunur; hiçbir kökün altında değilse sürücü harfi klasör adına çevrilir
+    # (C:\Gecici\a.txt -> C\Gecici\a.txt), ağ yolları ise UNC klasörünün altına düşer.
     $fullPath = [System.IO.Path]::GetFullPath($SourcePath)
     $normalizedRoots = @(@($LocalRoots) | ForEach-Object {
         if ([string]::IsNullOrWhiteSpace($_)) { return }
@@ -792,36 +793,193 @@ function Get-SamePathCopyDestination {
     })
     $matchedRoot = Get-SamePathCopyMatchingRoot -FullPath $fullPath -LocalRoots $normalizedRoots
 
-    $isInsideLocalRoot = $null -ne $matchedRoot
-    if ($isInsideLocalRoot) {
+    if ($null -ne $matchedRoot) {
         $relativePath = if ($fullPath.Equals($matchedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
             ''
         }
         else {
             $fullPath.Substring(($matchedRoot.TrimEnd('\') + '\').Length)
         }
+        return [pscustomobject]@{
+            FullPath = $fullPath
+            MatchedRoot = $matchedRoot
+            IsInsideLocalRoot = $true
+            RelativePath = $relativePath
+        }
     }
 
-    if (-not $isInsideLocalRoot) {
-        $sourceDriveRoot = [System.IO.Path]::GetPathRoot($fullPath)
-        if ($sourceDriveRoot -match '^([A-Za-z]):\\$') {
-            $driveFolder = $Matches[1].ToUpperInvariant()
-            $driveRelativePath = $fullPath.Substring($sourceDriveRoot.Length).TrimStart('\')
-            $relativePath = if ([string]::IsNullOrWhiteSpace($driveRelativePath)) {
-                $driveFolder
-            }
-            else {
-                "$driveFolder\$driveRelativePath"
-            }
-        }
-        elseif ($fullPath.StartsWith('\\')) {
-            $relativePath = 'UNC\' + $fullPath.TrimStart('\')
+    $sourceDriveRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($sourceDriveRoot -match '^([A-Za-z]):\\$') {
+        $driveFolder = $Matches[1].ToUpperInvariant()
+        $driveRelativePath = $fullPath.Substring($sourceDriveRoot.Length).TrimStart('\')
+        $relativePath = if ([string]::IsNullOrWhiteSpace($driveRelativePath)) {
+            $driveFolder
         }
         else {
-            throw "Seçilen öğenin tam yolu hedef altında güvenli biçimde oluşturulamadı: $fullPath"
+            "$driveFolder\$driveRelativePath"
         }
     }
+    elseif ($fullPath.StartsWith('\\')) {
+        $relativePath = 'UNC\' + $fullPath.TrimStart('\')
+    }
+    else {
+        throw "Seçilen öğenin tam yolu hedef altında güvenli biçimde oluşturulamadı: $fullPath"
+    }
 
+    return [pscustomobject]@{
+        FullPath = $fullPath
+        MatchedRoot = $null
+        IsInsideLocalRoot = $false
+        RelativePath = $relativePath
+    }
+}
+
+function Get-SamePathCopySourceSummary {
+    param(
+        $SourceItems,
+        [string[]]$LocalRoots,
+        [int]$MaxListItems = 200
+    )
+
+    # Pencere başlığındaki "9 kaynak öğe" tek başına ne kopyalanacağını anlatmıyor. Bu özet, seçilen
+    # öğeleri ait oldukları yerel köke göre gruplar ve her öğenin hedefte oluşacak göreli yolunu verir;
+    # arayüz bu veriyi hem başlık satırında hem de tıklanan ayrıntı listesinde kullanır.
+    # Seçim çok kalabalık olabildiği için listeye en fazla MaxListItems öğe girer, kalanı sayı olarak
+    # bildirilir; tam liste panoya kopyalanabilir.
+    $entries = New-Object System.Collections.Generic.List[object]
+    foreach ($item in @(@($SourceItems) | Where-Object { $null -ne $_ })) {
+        $fullPath = if ($item -is [string]) { [string]$item } else { [string]$item.FullName }
+        if ([string]::IsNullOrWhiteSpace($fullPath)) { continue }
+        $isDirectory = if ($item -isnot [string] -and $item.PSObject.Properties['PSIsContainer']) {
+            [bool]$item.PSIsContainer
+        }
+        elseif ($item -isnot [string] -and $item.PSObject.Properties['IsDirectory']) {
+            [bool]$item.IsDirectory
+        }
+        else {
+            [System.IO.Directory]::Exists($fullPath)
+        }
+
+        $resolved = $null
+        try { $resolved = Get-SamePathCopySourceRelativePath -SourcePath $fullPath -LocalRoots $LocalRoots } catch { }
+        $name = [System.IO.Path]::GetFileName($fullPath.TrimEnd('\'))
+        if ([string]::IsNullOrWhiteSpace($name)) { $name = $fullPath }
+        $parent = [string][System.IO.Path]::GetDirectoryName($fullPath.TrimEnd('\'))
+
+        $entries.Add([pscustomobject]@{
+            FullPath = if ($resolved) { [string]$resolved.FullPath } else { $fullPath }
+            Name = $name
+            Parent = $parent
+            IsDirectory = $isDirectory
+            MatchedRoot = if ($resolved -and $resolved.IsInsideLocalRoot) { [string]$resolved.MatchedRoot } else { '' }
+            IsInsideLocalRoot = [bool]($resolved -and $resolved.IsInsideLocalRoot)
+            RelativePath = if ($resolved) { [string]$resolved.RelativePath } else { '' }
+        })
+    }
+
+    $directoryCount = @($entries | Where-Object { $_.IsDirectory }).Count
+    $fileCount = $entries.Count - $directoryCount
+    $kindText = if ($directoryCount -gt 0 -and $fileCount -gt 0) {
+        "{0} dosya, {1} klasör" -f $fileCount, $directoryCount
+    }
+    elseif ($directoryCount -gt 0) { "{0} klasör" -f $directoryCount }
+    else { "{0} dosya" -f $fileCount }
+
+    # Kökler config'teki sırayla listelenir; hiç öğesi olmayan kök de görünür, "eşleşme yok" diye işaretlenir.
+    $rootSummaries = New-Object System.Collections.Generic.List[object]
+    foreach ($root in @($LocalRoots)) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $normalized = [System.IO.Path]::GetFullPath([string]$root)
+        if ($normalized.Length -gt 3) { $normalized = $normalized.TrimEnd('\') }
+        if (@($rootSummaries | Where-Object { $_.Path -eq $normalized }).Count -gt 0) { continue }
+        $rootSummaries.Add([pscustomobject]@{
+            Path = $normalized
+            ItemCount = @($entries | Where-Object { $_.MatchedRoot -eq $normalized }).Count
+        })
+    }
+    $outsideEntries = @($entries | Where-Object { -not $_.IsInsideLocalRoot })
+
+    # Gruplar: önce öğesi olan kökler, sonra hiçbir kökün altında olmayanlar.
+    $groups = New-Object System.Collections.Generic.List[object]
+    $remaining = [Math]::Max(0, $MaxListItems)
+    foreach ($rootSummary in $rootSummaries) {
+        $rootEntries = @($entries | Where-Object { $_.MatchedRoot -eq $rootSummary.Path })
+        if ($rootEntries.Count -eq 0) { continue }
+        $shown = [Math]::Min($remaining, $rootEntries.Count)
+        $remaining -= $shown
+        $groups.Add([pscustomobject]@{
+            Header = $rootSummary.Path
+            IsInsideLocalRoot = $true
+            Items = @($rootEntries | Select-Object -First $shown)
+            HiddenCount = ($rootEntries.Count - $shown)
+            ItemCount = $rootEntries.Count
+        })
+    }
+    if ($outsideEntries.Count -gt 0) {
+        $shown = [Math]::Min($remaining, $outsideEntries.Count)
+        $remaining -= $shown
+        $groups.Add([pscustomobject]@{
+            Header = 'Yerel kök dışında (sürücü adıyla kopyalanır)'
+            IsInsideLocalRoot = $false
+            Items = @($outsideEntries | Select-Object -First $shown)
+            HiddenCount = ($outsideEntries.Count - $shown)
+            ItemCount = $outsideEntries.Count
+        })
+    }
+
+    # Başlık satırı: tek öğede tam yol, çok öğede ortak klasör (varsa) ve sayı dökümü.
+    $parents = @(@($entries | ForEach-Object { $_.Parent }) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Sort-Object -Unique)
+    $headlineText = if ($entries.Count -eq 0) {
+        'Kaynak seçilmedi'
+    }
+    elseif ($entries.Count -eq 1) {
+        "{0}  ({1})" -f $entries[0].FullPath, $(if ($entries[0].IsDirectory) { 'klasör' } else { 'dosya' })
+    }
+    elseif ($parents.Count -eq 1) {
+        "{0} içinden {1} öğe ({2})" -f $parents[0], $entries.Count, $kindText
+    }
+    else {
+        "{0} öğe ({1}) - {2} ayrı klasörden" -f $entries.Count, $kindText, $parents.Count
+    }
+
+    $tooltipLimit = 12
+    $tooltipLines = @(@($entries | Select-Object -First $tooltipLimit) | ForEach-Object { [string]$_.FullPath })
+    if ($entries.Count -gt $tooltipLimit) {
+        $tooltipLines += ("... ve {0} öğe daha" -f ($entries.Count - $tooltipLimit))
+    }
+
+    $rootChipText = if ($rootSummaries.Count -eq 0) { 'Yerel kök tanımsız' }
+        elseif ($rootSummaries.Count -eq 1) { "Yerel kök: {0}" -f $rootSummaries[0].Path }
+        else { "{0} yerel kök" -f $rootSummaries.Count }
+
+    return [pscustomobject]@{
+        Count = $entries.Count
+        FileCount = $fileCount
+        DirectoryCount = $directoryCount
+        KindText = $kindText
+        Items = $entries.ToArray()
+        Groups = $groups.ToArray()
+        Roots = $rootSummaries.ToArray()
+        OutsideRootCount = $outsideEntries.Count
+        HiddenCount = @($groups | ForEach-Object { [int]$_.HiddenCount } | Measure-Object -Sum).Sum
+        HeadlineText = $headlineText
+        ChipText = "Kaynak: {0} öğe" -f $entries.Count
+        RootChipText = $rootChipText
+        ToolTipText = ($tooltipLines -join "`r`n")
+        ClipboardText = (@($entries | ForEach-Object { [string]$_.FullPath }) -join "`r`n")
+    }
+}
+
+function Get-SamePathCopyDestination {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string[]]$LocalRoots,
+        [Parameter(Mandatory = $true)][string]$Address,
+        [Parameter(Mandatory = $true)][string]$NetworkRoot
+    )
+
+    $relativePath = [string](Get-SamePathCopySourceRelativePath -SourcePath $SourcePath -LocalRoots $LocalRoots).RelativePath
     $normalizedNetworkRoot = $NetworkRoot.Trim('\')
     $uncRoot = "\\$Address\$normalizedNetworkRoot"
     if ([string]::IsNullOrWhiteSpace($relativePath)) {

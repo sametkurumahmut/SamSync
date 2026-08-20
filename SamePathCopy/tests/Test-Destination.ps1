@@ -40,6 +40,71 @@ Assert-Equal "\\$address\Sim\ActiveRelease\baska\y.txt" (Get-Destination -Source
 Assert-Equal "\\$address\Sim\ActiveRelease\C\Fraps\README.HTM" (Get-Destination -SourcePath 'C:\Fraps\README.HTM') 'Kök dışı yol için sürücü klasörü üretilmedi.'
 Assert-Equal "\\$address\Sim\ActiveRelease\UNC\sunucu\pay\z.txt" (Get-Destination -SourcePath '\\sunucu\pay\z.txt') 'UNC kaynak için hedef yanlış.'
 
+# Kaynak öğenin hedefte alacağı göreli yol: kökün altında kökten sonrası, kökün kendisi için boş,
+# kök dışında sürücü harfi klasör adı olur.
+Assert-Equal 'Data\x.entity' ([string](Get-SamePathCopySourceRelativePath -SourcePath 'C:\Kaynak\proje\Data\x.entity' -LocalRoots $roots).RelativePath) 'Kök altındaki göreli yol yanlış.'
+Assert-Equal '' ([string](Get-SamePathCopySourceRelativePath -SourcePath 'C:\Kaynak\proje' -LocalRoots $roots).RelativePath) 'Kökün kendisi için göreli yol boş olmalı.'
+Assert-Equal $true ([bool](Get-SamePathCopySourceRelativePath -SourcePath 'C:\Kaynak\proje\Data' -LocalRoots $roots).IsInsideLocalRoot) 'Kök altındaki öğe kök dışı sayıldı.'
+Assert-Equal 'C\Fraps\README.HTM' ([string](Get-SamePathCopySourceRelativePath -SourcePath 'C:\Fraps\README.HTM' -LocalRoots $roots).RelativePath) 'Kök dışı göreli yol yanlış.'
+Assert-Equal $false ([bool](Get-SamePathCopySourceRelativePath -SourcePath 'C:\Fraps\README.HTM' -LocalRoots $roots).IsInsideLocalRoot) 'Kök dışı öğe kök altında sayıldı.'
+
+# Başlıktaki kaynak özeti: seçilen öğeler köklere göre gruplanır, sayı dökümü ve göreli yollar üretilir.
+function New-FakeSourceItem {
+    param([string]$FullName, [bool]$IsDirectory = $false)
+    return [pscustomobject]@{ FullName = $FullName; PSIsContainer = $IsDirectory }
+}
+
+$singleSummary = Get-SamePathCopySourceSummary -SourceItems @(New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\x.entity') -LocalRoots $roots
+Assert-Equal 1 ([int]$singleSummary.Count) 'Tek öğe sayısı yanlış.'
+Assert-Equal 'C:\Kaynak\proje\Data\x.entity  (dosya)' ([string]$singleSummary.HeadlineText) 'Tek öğe başlığı yanlış.'
+Assert-Equal 'Kaynak: 1 öğe' ([string]$singleSummary.ChipText) 'Kaynak çipi metni yanlış.'
+Assert-Equal 'Yerel kök: C:\Kaynak\proje' ([string](Get-SamePathCopySourceSummary -SourceItems @(New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\x.entity') -LocalRoots @('C:\Kaynak\proje')).RootChipText) 'Tek kökte çip tam yolu göstermeli.'
+Assert-Equal '3 yerel kök' ([string]$singleSummary.RootChipText) 'Çok kökte çip kök sayısını göstermeli.'
+Assert-Equal 'Yerel kök tanımsız' ([string](Get-SamePathCopySourceSummary -SourceItems @(New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\x.entity')).RootChipText) 'Kök yokken çip metni yanlış.'
+
+$sameFolderSummary = Get-SamePathCopySourceSummary -SourceItems @(
+    New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\x.entity'
+    New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\y.entity'
+    New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\Sahneler' -IsDirectory $true
+) -LocalRoots $roots
+Assert-Equal 3 ([int]$sameFolderSummary.Count) 'Öğe sayısı yanlış.'
+Assert-Equal 2 ([int]$sameFolderSummary.FileCount) 'Dosya sayısı yanlış.'
+Assert-Equal 1 ([int]$sameFolderSummary.DirectoryCount) 'Klasör sayısı yanlış.'
+Assert-Equal 'C:\Kaynak\proje\Data içinden 3 öğe (2 dosya, 1 klasör)' ([string]$sameFolderSummary.HeadlineText) 'Aynı klasördeki seçim için başlık yanlış.'
+Assert-Equal 1 @($sameFolderSummary.Groups).Count 'Tek kökten gelen seçim tek grup olmalı.'
+
+$mixedSummary = Get-SamePathCopySourceSummary -SourceItems @(
+    New-FakeSourceItem -FullName 'C:\Kaynak\proje\Data\x.entity'
+    New-FakeSourceItem -FullName 'C:\Kaynak\simulatorexternaldata\ses' -IsDirectory $true
+    New-FakeSourceItem -FullName 'C:\Fraps\README.HTM'
+) -LocalRoots $roots
+Assert-Equal '3 öğe (2 dosya, 1 klasör) - 3 ayrı klasörden' ([string]$mixedSummary.HeadlineText) 'Farklı klasörlerdeki seçim için başlık yanlış.'
+Assert-Equal 3 @($mixedSummary.Groups).Count 'Gruplar köklere ve kök dışına göre ayrılmadı.'
+Assert-Equal 'C:\Kaynak\proje' ([string]$mixedSummary.Groups[0].Header) 'İlk grup başlığı ilk kök olmalı.'
+Assert-Equal 'Data\x.entity' ([string]$mixedSummary.Groups[0].Items[0].RelativePath) 'Grup içindeki göreli yol yanlış.'
+Assert-Equal 'ses' ([string]$mixedSummary.Groups[1].Items[0].RelativePath) 'İkinci kökteki göreli yol yanlış.'
+Assert-Equal $false ([bool]$mixedSummary.Groups[2].IsInsideLocalRoot) 'Üçüncü grup kök dışı olmalı.'
+Assert-Equal 'C\Fraps\README.HTM' ([string]$mixedSummary.Groups[2].Items[0].RelativePath) 'Kök dışı göreli yol yanlış.'
+Assert-Equal 1 ([int]$mixedSummary.OutsideRootCount) 'Kök dışı öğe sayısı yanlış.'
+# Kök listesi config sırasını korur; seçimden öğe düşmeyen kök de listede kalır.
+Assert-Equal 3 @($mixedSummary.Roots).Count 'Kök listesi eksik.'
+Assert-Equal 1 ([int]$mixedSummary.Roots[0].ItemCount) 'Kökün öğe sayısı yanlış.'
+Assert-Equal 0 ([int]$mixedSummary.Roots[2].ItemCount) 'Öğesi olmayan kök için sayı sıfır olmalı.'
+if (([string]$mixedSummary.ClipboardText) -notlike '*C:\Fraps\README.HTM*') { throw 'Panoya kopyalanacak metin bütün yolları içermiyor.' }
+
+# Çok kalabalık seçimde liste kırpılır, kalan sayı bildirilir; pano metni bütün yolları taşır.
+$manyItems = @(1..25 | ForEach-Object { New-FakeSourceItem -FullName ("C:\Kaynak\proje\Data\dosya{0}.txt" -f $_) })
+$cappedSummary = Get-SamePathCopySourceSummary -SourceItems $manyItems -LocalRoots $roots -MaxListItems 10
+Assert-Equal 25 ([int]$cappedSummary.Count) 'Kalabalık seçimde öğe sayısı yanlış.'
+Assert-Equal 10 @($cappedSummary.Groups[0].Items).Count 'Liste sınırı uygulanmadı.'
+Assert-Equal 15 ([int]$cappedSummary.Groups[0].HiddenCount) 'Listeye girmeyen öğe sayısı yanlış.'
+Assert-Equal 15 ([int]$cappedSummary.HiddenCount) 'Toplam gizli öğe sayısı yanlış.'
+Assert-Equal 25 @(([string]$cappedSummary.ClipboardText) -split "`r`n").Count 'Pano metni bütün yolları içermeli.'
+
+# Yol listesi düz metin olarak da verilebilir (test ve otomasyon kolaylığı).
+Assert-Equal 2 ([int](Get-SamePathCopySourceSummary -SourceItems @('C:\Kaynak\proje\a.txt', 'C:\Kaynak\proje\b.txt') -LocalRoots $roots).Count) 'Metin yol listesi okunamadı.'
+Assert-Equal 'Kaynak seçilmedi' ([string](Get-SamePathCopySourceSummary -SourceItems @() -LocalRoots $roots).HeadlineText) 'Boş seçim başlığı yanlış.'
+
 # Yalnızca localRoot verilmiş eski yapılandırma da çalışmalı.
 $legacyNode = [pscustomobject]@{ id = 'Eski'; name = 'Eski'; localRoot = 'C:\Kaynak\proje'; networkRoot = $networkRoot }
 Assert-Equal 'C:\Kaynak\proje' (@(Get-SamePathCopyLocalRoots -Node $legacyNode) -join ' ; ') 'localRoot tek başına okunamadı.'

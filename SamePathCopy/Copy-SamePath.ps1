@@ -415,13 +415,10 @@ $cancelButton = $window.FindName('CancelButton')
 $closeButton = $window.FindName('CloseButton')
 
 $headerText.Text = 'Kopyalanıyor'
-$sourceText.Text = if ($sourceItems.Count -eq 1) {
-    [string]$sourceItems[0].FullName
-}
-else {
-    "{0} öğe (ilk: {1})" -f $sourceItems.Count, $sourceItems[0].FullName
-}
-$sourceText.ToolTip = (@($sourceItems | ForEach-Object { $_.FullName }) -join "`r`n")
+# Başlık satırı seçimi özetler; öğelerin tamamı ve hedefteki göreli yolları başlıktaki kaynak çipinde durur.
+$sourceSummary = Get-SamePathCopySourceSummary -SourceItems $sourceItems -LocalRoots $localIdentity.Roots
+$sourceText.Text = [string]$sourceSummary.HeadlineText
+$sourceText.ToolTip = [string]$sourceSummary.ToolTipText
 $copyProgress.Maximum = $plans.Count
 $progressLabel.Text = 'Başlatılıyor...'
 $progressCountText.Text = "0 / {0}" -f $plans.Count
@@ -441,13 +438,14 @@ function Add-SamePathCopyChip {
 }
 
 Add-SamePathCopyChip -Text ("{0} işlem" -f $plans.Count)
+[void]$chipPanel.Children.Add((New-SamePathCopySourceChip -Window $window -Summary $sourceSummary))
 if ($isWizardLast) {
     Add-SamePathCopyChip -Text 'Son sihirbaz ayarı' -ToolTip 'Hedefler ve parametreler sihirbazda en son kaydedilen hâlden alındı; pencere açılmadı.'
 }
 if ($isProfile) {
     Add-SamePathCopyChip -Text ("Profil: {0}" -f $profileName) -ToolTip 'Hedefler ve parametreler bu profilden alindi; sihirbaz penceresi acilmadi.'
 }
-Add-SamePathCopyChip -Text ("Yerel kök: {0}" -f (@($localIdentity.Roots) -join '  •  ')) -ToolTip (@($localIdentity.Roots) -join "`r`n")
+[void]$chipPanel.Children.Add((New-SamePathCopyLocalRootChip -Window $window -Summary $sourceSummary))
 $activeGlobalOptions = @(@('DryRun', 'FastCopy') | Where-Object { Get-SamePathCopyOptionValue -Options $globalOptions -Name $_ })
 if ($activeGlobalOptions -contains 'DryRun') { Add-SamePathCopyChip -Text 'Deneme çalıştırması' -ToolTip 'Hedefe hiçbir şey yazılmaz (robocopy /L).' }
 if ($activeGlobalOptions -contains 'FastCopy') { Add-SamePathCopyChip -Text 'Hızlı kopyalama' -ToolTip 'robocopy /MT:8' }

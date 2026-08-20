@@ -142,6 +142,15 @@ function Get-SamePathCopyThemeXaml {
         <Setter Property="Padding" Value="10,3,10,3" />
         <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
+    <Style x:Key="InteractiveChip" TargetType="Border" BasedOn="{StaticResource Chip}">
+        <Setter Property="Cursor" Value="Hand" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource RowHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrushStrong}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
     <Style x:Key="RowBorder" TargetType="Border">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="CornerRadius" Value="6" />
@@ -492,6 +501,249 @@ function New-SamePathCopyWindow {
         }
     }
     return $window
+}
+
+function New-SamePathCopyDetailChip {
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)][string]$Text,
+        [string]$Title,
+        [string]$Description,
+        $Sections,
+        [string]$ClipboardText,
+        [string]$ClipboardLabel = 'Yolları panoya kopyala',
+        [double]$MaxTextWidth = 320
+    )
+
+    # Uzun listeler ve uzun yollar çipin içine sığmıyor; çip yalnızca özeti gösterir, tıklandığında
+    # kayan bir liste açar. Olay işleyicileri kapanış kullanmadan çalışsın diye gereken nesneler
+    # denetimlerin Tag alanına konur: işleyici $sender.Tag üzerinden erişir.
+    $chip = New-Object System.Windows.Controls.Border
+    $chip.Style = $Window.FindResource('InteractiveChip')
+
+    $chipPanel = New-Object System.Windows.Controls.StackPanel
+    $chipPanel.Orientation = 'Horizontal'
+
+    $chipText = New-Object System.Windows.Controls.TextBlock
+    $chipText.Style = $Window.FindResource('MutedText')
+    $chipText.Text = $Text
+    $chipText.MaxWidth = $MaxTextWidth
+    [void]$chipPanel.Children.Add($chipText)
+
+    $chipGlyph = New-Object System.Windows.Controls.TextBlock
+    $chipGlyph.Style = $Window.FindResource('MutedText')
+    $chipGlyph.Text = ' ⌄'
+    $chipGlyph.Margin = New-Object System.Windows.Thickness(4, 0, 0, 0)
+    [void]$chipPanel.Children.Add($chipGlyph)
+
+    $popup = New-Object System.Windows.Controls.Primitives.Popup
+    $popup.PlacementTarget = $chip
+    $popup.Placement = 'Bottom'
+    $popup.StaysOpen = $false
+    $popup.AllowsTransparency = $true
+    $popup.HorizontalOffset = 0
+    $popup.VerticalOffset = 4
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $Window.FindResource('Card')
+    $card.Background = $Window.FindResource('SurfaceBrush')
+    $card.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
+    $card.MaxWidth = 640
+    $card.MinWidth = 320
+
+    $layout = New-Object System.Windows.Controls.DockPanel
+    $layout.LastChildFill = $true
+
+    if ($Title) {
+        $titleText = New-Object System.Windows.Controls.TextBlock
+        $titleText.Style = $Window.FindResource('SectionText')
+        $titleText.Text = $Title
+        [System.Windows.Controls.DockPanel]::SetDock($titleText, 'Top')
+        [void]$layout.Children.Add($titleText)
+    }
+    if ($Description) {
+        $descriptionText = New-Object System.Windows.Controls.TextBlock
+        $descriptionText.Style = $Window.FindResource('MutedText')
+        $descriptionText.Text = $Description
+        $descriptionText.TextWrapping = 'Wrap'
+        $descriptionText.TextTrimming = 'None'
+        $descriptionText.Margin = New-Object System.Windows.Thickness(0, 4, 0, 8)
+        [System.Windows.Controls.DockPanel]::SetDock($descriptionText, 'Top')
+        [void]$layout.Children.Add($descriptionText)
+    }
+    if ($ClipboardText) {
+        $copyButton = New-Object System.Windows.Controls.Button
+        $copyButton.Style = $Window.FindResource('GhostButton')
+        $copyButton.Content = $ClipboardLabel
+        $copyButton.HorizontalAlignment = 'Left'
+        $copyButton.Margin = New-Object System.Windows.Thickness(-10, 6, 0, 0)
+        $copyButton.Tag = $ClipboardText
+        $copyButton.Add_Click({
+            param($sender, $eventArgs)
+            try { [System.Windows.Clipboard]::SetText([string]$sender.Tag) } catch { }
+        })
+        [System.Windows.Controls.DockPanel]::SetDock($copyButton, 'Bottom')
+        [void]$layout.Children.Add($copyButton)
+    }
+
+    $scroller = New-Object System.Windows.Controls.ScrollViewer
+    $scroller.VerticalScrollBarVisibility = 'Auto'
+    $scroller.HorizontalScrollBarVisibility = 'Disabled'
+    $scroller.MaxHeight = 320
+    $listPanel = New-Object System.Windows.Controls.StackPanel
+    $scroller.Content = $listPanel
+    [void]$layout.Children.Add($scroller)
+
+    $sectionIndex = 0
+    foreach ($section in @($Sections)) {
+        if ($null -eq $section) { continue }
+        $sectionHeader = [string]$section.Header
+        if ($sectionHeader) {
+            $headerPanel = New-Object System.Windows.Controls.StackPanel
+            $headerPanel.Orientation = 'Horizontal'
+            $headerPanel.Margin = New-Object System.Windows.Thickness(0, $(if ($sectionIndex -eq 0) { 0 } else { 10 }), 0, 2)
+
+            $headerText = New-Object System.Windows.Controls.TextBlock
+            $headerText.Style = $Window.FindResource('ColumnHeaderText')
+            $headerText.Text = $sectionHeader
+            $headerText.MaxWidth = 460
+            $headerText.ToolTip = $sectionHeader
+            # Dikkat çekmesi gereken bölümler (ör. yerel kök dışındaki öğeler) uyarı renginde yazılır.
+            if ($section.PSObject.Properties['HeaderBrush'] -and [string]$section.HeaderBrush) {
+                $headerText.Foreground = $Window.FindResource([string]$section.HeaderBrush)
+            }
+            [void]$headerPanel.Children.Add($headerText)
+
+            if ($section.PSObject.Properties['Note'] -and [string]$section.Note) {
+                $headerNote = New-Object System.Windows.Controls.TextBlock
+                $headerNote.Style = $Window.FindResource('MutedText')
+                $headerNote.Text = [string]$section.Note
+                $headerNote.Margin = New-Object System.Windows.Thickness(8, 0, 0, 0)
+                [void]$headerPanel.Children.Add($headerNote)
+            }
+            [void]$listPanel.Children.Add($headerPanel)
+        }
+
+        foreach ($entry in @($section.Items)) {
+            if ($null -eq $entry) { continue }
+            $rowPanel = New-Object System.Windows.Controls.StackPanel
+            $rowPanel.Orientation = 'Horizontal'
+            $rowPanel.Margin = New-Object System.Windows.Thickness($(if ($sectionHeader) { 12 } else { 0 }), 2, 0, 2)
+
+            $rowText = New-Object System.Windows.Controls.TextBlock
+            $rowText.Style = $Window.FindResource('BodyText')
+            $rowText.Text = [string]$entry.Text
+            $rowText.MaxWidth = 460
+            [void]$rowPanel.Children.Add($rowText)
+
+            if ($entry.PSObject.Properties['Note'] -and [string]$entry.Note) {
+                $rowNote = New-Object System.Windows.Controls.TextBlock
+                $rowNote.Style = $Window.FindResource('MutedText')
+                $rowNote.Text = [string]$entry.Note
+                $rowNote.Margin = New-Object System.Windows.Thickness(8, 0, 0, 0)
+                [void]$rowPanel.Children.Add($rowNote)
+            }
+            if ($entry.PSObject.Properties['ToolTip'] -and [string]$entry.ToolTip) {
+                $rowPanel.ToolTip = [string]$entry.ToolTip
+            }
+            [void]$listPanel.Children.Add($rowPanel)
+        }
+        $sectionIndex++
+    }
+
+    $card.Child = $layout
+    $popup.Child = $card
+    [void]$chipPanel.Children.Add($popup)
+
+    $chip.Child = $chipPanel
+    $chip.ToolTip = 'Ayrıntılı liste için tıklayın.'
+    $chip.Tag = $popup
+    $chip.Add_MouseLeftButtonUp({
+        param($sender, $eventArgs)
+        $sender.Tag.IsOpen = -not [bool]$sender.Tag.IsOpen
+    })
+    return $chip
+}
+
+function New-SamePathCopySourceChip {
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)]$Summary
+    )
+
+    # Kaynak listesi, öğelerin hedefte oluşacak göreli yoluyla gösterilir: kullanıcı hangi dosyanın
+    # nereye gideceğini çipe tıklayarak görür. Klasörler yol sonundaki "\" ile ayırt edilir.
+    $sections = @(foreach ($group in @($Summary.Groups)) {
+        $items = @(foreach ($entry in @($group.Items)) {
+            $displayPath = if ([string]::IsNullOrWhiteSpace([string]$entry.RelativePath)) {
+                '(kökün kendisi)'
+            }
+            elseif ([bool]$entry.IsDirectory) { "{0}\" -f [string]$entry.RelativePath }
+            else { [string]$entry.RelativePath }
+            [pscustomobject]@{
+                Text = $displayPath
+                Note = $(if ([bool]$entry.IsDirectory) { 'klasör' } else { '' })
+                ToolTip = [string]$entry.FullPath
+            }
+        })
+        if ([int]$group.HiddenCount -gt 0) {
+            $items += [pscustomobject]@{
+                Text = "... ve {0} öğe daha" -f [int]$group.HiddenCount
+                Note = ''
+                ToolTip = 'Tam liste için "Yolları panoya kopyala" düğmesini kullanın.'
+            }
+        }
+        [pscustomobject]@{
+            Header = [string]$group.Header
+            Note = "{0} öğe" -f [int]$group.ItemCount
+            HeaderBrush = $(if ([bool]$group.IsInsideLocalRoot) { '' } else { 'WarningBrush' })
+            Items = $items
+        }
+    })
+
+    return New-SamePathCopyDetailChip -Window $Window -Text ([string]$Summary.ChipText) `
+        -Title ("Kopyalanacak öğeler - {0}" -f [string]$Summary.KindText) `
+        -Description 'Yollar yerel köke göre gösteriliyor; hedefte aynı göreli yol oluşturulur.' `
+        -Sections $sections -ClipboardText ([string]$Summary.ClipboardText)
+}
+
+function New-SamePathCopyLocalRootChip {
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)]$Summary
+    )
+
+    # Birden çok kök tanımlıyken çipe hepsi sığmıyor ve yol yarıda kesiliyordu; çip artık kök sayısını
+    # gösterip tam listeyi açılır pencerede veriyor. Her kökün yanında seçimden kaç öğe düştüğü yazar.
+    $items = @(foreach ($root in @($Summary.Roots)) {
+        [pscustomobject]@{
+            Text = [string]$root.Path
+            Note = $(if ([int]$root.ItemCount -gt 0) { "{0} öğe" -f [int]$root.ItemCount } else { 'seçimde yok' })
+            ToolTip = [string]$root.Path
+        }
+    })
+    if (@($items).Count -eq 0) {
+        $items = @([pscustomobject]@{ Text = 'Bu bilgisayar için yerel kök tanımlı değil.'; Note = ''; ToolTip = '' })
+    }
+    $sections = @([pscustomobject]@{ Header = ''; Note = ''; Items = $items })
+    if ([int]$Summary.OutsideRootCount -gt 0) {
+        $sections += [pscustomobject]@{
+            Header = 'Yerel kök dışında'
+            Note = "{0} öğe" -f [int]$Summary.OutsideRootCount
+            HeaderBrush = 'WarningBrush'
+            Items = @([pscustomobject]@{
+                Text = 'Sürücü harfi klasör adına çevrilerek kopyalanır (C:\Gecici\a.txt -> C\Gecici\a.txt).'
+                Note = ''
+                ToolTip = ''
+            })
+        }
+    }
+
+    return New-SamePathCopyDetailChip -Window $Window -Text ([string]$Summary.RootChipText) `
+        -Title 'Yerel kökler' `
+        -Description 'Kopyalama, öğenin bulunduğu kökten sonraki yolu hedefte aynen oluşturur.' `
+        -Sections $sections -ClipboardText (@(@($Summary.Roots) | ForEach-Object { [string]$_.Path }) -join "`r`n") `
+        -ClipboardLabel 'Kökleri panoya kopyala' -MaxTextWidth 420
 }
 
 function Invoke-SamePathCopyUiPump {
