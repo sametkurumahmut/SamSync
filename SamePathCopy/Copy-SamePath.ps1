@@ -148,6 +148,8 @@ $isWizardLast = $TargetId -eq 'wizard:last'
 # profile:<ad>, sihirbazda kaydedilmis adlandirilmis bir secim kumesiyle kopyalar.
 $profileName = if ($TargetId.StartsWith('profile:', [System.StringComparison]::OrdinalIgnoreCase)) { $TargetId.Substring(8).Trim() } else { '' }
 $isProfile = -not [string]::IsNullOrWhiteSpace($profileName)
+# restore, yedekteki eski hâli hedefe geri yazar; yön ters olduğu için sihirbaz ayarları kullanılmaz.
+$isRestore = $TargetId -eq 'restore'
 $useWizardSettings = $isWizard -or $isWizardLast -or $isProfile
 $targets = @(Resolve-SamePathCopyTargets -Configuration $config -TargetId $TargetId -LocalIdentity $localIdentity)
 if ($targets.Count -eq 0) {
@@ -219,6 +221,66 @@ if ($useWizardSettings) {
 }
 
 $backupStamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+if ($isRestore) {
+    # Geri alma: hedeflerdeki yedekler taranır, kullanıcı hangi bilgisayarda hangi yedeği geri yazacağını seçer.
+    . (Join-Path $scriptDirectory 'SamePathCopy.Restore.ps1')
+    $restoreProbePlans = @(foreach ($target in $targets) {
+        foreach ($sourceItem in $sourceItems) {
+            [pscustomobject]@{
+                Target = $target
+                SourceItem = $sourceItem
+                IsDirectory = [bool]$sourceItem.PSIsContainer
+                Destination = Get-SamePathCopyDestination -SourcePath $sourceItem.FullName -LocalRoots $localIdentity.Roots `
+                    -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot)
+            }
+        }
+    })
+    $restoreCandidates = @(Get-SamePathCopyRestoreCandidates -Plans $restoreProbePlans)
+    Write-SamePathCopyLog -Component 'GeriAl' -Message ("Yedek taraması: {0} hedefte yedek bulundu" -f $restoreCandidates.Count)
+    if ($restoreCandidates.Count -eq 0) {
+        throw 'Seçilen öğe için hiçbir hedefte yedek bulunamadı. Yedekler kopyalama sırasında "Yedek al" seçiliyken oluşur.'
+    }
+
+    $restoreResult = Show-SamePathCopyRestore -Configuration $config -Candidates $restoreCandidates -SourceItems $sourceItems `
+        -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
+    if (-not $restoreResult.Confirmed -or @($restoreResult.Selections).Count -eq 0) {
+        Write-SamePathCopyLog -Component 'GeriAl' -Message 'Geri alma penceresinde vazgeçildi.'
+        exit 0
+    }
+
+    # Geri alma planları: kaynak yedekteki kopya, hedef ise aslı. Ayna kullanılmaz; istenirse mevcut hâl yedeklenir.
+    $plans = @(foreach ($selection in @($restoreResult.Selections)) {
+        $candidate = $selection.Candidate
+        $backupItem = Get-Item -LiteralPath $selection.Stamp.Path -Force
+        [pscustomobject]@{
+            SourceItem = $backupItem
+            IsDirectory = [bool]$backupItem.PSIsContainer
+            Target = $candidate.Plan.Target
+            MatchedRoot = $selection.Stamp.Path
+            Destination = $candidate.Destination
+            Options = [pscustomobject]@{
+                Backup = [bool]$restoreResult.BackupCurrent
+                OnlyNewer = $false
+                Mirror = $false
+                DryRun = $false
+                FastCopy = $false
+                Notify = $true
+                ExcludeFiles = ''
+                ExcludeDirectories = ''
+                ThrottleMilliseconds = 0
+                ParallelTargets = 4
+                RetryCount = -1
+                WaitSeconds = -1
+            }
+            BackupPath = Get-SamePathCopyBackupPath -Destination $candidate.Destination -Address ([string]$candidate.Plan.Target.address) `
+                -NetworkRoot ([string]$candidate.Plan.Target.networkRoot) -Stamp $backupStamp
+        }
+        Write-SamePathCopyLog -Component 'GeriAl' -Message ("{0}: {1} yedeği geri yazılacak -> {2}" -f
+            $candidate.TargetName, $selection.Stamp.Label, $candidate.Destination)
+    })
+}
+# Geri alma kipinde planlar yukarıda kuruldu; normal kopyalama planı yalnızca diğer kiplerde hesaplanır.
+if (-not $isRestore) {
 $plans = @(foreach ($target in $targets) {
     $targetId = [string]$target.id
     # Hedef başına parametreler sihirbazdan gelir; sihirbaz dışı çağrılarda hepsi kapalıdır (eski davranış).
@@ -251,6 +313,7 @@ $plans = @(foreach ($target in $targets) {
         }
     }
 })
+}
 
 function Get-SamePathCopyActiveOptionNames {
     param($Options)
@@ -775,6 +838,11 @@ function Complete-SamePathCopyPlanStep {
         }
         Add-SamePathCopyReportRow -Plan $plan -Result 'başarılı' -ExitCode ([int]$result.ExitCode) -Seconds $elapsedSeconds
         $script:successCount++
+        # Hedefin son planı da bittiyse kopyalama sonrası komut bir kez çalıştırılır.
+        if (-not (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun') -and
+            ($Worker.Index + 1) -ge $Worker.Plans.Count) {
+            Invoke-SamePathCopyPostCommand -Plan $plan -Entry $entry
+        }
         return $true
     }
     Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
@@ -789,6 +857,61 @@ function Complete-SamePathCopyPlanStep {
     }
     $script:failedCount++
     return $true
+}
+
+function Invoke-SamePathCopyPostCommand {
+    param(
+        [Parameter(Mandatory = $true)]$Plan,
+        [Parameter(Mandatory = $true)]$Entry
+    )
+
+    # config.json'daki copy.postCommand, bir hedefe kopyalama başarıyla bittikten sonra bir kez çalıştırılır.
+    # Örnek kullanım: karşı taraftaki simülatörü yeniden başlatan bir betiği/servisi tetiklemek.
+    $template = [string]$config.copy.postCommand
+    if ([string]::IsNullOrWhiteSpace($template)) { return }
+
+    $command = Expand-SamePathCopyCommandTemplate -Template $template -Target $Plan.Target `
+        -Destination ([string]$Plan.Destination) -Source ([string]$Plan.SourceItem.FullName)
+    Add-SamePathCopyLogNote -Entry $Entry -Text ("Komut: {0}" -f $command)
+    Write-SamePathCopyLog -Component 'Komut' -Message ("{0}: {1}" -f $Plan.Target.name, $command)
+    try {
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
+        $startInfo.Arguments = '/c ' + $command
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        $timeoutMilliseconds = [int]$config.copy.postCommandTimeoutSeconds * 1000
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($timeoutMilliseconds)
+        while (-not $process.HasExited) {
+            Invoke-SamePathCopyUiPump
+            Start-Sleep -Milliseconds 60
+            if ([DateTime]::UtcNow -gt $deadline) {
+                try { $process.Kill() } catch { }
+                Add-SamePathCopyLogNote -Entry $Entry -Text ("Komut zaman aşımına uğradı ({0} sn)" -f $config.copy.postCommandTimeoutSeconds) -Brush 'DangerBrush'
+                Write-SamePathCopyLog -Component 'Komut' -Level 'ERROR' -Message ("{0}: komut zaman aşımı" -f $Plan.Target.name)
+                return
+            }
+        }
+        $standardOutput = $process.StandardOutput.ReadToEnd()
+        $standardError = $process.StandardError.ReadToEnd()
+        $exitCode = $process.ExitCode
+        if ($exitCode -eq 0) {
+            Add-SamePathCopyLogNote -Entry $Entry -Text 'Komut tamamlandı (0)'
+            Write-SamePathCopyLog -Component 'Komut' -Message ("{0}: komut 0 ile bitti" -f $Plan.Target.name)
+        }
+        else {
+            Add-SamePathCopyLogNote -Entry $Entry -Text ("Komut {0} ile bitti" -f $exitCode) -Brush 'DangerBrush'
+            Write-SamePathCopyLog -Component 'Komut' -Level 'ERROR' -Message ("{0}: komut {1} ile bitti | cikti: {2} | hata: {3}" -f
+                $Plan.Target.name, $exitCode, ($standardOutput -replace '\r?\n', ' '), ($standardError -replace '\r?\n', ' '))
+        }
+    }
+    catch {
+        Add-SamePathCopyLogNote -Entry $Entry -Text ("Komut çalıştırılamadı: {0}" -f $_.Exception.Message) -Brush 'DangerBrush'
+        Write-SamePathCopyLog -Component 'Komut' -Level 'ERROR' -Message ("{0}: komut çalıştırılamadı: {1}" -f $Plan.Target.name, $_.Exception.Message)
+    }
 }
 
 function Start-SamePathCopyPlan {

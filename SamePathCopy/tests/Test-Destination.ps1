@@ -179,6 +179,29 @@ try {
     Assert-Equal '512 B' (Format-SamePathCopySize -Bytes 512) 'Bayt biçimlendirme yanlış.'
     Assert-Equal '2,0 GB' (Format-SamePathCopySize -Bytes (2GB)) 'GB biçimlendirme yanlış.'
 
+    # Kopyalama sonrası komut kalıbı: yer tutucular hedef bilgileriyle dolmalı.
+    $commandTarget = [pscustomobject]@{ id = 'Unit1IG1'; name = 'IG1'; address = '10.10.1.11'; networkRoot = 'Sim\ActiveRelease' }
+    $expandedCommand = Expand-SamePathCopyCommandTemplate -Template 'schtasks /run /s {address} /tn "Yeniden Baslat" & echo {targetId} {targetName} {networkRoot} {destination} {source}' `
+        -Target $commandTarget -Destination '\\10.10.1.11\Sim\ActiveRelease\Data' -Source 'C:\Kaynak\Data'
+    if ($expandedCommand -notlike '*/s 10.10.1.11*') { throw "address yer tutucusu dolmadı: $expandedCommand" }
+    if ($expandedCommand -notlike '*Unit1IG1 IG1 Sim\ActiveRelease*') { throw "hedef bilgileri dolmadı: $expandedCommand" }
+    if ($expandedCommand -notlike '*\\10.10.1.11\Sim\ActiveRelease\Data C:\Kaynak\Data*') { throw "yol yer tutucuları dolmadı: $expandedCommand" }
+
+    # config.json doğrulaması: postCommand varsayılanı boş, zaman aşımı sınırlı.
+    $commandConfig = @{
+        version = '1.0.0'
+        nodes = @(@{ id = 'Yerel'; name = 'Yerel'; address = '10.10.1.10'; localRoot = 'C:\Kaynak'; networkRoot = 'Sim' })
+    }
+    ($commandConfig | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $configPath -Encoding UTF8
+    $loadedCommandConfig = Get-SamePathCopyConfiguration -ConfigPath $configPath
+    Assert-Equal '' ([string]$loadedCommandConfig.copy.postCommand) 'postCommand varsayılanı boş olmalı.'
+    Assert-Equal 60 ([int]$loadedCommandConfig.copy.postCommandTimeoutSeconds) 'postCommandTimeoutSeconds varsayılanı 60 olmalı.'
+    $commandConfig['copy'] = @{ postCommandTimeoutSeconds = 99999 }
+    ($commandConfig | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $configPath -Encoding UTF8
+    $commandError = $null
+    try { [void](Get-SamePathCopyConfiguration -ConfigPath $configPath) } catch { $commandError = [string]$_.Exception.Message }
+    if ($commandError -notlike '*postCommandTimeoutSeconds*') { throw "Sınır dışı zaman aşımı için hata verilmedi: $commandError" }
+
     Write-Host 'Hedef yolu ve çoklu kök testleri başarılı.'
 }
 finally {

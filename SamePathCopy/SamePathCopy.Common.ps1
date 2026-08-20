@@ -116,6 +116,17 @@ function Get-SamePathCopyConfiguration {
     if ([int]$config.copy.backupKeep -lt 0 -or [int]$config.copy.backupKeep -gt 500) {
         throw "backupKeep 0 ile 500 arasında olmalı (0 = sınırsız)."
     }
+    # Kopyalama sonrası çalıştırılacak komut (isteğe bağlı). Yalnızca config.json'da tanımlıysa çalışır;
+    # arayüzden serbest komut girilemez. Hedef başına bir kez, kopyalama başarılıysa çağrılır.
+    if (-not $config.copy.PSObject.Properties['postCommand'] -or $null -eq $config.copy.postCommand) {
+        $config.copy | Add-Member -NotePropertyName postCommand -NotePropertyValue '' -Force
+    }
+    if (-not $config.copy.PSObject.Properties['postCommandTimeoutSeconds'] -or $null -eq $config.copy.postCommandTimeoutSeconds) {
+        $config.copy | Add-Member -NotePropertyName postCommandTimeoutSeconds -NotePropertyValue 60 -Force
+    }
+    if ([int]$config.copy.postCommandTimeoutSeconds -lt 1 -or [int]$config.copy.postCommandTimeoutSeconds -gt 3600) {
+        throw "postCommandTimeoutSeconds 1 ile 3600 arasında olmalı."
+    }
 
     return $config
 }
@@ -435,6 +446,81 @@ function Test-SamePathCopyTargetReachability {
     return $status
 }
 
+function Get-SamePathCopyBackupStamps {
+    param(
+        [Parameter(Mandatory = $true)][string]$Address,
+        [Parameter(Mandatory = $true)][string]$NetworkRoot,
+        # Verilirse yalnızca bu göreli yolu içeren yedekler döner; böylece "bu klasörün eski hâli hangi yedeklerde var" sorusu yanıtlanır.
+        [string]$RelativePath
+    )
+
+    $backupRoot = Get-SamePathCopyBackupRoot -Address $Address -NetworkRoot $NetworkRoot
+    if (-not (Test-Path -LiteralPath $backupRoot -PathType Container)) { return @() }
+    try {
+        $stamps = @(Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction Stop |
+            Where-Object { $_.Name -match '^\d{8}-\d{6}$' } |
+            Sort-Object Name -Descending)
+    }
+    catch {
+        return @()
+    }
+
+    $results = @()
+    foreach ($stamp in $stamps) {
+        $itemPath = if ([string]::IsNullOrWhiteSpace($RelativePath)) { $stamp.FullName } else { Join-Path $stamp.FullName $RelativePath }
+        if (-not (Test-Path -LiteralPath $itemPath)) { continue }
+        $results += [pscustomobject]@{
+            Stamp = [string]$stamp.Name
+            Path = $itemPath
+            # 20260820-162243 -> 20.08.2026 16:22:43 gibi okunur bir etikete çevrilir.
+            Label = try {
+                ([datetime]::ParseExact($stamp.Name, 'yyyyMMdd-HHmmss', [System.Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy HH:mm:ss')
+            }
+            catch {
+                [string]$stamp.Name
+            }
+        }
+    }
+    return @($results)
+}
+
+function Get-SamePathCopyRelativeDestinationPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Address,
+        [Parameter(Mandatory = $true)][string]$NetworkRoot
+    )
+
+    # Hedef yolunun paylaşım kökünden sonraki kısmı; yedekten geri almada aynı göreli yol kullanılır.
+    $uncRoot = "\\$Address\$($NetworkRoot.Trim('\'))"
+    if (-not $Destination.StartsWith($uncRoot, [System.StringComparison]::OrdinalIgnoreCase)) { return '' }
+    return $Destination.Substring($uncRoot.Length).TrimStart('\')
+}
+
+function Expand-SamePathCopyCommandTemplate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Template,
+        [Parameter(Mandatory = $true)]$Target,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Source
+    )
+
+    # Komut kalıbındaki yer tutucular doldurulur. Kullanılabilir alanlar:
+    # {address} {targetId} {targetName} {networkRoot} {destination} {source}
+    $result = $Template
+    foreach ($pair in @(
+        @{ Key = '{address}'; Value = [string]$Target.address }
+        @{ Key = '{targetId}'; Value = [string]$Target.id }
+        @{ Key = '{targetName}'; Value = [string]$Target.name }
+        @{ Key = '{networkRoot}'; Value = [string]$Target.networkRoot }
+        @{ Key = '{destination}'; Value = $Destination }
+        @{ Key = '{source}'; Value = $Source }
+    )) {
+        $result = $result.Replace([string]$pair.Key, [string]$pair.Value)
+    }
+    return $result
+}
+
 function Get-SamePathCopyListingSummary {
     param([string[]]$Lines)
 
@@ -539,10 +625,17 @@ function Get-SamePathCopyMenuEntries {
     else {
         'Wizard (son ayar)'
     }
+    $restoreLabel = if ($Configuration.PSObject.Properties['restoreLabel'] -and -not [string]::IsNullOrWhiteSpace([string]$Configuration.restoreLabel)) {
+        [string]$Configuration.restoreLabel
+    }
+    else {
+        'Yedekten geri al'
+    }
     $entries = @(
         [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true }
         [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true }
         [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true }
+        [pscustomobject]@{ Kind = 'restore'; Id = 'restore'; Label = $restoreLabel; IsAggregate = $true }
     )
     foreach ($profileName in @($ProfileNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
         $entries += [pscustomobject]@{
@@ -591,7 +684,7 @@ function Resolve-SamePathCopyTargets {
     $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $LocalIdentity.Id)
     # Sihirbaz bütün hedeflerle açılır; hangilerine gönderileceğini kullanıcı arayüzde seçer.
     # wizard:last ve profile:<ad> aynı listeyle başlar; seçim kaydedilmiş sihirbaz ayarından/profilden uygulanır.
-    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard' -or $TargetId -eq 'wizard:last' -or
+    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard' -or $TargetId -eq 'wizard:last' -or $TargetId -eq 'restore' -or
         $TargetId.StartsWith('profile:', [System.StringComparison]::OrdinalIgnoreCase)) {
         return $targets
     }

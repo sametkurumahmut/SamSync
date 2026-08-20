@@ -2,6 +2,9 @@
 
 ## Yayımlanmamış
 
+- Menüye `Yedekten geri al` girdisi eklendi (`-TargetId restore`): seçilen öğenin hedeflerdeki yedekleri taranıyor, her hedef için hangi yedeğin geri yazılacağı penceredeki açılır listeden seçiliyor. Geri almadan önce hedefin mevcut hâli varsayılan olarak yedekleniyor. Yedeği olmayan öğede işlem başlamıyor.
+- `config.json` içindeki `copy.postCommand` ile kopyalama sonrası komut çalıştırılabiliyor: hedef başına bir kez, `{address}` `{targetId}` `{targetName}` `{networkRoot}` `{destination}` `{source}` yer tutucularıyla. Zaman aşımı `copy.postCommandTimeoutSeconds` (varsayılan 60 sn); çıktı ve hata günlüğe, sonuç panele yazılıyor. Deneme çalıştırmasında komut çalışmıyor.
+
 - Her kopyalama çalıştırması için CSV rapor yazılıyor (`log\reports\rapor-<tarih-saat>.csv`): hedef, kaynak, hedef yolu, parametreler, sonuç, robocopy kodu, süre ve hata notu. Kopyalama penceresine `Raporu aç` düğmesi eklendi.
 - Kopyalama bitince görev çubuğunda bildirim balonu gösteriliyor; sihirbazdaki `Bitince bildirim göster` parametresiyle kapatılabiliyor.
 

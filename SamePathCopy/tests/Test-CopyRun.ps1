@@ -46,6 +46,9 @@ function Invoke-TestCopy {
     $startInfo.EnvironmentVariables['SAMEPATHCOPY_WIZARD_STATE'] = $env:SAMEPATHCOPY_WIZARD_STATE
     $startInfo.EnvironmentVariables['SAMEPATHCOPY_LOG'] = $env:SAMEPATHCOPY_LOG
     $startInfo.EnvironmentVariables['SAMEPATHCOPY_NODE_ID'] = 'Yerel'
+    if (-not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_RESTORE_AUTOCLOSE)) {
+        $startInfo.EnvironmentVariables['SAMEPATHCOPY_RESTORE_AUTOCLOSE'] = $env:SAMEPATHCOPY_RESTORE_AUTOCLOSE
+    }
 
     $process = [System.Diagnostics.Process]::Start($startInfo)
     $standardError = $process.StandardError.ReadToEnd()
@@ -158,6 +161,63 @@ try {
     if ($finalLog -notlike '*[Ayna]*fazla*') { throw 'Ayna önizlemesi günlüğe yazılmadı.' }
     if ($finalLog -notlike '*fazla.txt*') { throw 'Ayna önizlemesi silinecek dosyayı listelemedi.' }
     if ($finalLog -notlike '*Deneme: *öğe kopyalanacaktı*') { throw 'Deneme çalıştırması listesi günlüğe yazılmadı.' }
+
+    # 6) Yedekten geri alma: yedeği olan hedefte eski hâl geri yazılır.
+    #    Hedef1'in yedeği 3. adımda alındı; şimdi hedefteki dosya bozulup geri alma çalıştırılır.
+    $damagedFile = Join-Path $testDirectory 'hedef1\Data\bir.txt'
+    Set-Content -LiteralPath $damagedFile -Value 'bozuldu' -Encoding UTF8
+    $previousRestoreAutoClose = $env:SAMEPATHCOPY_RESTORE_AUTOCLOSE
+    try {
+        $env:SAMEPATHCOPY_RESTORE_AUTOCLOSE = '400'
+        Assert-Equal 0 (Invoke-TestCopy -ConfigPath $configPath -TargetId 'restore' -SourcePath @((Join-Path $sourceRoot 'Data'))) 'Geri alma hatayla bitti.'
+    }
+    finally {
+        $env:SAMEPATHCOPY_RESTORE_AUTOCLOSE = $previousRestoreAutoClose
+    }
+    Assert-Equal 'bir' ([string](Get-Content -LiteralPath $damagedFile -Raw)).Trim() 'Geri alma yedekteki içeriği yazmadı.'
+
+    $restoreLog = [string](Get-Content -LiteralPath $env:SAMEPATHCOPY_LOG -Raw -Encoding UTF8)
+    if ($restoreLog -notlike '*[GeriAl]*yedek bulundu*') { throw 'Yedek taraması günlüğe yazılmadı.' }
+    if ($restoreLog -notlike '*yedeği geri yazılacak*') { throw 'Geri alma planı günlüğe yazılmadı.' }
+
+    # Yedeği olmayan bir öğe için geri alma açıkça hata vermeli.
+    New-TestFile -Path (Join-Path $sourceRoot 'Baska\tek.txt') -Content 'tek'
+    $noBackupErrorPath = Join-Path $testDirectory 'geri-al-hata.txt'
+    $noBackupInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $noBackupInfo.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $noBackupInfo.Arguments = '-sta -NoProfile -ExecutionPolicy Bypass -File "{0}" -TargetId restore -ConfigPath "{1}" -SourcePath "{2}"' -f `
+        (Join-Path $projectDirectory 'Copy-SamePath.ps1'), $configPath, (Join-Path $sourceRoot 'Baska')
+    $noBackupInfo.UseShellExecute = $false
+    $noBackupInfo.CreateNoWindow = $true
+    $noBackupInfo.RedirectStandardError = $true
+    $noBackupInfo.RedirectStandardOutput = $true
+    $noBackupInfo.EnvironmentVariables['SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE'] = '1'
+    $noBackupInfo.EnvironmentVariables['SAMEPATHCOPY_LOG'] = $env:SAMEPATHCOPY_LOG
+    $noBackupInfo.EnvironmentVariables['SAMEPATHCOPY_NODE_ID'] = 'Yerel'
+    $noBackupProcess = [System.Diagnostics.Process]::Start($noBackupInfo)
+    $noBackupError = $noBackupProcess.StandardError.ReadToEnd()
+    [void]$noBackupProcess.StandardOutput.ReadToEnd()
+    if (-not $noBackupProcess.WaitForExit(60000)) {
+        try { $noBackupProcess.Kill() } catch { }
+        throw 'Yedeksiz geri alma süreci kilitlendi.'
+    }
+    Assert-Equal 1 $noBackupProcess.ExitCode 'Yedeksiz geri almada çıkış kodu 1 olmalı.'
+    # Alt sürecin hata akışı konsol kod sayfasıyla geldiği için Türkçe karakterlere güvenilmez; ASCII parça aranır.
+    if ($noBackupError -notlike '*yedek bulunamad*') { throw "Yedeksiz geri alma hatası beklenenden farklı: $noBackupError" }
+
+    # 7) Kopyalama sonrası komut: hedef başına bir kez çalışmalı ve yer tutucular dolmalı.
+    $commandOutputPath = Join-Path $testDirectory 'komut-cikti.txt'
+    $commandConfigPath = Join-Path $testDirectory 'config-komut.json'
+    $commandConfig = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $commandConfig.copy | Add-Member -NotePropertyName postCommand -NotePropertyValue ('echo {targetId} {address} >> "' + $commandOutputPath + '"') -Force
+    ($commandConfig | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $commandConfigPath -Encoding UTF8
+    Assert-Equal 0 (Invoke-TestCopy -ConfigPath $commandConfigPath -TargetId 'Hedef2' -SourcePath @((Join-Path $sourceRoot 'Data'))) 'Komutlu kopyalama hatayla bitti.'
+    if (-not (Test-Path -LiteralPath $commandOutputPath -PathType Leaf)) { throw 'Kopyalama sonrası komut çalışmadı.' }
+    $commandOutput = [string](Get-Content -LiteralPath $commandOutputPath -Raw)
+    if ($commandOutput -notlike '*Hedef2 127.0.0.1*') { throw "Komut yer tutucuları dolmadı: $commandOutput" }
+    Assert-Equal 1 @([string[]]($commandOutput -split '\r?\n' | Where-Object { $_.Trim() })).Count 'Komut hedef başına bir kez çalışmalı.'
+    $commandLog = [string](Get-Content -LiteralPath $env:SAMEPATHCOPY_LOG -Raw -Encoding UTF8)
+    if ($commandLog -notlike '*[Komut]*') { throw 'Komut günlüğe yazılmadı.' }
 
     # Rapor: her çalıştırma günlüğün yanındaki reports klasörüne CSV yazmalı.
     $reportDirectory = Join-Path (Split-Path -Parent $env:SAMEPATHCOPY_LOG) 'reports'

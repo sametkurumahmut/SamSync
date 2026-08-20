@@ -160,6 +160,30 @@ Her kopyalama çalıştırması ayrıca `log\reports\rapor-<tarih-saat>.csv` dos
 
 `root.log` 5 MB'ı geçtiğinde `root.1.log`, `root.2.log`, `root.3.log` olarak kaydırılır; en eskisi silinir. Günlük klasörü sürüm denetimine girmez.
 
+### Yedekten geri alma
+
+Menüdeki `Yedekten geri al` girdisi (`-TargetId restore`, etiket `config.json` içindeki `restoreLabel` alanından değişir), seçilen öğenin hedeflerdeki eski hâlini geri yazar. Explorer'da bir klasöre sağ tıklayıp bu girdiyi seçmek, o klasörün yedeklerini arar.
+
+Pencerede yalnızca o öğe için yedeği bulunan bilgisayarlar listelenir; her satırda o hedefteki yedek tarihleri açılır listede durur (en yeni önce seçili). `Geri almadan önce hedefin şu anki hâlini yedekle` seçeneği varsayılan olarak açıktır, yani geri alma da geri alınabilir. Geri alma yedekteki dosyaları hedefe yazar; hedefte olup yedekte olmayan dosyalar silinmez (ayna kullanılmaz).
+
+Seçilen öğe için hiçbir hedefte yedek yoksa işlem başlamaz ve bunu söyleyen bir hata verilir. Yedekler kopyalama sırasında `Yedek al` parametresi seçiliyken oluşur.
+
+### Kopyalama sonrası komut
+
+`config.json` içindeki `copy.postCommand` doluysa, bir hedefe kopyalama başarıyla bittikten sonra o komut **bir kez** çalıştırılır (deneme çalıştırmasında çalışmaz). Örnek: dağıtımdan sonra karşı taraftaki simülatörü yeniden başlatan bir görevi tetiklemek.
+
+```json
+"copy": {
+    "retryCount": 2,
+    "waitSeconds": 1,
+    "backupKeep": 5,
+    "postCommand": "schtasks /run /s {address} /tn \\"Sim Yeniden Baslat\\"",
+    "postCommandTimeoutSeconds": 60
+}
+```
+
+Kullanılabilir yer tutucular: `{address}`, `{targetId}`, `{targetName}`, `{networkRoot}`, `{destination}`, `{source}`. Komut `cmd /c` ile çalışır, penceresi görünmez; çıkışı ve hata akışı günlüğe yazılır, sonuç panelde satır olarak görünür. `postCommandTimeoutSeconds` (varsayılan 60, en fazla 3600) süresinde bitmezse süreç durdurulur ve hata olarak kaydedilir. Komut yalnızca `config.json` üzerinden tanımlanır; arayüzden serbest komut girilemez.
+
 ### Kopyalama öncesi denetimler
 
 Kopyalama penceresi açıldıktan sonra, işlem başlamadan önce iki denetim yapılır:
