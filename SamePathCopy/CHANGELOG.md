@@ -2,6 +2,7 @@
 
 ## Yayımlanmamış
 
+- Notepad++ sekme menüsünde gruplar da birbirinden ayırıcıyla ayrılıyor: her grubun önüne bir ayırıcı konuyor, grubun kendi girdisi ile makineleri aynı bölümde kalıyor.
 - Notepad++ sekme menüsünde de bölümler ayırıcıyla ayrılıyor (`tabContextMenu.xml` içine `<Item id="0" />` yazılıyor): `Tümü` | sihirbaz girdileri | geri alma | profiller | gruplar | tek makineler.
 - Kaldırma, eklenen ayırıcıları da temizliyor: yönetilen girdilerin klasör adı toplanıp o klasördeki `id="0"` girdileri kaldırılıyor (config.json'a ihtiyaç duymadan).
 

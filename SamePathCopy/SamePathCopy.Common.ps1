@@ -688,6 +688,18 @@ function Get-SamePathCopyMenuEntries {
     return $entries
 }
 
+function Get-SamePathCopyMenuSectionKey {
+    param([Parameter(Mandatory = $true)]$Entry)
+
+    # Düz listelenen menülerde (Notepad++ sekme menüsü) ayırıcı yerleri bu anahtara göre belirlenir:
+    # bölüm değiştiğinde ve her yeni grupta bir ayırıcı çıkar. Grubun kendi girdisi ile o gruba ait
+    # makineler aynı anahtarı paylaştığı için grubun içi bölünmez.
+    if ([string]$Entry.Section -eq 'grup' -and -not [string]::IsNullOrWhiteSpace([string]$Entry.GroupName)) {
+        return "grup:$([string]$Entry.GroupName)"
+    }
+    return [string]$Entry.Section
+}
+
 function Resolve-SamePathCopyTargets {
     param(
         [Parameter(Mandatory = $true)]$Configuration,

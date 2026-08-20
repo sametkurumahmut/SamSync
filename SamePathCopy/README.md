@@ -256,8 +256,15 @@ Yedekten geri al
 Unit1
   Eğitmen - 10.10.1.10
   IG1 - 10.10.1.11
+  IG2 - 10.10.1.12
+  IG3 - 10.10.1.13
+────────────────
+Unit2
+  Eğitmen - 10.10.1.30
   ...
 ```
+
+Sekme menüsü düz listelendiği için **her grubun önüne de ayırıcı** konur; grubun kendi girdisi ile o gruba ait makineler aynı bölümde kalır (Explorer'da buna gerek yok, çünkü gruplar orada ayrı alt menülerde).
 
 Kaldırma bu ayırıcıları da temizler: yönetilen girdiler silinirken bulundukları klasör adı toplanır ve o klasördeki `id="0"` girdileri de kaldırılır.
 

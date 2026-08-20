@@ -114,8 +114,8 @@ try {
         }
     }
 
-    # Bölümler arasına ayırıcı konur: Tümü | sihirbaz girdileri | geri alma | profiller | gruplar | tek makineler.
-    $expectedSeparatorCount = @($expectedEntries | ForEach-Object { [string]$_.Section } |
+    # Bölümler ve gruplar arasına ayırıcı konur: Tümü | sihirbaz | geri alma | profiller | her grup | tek makineler.
+    $expectedSeparatorCount = @($expectedEntries | ForEach-Object { Get-SamePathCopyMenuSectionKey -Entry $_ } |
         Select-Object -Unique).Count - 1
     Assert-Equal $expectedSeparatorCount $managedSeparators.Count 'Sekme menüsünde ayırıcı sayısı bölüm sayısıyla uyuşmuyor.'
 
@@ -125,7 +125,9 @@ try {
         ((Get-XmlAttributeValue -Node $_ -Name 'id') -eq '0' -and
          (Get-XmlAttributeValue -Node $_ -Name 'FolderName') -eq [string]$configuration.menuTitle) })
     $sectionByCommandName = @{}
-    foreach ($expectedEntry in $expectedEntries) { $sectionByCommandName["[SamePathCopy] $($expectedEntry.Id)"] = [string]$expectedEntry.Section }
+    foreach ($expectedEntry in $expectedEntries) {
+        $sectionByCommandName["[SamePathCopy] $($expectedEntry.Id)"] = Get-SamePathCopyMenuSectionKey -Entry $expectedEntry
+    }
     $previousSection = ''
     $separatorPending = $false
     foreach ($node in $tabMenuNodes) {
@@ -147,6 +149,17 @@ try {
     }
     if ($tabMenuNodes.Count -gt 0 -and (Get-XmlAttributeValue -Node $tabMenuNodes[0] -Name 'id') -eq '0') {
         throw 'Sekme menüsü ayırıcı ile başlıyor.'
+    }
+
+    # Her grup girdisinin hemen öncesinde ayırıcı olmalı (ilk girdi olmadıkça), grubun içi bölünmemeli.
+    $groupEntryNames = @($expectedEntries | Where-Object { $_.Kind -eq 'group' } | ForEach-Object { "[SamePathCopy] $($_.Id)" })
+    for ($nodeIndex = 0; $nodeIndex -lt $tabMenuNodes.Count; $nodeIndex++) {
+        $nodeName = Get-XmlAttributeValue -Node $tabMenuNodes[$nodeIndex] -Name 'MenuItemName'
+        if ($groupEntryNames -notcontains $nodeName) { continue }
+        if ($nodeIndex -eq 0) { continue }
+        if ((Get-XmlAttributeValue -Node $tabMenuNodes[$nodeIndex - 1] -Name 'id') -ne '0') {
+            throw "Grup girdisinin öncesinde ayırıcı yok: $nodeName"
+        }
     }
 
     # config.json içindeki notepadPlusPlusShortcuts girdisi komuta klavye kısayolu olarak işlenmeli.

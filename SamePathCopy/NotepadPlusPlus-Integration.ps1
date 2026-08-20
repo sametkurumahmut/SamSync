@@ -482,8 +482,9 @@ function Update-NotepadPlusPlusConfiguration {
         else {
             ''
         }
-        # Bölümler arasına Notepad++ ayırıcısı konur: <Item id="0"/> (tabContextMenu.xml sözdizimi).
-        $previousSection = ''
+        # Bölümler ve gruplar arasına Notepad++ ayırıcısı konur: <Item id="0"/> (tabContextMenu.xml sözdizimi).
+        # Sekme menüsü düz listelendiği için her grup da kendi ayırıcısıyla ayrılır; grubun içi bölünmez.
+        $previousSectionKey = ''
         foreach ($entry in $MenuEntries) {
             $commandName = "$commandPrefix$($entry.Id)"
             $commandText = ('"{0}" -nop -w hidden -ep bypass -f "{1}" -TargetId {2} -SourcePath "$(FULL_CURRENT_PATH)"{3}' -f $powershellExe, $QueueScriptPath, $entry.Id, $configPathArgument)
@@ -508,13 +509,14 @@ function Update-NotepadPlusPlusConfiguration {
             $command.InnerText = $commandText
             [void]$userCommands.AppendChild($command)
 
-            if ($previousSection -ne '' -and $previousSection -ne [string]$entry.Section) {
+            $sectionKey = Get-SamePathCopyMenuSectionKey -Entry $entry
+            if ($previousSectionKey -ne '' -and $previousSectionKey -ne $sectionKey) {
                 $separator = $tabMenuDocument.CreateElement('Item')
                 $separator.SetAttribute('FolderName', [string]$Configuration.menuTitle)
                 $separator.SetAttribute('id', '0')
                 [void]$tabMenu.AppendChild($separator)
             }
-            $previousSection = [string]$entry.Section
+            $previousSectionKey = $sectionKey
 
             $item = $tabMenuDocument.CreateElement('Item')
             $item.SetAttribute('FolderName', [string]$Configuration.menuTitle)
