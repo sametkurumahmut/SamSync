@@ -1,5 +1,13 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- Menüde `Tümü`'nün ardından `Wizard` girdisi eklendi: hedefler listeden işaretlenerek seçiliyor (varsayılan olarak hepsi işaretli) ve her bilgisayar için parametreler ayrı ayrı veriliyor.
+- Bilgisayar başına parametreler: `Yedek al` (hedefteki önceki hâli `_SamePathCopyYedek\<tarih-saat>` altına alır), `Yalnızca yeni` (`/XO`), `Ayna` (`/MIR`, yalnızca klasörlerde ve ek onayla). Bütün hedefler için: `Deneme çalıştırması` (`/L`), `Hızlı kopyalama` (`/MT:8`).
+- Sihirbaz ayarları `%LOCALAPPDATA%\SamePathCopy\wizard-state.json` içinde config yoluna göre saklanıyor; pencere son hâliyle açılıyor. Yeni eklenen bilgisayar işaretli gelir, silinen düşer. Yol `SAMEPATHCOPY_WIZARD_STATE` ile değiştirilebilir.
+- Sihirbaz etiketi `config.json` içindeki `wizardLabel` alanından değiştirilebiliyor.
+- Robocopy argüman üretimi ortak katmana taşındı ve testlendi; yedek klasörü klasör kopyalamalarında dışlanıyor (`/XD`).
+
 ## 1.1.3
 
 - Node'lara `localRoots` alanı eklendi: bir bilgisayar birden fazla kaynak kökü tanımlayabiliyor. Kaynak hangi kökün altındaysa göreli yol o köke göre hesaplanıp hedefin `networkRoot` değeri altına yazılıyor; iç içe köklerde en uzun eşleşen kök kullanılıyor. Tek `localRoot` kullanan yapılandırmalar aynen çalışmaya devam ediyor.

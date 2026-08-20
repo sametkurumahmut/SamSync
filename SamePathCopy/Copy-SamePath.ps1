@@ -32,11 +32,6 @@ trap {
     exit 1
 }
 
-function Quote-RobocopyArgument {
-    param([Parameter(Mandatory = $true)][string]$Value)
-    return '"' + $Value.Replace('"', '""') + '"'
-}
-
 function Invoke-Robocopy {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
@@ -44,6 +39,7 @@ function Invoke-Robocopy {
         [Parameter(Mandatory = $true)][bool]$IsDirectory,
         [Parameter(Mandatory = $true)][int]$RetryCount,
         [Parameter(Mandatory = $true)][int]$WaitSeconds,
+        $Options,
         $Form
     )
 
@@ -73,23 +69,8 @@ function Invoke-Robocopy {
         }
     }
 
-    $arguments = @(
-        (Quote-RobocopyArgument $sourceDirectory),
-        (Quote-RobocopyArgument $destinationDirectory)
-    )
-    if ($fileFilter) {
-        $arguments += (Quote-RobocopyArgument $fileFilter)
-    }
-    if ($IsDirectory) {
-        $arguments += @('/E', '/DCOPY:DAT')
-    }
-    $arguments += @(
-        '/Z', '/COPY:DAT', '/FFT', "/R:$RetryCount", "/W:$WaitSeconds",
-        '/NP', '/NJH', '/NJS', '/NFL', '/NDL'
-    )
-
     $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Robocopy-{0}.log" -f [guid]::NewGuid().ToString('N'))
-    $arguments += ('/UNILOG:' + (Quote-RobocopyArgument $logPath))
+    $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory -FileFilter $fileFilter -IsDirectory $IsDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $Options -LogPath $logPath)
     try {
         $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
         while (-not $process.WaitForExit(150)) {
@@ -119,11 +100,43 @@ function Invoke-Robocopy {
     }
 }
 
+function Invoke-SamePathCopyBackup {
+    param(
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][bool]$IsDirectory,
+        [Parameter(Mandatory = $true)][int]$RetryCount,
+        [Parameter(Mandatory = $true)][int]$WaitSeconds,
+        $Form
+    )
+
+    # Yalnızca hedefte hâlihazırda var olan öğe yedeklenir; yeni gönderilen öğenin yedeklenecek bir önceki hâli yoktur.
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        return [pscustomobject]@{ Performed = $false; ExitCode = 0; Details = ''; BackupPath = $BackupPath }
+    }
+
+    $result = Invoke-Robocopy -Source $Destination -Destination $BackupPath -IsDirectory $IsDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $null -Form $Form
+    return [pscustomobject]@{
+        Performed = $true
+        ExitCode = [int]$result.ExitCode
+        Details = [string]$result.Details
+        BackupPath = $BackupPath
+    }
+}
+
 $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $config
+$resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+$isWizard = $TargetId -eq 'wizard'
 $targets = @(Resolve-SamePathCopyTargets -Configuration $config -TargetId $TargetId -LocalIdentity $localIdentity)
 if ($targets.Count -eq 0) {
     throw "Kopyalama için etkin hedef yok."
+}
+
+$wizardSettings = $null
+if ($isWizard) {
+    . (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
+    $wizardSettings = Get-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Targets $targets
 }
 
 $sourceItems = @(foreach ($path in @($SourcePath | Select-Object -Unique)) {
@@ -140,28 +153,66 @@ if ($sourceItems.Count -eq 0) {
     throw 'Kopyalanacak kaynak seçilmedi.'
 }
 
+$globalOptions = $null
+if ($isWizard) {
+    if (-not $PlanOnly) {
+        # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
+        $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
+        Save-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Settings $wizardResult.Settings
+        if (-not $wizardResult.Confirmed) { exit 0 }
+        $wizardSettings = $wizardResult.Settings
+    }
+    $globalOptions = $wizardSettings.Global
+    $targets = @($targets | Where-Object { [bool]$wizardSettings.Targets[[string]$_.id].Selected })
+    if ($targets.Count -eq 0) {
+        throw 'Sihirbazda hiçbir bilgisayar seçilmedi.'
+    }
+}
+
+$backupStamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
 $plans = @(foreach ($target in $targets) {
+    $targetId = [string]$target.id
+    # Hedef başına parametreler sihirbazdan gelir; sihirbaz dışı çağrılarda hepsi kapalıdır (eski davranış).
+    $targetOptions = if ($isWizard) { $wizardSettings.Targets[$targetId] } else { $null }
+    $options = [pscustomobject]@{
+        Backup = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'Backup'
+        OnlyNewer = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'OnlyNewer'
+        Mirror = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'Mirror'
+        DryRun = Get-SamePathCopyOptionValue -Options $globalOptions -Name 'DryRun'
+        FastCopy = Get-SamePathCopyOptionValue -Options $globalOptions -Name 'FastCopy'
+    }
     foreach ($sourceItem in $sourceItems) {
         # Kaynak hangi yerel kökün altındaysa göreli yol o köke göre hesaplanır; hiçbirinin altında değilse tam yol korunur.
         $matchedRoot = Get-SamePathCopyMatchingRoot -FullPath ([System.IO.Path]::GetFullPath($sourceItem.FullName)) -LocalRoots $localIdentity.Roots
+        $destination = Get-SamePathCopyDestination -SourcePath $sourceItem.FullName -LocalRoots $localIdentity.Roots -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot)
         [pscustomobject]@{
             SourceItem = $sourceItem
             IsDirectory = [bool]$sourceItem.PSIsContainer
             Target = $target
             MatchedRoot = $matchedRoot
-            Destination = Get-SamePathCopyDestination -SourcePath $sourceItem.FullName -LocalRoots $localIdentity.Roots -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot)
+            Destination = $destination
+            Options = $options
+            BackupPath = Get-SamePathCopyBackupPath -Destination $destination -Address ([string]$target.address) -NetworkRoot ([string]$target.networkRoot) -Stamp $backupStamp
         }
     }
 })
 
+function Get-SamePathCopyActiveOptionNames {
+    param($Options)
+
+    return @(@('Backup', 'OnlyNewer', 'Mirror', 'DryRun', 'FastCopy') |
+        Where-Object { Get-SamePathCopyOptionValue -Options $Options -Name $_ })
+}
+
 if ($PlanOnly) {
-    $plans | ForEach-Object {
+    foreach ($plan in $plans) {
         [pscustomobject]@{
-            Source = $_.SourceItem.FullName
-            LocalRoot = if ($_.MatchedRoot) { $_.MatchedRoot } else { '(kök dışı)' }
+            Source = $plan.SourceItem.FullName
+            LocalRoot = if ($plan.MatchedRoot) { $plan.MatchedRoot } else { '(kök dışı)' }
             LocalMachine = $localIdentity.Name
-            Target = $_.Target.name
-            Destination = $_.Destination
+            Target = $plan.Target.name
+            Destination = $plan.Destination
+            Options = (@(Get-SamePathCopyActiveOptionNames -Options $plan.Options) -join ',')
         }
     }
     exit 0
@@ -236,10 +287,24 @@ $form.Add_Shown({
     foreach ($plan in $plans) {
         $name = [string]$plan.Target.name
         $statusLabel.Text = "Kopyalanıyor: $name"
-        $resultBox.AppendText("[$name] $($plan.SourceItem.FullName) -> $($plan.Destination)`r`n")
+        $activeOptions = @(Get-SamePathCopyActiveOptionNames -Options $plan.Options)
+        $optionText = if ($activeOptions.Count -gt 0) { " [$($activeOptions -join ', ')]" } else { '' }
+        $resultBox.AppendText("[$name]$optionText $($plan.SourceItem.FullName) -> $($plan.Destination)`r`n")
         [System.Windows.Forms.Application]::DoEvents()
         try {
-            $copyResult = Invoke-Robocopy -Source $plan.SourceItem.FullName -Destination $plan.Destination -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Form $form
+            if ((Get-SamePathCopyOptionValue -Options $plan.Options -Name 'Backup') -and -not (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun')) {
+                $backupResult = Invoke-SamePathCopyBackup -Destination $plan.Destination -BackupPath $plan.BackupPath -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Form $form
+                if (-not $backupResult.Performed) {
+                    $resultBox.AppendText("  YEDEK: hedefte önceki hâli yok, atlandı`r`n")
+                }
+                elseif ([int]$backupResult.ExitCode -le 7) {
+                    $resultBox.AppendText("  YEDEK: $($backupResult.BackupPath)`r`n")
+                }
+                else {
+                    throw "Yedek alınamadı (robocopy: $($backupResult.ExitCode)). Kopyalama yapılmadı: $($backupResult.BackupPath)"
+                }
+            }
+            $copyResult = Invoke-Robocopy -Source $plan.SourceItem.FullName -Destination $plan.Destination -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Options $plan.Options -Form $form
             $exitCode = [int]$copyResult.ExitCode
             if ($exitCode -le 7) {
                 $successCount++

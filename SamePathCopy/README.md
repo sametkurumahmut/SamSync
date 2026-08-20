@@ -75,6 +75,29 @@ C:\Fraps\README.HTM
 
 Bu sayede farklı sürücülerde aynı ada sahip yollar çakışmaz. UNC kaynakları `networkRoot\UNC\sunucu\paylaşım\...` altında saklanır.
 
+### Sihirbaz
+
+Menüde `Tümü`'nün hemen ardından gelen `Wizard` girdisi, göndermeden önce bir pencere açar: hangi bilgisayarlara gönderileceği listeden işaretlenir ve her bilgisayar için parametreler ayrı ayrı seçilir. Etiket `config.json` içindeki `wizardLabel` alanından değiştirilebilir.
+
+Bilgisayar başına parametreler:
+
+| Parametre | Ne yapar |
+| --- | --- |
+| `Yedek al` | Hedefte aynı yolda hâlihazırda duran dosya/klasörü, kopyalamadan önce `<networkRoot>\_SamePathCopyYedek\<tarih-saat>\<göreli yol>` altına kopyalar. Hedefte önceki hâli yoksa atlanır. Yedek başarısız olursa o öğe kopyalanmaz. |
+| `Yalnızca yeni` | Hedefteki dosya kaynaktan yeni ya da aynı yaştaysa dokunmaz (`robocopy /XO`). |
+| `Ayna (fazlayı sil)` | Hedefi kaynağın aynası yapar; kaynakta olmayan dosyalar hedefte silinir (`robocopy /MIR`). Yalnızca klasör kopyalamada uygulanır ve başlatmadan önce ayrıca onay ister. |
+
+Bütün hedefler için geçerli parametreler:
+
+| Parametre | Ne yapar |
+| --- | --- |
+| `Deneme çalıştırması` | Ne kopyalanacağını hesaplar, hiçbir şey yazmaz (`robocopy /L`). Yedek adımı da atlanır. |
+| `Hızlı kopyalama` | Çok iş parçacıklı kopyalama (`robocopy /MT:8`). Yeniden başlatılabilir kip (`/Z`) bu durumda kullanılmaz. |
+
+İlk açılışta bütün bilgisayarlar işaretli, parametreler kapalı gelir. Seçimler `%LOCALAPPDATA%\SamePathCopy\wizard-state.json` içinde config dosyası yoluna göre saklanır; pencere bir sonraki açılışta son hâliyle gelir. Vazgeçilse bile tablodaki son durum saklanır. `config.json`'a sonradan eklenen bilgisayar işaretli gelir, silinen bilgisayar durumdan düşer. `SAMEPATHCOPY_WIZARD_STATE` ortam değişkeni durum dosyasının yolunu değiştirir.
+
+Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
+
 ### Gruplar
 
 Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:
@@ -205,7 +228,7 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 - `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
 - `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
 
-Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
+Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel`, sihirbaz girdisinin adı `wizardLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
 
 ## Kurulum
 

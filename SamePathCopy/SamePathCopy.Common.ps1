@@ -212,6 +212,77 @@ function Get-LocalSamePathCopyIdentity {
     throw "Bu bilgisayar config içindeki hiçbir node ile eşleşmedi. Bilgisayar adı: $LocalMachineName; IP: $addressesText. nodes listesine bu bilgisayarı ekleyin."
 }
 
+$script:SamePathCopyBackupFolderName = '_SamePathCopyYedek'
+
+function Get-SamePathCopyBackupFolderName {
+    return $script:SamePathCopyBackupFolderName
+}
+
+function Get-SamePathCopyBackupPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Address,
+        [Parameter(Mandatory = $true)][string]$NetworkRoot,
+        [Parameter(Mandatory = $true)][string]$Stamp
+    )
+
+    # Yedek, hedefin paylaşım kökü altındaki ayrı bir klasöre, hedefle aynı göreli yolu koruyarak alınır.
+    $uncRoot = "\\$Address\$($NetworkRoot.Trim('\'))"
+    $relativePath = ''
+    if ($Destination.StartsWith($uncRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $relativePath = $Destination.Substring($uncRoot.Length).TrimStart('\')
+    }
+    $backupRoot = "$uncRoot\$(Get-SamePathCopyBackupFolderName)\$Stamp"
+    if ([string]::IsNullOrWhiteSpace($relativePath)) { return $backupRoot }
+    return "$backupRoot\$relativePath"
+}
+
+function Get-SamePathCopyRobocopyArguments {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string]$DestinationDirectory,
+        [string]$FileFilter,
+        [Parameter(Mandatory = $true)][bool]$IsDirectory,
+        [Parameter(Mandatory = $true)][int]$RetryCount,
+        [Parameter(Mandatory = $true)][int]$WaitSeconds,
+        $Options,
+        [string]$LogPath
+    )
+
+    $quote = { param([string]$Value) '"' + $Value.Replace('"', '""') + '"' }
+    $useMirror = $IsDirectory -and (Get-SamePathCopyOptionValue -Options $Options -Name 'Mirror')
+    $arguments = @((& $quote $SourceDirectory), (& $quote $DestinationDirectory))
+    if ($FileFilter) { $arguments += (& $quote $FileFilter) }
+    if ($IsDirectory) {
+        # /MIR zaten /E içerir; ikisini birlikte vermek gereksiz.
+        $arguments += $(if ($useMirror) { '/MIR' } else { '/E' })
+        $arguments += '/DCOPY:DAT'
+        # Yedek klasörü hedefin altında durduğu için kopyalamaya dahil edilmez.
+        $arguments += ('/XD ' + (& $quote (Get-SamePathCopyBackupFolderName)))
+    }
+    if (Get-SamePathCopyOptionValue -Options $Options -Name 'FastCopy') {
+        # /MT yeniden başlatılabilir kip (/Z) ile birlikte kullanılmaz; hız seçilince /Z düşer.
+        $arguments += '/MT:8'
+    }
+    else {
+        $arguments += '/Z'
+    }
+    if (Get-SamePathCopyOptionValue -Options $Options -Name 'OnlyNewer') { $arguments += '/XO' }
+    if (Get-SamePathCopyOptionValue -Options $Options -Name 'DryRun') { $arguments += '/L' }
+    $arguments += @('/COPY:DAT', '/FFT', "/R:$RetryCount", "/W:$WaitSeconds", '/NP', '/NJH', '/NJS', '/NFL', '/NDL')
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+        $arguments += ('/UNILOG:' + (& $quote $LogPath))
+    }
+    return @($arguments)
+}
+
+function Get-SamePathCopyOptionValue {
+    param($Options, [Parameter(Mandatory = $true)][string]$Name)
+
+    if ($null -eq $Options -or -not $Options.PSObject.Properties[$Name]) { return $false }
+    return [bool]$Options.$Name
+}
+
 function Get-SamePathCopyNodeGroup {
     param([Parameter(Mandatory = $true)]$Node)
 
@@ -228,7 +299,16 @@ function Get-SamePathCopyMenuEntries {
     # Menü sırası: Tümü, ardından her grup kendi makinelerinin başında, en sonda gruba ait olmayan makineler.
     # Explorer ve Notepad++ menüleri aynı listeyi kullandığı için sıra ve etiketler her iki menüde birebir aynıdır.
     $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $ExcludeId)
-    $entries = @([pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true })
+    $wizardLabel = if ($Configuration.PSObject.Properties['wizardLabel'] -and -not [string]::IsNullOrWhiteSpace([string]$Configuration.wizardLabel)) {
+        [string]$Configuration.wizardLabel
+    }
+    else {
+        'Wizard'
+    }
+    $entries = @(
+        [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true }
+        [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true }
+    )
 
     $groupKeys = New-Object System.Collections.Generic.List[string]
     $groupLabels = @{}
@@ -266,7 +346,8 @@ function Resolve-SamePathCopyTargets {
     )
 
     $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $LocalIdentity.Id)
-    if ($TargetId -eq 'all') { return $targets }
+    # Sihirbaz bütün hedeflerle açılır; hangilerine gönderileceğini kullanıcı arayüzde seçer.
+    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard') { return $targets }
 
     if ($TargetId.StartsWith('group:', [System.StringComparison]::OrdinalIgnoreCase)) {
         $groupName = $TargetId.Substring(6).Trim()
