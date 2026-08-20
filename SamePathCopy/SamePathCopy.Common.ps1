@@ -538,6 +538,7 @@ function Get-SamePathCopyListingSummary {
     # yollar buradan çıkarılır; ayna onayında ve deneme çalıştırmasında kullanılır.
     $extras = New-Object System.Collections.Generic.List[string]
     $changes = New-Object System.Collections.Generic.List[string]
+    $classCounts = @{ 'New File' = 0; 'New Dir' = 0; 'Newer' = 0; 'Older' = 0; 'Changed' = 0 }
     foreach ($line in @($Lines)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $trimmed = $line.Trim()
@@ -545,8 +546,9 @@ function Get-SamePathCopyListingSummary {
             $extras.Add($Matches['path'].Trim())
             continue
         }
-        if ($trimmed -match '^(New File|Newer|Older|Changed|New Dir)\s+(?<path>.+)$') {
+        if ($trimmed -match '^(?<class>New File|Newer|Older|Changed|New Dir)\s+(?<path>.+)$') {
             $changes.Add($Matches['path'].Trim())
+            $classCounts[$Matches['class']] = [int]$classCounts[$Matches['class']] + 1
         }
     }
     return [pscustomobject]@{
@@ -554,6 +556,12 @@ function Get-SamePathCopyListingSummary {
         ChangeCount = $changes.Count
         Extras = @($extras)
         Changes = @($changes)
+        # Sınıf dökümü: "Older" kaynak dosyanın hedeftekinden ESKİ olduğunu söyler; robocopy yine de
+        # üzerine yazacağı için hedefte daha yeni dosyayı ezme uyarısı bu sayıdan üretilir.
+        NewCount = [int]$classCounts['New File'] + [int]$classCounts['New Dir']
+        NewerCount = [int]$classCounts['Newer']
+        OlderCount = [int]$classCounts['Older']
+        ChangedCount = [int]$classCounts['Changed']
     }
 }
 
@@ -600,6 +608,154 @@ function Format-SamePathCopySize {
     if ($Bytes -ge 1MB) { return "{0:0.0} MB" -f ($Bytes / 1MB) }
     if ($Bytes -ge 1KB) { return "{0:0.0} KB" -f ($Bytes / 1KB) }
     return "$Bytes B"
+}
+
+function Invoke-SamePathCopyTargetInspection {
+    param(
+        [Parameter(Mandatory = $true)]$SourceItems,
+        [string[]]$LocalRoots,
+        [Parameter(Mandatory = $true)]$Target,
+        [int]$TimeoutSeconds = 120,
+        [scriptblock]$PumpAction
+    )
+
+    # Hedefe hiçbir şey yazmadan "orada ne var" sorusuna yanıt verir: her kaynak öğe için hedef yol
+    # hesaplanır, hedefte hiç yoksa "yok" sayılır, varsa robocopy /L farkları sınıflarıyla listeler.
+    # Sihirbazdaki satır rozetleri ve -CheckOnly kipi bu özet üzerinden çalışır. PumpAction, arayüzden
+    # çağrıldığında pencerenin donmaması için bekleme döngüsünde çalıştırılır; testler boş bırakır.
+    $missing = 0
+    $changeCount = 0
+    $newCount = 0
+    $newerCount = 0
+    $olderCount = 0
+    $changedCount = 0
+    $extraCount = 0
+    $failed = $false
+    $items = @(@($SourceItems) | Where-Object { $null -ne $_ })
+
+    foreach ($item in $items) {
+        $isDirectory = [bool]$item.PSIsContainer
+        $destination = Get-SamePathCopyDestination -SourcePath ([string]$item.FullName) -LocalRoots $LocalRoots `
+            -Address ([string]$Target.address) -NetworkRoot ([string]$Target.networkRoot)
+
+        try {
+            $destinationExists = Test-Path -LiteralPath $destination -PathType $(if ($isDirectory) { 'Container' } else { 'Leaf' })
+        }
+        catch {
+            $destinationExists = $false
+        }
+        if (-not $destinationExists) {
+            $missing++
+            continue
+        }
+
+        if ($isDirectory) {
+            $sourceDirectory = [string]$item.FullName
+            $destinationDirectory = $destination
+            $fileFilter = $null
+        }
+        else {
+            $sourceDirectory = [System.IO.Path]::GetDirectoryName([string]$item.FullName)
+            $destinationDirectory = [System.IO.Path]::GetDirectoryName($destination)
+            $fileFilter = [System.IO.Path]::GetFileName([string]$item.FullName)
+        }
+
+        $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Inspect-{0}.log" -f [guid]::NewGuid().ToString('N'))
+        $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory `
+            -FileFilter $fileFilter -IsDirectory $isDirectory -RetryCount 0 -WaitSeconds 0 -Options $null -LogPath $logPath -Listing)
+        try {
+            $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
+            $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+            while (-not $process.WaitForExit(120)) {
+                if ($null -ne $PumpAction) { & $PumpAction }
+                if ([DateTime]::UtcNow -gt $deadline) {
+                    try { $process.Kill() } catch { }
+                    $failed = $true
+                    break
+                }
+            }
+            $process.WaitForExit()
+            # robocopy'de 8 ve üzeri hata demektir; /L kipinde de erişim hatası bu şekilde döner.
+            if ($process.ExitCode -ge 8) { $failed = $true }
+
+            $lines = @()
+            if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+                $lines = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue)
+            }
+            $summary = Get-SamePathCopyListingSummary -Lines $lines
+            $changeCount += [int]$summary.ChangeCount
+            $newCount += [int]$summary.NewCount
+            $newerCount += [int]$summary.NewerCount
+            $olderCount += [int]$summary.OlderCount
+            $changedCount += [int]$summary.ChangedCount
+            # Dosya süzgeçli listelemede robocopy hedefteki diğer dosyaları da "fazla" sayabildiği için
+            # fazlalıklar yalnızca klasör incelemesinde toplanır (dosya kopyalamada zaten anlamı yok).
+            if ($isDirectory) { $extraCount += [int]$summary.ExtraCount }
+        }
+        catch {
+            $failed = $true
+        }
+        finally {
+            if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+                Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        TargetId = [string]$Target.id
+        ItemCount = $items.Count
+        MissingCount = $missing
+        ChangeCount = $changeCount
+        NewCount = $newCount
+        NewerCount = $newerCount
+        OlderCount = $olderCount
+        ChangedCount = $changedCount
+        ExtraCount = $extraCount
+        Failed = $failed
+    }
+}
+
+function Get-SamePathCopyInspectionText {
+    param([Parameter(Mandatory = $true)]$Inspection)
+
+    # İnceleme sonucunu satıra sığan kısa bir rozete çevirir; ayrıntı ipucunda durur.
+    # Fırça adları tema kaynaklarındaki anahtarlardır; arayüz FindResource ile çözer.
+    $toolTipParts = New-Object System.Collections.Generic.List[string]
+    if ([int]$Inspection.NewCount -gt 0) { $toolTipParts.Add("hedefte olmayan: {0}" -f [int]$Inspection.NewCount) }
+    if ([int]$Inspection.NewerCount -gt 0) { $toolTipParts.Add("kaynak daha yeni: {0}" -f [int]$Inspection.NewerCount) }
+    if ([int]$Inspection.OlderCount -gt 0) { $toolTipParts.Add("hedef daha yeni (üzerine yazılır): {0}" -f [int]$Inspection.OlderCount) }
+    if ([int]$Inspection.ChangedCount -gt 0) { $toolTipParts.Add("boyutu farklı: {0}" -f [int]$Inspection.ChangedCount) }
+    if ([int]$Inspection.ExtraCount -gt 0) { $toolTipParts.Add("hedefte fazladan: {0} (yalnızca Ayna siler)" -f [int]$Inspection.ExtraCount) }
+    if ([int]$Inspection.MissingCount -gt 0) { $toolTipParts.Add("hedefte hiç olmayan öğe: {0}" -f [int]$Inspection.MissingCount) }
+
+    if ([bool]$Inspection.Failed) {
+        return [pscustomobject]@{ Text = 'inceleme hatası'; Brush = 'DangerBrush'
+            ToolTip = 'robocopy /L hedefi listeleyemedi; paylaşım yetkisi ya da ağ sorunu olabilir.' }
+    }
+    if ([int]$Inspection.ItemCount -gt 0 -and [int]$Inspection.MissingCount -eq [int]$Inspection.ItemCount) {
+        return [pscustomobject]@{ Text = 'hedefte yok'; Brush = 'TextMutedBrush'
+            ToolTip = 'Seçilen öğelerin hiçbiri hedefte yok; tamamı yeni kopyalanır.' }
+    }
+    if ([int]$Inspection.ChangeCount -eq 0 -and [int]$Inspection.MissingCount -eq 0) {
+        $sameToolTip = 'Hedef kaynakla aynı; kopyalama bir şey değiştirmez.'
+        if ([int]$Inspection.ExtraCount -gt 0) {
+            $sameToolTip = "Kopyalanacak fark yok. " + ("hedefte fazladan: {0} (yalnızca Ayna siler)" -f [int]$Inspection.ExtraCount)
+        }
+        return [pscustomobject]@{ Text = 'aynı'; Brush = 'SuccessBrush'; ToolTip = $sameToolTip }
+    }
+
+    $textParts = New-Object System.Collections.Generic.List[string]
+    if (([int]$Inspection.ChangeCount) -gt 0) { $textParts.Add("{0} değişecek" -f [int]$Inspection.ChangeCount) }
+    if (([int]$Inspection.MissingCount) -gt 0) { $textParts.Add("{0} öğe yok" -f [int]$Inspection.MissingCount) }
+    $text = $textParts -join ', '
+    $brush = 'TextBrush'
+    if ([int]$Inspection.OlderCount -gt 0) {
+        # Hedefteki daha yeni dosya ezilecek: rozet uyarı rengine döner ve başına ünlem konur.
+        $text = "! " + $text
+        $brush = 'WarningBrush'
+    }
+    return [pscustomobject]@{ Text = $text; Brush = $brush; ToolTip = ($toolTipParts -join "`r`n") }
 }
 
 function Get-SamePathCopyNodeGroup {

@@ -267,6 +267,93 @@ try {
     try { [void](Get-SamePathCopyConfiguration -ConfigPath $configPath) } catch { $commandError = [string]$_.Exception.Message }
     if ($commandError -notlike '*postCommandTimeoutSeconds*') { throw "Sınır dışı zaman aşımı için hata verilmedi: $commandError" }
 
+    # Listeleme özeti sınıf dökümü: "Older" hedefte daha yeni dosya demektir, ayrı sayılmalı.
+    $listingLines = @(
+        '   New File              C:\x\a.txt'
+        '   New Dir               C:\x\Alt\'
+        '   Newer                 C:\x\b.txt'
+        '   Older                 C:\x\c.txt'
+        '   Changed               C:\x\d.txt'
+        '  *EXTRA File            C:\y\z.txt'
+    )
+    $listingSummary = Get-SamePathCopyListingSummary -Lines $listingLines
+    Assert-Equal 5 ([int]$listingSummary.ChangeCount) 'Değişecek öğe sayısı yanlış.'
+    Assert-Equal 2 ([int]$listingSummary.NewCount) 'Yeni öğe sayısı yanlış (dosya + klasör).'
+    Assert-Equal 1 ([int]$listingSummary.NewerCount) 'Kaynak daha yeni sayısı yanlış.'
+    Assert-Equal 1 ([int]$listingSummary.OlderCount) 'Hedef daha yeni sayısı yanlış.'
+    Assert-Equal 1 ([int]$listingSummary.ChangedCount) 'Boyutu farklı sayısı yanlış.'
+    Assert-Equal 1 ([int]$listingSummary.ExtraCount) 'Fazlalık sayısı yanlış.'
+
+    # Rozet metni: incelemenin durumlarını kısa metne ve fırçaya çevirir.
+    function New-FakeInspection {
+        param([int]$ItemCount = 1, [int]$Missing = 0, [int]$Change = 0, [int]$New = 0, [int]$Newer = 0,
+            [int]$Older = 0, [int]$Changed = 0, [int]$Extra = 0, [bool]$Failed = $false)
+        return [pscustomobject]@{
+            TargetId = 'T'; ItemCount = $ItemCount; MissingCount = $Missing; ChangeCount = $Change
+            NewCount = $New; NewerCount = $Newer; OlderCount = $Older; ChangedCount = $Changed
+            ExtraCount = $Extra; Failed = $Failed
+        }
+    }
+    Assert-Equal 'aynı' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection)).Text) 'Fark yokken rozet "aynı" olmalı.'
+    Assert-Equal 'SuccessBrush' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection)).Brush) 'Aynı rozeti yeşil olmalı.'
+    Assert-Equal 'hedefte yok' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -ItemCount 2 -Missing 2)).Text) 'Hepsi yokken rozet "hedefte yok" olmalı.'
+    Assert-Equal '3 değişecek' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -Change 3 -New 3)).Text) 'Değişecek rozeti yanlış.'
+    Assert-Equal '2 değişecek, 1 öğe yok' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -ItemCount 2 -Missing 1 -Change 2 -New 2)).Text) 'Karışık rozet yanlış.'
+    $olderBadge = Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -Change 2 -Older 1 -Newer 1)
+    Assert-Equal '! 2 değişecek' ([string]$olderBadge.Text) 'Hedef daha yeniyken rozet ünlemle başlamalı.'
+    Assert-Equal 'WarningBrush' ([string]$olderBadge.Brush) 'Hedef daha yeniyken rozet uyarı renginde olmalı.'
+    if (([string]$olderBadge.ToolTip) -notlike '*hedef daha yeni (üzerine yazılır): 1*') { throw "Rozet ipucunda üzerine yazma uyarısı yok: $($olderBadge.ToolTip)" }
+    Assert-Equal 'inceleme hatası' ([string](Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -Failed $true)).Text) 'Hata rozeti yanlış.'
+    $sameWithExtras = Get-SamePathCopyInspectionText -Inspection (New-FakeInspection -Extra 4)
+    Assert-Equal 'aynı' ([string]$sameWithExtras.Text) 'Yalnızca fazlalık varken rozet "aynı" kalmalı.'
+    if (([string]$sameWithExtras.ToolTip) -notlike '*fazladan: 4*') { throw "Aynı rozetinin ipucunda fazlalık sayısı yok: $($sameWithExtras.ToolTip)" }
+
+    # Hedef inceleme gerçek robocopy ile: yerel yönetim paylaşımı üzerinden üç durum sınanır.
+    $inspectRoot = Join-Path $temporaryDirectory 'incele'
+    $inspectSource = Join-Path $inspectRoot 'kaynak\Data'
+    [void](New-Item -ItemType Directory -Path (Join-Path $inspectSource 'Alt') -Force)
+    Set-Content -LiteralPath (Join-Path $inspectSource 'bir.txt') -Value 'bir' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $inspectSource 'Alt\iki.txt') -Value 'iki' -Encoding UTF8
+
+    function New-InspectTarget {
+        param([string]$Id, [string]$LocalPath)
+        return [pscustomobject]@{ id = $Id; name = $Id; address = '127.0.0.1'; networkRoot = ("C$\" + $LocalPath.Substring(3)) }
+    }
+    $inspectRoots = @((Join-Path $inspectRoot 'kaynak'))
+    $inspectItems = @(Get-Item -LiteralPath $inspectSource)
+
+    # Hedef 1: birebir kopya + hedefte fazladan bir dosya -> "aynı", fazlalık ipucunda.
+    $sameTargetPath = Join-Path $inspectRoot 'hedefAyni'
+    [void](New-Item -ItemType Directory -Path $sameTargetPath -Force)
+    $robocopyOutput = robocopy $inspectSource (Join-Path $sameTargetPath 'Data') /E /COPY:DAT /FFT /R:0 /W:0
+    Set-Content -LiteralPath (Join-Path $sameTargetPath 'Data\fazla.txt') -Value 'fazla' -Encoding UTF8
+    $sameInspection = Invoke-SamePathCopyTargetInspection -SourceItems $inspectItems -LocalRoots $inspectRoots `
+        -Target (New-InspectTarget -Id 'Ayni' -LocalPath $sameTargetPath)
+    Assert-Equal 0 ([int]$sameInspection.ChangeCount) 'Birebir kopyada değişecek öğe olmamalı.'
+    Assert-Equal 0 ([int]$sameInspection.MissingCount) 'Birebir kopyada eksik öğe olmamalı.'
+    Assert-Equal 1 ([int]$sameInspection.ExtraCount) 'Hedefteki fazladan dosya sayılmadı.'
+    Assert-Equal 'aynı' ([string](Get-SamePathCopyInspectionText -Inspection $sameInspection).Text) 'Birebir kopyanın rozeti "aynı" olmalı.'
+
+    # Hedef 2: hiç yok -> "hedefte yok".
+    $missingTargetPath = Join-Path $inspectRoot 'hedefYok'
+    [void](New-Item -ItemType Directory -Path $missingTargetPath -Force)
+    $missingInspection = Invoke-SamePathCopyTargetInspection -SourceItems $inspectItems -LocalRoots $inspectRoots `
+        -Target (New-InspectTarget -Id 'Yok' -LocalPath $missingTargetPath)
+    Assert-Equal 1 ([int]$missingInspection.MissingCount) 'Olmayan hedef "yok" sayılmadı.'
+    Assert-Equal 'hedefte yok' ([string](Get-SamePathCopyInspectionText -Inspection $missingInspection).Text) 'Olmayan hedefin rozeti yanlış.'
+
+    # Hedef 3: hedefteki dosya kaynaktan daha yeni -> "Older" sınıfı, uyarılı rozet.
+    $newerTargetPath = Join-Path $inspectRoot 'hedefYeni'
+    [void](New-Item -ItemType Directory -Path $newerTargetPath -Force)
+    $robocopyOutput = robocopy $inspectSource (Join-Path $newerTargetPath 'Data') /E /COPY:DAT /FFT /R:0 /W:0
+    (Get-Item -LiteralPath (Join-Path $newerTargetPath 'Data\bir.txt')).LastWriteTime = (Get-Date).AddHours(2)
+    $newerInspection = Invoke-SamePathCopyTargetInspection -SourceItems $inspectItems -LocalRoots $inspectRoots `
+        -Target (New-InspectTarget -Id 'Yeni' -LocalPath $newerTargetPath)
+    Assert-Equal 1 ([int]$newerInspection.OlderCount) 'Hedefteki daha yeni dosya "Older" olarak sayılmadı.'
+    $newerBadge = Get-SamePathCopyInspectionText -Inspection $newerInspection
+    Assert-Equal 'WarningBrush' ([string]$newerBadge.Brush) 'Hedef daha yeniyken rozet uyarı renginde olmalı.'
+    if (([string]$newerBadge.Text) -notlike '!*') { throw "Hedef daha yeniyken rozet ünlem taşımalı: $($newerBadge.Text)" }
+
     Write-Host 'Hedef yolu ve çoklu kök testleri başarılı.'
 }
 finally {

@@ -496,6 +496,8 @@ function Get-SamePathCopyWizardBodyXaml {
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBox x:Name="FilterBox" Style="{StaticResource SearchBox}" Width="200" Margin="0,0,10,0" />
                 <Button x:Name="ProbeButton" Style="{StaticResource GhostButton}" Content="Erişimi sına" Margin="0,0,8,0" />
+                <Button x:Name="InspectButton" Style="{StaticResource GhostButton}" Content="Hedefi incele" Margin="0,0,8,0"
+                        ToolTip="Seçili hedeflerde robocopy /L çalıştırıp 'Hedefte' kolonunu doldurur: aynı / değişecek / yok / hedef daha yeni." />
                 <Button x:Name="SelectMenuButton" Style="{StaticResource GhostButton}" Content="Seç ⌄" Margin="0,0,10,0" />
                 <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
             </StackPanel>
@@ -516,8 +518,9 @@ function Get-SamePathCopyWizardBodyXaml {
                 <Grid x:Name="TargetGrid">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="64" />
-                        <ColumnDefinition Width="*" MinWidth="180" />
-                        <ColumnDefinition Width="104" />
+                        <ColumnDefinition Width="*" MinWidth="150" />
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="112" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="24" />
@@ -527,6 +530,8 @@ function Get-SamePathCopyWizardBodyXaml {
                                HorizontalAlignment="Center" />
                     <TextBlock Grid.Column="1" Style="{StaticResource ColumnHeaderText}" Text="Bilgisayar" Margin="6,0,0,0" />
                     <TextBlock Grid.Column="2" Style="{StaticResource ColumnHeaderText}" Text="Grup" />
+                    <TextBlock Grid.Column="3" Style="{StaticResource ColumnHeaderText}" Text="Hedefte"
+                               ToolTip="Seçilen öğelerin bu hedefteki durumu. 'Hedefi incele' düğmesi doldurur; kopyalamadan önce neyin değişeceğini gösterir." />
                 </Grid>
             </ScrollViewer>
         </Border>
@@ -738,6 +743,17 @@ function Show-SamePathCopyWizard {
         [void]$targetGrid.Children.Add($groupText)
         [void]$rowElements.Add($groupText)
 
+        # Hedef durumu rozeti: "Hedefi incele" doldurana kadar boş bir çizgi gösterir.
+        $inspectText = New-Object System.Windows.Controls.TextBlock
+        $inspectText.Style = $window.FindResource('MutedText')
+        $inspectText.Text = '—'
+        $inspectText.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
+        $inspectText.ToolTip = "Henüz incelenmedi. 'Hedefi incele' düğmesi bu hedefte neyin değişeceğini gösterir."
+        [System.Windows.Controls.Grid]::SetRow($inspectText, $rowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($inspectText, 3)
+        [void]$targetGrid.Children.Add($inspectText)
+        [void]$rowElements.Add($inspectText)
+
         $optionColumn = $firstOptionColumn
         foreach ($optionDefinition in $optionDefinitions) {
             $optionBox = New-Object System.Windows.Controls.CheckBox
@@ -767,6 +783,7 @@ function Show-SamePathCopyWizard {
             Visible = $true
             Reachable = $null
             ReachabilityDot = $reachabilityDot
+            InspectText = $inspectText
         })
         $rowIndex++
     }
@@ -818,6 +835,52 @@ function Show-SamePathCopyWizard {
 
     # Erişim yoklaması: pencere açılırken bir kez, sonra düğmeyle yeniden çalıştırılabilir.
     $window.FindName('ProbeButton').Add_Click({ & $script:wizardProbeReachability })
+
+    # Hedef inceleme: görünen ve seçili satırlarda robocopy /L çalıştırıp "Hedefte" rozetini doldurur.
+    # Erişilemeyen hedef atlanır (robocopy'nin ağ zaman aşımı beklenmez); sonuçlar sırayla gelir.
+    $script:wizardSourceItems = $SourceItems
+    $script:wizardLocalRoots = @($LocalRoots)
+    $script:wizardInspectButton = $window.FindName('InspectButton')
+    $script:wizardInspectTargets = {
+        if ($script:wizardReachabilityStatus.Count -eq 0) { & $script:wizardProbeReachability }
+        $script:wizardInspectButton.IsEnabled = $false
+        try {
+            $inspectRows = @($script:wizardRows | Where-Object { [bool]$_.Visible -and [bool]$_.Controls['Selected'].IsChecked })
+            if ($inspectRows.Count -eq 0) {
+                [void](Show-SamePathCopyConfirm -Title 'Hedef seçilmedi' -Message 'İncelemek için en az bir hedef işaretlenmeli.' `
+                    -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
+                return
+            }
+            foreach ($row in $inspectRows) {
+                $row.InspectText.Text = 'inceleniyor...'
+                $row.InspectText.Foreground = $script:wizardWindow.FindResource('TextMutedBrush')
+                $row.InspectText.ToolTip = $null
+            }
+            Invoke-SamePathCopyUiPump
+            foreach ($row in $inspectRows) {
+                if ($row.Reachable -eq $false) {
+                    $row.InspectText.Text = 'erişilemedi'
+                    $row.InspectText.Foreground = $script:wizardWindow.FindResource('DangerBrush')
+                    $row.InspectText.ToolTip = 'SMB portu yanıt vermiyor; hedef incelenemedi.'
+                    continue
+                }
+                $target = @($script:wizardTargets | Where-Object { [string]$_.id -eq [string]$row.Id })[0]
+                $inspection = Invoke-SamePathCopyTargetInspection -SourceItems $script:wizardSourceItems `
+                    -LocalRoots $script:wizardLocalRoots -Target $target -PumpAction { Invoke-SamePathCopyUiPump }
+                $badge = Get-SamePathCopyInspectionText -Inspection $inspection
+                $row.InspectText.Text = [string]$badge.Text
+                $row.InspectText.Foreground = $script:wizardWindow.FindResource([string]$badge.Brush)
+                $row.InspectText.ToolTip = $(if ([string]$badge.ToolTip) { [string]$badge.ToolTip } else { $null })
+                Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Inceleme [{0}]: {1} | yok: {2}, degisecek: {3}, hedef daha yeni: {4}, fazla: {5}" -f
+                    $row.Id, $badge.Text, $inspection.MissingCount, $inspection.ChangeCount, $inspection.OlderCount, $inspection.ExtraCount)
+                Invoke-SamePathCopyUiPump
+            }
+        }
+        finally {
+            $script:wizardInspectButton.IsEnabled = $true
+        }
+    }
+    $script:wizardInspectButton.Add_Click({ & $script:wizardInspectTargets })
 
     # "Seç" düğmesi, seçim yardımcılarını tek bir açılır listede toplar: erişilebilirler, son
     # çalıştırmada hata alanlar ve ters çevirme. Düğme başına yer harcamadan yenisi eklenebilir.
