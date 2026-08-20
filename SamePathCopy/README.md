@@ -105,7 +105,7 @@ Başlık satırı seçimi tek satırda özetler: tek öğede tam yol ve türü, 
 
 Aynı iki çip kopyalama penceresinin başlığında da vardır; geri alma penceresi de aynı özet satırını kullanır.
 
-Üst satırdaki `Son gönderim` çipi, günlükteki en son kopyalama özetini gösterir (tarih, başarılı/hatalı sayıları, süre).
+Üst satırdaki `Son gönderim` çipi, günlükteki en son kopyalama özetini gösterir (tarih, başarılı/hatalı sayıları, süre). Tıklanınca **son 10 çalıştırma** CSV raporlarından listelenir: her satırda tarih, hedef sayısı, başarılı/hatalı/iptal dökümü ve kaynak görünür. `Hedefleri seç` o çalıştırmanın hedef kümesini tabloya uygular (o hedefler seçilir, diğerleri bırakılır) — "geçen seferkinin aynısına gönder" iki tıktır; `Raporu aç` CSV'yi varsayılan uygulamayla açar. Liste her açılışta yeniden okunur.
 
 Bilgisayar başına parametreler:
 

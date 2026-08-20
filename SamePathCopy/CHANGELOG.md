@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- `Son gönderim` çipi tıklanabilir oldu: son 10 çalıştırma CSV raporlarından listeleniyor (tarih, hedef sayısı, başarılı/hatalı/iptal dökümü, kaynak). `Hedefleri seç` o çalıştırmanın hedef kümesini tabloya uyguluyor, `Raporu aç` CSV'yi açıyor. Günlük özeti yoksa ama rapor varsa çip `Geçmiş` etiketiyle yine görünüyor.
+
 - Sihirbazda kaynak listesi artık düzenlenebiliyor: kaynak çipinin açılır listesindeki onay kutusuyla öğe o kopyalamadan düşürülüyor (çip `Kaynak: 7 / 9 öğe` gösteriyor), pencereye sürüklenip bırakılan dosya/klasör listeye ekleniyor. Başlık, yerel kök çipi ve `Hedefi incele` rozetleri yalnızca kalan öğeleri sayıyor; kopyalama sihirbazın döndürdüğü son listeyle yapılıyor. Bütün öğelerin işareti kaldırılırsa kopyalama başlamıyor; değişiklik yalnızca o çalıştırma için geçerli.
 
 - `-CheckOnly` kipi eklendi: hedeflere hiçbir şey yazmadan her hedef için `Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata` durumu ve sayı dökümü (`Changes`, `Missing`, `DestNewer`, `Extras`) yazılıyor. Çıkış kodu 0 = bütün hedefler aynı, 1 = fark var; eğitim öncesi "12 makine senkron mu" denetimi betikten çalıştırılabiliyor. Erişilemeyen hedefte robocopy zaman aşımı beklenmiyor; sihirbazdaki `Hedefi incele` ile aynı inceleme işlevini kullanıyor.

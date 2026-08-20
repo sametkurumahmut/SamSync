@@ -518,6 +518,120 @@ function Set-SamePathCopyWizardReachabilityState {
     }
 }
 
+function Get-SamePathCopyWizardHistoryLineText {
+    param([Parameter(Mandatory = $true)]$Summary)
+
+    # Geçmiş listesindeki bir çalıştırmanın tek satırlık özeti; sıfır olan sayılar yazılmaz.
+    $text = "{0}  •  {1} hedef  •  {2} başarılı" -f [string]$Summary.StampText, @($Summary.TargetIds).Count, [int]$Summary.SuccessCount
+    if ([int]$Summary.FailedCount -gt 0) { $text += ", {0} hatalı" -f [int]$Summary.FailedCount }
+    if ([int]$Summary.CancelledCount -gt 0) { $text += ", {0} iptal" -f [int]$Summary.CancelledCount }
+    return $text
+}
+
+function New-SamePathCopyWizardHistoryPopup {
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)]$PlacementTarget,
+        $Summaries,
+        [scriptblock]$SelectHandler,
+        [scriptblock]$OpenHandler
+    )
+
+    # Son çalıştırmaların listesi: her satırda özet, o çalıştırmanın hedef kümesini tabloya uygulayan
+    # düğme ve CSV raporunu açan düğme. Liste her açılışta yeniden kurulur; rapor klasörü tazelenir.
+    $popup = New-Object System.Windows.Controls.Primitives.Popup
+    $popup.PlacementTarget = $PlacementTarget
+    $popup.Placement = 'Bottom'
+    $popup.StaysOpen = $false
+    $popup.AllowsTransparency = $true
+    $popup.VerticalOffset = 4
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $Window.FindResource('Card')
+    $card.Background = $Window.FindResource('SurfaceBrush')
+    $card.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
+    $card.MinWidth = 420
+    $card.MaxWidth = 720
+
+    $layout = New-Object System.Windows.Controls.DockPanel
+    $layout.LastChildFill = $true
+    $titleText = New-Object System.Windows.Controls.TextBlock
+    $titleText.Style = $Window.FindResource('SectionText')
+    $titleText.Text = 'Son çalıştırmalar'
+    $titleText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+    [System.Windows.Controls.DockPanel]::SetDock($titleText, 'Top')
+    [void]$layout.Children.Add($titleText)
+
+    $scroller = New-Object System.Windows.Controls.ScrollViewer
+    $scroller.VerticalScrollBarVisibility = 'Auto'
+    $scroller.HorizontalScrollBarVisibility = 'Disabled'
+    $scroller.MaxHeight = 320
+    $listPanel = New-Object System.Windows.Controls.StackPanel
+    $scroller.Content = $listPanel
+    [void]$layout.Children.Add($scroller)
+
+    if (@($Summaries).Count -eq 0) {
+        $emptyText = New-Object System.Windows.Controls.TextBlock
+        $emptyText.Style = $Window.FindResource('MutedText')
+        $emptyText.Text = 'Henüz rapor yok; ilk kopyalamadan sonra çalıştırmalar burada listelenir.'
+        [void]$listPanel.Children.Add($emptyText)
+    }
+
+    foreach ($summary in @($Summaries)) {
+        $rowPanel = New-Object System.Windows.Controls.DockPanel
+        $rowPanel.LastChildFill = $true
+        $rowPanel.Margin = New-Object System.Windows.Thickness(0, 3, 0, 3)
+
+        # Düğmeler sağda durur; kalan genişlik özet metnine kalır.
+        $buttonPanel = New-Object System.Windows.Controls.StackPanel
+        $buttonPanel.Orientation = 'Horizontal'
+        $buttonPanel.VerticalAlignment = 'Center'
+        [System.Windows.Controls.DockPanel]::SetDock($buttonPanel, 'Right')
+
+        $selectButton = New-Object System.Windows.Controls.Button
+        $selectButton.Style = $Window.FindResource('GhostButton')
+        $selectButton.Content = 'Hedefleri seç'
+        $selectButton.ToolTip = 'Bu çalıştırmanın hedef kümesini tabloya uygular: o hedefler seçilir, diğerleri bırakılır.'
+        $selectButton.Tag = $summary
+        if ($null -ne $SelectHandler) { $selectButton.Add_Click($SelectHandler) }
+        [void]$buttonPanel.Children.Add($selectButton)
+
+        $openButton = New-Object System.Windows.Controls.Button
+        $openButton.Style = $Window.FindResource('GhostButton')
+        $openButton.Content = 'Raporu aç'
+        $openButton.ToolTip = [string]$summary.Path
+        $openButton.Tag = [string]$summary.Path
+        if ($null -ne $OpenHandler) { $openButton.Add_Click($OpenHandler) }
+        [void]$buttonPanel.Children.Add($openButton)
+        [void]$rowPanel.Children.Add($buttonPanel)
+
+        $infoPanel = New-Object System.Windows.Controls.StackPanel
+        $lineText = New-Object System.Windows.Controls.TextBlock
+        $lineText.Style = $Window.FindResource('BodyText')
+        $lineText.Text = Get-SamePathCopyWizardHistoryLineText -Summary $summary
+        [void]$infoPanel.Children.Add($lineText)
+        $sourceText = New-Object System.Windows.Controls.TextBlock
+        $sourceText.Style = $Window.FindResource('MutedText')
+        $sourceText.MaxWidth = 380
+        $sourceText.HorizontalAlignment = 'Left'
+        $sourceText.Text = if ([int]$summary.SourceCount -gt 1) {
+            "{0}  (+{1} kaynak)" -f [string]$summary.FirstSource, ([int]$summary.SourceCount - 1)
+        }
+        else {
+            [string]$summary.FirstSource
+        }
+        $sourceText.ToolTip = [string]$summary.FirstSource
+        [void]$infoPanel.Children.Add($sourceText)
+        [void]$rowPanel.Children.Add($infoPanel)
+
+        [void]$listPanel.Children.Add($rowPanel)
+    }
+
+    $card.Child = $layout
+    $popup.Child = $card
+    return $popup
+}
+
 function Get-SamePathCopyWizardBodyXaml {
     return @'
     <Grid Margin="20,18,20,18">
@@ -536,8 +650,12 @@ function Get-SamePathCopyWizardBodyXaml {
         </StackPanel>
 
         <StackPanel x:Name="ChipPanel" Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
-            <Border x:Name="LastRunChip" Style="{StaticResource Chip}" Visibility="Collapsed">
-                <TextBlock x:Name="LastRunText" Style="{StaticResource MutedText}" MaxWidth="320" />
+            <Border x:Name="LastRunChip" Style="{StaticResource InteractiveChip}" Visibility="Collapsed"
+                    ToolTip="Son çalıştırmaların listesi için tıklayın.">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="LastRunText" Style="{StaticResource MutedText}" MaxWidth="320" />
+                    <TextBlock Style="{StaticResource MutedText}" Text=" ⌄" Margin="4,0,0,0" />
+                </StackPanel>
             </Border>
         </StackPanel>
 
@@ -1172,12 +1290,43 @@ function Show-SamePathCopyWizard {
         })
     }
 
-    # Son çalıştırma özeti günlükten okunur; henüz kopyalama yapılmadıysa chip görünmez.
+    # Son çalıştırma özeti günlükten okunur; çip tıklanınca CSV raporlarından geçmiş listesi açılır.
+    # Hiç kopyalama yapılmadıysa (ne günlük özeti ne rapor) çip görünmez.
     $lastRun = Get-SamePathCopyLastRunSummary
-    if ($null -ne $lastRun) {
-        $window.FindName('LastRunText').Text = "Son gönderim: {0}" -f $lastRun.Text
-        $window.FindName('LastRunChip').Visibility = 'Visible'
+    $script:wizardHistoryChip = $window.FindName('LastRunChip')
+    $script:wizardHistoryPopup = $null
+    if ($null -ne $lastRun -or @(Get-SamePathCopyRecentReportSummaries -Limit 1).Count -gt 0) {
+        $window.FindName('LastRunText').Text = if ($null -ne $lastRun) { "Son gönderim: {0}" -f $lastRun.Text } else { 'Geçmiş' }
+        $script:wizardHistoryChip.Visibility = 'Visible'
     }
+
+    $script:wizardHistorySelectHandler = {
+        param($sender, $eventArgs)
+        if ($null -ne $script:wizardHistoryPopup) { $script:wizardHistoryPopup.IsOpen = $false }
+        $historySummary = $sender.Tag
+        $matched = Set-SamePathCopyWizardSelectionById -Rows $script:wizardRows -Ids @($historySummary.TargetIds)
+        & $script:wizardUpdateSelectionCount
+        & $script:wizardRefreshBulkToggles
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Geçmişten hedef kümesi uygulandı ({0}): {1} ({2} satır eşleşti)." -f
+            [string]$historySummary.StampText, (@($historySummary.TargetIds) -join ', '), $matched)
+    }
+    $script:wizardHistoryOpenHandler = {
+        param($sender, $eventArgs)
+        # CSV varsayılan uygulamayla (genellikle Excel) açılır; açılamazsa kopyalama etkilenmez.
+        try { Start-Process -FilePath ([string]$sender.Tag) } catch { }
+    }
+    $script:wizardShowHistory = {
+        if ($null -ne $script:wizardHistoryPopup -and $script:wizardHistoryPopup.IsOpen) {
+            $script:wizardHistoryPopup.IsOpen = $false
+            return
+        }
+        # Liste her açılışta yeniden okunur: sihirbaz açıkken biten bir kopyalama da görünür.
+        $script:wizardHistoryPopup = New-SamePathCopyWizardHistoryPopup -Window $script:wizardWindow `
+            -PlacementTarget $script:wizardHistoryChip -Summaries @(Get-SamePathCopyRecentReportSummaries -Limit 10) `
+            -SelectHandler $script:wizardHistorySelectHandler -OpenHandler $script:wizardHistoryOpenHandler
+        $script:wizardHistoryPopup.IsOpen = $true
+    }
+    $script:wizardHistoryChip.Add_MouseLeftButtonUp({ & $script:wizardShowHistory })
 
     # Genel parametreler: mantiksal olanlar onay kutusu, metin/sayi olanlar etiketli kutu olarak cizilir.
     $globalPanel = $window.FindName('GlobalOptionPanel')

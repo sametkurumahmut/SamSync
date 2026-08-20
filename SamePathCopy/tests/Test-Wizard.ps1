@@ -202,6 +202,20 @@ try {
     Assert-Equal $true ([bool]$selectionRows[1].Controls['Selected'].IsChecked) 'Gizli satır ters çevirmeden etkilenmemeli.'
     Assert-Equal $true ([bool]$selectionRows[2].Controls['Selected'].IsChecked) 'Görünen satır ters çevrilmedi.'
 
+    # Geçmiş listesi satır metni: sıfır olan sayılar yazılmaz.
+    function New-FakeRunSummary {
+        param([int]$Success = 0, [int]$Failed = 0, [int]$Cancelled = 0, [int]$Targets = 3, [int]$Sources = 1)
+        return [pscustomobject]@{
+            Path = 'C:\raporlar\rapor-20260821-100000.csv'; Stamp = Get-Date; StampText = '21.08.2026 10:00'
+            RowCount = $Success + $Failed + $Cancelled; SuccessCount = $Success; FailedCount = $Failed
+            CancelledCount = $Cancelled; TargetIds = @(1..$Targets | ForEach-Object { "IG$_" })
+            FailedTargetIds = @(); SourceCount = $Sources; FirstSource = 'C:\Kaynak\Data'
+        }
+    }
+    Assert-Equal '21.08.2026 10:00  •  3 hedef  •  3 başarılı' (Get-SamePathCopyWizardHistoryLineText -Summary (New-FakeRunSummary -Success 3)) 'Temiz çalıştırma satırı yanlış.'
+    Assert-Equal '21.08.2026 10:00  •  3 hedef  •  1 başarılı, 2 hatalı' (Get-SamePathCopyWizardHistoryLineText -Summary (New-FakeRunSummary -Success 1 -Failed 2)) 'Hatalı çalıştırma satırı yanlış.'
+    Assert-Equal '21.08.2026 10:00  •  3 hedef  •  1 başarılı, 1 hatalı, 1 iptal' (Get-SamePathCopyWizardHistoryLineText -Summary (New-FakeRunSummary -Success 1 -Failed 1 -Cancelled 1)) 'İptalli çalıştırma satırı yanlış.'
+
     # Kaynak listesi düzenleme yardımcıları: dışlama süzer, bırakılan yol eklenir/yinelenmez/geri işaretlenir.
     $editSourceDir = Join-Path $testDirectory 'kaynak-duzenleme'
     [void](New-Item -ItemType Directory -Path $editSourceDir)
@@ -239,6 +253,7 @@ try {
 Add-Type -AssemblyName PresentationFramework
 . '$projectDirectory\SamePathCopy.Common.ps1'
 . '$projectDirectory\SamePathCopy.Ui.ps1'
+. '$projectDirectory\SamePathCopy.Wizard.ps1'
 `$window = New-SamePathCopyWindow -Title 'Cip' -BodyXaml '<StackPanel x:Name="ChipPanel" Orientation="Horizontal" />' -Width 500 -Height 220
 `$items = @(
     [pscustomobject]@{ FullName = 'C:\Kok\Data\x.entity'; PSIsContainer = `$false }
@@ -273,6 +288,18 @@ Invoke-SamePathCopyUiPump
 "popup acik=`$(`$sourceChip.Tag.IsOpen)" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8
 "kaynak satir=`$(`$sourceTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
 "kok satir=`$(`$rootTexts -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+`$script:historySelected = @()
+`$historySummaries = @(
+    [pscustomobject]@{ Path = 'C:\rapor1.csv'; StampText = '21.08.2026 10:00'; SuccessCount = 2; FailedCount = 1; CancelledCount = 0; TargetIds = @('IG1', 'IG2', 'IG3'); FailedTargetIds = @('IG3'); SourceCount = 2; FirstSource = 'C:\Kaynak\Data' }
+    [pscustomobject]@{ Path = 'C:\rapor2.csv'; StampText = '20.08.2026 09:00'; SuccessCount = 3; FailedCount = 0; CancelledCount = 0; TargetIds = @('IG1'); FailedTargetIds = @(); SourceCount = 1; FirstSource = 'C:\Kaynak\Diger' }
+)
+`$historyPopup = New-SamePathCopyWizardHistoryPopup -Window `$window -PlacementTarget `$panel -Summaries `$historySummaries -SelectHandler { param(`$sender, `$eventArgs) `$script:historySelected += (@(`$sender.Tag.TargetIds) -join ',') } -OpenHandler { }
+`$historyList = `$historyPopup.Child.Child.Children | Where-Object { `$_ -is [System.Windows.Controls.ScrollViewer] } | ForEach-Object { `$_.Content }
+`$historyRows = @(`$historyList.Children)
+`$historyButton = `$historyRows[0].Children[0].Children[0]
+`$historyButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+"gecmis satir=`$(`$historyRows.Count)" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
+"gecmis secim=`$(`$script:historySelected -join '|')" | Out-File -LiteralPath '$chipOutputPath' -Encoding UTF8 -Append
 `$selectableList = Get-ChipListPanel -Chip `$selectableChip
 `$firstRow = @(`$selectableList.Children | Where-Object { `$_.Children.Count -gt 0 -and `$_.Children[0] -is [System.Windows.Controls.CheckBox] })[0]
 `$firstCheck = `$firstRow.Children[0]
@@ -306,8 +333,10 @@ Invoke-SamePathCopyUiPump
     if ($chipOutput[1] -notlike '*Data\Sahneler\*') { throw "Klasör satırı ters bölü ile bitmiyor: $($chipOutput[1])" }
     if ($chipOutput[1] -notlike '*C\Gecici\z.txt*') { throw "Kök dışı öğe listede yok: $($chipOutput[1])" }
     if ($chipOutput[2] -notlike '*C:\Kok*' -or $chipOutput[2] -notlike '*D:\Baska*') { throw "Kök listesi eksik: $($chipOutput[2])" }
-    Assert-Equal 'kutu tipi=CheckBox' $chipOutput[3] 'Seçilebilir çipte satır başında onay kutusu olmalı.'
-    if ($chipOutput[4] -notlike '*C:\Kok\Data\*') { throw "Onay kutusu işleyicisi öğe yolunu taşımalı: $($chipOutput[4])" }
+    Assert-Equal 'gecmis satir=2' $chipOutput[3] 'Geçmiş listesi iki çalıştırmayı da göstermeli.'
+    Assert-Equal 'gecmis secim=IG1,IG2,IG3' $chipOutput[4] '"Hedefleri seç" düğmesi çalıştırmanın hedef kümesini taşımalı.'
+    Assert-Equal 'kutu tipi=CheckBox' $chipOutput[5] 'Seçilebilir çipte satır başında onay kutusu olmalı.'
+    if ($chipOutput[6] -notlike '*C:\Kok\Data\*') { throw "Onay kutusu işleyicisi öğe yolunu taşımalı: $($chipOutput[6])" }
 
     # Filtre: ada, gruba ve kimliğe göre süzer; boş filtre bütün satırları gösterir.
     $filterRows = @(
