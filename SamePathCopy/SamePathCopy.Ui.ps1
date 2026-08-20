@@ -672,6 +672,8 @@ function New-SamePathCopyDetailChip {
     $chip.Child = $chipPanel
     $chip.ToolTip = 'Ayrıntılı liste için tıklayın.'
     $chip.Tag = $popup
+    # Çağıran çipin metnini sonradan güncelleyebilsin diye etiket, konumdan bağımsız bir adla taşınır.
+    $chip | Add-Member -NotePropertyName 'LabelTextBlock' -NotePropertyValue $chipText
     $chip.Add_MouseLeftButtonUp({
         param($sender, $eventArgs)
         $sender.Tag.IsOpen = -not [bool]$sender.Tag.IsOpen

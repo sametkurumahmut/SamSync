@@ -785,7 +785,7 @@ function Show-SamePathCopyWizard {
         $effectiveSummary = Get-SamePathCopySourceSummary -SourceItems $effectiveItems -LocalRoots $script:wizardLocalRoots
         $script:wizardHeadlineText.Text = [string]$effectiveSummary.HeadlineText
         $script:wizardHeadlineText.ToolTip = $(if ([string]$effectiveSummary.ToolTipText) { [string]$effectiveSummary.ToolTipText } else { $null })
-        $chipTextBlock = $script:wizardSourceChip.Child.Children[0]
+        $chipTextBlock = $script:wizardSourceChip.LabelTextBlock
         $chipTextBlock.Text = if ($effectiveItems.Count -ne $script:wizardSourceItems.Count) {
             "Kaynak: {0} / {1} öğe" -f $effectiveItems.Count, $script:wizardSourceItems.Count
         }
