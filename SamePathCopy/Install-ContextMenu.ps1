@@ -134,11 +134,40 @@ foreach ($menuRoot in $menuRoots) {
 
     $submenuShellRoot = Join-Path $menuRoot 'shell'
 
-    # Windows'un klasik basamaklı sağ tık menüsü bir seviyede en fazla 16 öğe gösterir; fazlası sessizce
-    # kırpılır. Bu yüzden gruplar kendi alt menülerine konur: üst seviyede yalnızca toplu girdiler,
-    # gruplar ve gruba ait olmayan makineler kalır. Grubun kendi "hepsine gönder" girdisi alt menünün başında durur.
-    # CommandFlags = 0x20 (ECF_SEPARATORBEFORE) bölüm başlarına ayırıcı çizgi koyar.
+    # Windows'un klasik basamaklı sağ tık menüsü BÜTÜN ağaçta en fazla 16 öğe gösterir: alt menüye taşımak
+    # bütçeyi artırmıyor, 17. öğe uyarı vermeden düşüyor (gözlemlendi: düz 19 girdinin 16'sı, alt menülü
+    # ağaçta 4 + (1+5) + (1+5) = 16 öğe göründü). Ayırıcılar bu bütçeden yer yemiyor.
+    # Bu yüzden bütçe önceden hesaplanır ve sığmıyorsa tek makine girdileri menüye konmaz; sihirbaz zaten
+    # makine seçimini yapıyor. Davranış config.json içindeki menuShowNodes ile değiştirilir (auto/always/never).
+    $menuItemBudget = 16
     $separatorBeforeFlag = 0x20
+
+    $aggregateEntries = @($menuEntries | Where-Object { $_.Kind -ne 'node' -and $_.Kind -ne 'group' })
+    $groupEntries = @($menuEntries | Where-Object { $_.Kind -eq 'group' })
+    $nodeEntries = @($menuEntries | Where-Object { $_.Kind -eq 'node' })
+    # Grup alt menüsünde grubun kendi "hepsine gönder" girdisi de bir öğe sayılır.
+    $itemsWithNodes = $aggregateEntries.Count + ($groupEntries.Count * 2) + $nodeEntries.Count
+    $itemsWithoutNodes = $aggregateEntries.Count + $groupEntries.Count
+
+    $includeNodes = switch ([string]$config.menuShowNodes) {
+        'always' { $true }
+        'never' { $false }
+        default { $itemsWithNodes -le $menuItemBudget }
+    }
+    # Grup yoksa tek makineler menüdeki tek hedeftir; bu durumda bütçeyi aşsa da konurlar.
+    if (-not $includeNodes -and $groupEntries.Count -eq 0) { $includeNodes = $true }
+
+    $plannedItemCount = if ($includeNodes) { $itemsWithNodes } else { $itemsWithoutNodes }
+    if ($includeNodes -and $plannedItemCount -gt $menuItemBudget) {
+        Write-Warning ("Explorer menüsünde {0} öğe olacak; Windows en fazla {1} öğe gösterir ve fazlasını sessizce gizler. config.json içinde menuShowNodes değerini auto yapın." -f $plannedItemCount, $menuItemBudget)
+        Write-SamePathCopyLog -Component 'Kurulum' -Level 'WARN' -Message ("Menü {0} öğe ile 16 sınırını aşıyor (menuShowNodes={1})." -f $plannedItemCount, $config.menuShowNodes)
+    }
+    if (-not $includeNodes -and $nodeEntries.Count -gt 0) {
+        Write-Host ("Menüde tek makine girdileri gösterilmiyor: {0} makine + {1} grup + {2} toplu girdi Windows'un 16 öğe sınırını aşıyor. Tek makineye göndermek için Wizard'ı kullanın (menuShowNodes=always ile zorlanabilir)." -f
+            $nodeEntries.Count, $groupEntries.Count, $aggregateEntries.Count)
+        Write-SamePathCopyLog -Component 'Kurulum' -Message ("Tek makine girdileri menüye konmadı: {0} makine, sınır {1}, planlanan {2}" -f
+            $nodeEntries.Count, $menuItemBudget, $itemsWithNodes)
+    }
 
     function Set-MenuItem {
         param(
@@ -169,24 +198,34 @@ foreach ($menuRoot in $menuRoots) {
     foreach ($entry in $menuEntries) {
         # Gruba ait makineler üst seviyede değil, grubun alt menüsünde oluşur.
         if ($entry.Kind -eq 'node' -and -not [string]::IsNullOrWhiteSpace([string]$entry.GroupName)) { continue }
+        # Bütçe yetmiyorsa tek makine girdileri menüye hiç konmaz.
+        if ($entry.Kind -eq 'node' -and -not $includeNodes) { continue }
 
         $needsSeparator = ($previousSection -ne '' -and $previousSection -ne [string]$entry.Section)
         # Kayıt anahtarı adında iki nokta üst üste kullanılmadığı için "group:Unit1" -> "group_Unit1".
         $entryKey = Join-Path $submenuShellRoot ("{0:D3}_{1}" -f $menuOrder, ($entry.Id -replace ':', '_'))
 
         if ($entry.Kind -eq 'group') {
-            # Grup alt menüsü: SubCommands boş bırakılıp altına kendi shell anahtarı açılır.
-            Set-MenuItem -Path $entryKey -Label ([string]$entry.Label) -WithIcon -SeparatorBefore:$needsSeparator
-            Set-RegistryString -Path $entryKey -Name 'SubCommands' -Value ''
-            $groupShellRoot = Join-Path $entryKey 'shell'
-            $groupOrder = 0
-            Set-MenuItem -Path (Join-Path $groupShellRoot ("{0:D3}_{1}" -f $groupOrder, ($entry.Id -replace ':', '_'))) `
-                -Label ("{0} - {1}" -f $entry.Label, [string]$config.allLabel) -TargetId ([string]$entry.Id) -WithIcon
-            $groupOrder += 10
-            foreach ($member in @($menuEntries | Where-Object { $_.Kind -eq 'node' -and [string]$_.GroupName -eq [string]$entry.GroupName })) {
-                Set-MenuItem -Path (Join-Path $groupShellRoot ("{0:D3}_{1}" -f $groupOrder, ($member.Id -replace ':', '_'))) `
-                    -Label ([string]$member.Label) -TargetId ([string]$member.Id)
+            $groupMembers = @($menuEntries | Where-Object { $_.Kind -eq 'node' -and [string]$_.GroupName -eq [string]$entry.GroupName })
+            if ($includeNodes -and $groupMembers.Count -gt 0) {
+                # Grup alt menüsü: SubCommands boş bırakılıp altına kendi shell anahtarı açılır.
+                Set-MenuItem -Path $entryKey -Label ([string]$entry.Label) -WithIcon -SeparatorBefore:$needsSeparator
+                Set-RegistryString -Path $entryKey -Name 'SubCommands' -Value ''
+                $groupShellRoot = Join-Path $entryKey 'shell'
+                $groupOrder = 0
+                Set-MenuItem -Path (Join-Path $groupShellRoot ("{0:D3}_{1}" -f $groupOrder, ($entry.Id -replace ':', '_'))) `
+                    -Label ("{0} - {1}" -f $entry.Label, [string]$config.allLabel) -TargetId ([string]$entry.Id) -WithIcon
                 $groupOrder += 10
+                foreach ($member in $groupMembers) {
+                    Set-MenuItem -Path (Join-Path $groupShellRoot ("{0:D3}_{1}" -f $groupOrder, ($member.Id -replace ':', '_'))) `
+                        -Label ([string]$member.Label) -TargetId ([string]$member.Id)
+                    $groupOrder += 10
+                }
+            }
+            else {
+                # Tek makineler menüye konmuyorsa grup girdisi doğrudan komuta bağlanır (alt menü gereksiz).
+                Set-MenuItem -Path $entryKey -Label ([string]$entry.Label) -TargetId ([string]$entry.Id) `
+                    -WithIcon -SeparatorBefore:$needsSeparator
             }
         }
         else {

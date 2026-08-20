@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Explorer menüsündeki 16 öğe sınırı ağacın tamamı için geçerli olduğu ortaya çıktı (alt menü bütçeyi artırmıyor): `Unit3` grubu 17. öğe olduğu için görünmüyordu. Kurulum artık öğe sayısını önceden hesaplıyor ve sığmıyorsa tek makine girdilerini menüye koymuyor, grup girdilerini doğrudan komuta bağlıyor; hangi girdilerin çıkarıldığını yazıyor. Davranış `config.json` içindeki `menuShowNodes` (auto/always/never) alanıyla değiştirilebiliyor.
+- Ayırıcılar artık `Tümü`, sihirbaz girdileri ve `Yedekten geri al` arasına da konuyor.
+- Explorer menü testi bütçe davranışını da kapsıyor: sığan/sığmayan yapılandırma, `always`, `never`, grupsuz yapılandırma ve geçersiz `menuShowNodes` değeri.
+
 - Explorer menüsünde 16 öğe sınırı yüzünden kırpılan makineler düzeltildi: gruplar artık kendi alt menülerinde duruyor (alt menünün ilk girdisi `<grup> - Tümü`), üst seviyede yalnızca toplu girdiler, gruplar ve gruba ait olmayan makineler kalıyor. Üç setli yapılandırmada görünmeyen `Unit3` IG'leri geri geldi.
 - Menü bölümleri ayırıcı çizgiyle ayrılıyor (`CommandFlags = 0x20`): toplu girdiler, profiller, gruplar ve tek makineler arası.
 - Explorer menü yapısı için test eklendi ([tests/Test-ExplorerMenu.ps1](tests/Test-ExplorerMenu.ps1)): üst seviye girdi sayısı ve sırası, gruba ait makinelerin alt menüde olması, grup alt menüsündeki toplu girdi ve ayırıcı bayrakları `-WhatIf` çıktısı üzerinden doğrulanıyor.

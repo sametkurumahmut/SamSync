@@ -29,6 +29,15 @@ function Get-SamePathCopyConfiguration {
     if (-not $config.PSObject.Properties['nodes'] -or -not $config.nodes) {
         throw "config.json içinde en az bir node tanımlanmalı."
     }
+    # Explorer menüsünde tek makine girdilerinin gösterilip gösterilmeyeceği. Windows'un 16 öğe sınırı
+    # yüzünden "auto" (varsayılan) sığmadığında tek makineleri menüden çıkarır; "always" zorlar, "never" hiç koymaz.
+    if (-not $config.PSObject.Properties['menuShowNodes'] -or [string]::IsNullOrWhiteSpace([string]$config.menuShowNodes)) {
+        $config | Add-Member -NotePropertyName menuShowNodes -NotePropertyValue 'auto' -Force
+    }
+    $config.menuShowNodes = ([string]$config.menuShowNodes).Trim().ToLowerInvariant()
+    if (@('auto', 'always', 'never') -notcontains [string]$config.menuShowNodes) {
+        throw "menuShowNodes değeri auto, always veya never olmalı: $($config.menuShowNodes)"
+    }
 
     $seenIds = @{}
     foreach ($node in $config.nodes) {
@@ -634,10 +643,10 @@ function Get-SamePathCopyMenuEntries {
     # Section, menüdeki bölümleri ayırır: Explorer menüsü bölüm başlarına ayırıcı koyar.
     # GroupName ise Explorer'da grubun alt menüsüne hangi makinelerin gireceğini belirler.
     $entries = @(
-        [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
-        [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
-        [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
-        [pscustomobject]@{ Kind = 'restore'; Id = 'restore'; Label = $restoreLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true; Section = 'tumu'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true; Section = 'sihirbaz'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true; Section = 'sihirbaz'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'restore'; Id = 'restore'; Label = $restoreLabel; IsAggregate = $true; Section = 'gerial'; GroupName = '' }
     )
     foreach ($profileName in @($ProfileNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
         $entries += [pscustomobject]@{

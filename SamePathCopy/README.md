@@ -209,26 +209,41 @@ Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için,
 }
 ```
 
-Explorer menüsünde gruplar **kendi alt menülerine** konur ve bölümler ayırıcı çizgiyle ayrılır:
+### Explorer menüsünün 16 öğe sınırı
+
+Windows'un klasik basamaklı sağ tık menüsü **bütün ağaçta en fazla 16 öğe** gösterir; fazlasını uyarı vermeden gizler. Alt menüye taşımak bu bütçeyi artırmaz: gözlemlenen iki durum, düz listede 19 girdiden 16'sının, alt menülü ağaçta ise `4 toplu + (1 grup + 5 girdi) + (1 grup + 5 girdi) = 16` öğenin göründüğü ve sonrasının düştüğüdür. Ayırıcı çizgiler bu bütçeden yer yemez.
+
+Kurulum bu yüzden öğe sayısını önceden hesaplar ve `config.json` içindeki `menuShowNodes` alanına göre davranır:
+
+| Değer | Davranış |
+| --- | --- |
+| `auto` (varsayılan) | Toplu girdiler + gruplar + makineler 16'ya sığıyorsa hepsi konur; sığmıyorsa **tek makine girdileri menüye konmaz** ve grup girdileri doğrudan komuta bağlanır. Kurulum hangi girdilerin çıkarıldığını yazar. |
+| `always` | Tek makineler her hâlükârda konur; sınır aşılıyorsa uyarı verilir (Windows fazlasını gizler). |
+| `never` | Tek makine girdileri hiç konmaz, yalnızca toplu girdiler ve gruplar görünür. |
+
+Grup tanımlı değilse tek makineler menüdeki tek hedef olduğu için bütçeye bakılmaksızın konur.
+
+Sığan bir yapılandırmada menü şöyle görünür (gruplar alt menüde, bölümler ayırıcıyla ayrılmış):
 
 ```text
 Tümü                        (ikonlu)
+────────────────────────────────────
 Wizard                      (ikonlu)
 Wizard (son ayar)           (ikonlu)
+────────────────────────────────────
 Yedekten geri al            (ikonlu)
 ────────────────────────────────────
 Unit1              ▸   (ikonlu)   →   Unit1 - Tümü   (ikonlu)
 Unit2              ▸   (ikonlu)       Eğitmen - 10.10.1.10
-Unit3              ▸   (ikonlu)       IG1 - 10.10.1.11
-────────────────────────────────────       IG2 - 10.10.1.12
-Arşiv sunucusu                             IG3 - 10.10.1.13
+────────────────────────────────────       IG1 - 10.10.1.11
+Arşiv sunucusu                             IG2 - 10.10.1.12
 ```
 
-Bunun nedeni Windows'un klasik basamaklı sağ tık menüsünün **bir seviyede en fazla 16 öğe** göstermesi: fazlası uyarı vermeden kırpılır. Üç setli düz listede 19 girdi oluşuyordu ve son üç IG menüde görünmüyordu. Gruplar alt menüye taşınınca üst seviyede yalnızca toplu girdiler, gruplar ve gruba ait olmayan makineler kalır (örnekte 8 öğe), grup alt menüsünde ise en başta `<grup> - Tümü` girdisi ve ardından o grubun makineleri durur.
+12 makineli üç setli yapılandırmada (`4 + 3 + 12 = 19`) tek makineler sığmadığı için menü yalnızca toplu girdilerle ve üç grup girdisiyle (7 öğe) kurulur; tek bir makineye göndermek için sihirbaz kullanılır (filtre + onay kutuları) ya da o makine için bir profil kaydedilir.
 
-Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): toplu girdiler, profiller, gruplar ve gruba ait olmayan makineler arasında. İkon yalnızca toplu girdilerde (`Tümü`, sihirbaz girdileri, geri alma, profiller ve gruplar) durur; tek makine girdileri ikonsuzdur.
+Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): `Tümü`, sihirbaz girdileri, geri alma, profiller, gruplar ve tek makineler arasında. İkon yalnızca toplu girdilerde durur; tek makine girdileri ikonsuzdur.
 
-Notepad++ sekme menüsünde böyle bir sınır olmadığı için liste düzdür: grup girdileri kendi makinelerinin başında görünür.
+Notepad++ sekme menüsünde böyle bir sınır olmadığı için orada liste düzdür ve bütün makineler görünür: grup girdileri kendi makinelerinin başında durur.
 
 Grup girdileri komutlara `-TargetId group:Unit1` biçiminde geçer; `Queue-SamePathCopy.ps1` ve `Copy-SamePath.ps1` bu kimliği doğrudan kabul eder. Yerel bilgisayar kendi grubunun girdisinden de çıkarıldığı için, Unit1 eğitmeninde `Unit1` seçmek yalnızca o setin IG'lerine gönderir. Grubun bu bilgisayar dışında etkin üyesi kalmazsa grup girdisi menüde hiç oluşmaz.
 
