@@ -105,6 +105,7 @@ Bütün hedefler için geçerli parametreler:
 
 | Parametre | Ne yapar |
 | --- | --- |
+| `Bitince bildirim göster` | Kopyalama bitince görev çubuğunda bildirim balonu gösterir (varsayılan açık). Pencere arkada kalsa da sonuç görülür. |
 | `Deneme çalıştırması` | Ne kopyalanacağını hesaplar, hiçbir şey yazmaz (`robocopy /L`). Yedek adımı da atlanır. |
 | `Hızlı kopyalama` | Çok iş parçacıklı kopyalama (`robocopy /MT:8`). Yeniden başlatılabilir kip (`/Z`) bu durumda kullanılmaz. |
 | `Hariç dosyalar` | Noktalı virgülle ayrılmış dosya kalıpları kopyalanmaz (`robocopy /XF`). Örnek: `*.pdb;*.tmp;desktop.ini` |
@@ -154,6 +155,8 @@ Satır biçimi:
 Sırasıyla zaman damgası, seviye (`INFO` / `WARN` / `ERROR`), çalıştırma kimliği ve bileşen adı yer alır. Çalıştırma kimliği her süreç için üretilir; aynı dosyaya birden fazla kopyalama paralel yazdığında satırlar bu kimlikle ayrılır. Bileşenler: `Kopyala`, `Panel`, `Sihirbaz`, `Plan`, `Kuyruk`, `Kurulum`, `Kaldırma`, `Notepad++`.
 
 **Kopyalama panelinde görünen her satır günlüğe de yazılır**: hedef başına kaynak → hedef satırı, etkin parametreler, yedek yolu, `başarılı` / `hatalı` / `atlandı` durumu, robocopy hata kodu ve hata ayrıntıları, en sonda özet. Bunların yanında oturum başlığı (sürüm, kullanıcı, süreç kimliği), yerel node ve kökler, çözülen hedefler, sihirbazdan gelen seçim ve parametreler, hesaplanan plan, kuyruk birleştirme ve kurulum/kaldırma işlemleri de kaydedilir. `Günlüğü kopyala` düğmesinin ipucunda günlük dosyasının yolu yazar.
+
+Her kopyalama çalıştırması ayrıca `log\reports\rapor-<tarih-saat>.csv` dosyasına yazılır: zaman, hedef, kaynak, hedef yolu, etkin parametreler, sonuç (`başarılı` / `hatalı` / `iptal`), robocopy kodu, süre ve hata notu. Kopyalama penceresindeki `Raporu aç` düğmesi bu dosyayı açar. Dosya noktalı virgül ayırıcıyla yazıldığı için Excel'de doğrudan açılır.
 
 `root.log` 5 MB'ı geçtiğinde `root.1.log`, `root.2.log`, `root.3.log` olarak kaydırılır; en eskisi silinir. Günlük klasörü sürüm denetimine girmez.
 

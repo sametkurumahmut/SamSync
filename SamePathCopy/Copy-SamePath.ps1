@@ -26,6 +26,7 @@ foreach ($requestedSource in @($SourcePath)) {
 
 # Kopyalama penceresindeki İptal düğmesi bu bayrağı kaldırır; çalışan robocopy süreci durdurulur.
 $script:cancelRequested = $false
+$script:notifyIcon = $null
 
 trap {
     Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Hata: {0}" -f $_.Exception.Message)
@@ -231,6 +232,7 @@ $plans = @(foreach ($target in $targets) {
         ExcludeFiles = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeFiles'
         ExcludeDirectories = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeDirectories'
         ThrottleMilliseconds = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'ThrottleMilliseconds' -Default 0
+        Notify = $(if ($null -ne $globalOptions -and $globalOptions.PSObject.Properties['Notify']) { [bool]$globalOptions.Notify } else { $true })
         RetryCount = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'RetryCount' -Default -1
         WaitSeconds = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'WaitSeconds' -Default -1
     }
@@ -319,6 +321,8 @@ $copyWindowBody = @'
         <Grid Grid.Row="4" Margin="0,16,0,0">
             <TextBlock x:Name="SummaryText" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OpenReportButton" Style="{StaticResource GhostButton}" Content="Raporu aç"
+                        Margin="0,0,10,0" IsEnabled="False" />
                 <Button x:Name="CopyLogButton" Style="{StaticResource GhostButton}" Content="Günlüğü kopyala"
                         Margin="0,0,10,0" />
                 <Button x:Name="CancelButton" Style="{StaticResource SecondaryButton}" Content="İptal"
@@ -343,6 +347,7 @@ $logPanel = $window.FindName('LogPanel')
 $logScroller = $window.FindName('LogScroller')
 $summaryText = $window.FindName('SummaryText')
 $copyLogButton = $window.FindName('CopyLogButton')
+$openReportButton = $window.FindName('OpenReportButton')
 $cancelButton = $window.FindName('CancelButton')
 $closeButton = $window.FindName('CloseButton')
 
@@ -519,6 +524,11 @@ $cancelButton.Add_Click({
     $cancelButton.Content = 'İptal ediliyor...'
 })
 $closeButton.Add_Click({ $window.Close() })
+$script:reportPath = ''
+$openReportButton.Add_Click({
+    if ([string]::IsNullOrWhiteSpace($script:reportPath)) { return }
+    try { Start-Process -FilePath $script:reportPath } catch { }
+})
 $script:windowClosed = $false
 $window.Add_Closed({ $script:windowClosed = $true })
 
@@ -658,6 +668,32 @@ if ($preflightWarnings.Count -gt 0) {
     }
 }
 
+# Her plan için bir rapor satırı toplanır; kopyalama bitince CSV olarak yazılır.
+$reportRows = New-Object System.Collections.Generic.List[object]
+
+function Add-SamePathCopyReportRow {
+    param(
+        [Parameter(Mandatory = $true)]$Plan,
+        [Parameter(Mandatory = $true)][string]$Result,
+        [int]$ExitCode = 0,
+        [string]$Note = '',
+        [double]$Seconds = 0
+    )
+
+    $script:reportRows.Add([pscustomobject]@{
+        Zaman = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        Hedef = [string]$Plan.Target.name
+        HedefKimlik = [string]$Plan.Target.id
+        Kaynak = [string]$Plan.SourceItem.FullName
+        HedefYolu = [string]$Plan.Destination
+        Parametreler = (@(Get-SamePathCopyActiveOptionNames -Options $Plan.Options) -join ',')
+        Sonuc = $Result
+        RobocopyKodu = $ExitCode
+        SaniyeSuresi = [Math]::Round($Seconds, 1)
+        Not = $Note
+    })
+}
+
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $successCount = 0
 $failedCount = 0
@@ -711,13 +747,16 @@ function Complete-SamePathCopyPlanStep {
         }
         Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
         Add-SamePathCopyLogNote -Entry $entry -Text ("Yedek alınamadı (robocopy: {0}). Kopyalama yapılmadı." -f $result.ExitCode) -Brush 'DangerBrush'
+        Add-SamePathCopyReportRow -Plan $plan -Result 'hatalı' -ExitCode ([int]$result.ExitCode) -Note 'Yedek alınamadı'
         $script:failedCount++
         return $true
     }
 
+    $elapsedSeconds = if ($Worker.PSObject.Properties['StartedAt']) { ([DateTime]::UtcNow - $Worker.StartedAt).TotalSeconds } else { 0 }
     if ($result.Cancelled) {
         Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Skipped'
         Add-SamePathCopyLogNote -Entry $entry -Text 'İptal edildi'
+        Add-SamePathCopyReportRow -Plan $plan -Result 'iptal' -ExitCode ([int]$result.ExitCode) -Seconds $elapsedSeconds
         $script:skippedCount++
         return $true
     }
@@ -734,11 +773,13 @@ function Complete-SamePathCopyPlanStep {
                 Add-SamePathCopyLogNote -Entry $entry -Text ("    ... ve {0} öğe daha" -f ([int]$listing.ChangeCount - 5))
             }
         }
+        Add-SamePathCopyReportRow -Plan $plan -Result 'başarılı' -ExitCode ([int]$result.ExitCode) -Seconds $elapsedSeconds
         $script:successCount++
         return $true
     }
     Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
     Add-SamePathCopyLogNote -Entry $entry -Text ("robocopy hata kodu: {0}" -f $result.ExitCode) -Brush 'DangerBrush'
+    Add-SamePathCopyReportRow -Plan $plan -Result 'hatalı' -ExitCode ([int]$result.ExitCode) -Seconds $elapsedSeconds -Note ([string]$result.Details -replace '\r?\n', ' | ')
     if (-not [string]::IsNullOrWhiteSpace([string]$result.Details)) {
         foreach ($detailLine in ([string]$result.Details -split "`r?`n")) {
             if (-not [string]::IsNullOrWhiteSpace($detailLine)) {
@@ -765,6 +806,7 @@ function Start-SamePathCopyPlan {
     $progressLabel.Text = "{0}{1}" -f $targetName, $optionText
     $Worker.Entry = New-SamePathCopyLogEntry -Title ("{0}{1}" -f $targetName, $optionText) `
         -Detail ("{0}  →  {1}" -f $plan.SourceItem.FullName, $plan.Destination) -Kind 'Running'
+    $Worker | Add-Member -NotePropertyName StartedAt -NotePropertyValue ([DateTime]::UtcNow) -Force
 
     $wantsBackup = (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'Backup') -and
         -not (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun')
@@ -878,6 +920,41 @@ $summaryParts += $elapsedText
 $summaryText.Text = $summaryParts -join '  •  '
 Write-SamePathCopyLog -Component 'Kopyala' -Level $(if ($failedCount -gt 0) { 'ERROR' } elseif ($skippedCount -gt 0) { 'WARN' } else { 'INFO' }) `
     -Message ("Bitti: {0} başarılı, {1} hatalı, {2} atlandı, süre {3}" -f $successCount, $failedCount, $skippedCount, $elapsedText)
+
+# Rapor: çalıştırma başına CSV. Yazılabildiyse "Raporu aç" düğmesi etkinleşir.
+$script:reportPath = Get-SamePathCopyReportPath -Stamp $backupStamp
+if (-not [string]::IsNullOrWhiteSpace($script:reportPath) -and (Write-SamePathCopyReport -Path $script:reportPath -Rows $reportRows.ToArray())) {
+    $openReportButton.IsEnabled = $true
+    $openReportButton.ToolTip = $script:reportPath
+    Write-SamePathCopyLog -Component 'Kopyala' -Message ("Rapor yazıldı: {0}" -f $script:reportPath)
+}
+else {
+    $script:reportPath = ''
+}
+
+# Bildirim: uzun kopyalamada pencere arkada kalmış olabilir; bitişi bildirim balonu haber verir.
+$notifyEnabled = if ($null -ne $globalOptions -and $globalOptions.PSObject.Properties['Notify']) { [bool]$globalOptions.Notify } else { $true }
+if ($notifyEnabled -and [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) {
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+        $script:notifyIcon.Icon = if (Test-Path -LiteralPath $iconPath -PathType Leaf) {
+            New-Object System.Drawing.Icon($iconPath)
+        }
+        else {
+            [System.Drawing.SystemIcons]::Information
+        }
+        $script:notifyIcon.Visible = $true
+        $script:notifyIcon.BalloonTipTitle = "{0} — {1}" -f [string]$config.menuTitle, $headerText.Text
+        $script:notifyIcon.BalloonTipText = $summaryText.Text
+        $script:notifyIcon.BalloonTipIcon = $(if ($failedCount -gt 0) { 'Error' } elseif ($skippedCount -gt 0) { 'Warning' } else { 'Info' })
+        $script:notifyIcon.ShowBalloonTip(6000)
+    }
+    catch {
+        # Bildirim gösterilemezse kopyalama sonucu etkilenmez.
+        $script:notifyIcon = $null
+    }
+}
 $cancelButton.IsEnabled = $false
 $closeButton.IsEnabled = $true
 [void]$closeButton.Focus()
@@ -890,4 +967,9 @@ if (-not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) {
 while (-not $script:windowClosed) {
     Invoke-SamePathCopyUiPump
     Start-Sleep -Milliseconds 30
+}
+
+if ($null -ne $script:notifyIcon) {
+    $script:notifyIcon.Visible = $false
+    $script:notifyIcon.Dispose()
 }

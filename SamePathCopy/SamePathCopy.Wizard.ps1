@@ -42,6 +42,8 @@ function Get-SamePathCopyWizardGlobalDefinitions {
         [pscustomobject]@{ Name = 'ExcludeDirectories'; Key = 'excludeDirectories'; Type = 'text'; Header = 'Hariç klasörler'; Default = ''
             Placeholder = '.git;Logs;Temp'
             Description = 'Noktalı virgülle ayrılmış klasör adları kopyalanmaz (robocopy /XD).' }
+        [pscustomobject]@{ Name = 'Notify'; Key = 'notify'; Type = 'bool'; Header = 'Bitince bildirim göster'; Default = $true
+            Description = 'Kopyalama bittiğinde görev çubuğunda bildirim balonu gösterir; pencere arkada kalsa da sonuç görülür.' }
         [pscustomobject]@{ Name = 'ParallelTargets'; Key = 'parallelTargets'; Type = 'int'; Header = 'Eşzamanlı hedef'; Default = 4
             Placeholder = '4'
             Description = 'Aynı anda kaç bilgisayara kopyalanacağı. 1 = sırayla. Aynı hedefe iki kopyalama birden gönderilmez.' }

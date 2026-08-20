@@ -2,6 +2,9 @@
 
 ## Yayımlanmamış
 
+- Her kopyalama çalıştırması için CSV rapor yazılıyor (`log\reports\rapor-<tarih-saat>.csv`): hedef, kaynak, hedef yolu, parametreler, sonuç, robocopy kodu, süre ve hata notu. Kopyalama penceresine `Raporu aç` düğmesi eklendi.
+- Kopyalama bitince görev çubuğunda bildirim balonu gösteriliyor; sihirbazdaki `Bitince bildirim göster` parametresiyle kapatılabiliyor.
+
 - Ayna artık kör çalışmıyor: kopyalama başlamadan `robocopy /L /MIR` ile hedefte silinecek öğeler listeleniyor, panelde ve günlükte gösteriliyor, toplam silme sayısıyla onay isteniyor. Onay verilmezse hiçbir şey kopyalanmıyor.
 - `Deneme çalıştırması` artık ne değişeceğini de listeliyor (kopyalanacak öğe sayısı, hedefte fazla öğe sayısı ve ilk beş yol).
 - Hedef paylaşımdaki boş alan kaynak boyutundan küçükse kopyalama öncesi uyarı satırı ekleniyor.

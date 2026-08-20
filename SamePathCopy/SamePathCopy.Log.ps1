@@ -156,6 +156,41 @@ function Get-SamePathCopyLastRunSummary {
     }
 }
 
+function Get-SamePathCopyReportPath {
+    param([Parameter(Mandatory = $true)][string]$Stamp)
+
+    # Raporlar günlüğün yanındaki reports klasöründe durur; günlük yazılamıyorsa rapor da yazılmaz.
+    $logPath = Get-SamePathCopyLogPath
+    if ([string]::IsNullOrWhiteSpace($logPath)) { return $null }
+    $reportDirectory = Join-Path (Split-Path -Parent $logPath) 'reports'
+    try {
+        if (-not (Test-Path -LiteralPath $reportDirectory -PathType Container)) {
+            [void](New-Item -ItemType Directory -Path $reportDirectory -Force -ErrorAction Stop)
+        }
+    }
+    catch {
+        return $null
+    }
+    return (Join-Path $reportDirectory ("rapor-{0}.csv" -f $Stamp))
+}
+
+function Write-SamePathCopyReport {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [object[]]$Rows
+    )
+
+    # Excel'in Türkçe yerel ayarında doğru açılması için noktalı virgül ayırıcı kullanılır.
+    try {
+        if (@($Rows).Count -eq 0) { return $false }
+        @($Rows) | Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 function Write-SamePathCopyLogStart {
     param(
         [Parameter(Mandatory = $true)][string]$Component,

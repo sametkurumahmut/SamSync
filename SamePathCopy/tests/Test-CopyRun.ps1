@@ -159,6 +159,18 @@ try {
     if ($finalLog -notlike '*fazla.txt*') { throw 'Ayna önizlemesi silinecek dosyayı listelemedi.' }
     if ($finalLog -notlike '*Deneme: *öğe kopyalanacaktı*') { throw 'Deneme çalıştırması listesi günlüğe yazılmadı.' }
 
+    # Rapor: her çalıştırma günlüğün yanındaki reports klasörüne CSV yazmalı.
+    $reportDirectory = Join-Path (Split-Path -Parent $env:SAMEPATHCOPY_LOG) 'reports'
+    if (-not (Test-Path -LiteralPath $reportDirectory -PathType Container)) { throw 'Rapor klasörü oluşmadı.' }
+    $reportFiles = @(Get-ChildItem -LiteralPath $reportDirectory -Filter 'rapor-*.csv' -File)
+    if ($reportFiles.Count -lt 1) { throw 'Rapor dosyası yazılmadı.' }
+    $reportRows = @(Import-Csv -LiteralPath $reportFiles[0].FullName -Delimiter ';' -Encoding UTF8)
+    if ($reportRows.Count -lt 1) { throw 'Rapor dosyası boş.' }
+    foreach ($column in @('Zaman', 'Hedef', 'Kaynak', 'HedefYolu', 'Parametreler', 'Sonuc', 'RobocopyKodu', 'SaniyeSuresi')) {
+        if (-not $reportRows[0].PSObject.Properties[$column]) { throw "Rapor kolonu eksik: $column" }
+    }
+    if (@($reportRows | Where-Object { $_.Sonuc -eq 'başarılı' }).Count -lt 1) { throw 'Raporda başarılı satır yok.' }
+
     Write-Host 'Kopyalama çalıştırma testleri başarılı.'
 }
 finally {
