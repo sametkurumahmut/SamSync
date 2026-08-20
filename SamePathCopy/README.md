@@ -209,20 +209,26 @@ Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için,
 }
 ```
 
-Menü sırası: en üstte `Tümü`, ardından her grup girdisi kendi makinelerinin başında, en sonda gruba ait olmayan makineler:
+Explorer menüsünde gruplar **kendi alt menülerine** konur ve bölümler ayırıcı çizgiyle ayrılır:
 
 ```text
 Tümü                        (ikonlu)
-Unit1                  (ikonlu)
-  Eğitmen - 10.10.1.10
-  IG1 - 10.10.2.11
-  IG2 - 10.10.2.12
-  IG3 - 10.10.2.13
-Unit2                  (ikonlu)
-  ...
+Wizard                      (ikonlu)
+Wizard (son ayar)           (ikonlu)
+Yedekten geri al            (ikonlu)
+────────────────────────────────────
+Unit1              ▸   (ikonlu)   →   Unit1 - Tümü   (ikonlu)
+Unit2              ▸   (ikonlu)       Eğitmen - 10.10.1.10
+Unit3              ▸   (ikonlu)       IG1 - 10.10.1.11
+────────────────────────────────────       IG2 - 10.10.1.12
+Arşiv sunucusu                             IG3 - 10.10.1.13
 ```
 
-İkon yalnızca toplu girdilerde (`Tümü` ve gruplar) durur; tek makine girdileri ikonsuzdur; böylece iki tür girdi menüde bakışta ayrışır.
+Bunun nedeni Windows'un klasik basamaklı sağ tık menüsünün **bir seviyede en fazla 16 öğe** göstermesi: fazlası uyarı vermeden kırpılır. Üç setli düz listede 19 girdi oluşuyordu ve son üç IG menüde görünmüyordu. Gruplar alt menüye taşınınca üst seviyede yalnızca toplu girdiler, gruplar ve gruba ait olmayan makineler kalır (örnekte 8 öğe), grup alt menüsünde ise en başta `<grup> - Tümü` girdisi ve ardından o grubun makineleri durur.
+
+Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): toplu girdiler, profiller, gruplar ve gruba ait olmayan makineler arasında. İkon yalnızca toplu girdilerde (`Tümü`, sihirbaz girdileri, geri alma, profiller ve gruplar) durur; tek makine girdileri ikonsuzdur.
+
+Notepad++ sekme menüsünde böyle bir sınır olmadığı için liste düzdür: grup girdileri kendi makinelerinin başında görünür.
 
 Grup girdileri komutlara `-TargetId group:Unit1` biçiminde geçer; `Queue-SamePathCopy.ps1` ve `Copy-SamePath.ps1` bu kimliği doğrudan kabul eder. Yerel bilgisayar kendi grubunun girdisinden de çıkarıldığı için, Unit1 eğitmeninde `Unit1` seçmek yalnızca o setin IG'lerine gönderir. Grubun bu bilgisayar dışında etkin üyesi kalmazsa grup girdisi menüde hiç oluşmaz.
 

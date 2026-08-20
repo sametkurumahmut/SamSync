@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Explorer menüsünde 16 öğe sınırı yüzünden kırpılan makineler düzeltildi: gruplar artık kendi alt menülerinde duruyor (alt menünün ilk girdisi `<grup> - Tümü`), üst seviyede yalnızca toplu girdiler, gruplar ve gruba ait olmayan makineler kalıyor. Üç setli yapılandırmada görünmeyen `Unit3` IG'leri geri geldi.
+- Menü bölümleri ayırıcı çizgiyle ayrılıyor (`CommandFlags = 0x20`): toplu girdiler, profiller, gruplar ve tek makineler arası.
+- Explorer menü yapısı için test eklendi ([tests/Test-ExplorerMenu.ps1](tests/Test-ExplorerMenu.ps1)): üst seviye girdi sayısı ve sırası, gruba ait makinelerin alt menüde olması, grup alt menüsündeki toplu girdi ve ayırıcı bayrakları `-WhatIf` çıktısı üzerinden doğrulanıyor.
+
 - Menüye `Yedekten geri al` girdisi eklendi (`-TargetId restore`): seçilen öğenin hedeflerdeki yedekleri taranıyor, her hedef için hangi yedeğin geri yazılacağı penceredeki açılır listeden seçiliyor. Geri almadan önce hedefin mevcut hâli varsayılan olarak yedekleniyor. Yedeği olmayan öğede işlem başlamıyor.
 - `config.json` içindeki `copy.postCommand` ile kopyalama sonrası komut çalıştırılabiliyor: hedef başına bir kez, `{address}` `{targetId}` `{targetName}` `{networkRoot}` `{destination}` `{source}` yer tutucularıyla. Zaman aşımı `copy.postCommandTimeoutSeconds` (varsayılan 60 sn); çıktı ve hata günlüğe, sonuç panele yazılıyor. Deneme çalıştırmasında komut çalışmıyor.
 

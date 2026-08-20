@@ -631,11 +631,13 @@ function Get-SamePathCopyMenuEntries {
     else {
         'Yedekten geri al'
     }
+    # Section, menüdeki bölümleri ayırır: Explorer menüsü bölüm başlarına ayırıcı koyar.
+    # GroupName ise Explorer'da grubun alt menüsüne hangi makinelerin gireceğini belirler.
     $entries = @(
-        [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true }
-        [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true }
-        [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true }
-        [pscustomobject]@{ Kind = 'restore'; Id = 'restore'; Label = $restoreLabel; IsAggregate = $true }
+        [pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
+        [pscustomobject]@{ Kind = 'restore'; Id = 'restore'; Label = $restoreLabel; IsAggregate = $true; Section = 'genel'; GroupName = '' }
     )
     foreach ($profileName in @($ProfileNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
         $entries += [pscustomobject]@{
@@ -643,6 +645,8 @@ function Get-SamePathCopyMenuEntries {
             Id = "profile:$profileName"
             Label = "$profileName (profil)"
             IsAggregate = $true
+            Section = 'profil'
+            GroupName = ''
         }
     }
 
@@ -662,14 +666,15 @@ function Get-SamePathCopyMenuEntries {
     }
 
     foreach ($groupKey in $groupKeys) {
-        $entries += [pscustomobject]@{ Kind = 'group'; Id = "group:$($groupLabels[$groupKey])"; Label = [string]$groupLabels[$groupKey]; IsAggregate = $true }
+        $groupLabel = [string]$groupLabels[$groupKey]
+        $entries += [pscustomobject]@{ Kind = 'group'; Id = "group:$groupLabel"; Label = $groupLabel; IsAggregate = $true; Section = 'grup'; GroupName = $groupLabel }
         foreach ($member in $groupMembers[$groupKey]) {
-            $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$member.id; Label = [string]$member.name; IsAggregate = $false }
+            $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$member.id; Label = [string]$member.name; IsAggregate = $false; Section = 'grup'; GroupName = $groupLabel }
         }
     }
     foreach ($target in $targets) {
         if (-not [string]::IsNullOrWhiteSpace((Get-SamePathCopyNodeGroup -Node $target))) { continue }
-        $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$target.id; Label = [string]$target.name; IsAggregate = $false }
+        $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$target.id; Label = [string]$target.name; IsAggregate = $false; Section = 'tek'; GroupName = '' }
     }
     return $entries
 }
