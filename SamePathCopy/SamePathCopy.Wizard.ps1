@@ -46,37 +46,59 @@ function Get-SamePathCopyStoredBoolean {
     return [bool]$value
 }
 
-function Get-SamePathCopyWizardSettings {
-    param(
-        [Parameter(Mandatory = $true)][string]$ConfigPath,
-        [Parameter(Mandatory = $true)][object[]]$Targets
-    )
-
+function Read-SamePathCopyWizardState {
     $statePath = Get-SamePathCopyWizardStatePath
-    $storedConfig = $null
     if (Test-Path -LiteralPath $statePath -PathType Leaf) {
         try {
             $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $configKey = $ConfigPath.ToLowerInvariant()
-            if ($state.PSObject.Properties['configs'] -and $state.configs.PSObject.Properties[$configKey]) {
-                $storedConfig = $state.configs.$configKey
-            }
+            if ($null -ne $state -and $state.PSObject.Properties['configs'] -and $null -ne $state.configs) { return $state }
         }
         catch {
-            # Bozuk durum dosyası kopyalamayı engellemez; varsayılanlarla devam edilir.
-            $storedConfig = $null
+            # Bozuk durum dosyasi kopyalamayi engellemez; varsayilanlarla devam edilir.
         }
     }
+    return [pscustomobject]@{ version = 1; configs = [pscustomobject]@{} }
+}
 
-    $storedTargets = if ($null -ne $storedConfig -and $storedConfig.PSObject.Properties['targets']) { $storedConfig.targets } else { $null }
-    $storedGlobal = if ($null -ne $storedConfig -and $storedConfig.PSObject.Properties['global']) { $storedConfig.global } else { $null }
+function Write-SamePathCopyWizardState {
+    param([Parameter(Mandatory = $true)]$State)
+
+    $statePath = Get-SamePathCopyWizardStatePath
+    $stateDirectory = Split-Path -Parent $statePath
+    if ($stateDirectory -and -not (Test-Path -LiteralPath $stateDirectory -PathType Container)) {
+        [void](New-Item -ItemType Directory -Path $stateDirectory -Force)
+    }
+    $temporaryPath = "$statePath.tmp"
+    ($State | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
+    Move-Item -LiteralPath $temporaryPath -Destination $statePath -Force
+}
+
+function Get-SamePathCopyWizardConfigState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$ConfigPath
+    )
+
+    $configKey = $ConfigPath.ToLowerInvariant()
+    if ($State.configs.PSObject.Properties[$configKey]) { return $State.configs.$configKey }
+    return $null
+}
+
+function ConvertFrom-SamePathCopyWizardStoredSettings {
+    param(
+        $Stored,
+        [Parameter(Mandatory = $true)][object[]]$Targets
+    )
+
+    $storedTargets = if ($null -ne $Stored -and $Stored.PSObject.Properties['targets']) { $Stored.targets } else { $null }
+    $storedGlobal = if ($null -ne $Stored -and $Stored.PSObject.Properties['global']) { $Stored.global } else { $null }
 
     $global = [pscustomobject]@{}
     foreach ($definition in Get-SamePathCopyWizardGlobalDefinitions) {
         $global | Add-Member -NotePropertyName $definition.Name -NotePropertyValue (Get-SamePathCopyStoredBoolean -Container $storedGlobal -Name $definition.Key -Default $definition.Default)
     }
 
-    # config.json'a sonradan eklenen bilgisayarlar varsayılan olarak seçili gelir; silinenler durumdan düşer.
+    # config.json'a sonradan eklenen bilgisayarlar varsayilan olarak secili gelir; silinenler durumdan duser.
     $targetSettings = @{}
     foreach ($target in $Targets) {
         $targetId = [string]$target.id
@@ -88,26 +110,11 @@ function Get-SamePathCopyWizardSettings {
         $targetSettings[$targetId] = $entry
     }
 
-    return [pscustomobject]@{
-        Global = $global
-        Targets = $targetSettings
-    }
+    return [pscustomobject]@{ Global = $global; Targets = $targetSettings }
 }
 
-function Save-SamePathCopyWizardSettings {
-    param(
-        [Parameter(Mandatory = $true)][string]$ConfigPath,
-        [Parameter(Mandatory = $true)]$Settings
-    )
-
-    $statePath = Get-SamePathCopyWizardStatePath
-    $state = $null
-    if (Test-Path -LiteralPath $statePath -PathType Leaf) {
-        try { $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $state = $null }
-    }
-    if ($null -eq $state -or -not $state.PSObject.Properties['configs'] -or $null -eq $state.configs) {
-        $state = [pscustomobject]@{ version = 1; configs = [pscustomobject]@{} }
-    }
+function ConvertTo-SamePathCopyWizardStoredSettings {
+    param([Parameter(Mandatory = $true)]$Settings)
 
     $globalObject = [pscustomobject]@{}
     foreach ($definition in Get-SamePathCopyWizardGlobalDefinitions) {
@@ -124,18 +131,111 @@ function Save-SamePathCopyWizardSettings {
         $targetsObject | Add-Member -NotePropertyName $targetId -NotePropertyValue $stored
     }
 
-    $state.configs | Add-Member -NotePropertyName $ConfigPath.ToLowerInvariant() -NotePropertyValue ([pscustomobject]@{
-        global = $globalObject
-        targets = $targetsObject
-    }) -Force
+    return [pscustomobject]@{ global = $globalObject; targets = $targetsObject }
+}
 
-    $stateDirectory = Split-Path -Parent $statePath
-    if ($stateDirectory -and -not (Test-Path -LiteralPath $stateDirectory -PathType Container)) {
-        [void](New-Item -ItemType Directory -Path $stateDirectory -Force)
+function Get-SamePathCopyWizardSettings {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][object[]]$Targets
+    )
+
+    $stored = Get-SamePathCopyWizardConfigState -State (Read-SamePathCopyWizardState) -ConfigPath $ConfigPath
+    return (ConvertFrom-SamePathCopyWizardStoredSettings -Stored $stored -Targets $Targets)
+}
+
+function Save-SamePathCopyWizardSettings {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)]$Settings
+    )
+
+    $state = Read-SamePathCopyWizardState
+    $configKey = $ConfigPath.ToLowerInvariant()
+    $stored = ConvertTo-SamePathCopyWizardStoredSettings -Settings $Settings
+    # Profiller son kullanilan ayarla ayni kayitta durur; ayar kaydetmek profilleri silmemeli.
+    $existing = Get-SamePathCopyWizardConfigState -State $state -ConfigPath $ConfigPath
+    if ($null -ne $existing -and $existing.PSObject.Properties['profiles']) {
+        $stored | Add-Member -NotePropertyName 'profiles' -NotePropertyValue $existing.profiles
     }
-    $temporaryPath = "$statePath.tmp"
-    ($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
-    Move-Item -LiteralPath $temporaryPath -Destination $statePath -Force
+    $state.configs | Add-Member -NotePropertyName $configKey -NotePropertyValue $stored -Force
+    Write-SamePathCopyWizardState -State $state
+}
+
+function Test-SamePathCopyWizardProfileName {
+    param([string]$Name)
+
+    # Profil adi menu komutlarinda "profile:<ad>" hedef kimligi olarak gectigi icin node kimligiyle ayni karakterlerle sinirlidir.
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    return [System.Text.RegularExpressions.Regex]::IsMatch(
+        $Name.Trim(), '^[A-Za-z0-9._-]+$', [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+}
+
+function Get-SamePathCopyWizardProfileNames {
+    param([Parameter(Mandatory = $true)][string]$ConfigPath)
+
+    $stored = Get-SamePathCopyWizardConfigState -State (Read-SamePathCopyWizardState) -ConfigPath $ConfigPath
+    if ($null -eq $stored -or -not $stored.PSObject.Properties['profiles'] -or $null -eq $stored.profiles) { return @() }
+    return @($stored.profiles.PSObject.Properties | ForEach-Object { [string]$_.Name } | Sort-Object)
+}
+
+function Get-SamePathCopyWizardProfile {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][object[]]$Targets
+    )
+
+    $stored = Get-SamePathCopyWizardConfigState -State (Read-SamePathCopyWizardState) -ConfigPath $ConfigPath
+    if ($null -eq $stored -or -not $stored.PSObject.Properties['profiles'] -or $null -eq $stored.profiles) { return $null }
+    $match = @($stored.profiles.PSObject.Properties | Where-Object { $_.Name.Equals($Name, [System.StringComparison]::OrdinalIgnoreCase) })
+    if ($match.Count -eq 0) { return $null }
+    return (ConvertFrom-SamePathCopyWizardStoredSettings -Stored $match[0].Value -Targets $Targets)
+}
+
+function Save-SamePathCopyWizardProfile {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)]$Settings
+    )
+
+    if (-not (Test-SamePathCopyWizardProfileName -Name $Name)) {
+        throw "Profil adi buyuk/kucuk Ingilizce harf, rakam, nokta, alt cizgi ve tire icerebilir: '$Name'"
+    }
+
+    $state = Read-SamePathCopyWizardState
+    $configKey = $ConfigPath.ToLowerInvariant()
+    $stored = Get-SamePathCopyWizardConfigState -State $state -ConfigPath $ConfigPath
+    if ($null -eq $stored) {
+        $stored = ConvertTo-SamePathCopyWizardStoredSettings -Settings $Settings
+        $state.configs | Add-Member -NotePropertyName $configKey -NotePropertyValue $stored -Force
+    }
+    if (-not $stored.PSObject.Properties['profiles'] -or $null -eq $stored.profiles) {
+        $stored | Add-Member -NotePropertyName 'profiles' -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    # Ayni ad buyuk/kucuk harf farkiyla verilirse eski kayit degistirilir, ikinci bir profil olusmaz.
+    $existingName = @($stored.profiles.PSObject.Properties | Where-Object { $_.Name.Equals($Name.Trim(), [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.Name })
+    $profileName = if ($existingName.Count -gt 0) { [string]$existingName[0] } else { $Name.Trim() }
+    $stored.profiles | Add-Member -NotePropertyName $profileName -NotePropertyValue (ConvertTo-SamePathCopyWizardStoredSettings -Settings $Settings) -Force
+    Write-SamePathCopyWizardState -State $state
+    return $profileName
+}
+
+function Remove-SamePathCopyWizardProfile {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $state = Read-SamePathCopyWizardState
+    $stored = Get-SamePathCopyWizardConfigState -State $state -ConfigPath $ConfigPath
+    if ($null -eq $stored -or -not $stored.PSObject.Properties['profiles'] -or $null -eq $stored.profiles) { return $false }
+    $match = @($stored.profiles.PSObject.Properties | Where-Object { $_.Name.Equals($Name, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.Name })
+    if ($match.Count -eq 0) { return $false }
+    $stored.profiles.PSObject.Properties.Remove([string]$match[0])
+    Write-SamePathCopyWizardState -State $state
+    return $true
 }
 
 function Set-SamePathCopyWizardColumnState {
@@ -261,6 +361,14 @@ function Get-SamePathCopyWizardBodyXaml {
                 <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel x:Name="GroupTogglePanel" Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0" />
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <TextBlock Style="{StaticResource MutedText}" Text="Profil:" VerticalAlignment="Center"
+                           Margin="0,0,8,0" />
+                <ComboBox x:Name="ProfileBox" Style="{StaticResource ModernComboBox}" Width="180" Margin="0,0,8,0" />
+                <Button x:Name="SaveProfileButton" Style="{StaticResource GhostButton}" Content="Profili kaydet"
+                        Margin="0,0,6,0" />
+                <Button x:Name="DeleteProfileButton" Style="{StaticResource GhostButton}" Content="Sil" />
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="3" Style="{StaticResource Card}" Padding="6">
@@ -309,6 +417,7 @@ function Show-SamePathCopyWizard {
         [Parameter(Mandatory = $true)][object[]]$Targets,
         [Parameter(Mandatory = $true)][object[]]$SourceItems,
         [Parameter(Mandatory = $true)]$Settings,
+        [string]$ConfigPath,
         [string[]]$LocalRoots,
         [string]$IconPath
     )
@@ -574,6 +683,103 @@ function Show-SamePathCopyWizard {
         & $script:wizardUpdateSelectionCount
     })
 
+    # Profiller: adlandirilmis secim kumeleri. Secilince tabloya uygulanir, kaydet/sil aninda dosyaya yazar.
+    $script:wizardConfigPath = $ConfigPath
+    $script:wizardProfileBox = $window.FindName('ProfileBox')
+    $script:wizardProfileSuppressChange = $false
+    $script:wizardApplySettingsToRows = {
+        param($AppliedSettings)
+        foreach ($row in $script:wizardRows) {
+            if (-not $AppliedSettings.Targets.ContainsKey([string]$row.Id)) { continue }
+            $entry = $AppliedSettings.Targets[[string]$row.Id]
+            $row.Controls['Selected'].IsChecked = [bool]$entry.Selected
+            foreach ($optionDefinition in $script:wizardOptionDefinitions) {
+                $row.Controls[[string]$optionDefinition.Name].IsChecked = [bool]$entry.($optionDefinition.Name)
+            }
+        }
+        foreach ($globalName in @($script:wizardGlobalBoxes.Keys)) {
+            $script:wizardGlobalBoxes[$globalName].IsChecked = [bool]$AppliedSettings.Global.$globalName
+        }
+        & $script:wizardUpdateSelectionCount
+    }
+    $script:wizardCollectSettings = {
+        $collectedTargets = @{}
+        foreach ($row in $script:wizardRows) {
+            $entry = [pscustomobject]@{ Selected = [bool]$row.Controls['Selected'].IsChecked }
+            foreach ($optionDefinition in $script:wizardOptionDefinitions) {
+                $entry | Add-Member -NotePropertyName ([string]$optionDefinition.Name) -NotePropertyValue ([bool]$row.Controls[[string]$optionDefinition.Name].IsChecked)
+            }
+            $collectedTargets[[string]$row.Id] = $entry
+        }
+        $collectedGlobal = [pscustomobject]@{}
+        foreach ($globalName in @($script:wizardGlobalBoxes.Keys)) {
+            $collectedGlobal | Add-Member -NotePropertyName $globalName -NotePropertyValue ([bool]$script:wizardGlobalBoxes[$globalName].IsChecked)
+        }
+        return [pscustomobject]@{ Global = $collectedGlobal; Targets = $collectedTargets }
+    }
+    $script:wizardRefreshProfiles = {
+        param([string]$SelectName)
+        $script:wizardProfileSuppressChange = $true
+        try {
+            [void]$script:wizardProfileBox.Items.Clear()
+            [void]$script:wizardProfileBox.Items.Add('(profil yok)')
+            foreach ($name in @(Get-SamePathCopyWizardProfileNames -ConfigPath $script:wizardConfigPath)) {
+                [void]$script:wizardProfileBox.Items.Add($name)
+            }
+            $script:wizardProfileBox.SelectedIndex = 0
+            if (-not [string]::IsNullOrWhiteSpace($SelectName)) {
+                $index = $script:wizardProfileBox.Items.IndexOf($SelectName)
+                if ($index -ge 0) { $script:wizardProfileBox.SelectedIndex = $index }
+            }
+        }
+        finally {
+            $script:wizardProfileSuppressChange = $false
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+        # Config yolu verilmediyse (tek basina arayuz denemesi) profil denetimleri kapali kalir.
+        $script:wizardProfileBox.IsEnabled = $false
+        $window.FindName('SaveProfileButton').IsEnabled = $false
+        $window.FindName('DeleteProfileButton').IsEnabled = $false
+    }
+    else {
+        & $script:wizardRefreshProfiles ''
+        $script:wizardProfileBox.Add_SelectionChanged({
+            if ($script:wizardProfileSuppressChange) { return }
+            if ($script:wizardProfileBox.SelectedIndex -le 0) { return }
+            $selectedProfile = [string]$script:wizardProfileBox.SelectedItem
+            $profileSettings = Get-SamePathCopyWizardProfile -ConfigPath $script:wizardConfigPath -Name $selectedProfile -Targets $script:wizardTargets
+            if ($null -eq $profileSettings) { return }
+            & $script:wizardApplySettingsToRows $profileSettings
+            Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("'{0}' profili tabloya uygulandi." -f $selectedProfile)
+        })
+        $window.FindName('SaveProfileButton').Add_Click({
+            $suggested = if ($script:wizardProfileBox.SelectedIndex -gt 0) { [string]$script:wizardProfileBox.SelectedItem } else { '' }
+            $name = Show-SamePathCopyPrompt -Title 'Profili kaydet' `
+                -Message 'Bu secim ve parametreler bu adla saklanir. Ad menude ve klavye kisayolunda hedef olarak kullanilabilir (harf, rakam, nokta, alt cizgi, tire).' `
+                -DefaultText $suggested -Placeholder 'Unit1IG' -ConfirmText 'Kaydet' -CancelText 'Vazgec' `
+                -Owner $script:wizardWindow -IconPath $script:wizardIconPath
+            if ([string]::IsNullOrWhiteSpace($name)) { return }
+            if (-not (Test-SamePathCopyWizardProfileName -Name $name)) {
+                [void](Show-SamePathCopyConfirm -Title 'Gecersiz profil adi' `
+                    -Message "Profil adi yalnizca harf, rakam, nokta, alt cizgi ve tire icerebilir: '$name'" `
+                    -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
+                return
+            }
+            $savedName = Save-SamePathCopyWizardProfile -ConfigPath $script:wizardConfigPath -Name $name -Settings (& $script:wizardCollectSettings)
+            & $script:wizardRefreshProfiles $savedName
+            Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("'{0}' profili kaydedildi." -f $savedName)
+        })
+        $window.FindName('DeleteProfileButton').Add_Click({
+            if ($script:wizardProfileBox.SelectedIndex -le 0) { return }
+            $selectedProfile = [string]$script:wizardProfileBox.SelectedItem
+            if (-not (Show-SamePathCopyConfirm -Title 'Profili sil' -Message "'$selectedProfile' profili silinecek. Menudeki girdisi de bir sonraki kurulumda kalkar." -ConfirmText 'Sil' -CancelText 'Vazgec' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)) { return }
+            [void](Remove-SamePathCopyWizardProfile -ConfigPath $script:wizardConfigPath -Name $selectedProfile)
+            & $script:wizardRefreshProfiles ''
+            Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("'{0}' profili silindi." -f $selectedProfile)
+        })
+    }
+
     # Son çalıştırma özeti günlükten okunur; henüz kopyalama yapılmadıysa chip görünmez.
     $lastRun = Get-SamePathCopyLastRunSummary
     if ($null -ne $lastRun) {
@@ -593,6 +799,7 @@ function Show-SamePathCopyWizard {
         [void]$globalPanel.Children.Add($globalBox)
         $globalBoxes[[string]$globalDefinition.Name] = $globalBox
     }
+    $script:wizardGlobalBoxes = $globalBoxes
 
     $window.FindName('CancelButton').Add_Click({ $script:wizardWindow.DialogResult = $false })
     $window.FindName('StartButton').Add_Click({

@@ -13,6 +13,7 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
 }
 . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
 . (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+. (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
 [void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
 Write-SamePathCopyLogStart -Component 'Kurulum' -Summary 'Sağ tık menüsü kurulumu'
 
@@ -67,7 +68,9 @@ function Remove-RegistryTree {
 
 $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $config
-$menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $config -ExcludeId $localIdentity.Id)
+# Sihirbazda kaydedilmis profiller de menuye girdi olarak eklenir.
+$profileNames = @(Get-SamePathCopyWizardProfileNames -ConfigPath ((Resolve-Path -LiteralPath $ConfigPath).Path))
+$menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $config -ExcludeId $localIdentity.Id -ProfileNames $profileNames)
 if (@($menuEntries | Where-Object { $_.Kind -eq 'node' }).Count -eq 0) {
     throw "Menüye eklenecek etkin hedef yok."
 }

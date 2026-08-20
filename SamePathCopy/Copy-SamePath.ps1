@@ -30,6 +30,11 @@ $script:cancelRequested = $false
 trap {
     Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Hata: {0}" -f $_.Exception.Message)
     Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Konum: {0}" -f ([string]$_.InvocationInfo.PositionMessage -replace '\r?\n', ' '))
+    # PlanOnly betikten/otomasyondan çağrılır: hata penceresi açıp beklemek yerine hatayı akışa yazıp çıkar.
+    if ($PlanOnly) {
+        Write-Error $_.Exception.Message -ErrorAction Continue
+        exit 1
+    }
     try {
         Add-Type -AssemblyName System.Windows.Forms
         [void][System.Windows.Forms.MessageBox]::Show(
@@ -150,7 +155,10 @@ $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 $isWizard = $TargetId -eq 'wizard'
 # wizard:last, sihirbaz penceresini açmadan son kaydedilen seçim ve parametrelerle kopyalar (klavye kısayolu için).
 $isWizardLast = $TargetId -eq 'wizard:last'
-$useWizardSettings = $isWizard -or $isWizardLast
+# profile:<ad>, sihirbazda kaydedilmis adlandirilmis bir secim kumesiyle kopyalar.
+$profileName = if ($TargetId.StartsWith('profile:', [System.StringComparison]::OrdinalIgnoreCase)) { $TargetId.Substring(8).Trim() } else { '' }
+$isProfile = -not [string]::IsNullOrWhiteSpace($profileName)
+$useWizardSettings = $isWizard -or $isWizardLast -or $isProfile
 $targets = @(Resolve-SamePathCopyTargets -Configuration $config -TargetId $TargetId -LocalIdentity $localIdentity)
 if ($targets.Count -eq 0) {
     throw "Kopyalama için etkin hedef yok."
@@ -163,8 +171,19 @@ Write-SamePathCopyLog -Component 'Kopyala' -Message ("Çözülen hedefler ({0}):
 $wizardSettings = $null
 if ($useWizardSettings) {
     . (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
-    $wizardSettings = Get-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Targets $targets
-    Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Kayıtlı ayar okundu: {0} | seçili: {1}" -f
+    if ($isProfile) {
+        $wizardSettings = Get-SamePathCopyWizardProfile -ConfigPath $resolvedConfigPath -Name $profileName -Targets $targets
+        if ($null -eq $wizardSettings) {
+            $availableProfiles = @(Get-SamePathCopyWizardProfileNames -ConfigPath $resolvedConfigPath)
+            $availableText = if ($availableProfiles.Count -gt 0) { $availableProfiles -join ', ' } else { '(kayitli profil yok)' }
+            throw "'$profileName' profili bulunamadi. Sihirbazda kayitli profiller: $availableText"
+        }
+    }
+    else {
+        $wizardSettings = Get-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Targets $targets
+    }
+    Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("{0} okundu: {1} | secili: {2}" -f
+        $(if ($isProfile) { "'$profileName' profili" } else { 'Kayitli ayar' }),
         (Get-SamePathCopyWizardStatePath), (@($wizardSettings.Targets.Keys | Where-Object { $wizardSettings.Targets[$_].Selected } | Sort-Object) -join ', '))
 }
 
@@ -187,7 +206,7 @@ if ($useWizardSettings) {
     if ($isWizard -and -not $PlanOnly) {
         # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
         Write-SamePathCopyLog -Component 'Sihirbaz' -Message 'Sihirbaz penceresi açıldı.'
-        $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -LocalRoots $localIdentity.Roots -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
+        $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -ConfigPath $resolvedConfigPath -LocalRoots $localIdentity.Roots -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
         Save-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Settings $wizardResult.Settings
         Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Pencere kapandı: {0} | seçili: {1} | genel: {2}" -f
             $(if ($wizardResult.Confirmed) { 'başlat' } else { 'vazgeç' }),
@@ -199,6 +218,9 @@ if ($useWizardSettings) {
     $globalOptions = $wizardSettings.Global
     $targets = @($targets | Where-Object { [bool]$wizardSettings.Targets[[string]$_.id].Selected })
     if ($targets.Count -eq 0) {
+        if ($isProfile) {
+            throw "'$profileName' profilinde hicbir bilgisayar secili degil. Sihirbazda profili duzenleyip yeniden kaydedin."
+        }
         if ($isWizardLast) {
             throw 'Son sihirbaz ayarında hiçbir bilgisayar seçili değil. Sihirbazı açıp hedef seçin; kısayol bir dahaki sefere o seçimi kullanır.'
         }
@@ -359,6 +381,9 @@ function Add-SamePathCopyChip {
 Add-SamePathCopyChip -Text ("{0} işlem" -f $plans.Count)
 if ($isWizardLast) {
     Add-SamePathCopyChip -Text 'Son sihirbaz ayarı' -ToolTip 'Hedefler ve parametreler sihirbazda en son kaydedilen hâlden alındı; pencere açılmadı.'
+}
+if ($isProfile) {
+    Add-SamePathCopyChip -Text ("Profil: {0}" -f $profileName) -ToolTip 'Hedefler ve parametreler bu profilden alindi; sihirbaz penceresi acilmadi.'
 }
 Add-SamePathCopyChip -Text ("Yerel kök: {0}" -f (@($localIdentity.Roots) -join '  •  ')) -ToolTip (@($localIdentity.Roots) -join "`r`n")
 $activeGlobalOptions = @(@('DryRun', 'FastCopy') | Where-Object { Get-SamePathCopyOptionValue -Options $globalOptions -Name $_ })

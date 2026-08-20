@@ -112,6 +112,21 @@ Bütün hedefler için geçerli parametreler:
 
 Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
 
+#### Profiller
+
+Sihirbazın sağ üstündeki **Profil** kutusu, adlandırılmış seçim kümeleri tutar: hedef seçimi ve bütün parametreler bir adla saklanır. `Profili kaydet` mevcut tabloyu kaydeder, listeden bir profil seçmek onu tabloya uygular, `Sil` kaldırır. Profil adı harf, rakam, nokta, alt çizgi ve tire içerebilir (menü komutlarında hedef kimliği olarak kullanıldığı için boşluk yoktur).
+
+Her profil menüde `<ad> (profil)` girdisi olarak görünür ve komutlara `-TargetId profile:<ad>` biçiminde geçer; yani bir profile klavye kısayolu da bağlanabilir:
+
+```json
+"notepadPlusPlusShortcuts": {
+    "profile:Unit1IG": "Ctrl+Alt+1",
+    "profile:Egitmenler": "Ctrl+Alt+2"
+}
+```
+
+Profil eklendikten veya silindikten sonra menü girdilerinin güncellenmesi için kurulumu (`Install-ContextMenu.bat`) yeniden çalıştırın. Profiller `wizard-state.json` içinde, son kullanılan ayarla aynı dosyada ama ondan bağımsız durur: ayar kaydetmek profilleri değiştirmez.
+
 #### Son ayarla gönderme
 
 `Wizard` girdisinin hemen ardından gelen `Wizard (son ayar)` girdisi pencereyi hiç açmaz: sihirbazda en son kaydedilen hedef seçimini ve parametreleri olduğu gibi uygulayıp kopyalamayı başlatır. Komutlara `-TargetId wizard:last` olarak geçer, etiketi `config.json` içindeki `wizardLastLabel` alanından değiştirilebilir.

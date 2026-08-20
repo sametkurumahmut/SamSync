@@ -123,7 +123,7 @@ try {
 )
 `$settings = Get-SamePathCopyWizardSettings -ConfigPath '$configPath' -Targets `$targets
 `$sourceItems = @(Get-Item -LiteralPath '$projectDirectory\README.md')
-`$result = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems `$sourceItems -Settings `$settings -LocalRoots @('C:\Kok')
+`$result = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems `$sourceItems -Settings `$settings -ConfigPath '$configPath' -LocalRoots @('C:\Kok')
 "sonuc sayisi=`$(@(`$result).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8
 "confirmed=`$(`$result.Confirmed)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "hedef sayisi=`$(@(`$result.Settings.Targets.Keys).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
@@ -199,6 +199,98 @@ try {
     } -Window $null
     Assert-Equal $true ([bool]$reachRows[0].Reachable) 'Erişilebilir satır işaretlenmedi.'
     Assert-Equal $false ([bool]$reachRows[1].Reachable) 'Erişilemez satır işaretlenmedi.'
+
+    # Uçtan uca profil sınaması gerçek config.json ile yapılır: hedefler oradan gelir.
+    . (Join-Path $projectDirectory 'SamePathCopy.Common.ps1')
+    $projectConfigPath = (Resolve-Path -LiteralPath (Join-Path $projectDirectory 'config.json')).Path
+    $projectConfiguration = Get-SamePathCopyConfiguration -ConfigPath $projectConfigPath
+    $projectIdentity = Get-LocalSamePathCopyIdentity -Configuration $projectConfiguration
+    $projectTargets = @(Get-EnabledSamePathCopyNodes -Configuration $projectConfiguration -ExcludeId $projectIdentity.Id)
+
+    # Profiller: adlandırılmış seçim kümeleri saklanır, son kullanılan ayardan bağımsız durur.
+    Assert-Equal 0 @(Get-SamePathCopyWizardProfileNames -ConfigPath $configPath).Count 'Başlangıçta profil olmamalı.'
+
+    $profileSettings = Get-SamePathCopyWizardSettings -ConfigPath $configPath -Targets $targets
+    $profileSettings.Targets['IG1'].Selected = $true
+    $profileSettings.Targets['IG2'].Selected = $false
+    $profileSettings.Targets['IG1'].Backup = $true
+    $profileSettings.Global.DryRun = $true
+    Assert-Equal 'Unit1IG' (Save-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'Unit1IG' -Settings $profileSettings) 'Profil adı geri dönmedi.'
+    Assert-Equal 'Unit1IG' ((Get-SamePathCopyWizardProfileNames -ConfigPath $configPath) -join ',') 'Profil listesi beklenenden farklı.'
+
+    $loadedProfile = Get-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'unit1ig' -Targets $targets
+    Assert-Equal $true ([bool]$loadedProfile.Targets['IG1'].Selected) 'Profil seçimi yüklenmedi.'
+    Assert-Equal $false ([bool]$loadedProfile.Targets['IG2'].Selected) 'Profil seçimi yüklenmedi.'
+    Assert-Equal $true ([bool]$loadedProfile.Targets['IG1'].Backup) 'Profil parametresi yüklenmedi.'
+    Assert-Equal $true ([bool]$loadedProfile.Global.DryRun) 'Profil genel parametresi yüklenmedi.'
+
+    # Son kullanılan ayarı kaydetmek profilleri silmemeli.
+    $lastUsed = Get-SamePathCopyWizardSettings -ConfigPath $configPath -Targets $targets
+    $lastUsed.Targets['IG2'].Selected = $true
+    Save-SamePathCopyWizardSettings -ConfigPath $configPath -Settings $lastUsed
+    Assert-Equal 'Unit1IG' ((Get-SamePathCopyWizardProfileNames -ConfigPath $configPath) -join ',') 'Ayar kaydetmek profili sildi.'
+
+    # Aynı ad büyük/küçük harf farkıyla verilirse ikinci profil oluşmaz, mevcut olan güncellenir.
+    $profileSettings.Targets['IG2'].Selected = $true
+    [void](Save-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'UNIT1IG' -Settings $profileSettings)
+    Assert-Equal 1 @(Get-SamePathCopyWizardProfileNames -ConfigPath $configPath).Count 'Büyük/küçük harf farkı ikinci profil oluşturdu.'
+    Assert-Equal $true ([bool](Get-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'Unit1IG' -Targets $targets).Targets['IG2'].Selected) 'Profil güncellenmedi.'
+
+    # İkinci profil ve silme.
+    [void](Save-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'Egitmenler' -Settings $profileSettings)
+    Assert-Equal 'Egitmenler,Unit1IG' ((Get-SamePathCopyWizardProfileNames -ConfigPath $configPath) -join ',') 'Profiller sıralı dönmeli.'
+    Assert-Equal $true (Remove-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'egitmenler') 'Profil silinemedi.'
+    Assert-Equal 'Unit1IG' ((Get-SamePathCopyWizardProfileNames -ConfigPath $configPath) -join ',') 'Silinen profil listede kaldı.'
+    Assert-Equal $false (Remove-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'yokboyle') 'Olmayan profil silinmiş sayıldı.'
+    Assert-Equal $null (Get-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'yokboyle' -Targets $targets) 'Olmayan profil için nesne döndü.'
+
+    # Geçersiz profil adı reddedilir.
+    Assert-Equal $false (Test-SamePathCopyWizardProfileName -Name 'boşluk olur mu') 'Boşluklu profil adı kabul edildi.'
+    Assert-Equal $false (Test-SamePathCopyWizardProfileName -Name '') 'Boş profil adı kabul edildi.'
+    Assert-Equal $true (Test-SamePathCopyWizardProfileName -Name 'Unit1-IG_2.set') 'Geçerli profil adı reddedildi.'
+    $profileNameError = $null
+    try { [void](Save-SamePathCopyWizardProfile -ConfigPath $configPath -Name 'geçersiz ad' -Settings $profileSettings) } catch { $profileNameError = $_ }
+    if ($null -eq $profileNameError) { throw 'Geçersiz profil adı için hata verilmedi.' }
+
+    # profile:<ad> hedefi kopyalama betiğinde uygulanmalı: yalnızca profildeki hedefler ve parametreler.
+    $e2eProfileSettings = Get-SamePathCopyWizardSettings -ConfigPath $projectConfigPath -Targets $projectTargets
+    foreach ($id in @($e2eProfileSettings.Targets.Keys)) { $e2eProfileSettings.Targets[$id].Selected = $false }
+    $firstTargetId = [string]$projectTargets[0].id
+    $e2eProfileSettings.Targets[$firstTargetId].Selected = $true
+    $e2eProfileSettings.Targets[$firstTargetId].OnlyNewer = $true
+    [void](Save-SamePathCopyWizardProfile -ConfigPath $projectConfigPath -Name 'TestProfil' -Settings $e2eProfileSettings)
+
+    # Alt süreç çıktısı metin olarak döner; satırlar üzerinden doğrulanır.
+    $planLines = @(& (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $projectDirectory 'Copy-SamePath.ps1') -TargetId 'profile:TestProfil' `
+        -SourcePath (Join-Path $projectDirectory 'README.md') -PlanOnly | Out-String -Stream)
+    $planTargetLines = @($planLines | Where-Object { $_ -match '^Target\s+:' })
+    Assert-Equal 1 $planTargetLines.Count 'Profil yalnızca kendi hedefini planlamalı.'
+    if (@($planLines | Where-Object { $_ -match '^Options\s+: OnlyNewer' }).Count -ne 1) {
+        throw "Profil parametresi plana yansımadı: $($planLines -join ' | ')"
+    }
+
+    # Bulunmayan profil: PlanOnly kipinde pencere açmadan hata verip çıkmalı (otomasyonu kilitlemez).
+    # .NET süreci kullanılır: Start-Process -PassThru çıkış kodunu güvenilir vermiyor, timeout da gerekiyor.
+    $missingStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $missingStartInfo.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $missingStartInfo.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -TargetId profile:YokBoyleProfil -SourcePath "{1}" -PlanOnly' -f `
+        (Join-Path $projectDirectory 'Copy-SamePath.ps1'), (Join-Path $projectDirectory 'README.md')
+    $missingStartInfo.UseShellExecute = $false
+    $missingStartInfo.CreateNoWindow = $true
+    $missingStartInfo.RedirectStandardError = $true
+    $missingStartInfo.RedirectStandardOutput = $true
+    $missingProcess = [System.Diagnostics.Process]::Start($missingStartInfo)
+    $missingErrorText = $missingProcess.StandardError.ReadToEnd()
+    [void]$missingProcess.StandardOutput.ReadToEnd()
+    if (-not $missingProcess.WaitForExit(30000)) {
+        try { $missingProcess.Kill() } catch { }
+        throw 'Bulunmayan profil kopyalama betiğini kilitledi (hata penceresi bekliyor olabilir).'
+    }
+    Assert-Equal 1 $missingProcess.ExitCode 'Bulunmayan profil için çıkış kodu 1 olmalı.'
+    if ($missingErrorText -notlike '*YokBoyleProfil*') {
+        throw "Bulunmayan profil hatası akışa yazılmadı: $missingErrorText"
+    }
 
     Write-Host 'Sihirbaz testleri başarılı.'
 }

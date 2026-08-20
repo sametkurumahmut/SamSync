@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Sihirbaza profiller eklendi: hedef seçimi ve parametreler bir adla saklanıp tek tıkla geri yüklenebiliyor. Her profil menüde `<ad> (profil)` girdisi olarak görünüyor, komutlara `-TargetId profile:<ad>` olarak geçiyor ve klavye kısayolu bağlanabiliyor.
+- Profil adı doğrulaması, büyük/küçük harf farkında aynı profili güncelleme ve bulunmayan profil için kayıtlı profilleri sayan hata mesajı eklendi.
+- `-PlanOnly` kipinde hata artık pencere açmıyor; mesajı hata akışına yazıp 1 ile çıkıyor (otomasyon kilitlenmiyor).
+
 - Sihirbaza filtre kutusu eklendi: ad, grup veya node kimliğine göre süzme; süzme sırasında toplu seçim ikonları yalnızca görünen satırlara uygulanıyor, gizli satırların seçimi korunuyor.
 - Sihirbaza grup çipleri eklendi: her grup tek tıkla topluca seçilip bırakılabiliyor.
 - Sihirbaz açılışında hedeflerin SMB portuna eşzamanlı TCP yoklaması yapılıyor; bilgisayar adının yanındaki nokta erişilebilirliği gösteriyor. `Erişimi sına` yoklamayı yeniliyor, `Erişilebilirleri seç` yalnızca yanıt verenleri işaretliyor.

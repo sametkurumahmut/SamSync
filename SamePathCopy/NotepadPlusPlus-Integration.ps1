@@ -533,8 +533,10 @@ if ($Action -eq 'Install') {
     . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
     $configuration = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
     $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $configuration
-    $menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $configuration -ExcludeId $localIdentity.Id)
+    . (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
     $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+    # Sihirbazda kaydedilmiş profiller de menüye girdi olarak eklenir.
+    $menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $configuration -ExcludeId $localIdentity.Id -ProfileNames @(Get-SamePathCopyWizardProfileNames -ConfigPath $resolvedConfigPath))
     $queueScriptPath = (Resolve-Path -LiteralPath (Join-Path $scriptDirectory 'Queue-SamePathCopy.ps1')).Path
     $shortcutAssignments = Get-NotepadPlusPlusShortcutAssignments -Configuration $configuration -KnownIds @($menuEntries | ForEach-Object { [string]$_.Id })
 }

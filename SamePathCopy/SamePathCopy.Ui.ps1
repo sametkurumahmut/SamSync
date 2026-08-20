@@ -227,6 +227,76 @@ function Get-SamePathCopyThemeXaml {
         </Setter>
     </Style>
 
+    <Style x:Key="ModernComboBoxItem" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,5,10,5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Face" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource RowHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource RowHoverBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModernComboBox" TargetType="ComboBox">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource ModernComboBoxItem}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Face" CornerRadius="6" Background="{StaticResource SurfaceAltBrush}"
+                                            BorderBrush="{StaticResource BorderBrushStrong}" BorderThickness="1">
+                                        <TextBlock Text="v" FontSize="10" HorizontalAlignment="Right" Margin="0,0,9,0"
+                                                   VerticalAlignment="Center" Foreground="{StaticResource TextMutedBrush}" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          Margin="10,0,26,0" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                        <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                            <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="260" Margin="0,2,0,0"
+                                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+                                    BorderThickness="1" CornerRadius="6" Padding="4">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="SearchBox" TargetType="TextBox">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
         <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
@@ -432,6 +502,69 @@ function Invoke-SamePathCopyUiPump {
         [System.Windows.Threading.DispatcherOperationCallback] { param($state) $state.Continue = $false; return $null },
         $frame)
     [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+}
+
+function Show-SamePathCopyPrompt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$DefaultText = '',
+        [string]$Placeholder = '',
+        [string]$ConfirmText = 'Kaydet',
+        [string]$CancelText = 'Vazgec',
+        $Owner,
+        [string]$IconPath
+    )
+
+    # Tek satirlik metin sorar; vazgecilirse $null doner. Profil adi gibi kisa girdiler icin kullanilir.
+    $body = @'
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="HeaderText" Style="{StaticResource TitleText}" FontSize="16" TextWrapping="Wrap" />
+        <TextBlock x:Name="MessageText" Grid.Row="1" Style="{StaticResource SubtitleText}" Margin="0,10,0,0"
+                   TextWrapping="Wrap" TextTrimming="None" />
+        <TextBox x:Name="InputBox" Grid.Row="2" Style="{StaticResource SearchBox}" Margin="0,14,0,0" Height="30" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button x:Name="CancelButton" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" />
+            <Button x:Name="ConfirmButton" Style="{StaticResource PrimaryButton}" />
+        </StackPanel>
+    </Grid>
+'@
+
+    $script:samePathCopyPromptWindow = New-SamePathCopyWindow -Title $Title -BodyXaml $body -Width 520 -Height 270 -MinWidth 420 -MinHeight 240 -IconPath $IconPath
+    $window = $script:samePathCopyPromptWindow
+    $window.ResizeMode = 'NoResize'
+    $window.FindName('HeaderText').Text = $Title
+    $window.FindName('MessageText').Text = $Message
+    $script:samePathCopyPromptBox = $window.FindName('InputBox')
+    $script:samePathCopyPromptBox.Text = $DefaultText
+    $script:samePathCopyPromptBox.Tag = $Placeholder
+    $script:samePathCopyPromptBox.SelectAll()
+    $confirmButton = $window.FindName('ConfirmButton')
+    $cancelButton = $window.FindName('CancelButton')
+    $confirmButton.Content = $ConfirmText
+    $cancelButton.Content = $CancelText
+    if ($Owner) { $window.Owner = $Owner }
+
+    $confirmButton.Add_Click({ $script:samePathCopyPromptWindow.DialogResult = $true })
+    $cancelButton.Add_Click({ $script:samePathCopyPromptWindow.DialogResult = $false })
+    # Enter kaydeder, Esc vazgecer.
+    $script:samePathCopyPromptBox.Add_KeyDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.Key -eq 'Return') { $script:samePathCopyPromptWindow.DialogResult = $true }
+        elseif ($eventArgs.Key -eq 'Escape') { $script:samePathCopyPromptWindow.DialogResult = $false }
+    })
+    $window.Add_ContentRendered({ [void]$script:samePathCopyPromptBox.Focus() })
+
+    if ($window.ShowDialog() -ne $true) { return $null }
+    $value = [string]$script:samePathCopyPromptBox.Text
+    if ([string]::IsNullOrWhiteSpace($value)) { return $null }
+    return $value.Trim()
 }
 
 function Show-SamePathCopyConfirm {

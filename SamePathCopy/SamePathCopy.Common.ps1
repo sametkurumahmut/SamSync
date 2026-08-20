@@ -352,7 +352,9 @@ function Get-SamePathCopyNodeGroup {
 function Get-SamePathCopyMenuEntries {
     param(
         [Parameter(Mandatory = $true)]$Configuration,
-        [string]$ExcludeId
+        [string]$ExcludeId,
+        # Sihirbazda kaydedilmiş profiller; menüye "profile:<ad>" girdisi olarak eklenir.
+        [string[]]$ProfileNames
     )
 
     # Menü sırası: Tümü, ardından her grup kendi makinelerinin başında, en sonda gruba ait olmayan makineler.
@@ -377,6 +379,14 @@ function Get-SamePathCopyMenuEntries {
         [pscustomobject]@{ Kind = 'wizard'; Id = 'wizard'; Label = $wizardLabel; IsAggregate = $true }
         [pscustomobject]@{ Kind = 'wizardLast'; Id = 'wizard:last'; Label = $wizardLastLabel; IsAggregate = $true }
     )
+    foreach ($profileName in @($ProfileNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        $entries += [pscustomobject]@{
+            Kind = 'profile'
+            Id = "profile:$profileName"
+            Label = "$profileName (profil)"
+            IsAggregate = $true
+        }
+    }
 
     $groupKeys = New-Object System.Collections.Generic.List[string]
     $groupLabels = @{}
@@ -415,8 +425,11 @@ function Resolve-SamePathCopyTargets {
 
     $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $LocalIdentity.Id)
     # Sihirbaz bütün hedeflerle açılır; hangilerine gönderileceğini kullanıcı arayüzde seçer.
-    # wizard:last aynı listeyle başlar, seçim kaydedilmiş sihirbaz ayarından uygulanır.
-    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard' -or $TargetId -eq 'wizard:last') { return $targets }
+    # wizard:last ve profile:<ad> aynı listeyle başlar; seçim kaydedilmiş sihirbaz ayarından/profilden uygulanır.
+    if ($TargetId -eq 'all' -or $TargetId -eq 'wizard' -or $TargetId -eq 'wizard:last' -or
+        $TargetId.StartsWith('profile:', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $targets
+    }
 
     if ($TargetId.StartsWith('group:', [System.StringComparison]::OrdinalIgnoreCase)) {
         $groupName = $TargetId.Substring(6).Trim()
