@@ -408,6 +408,37 @@ function Set-SamePathCopyWizardRowFilter {
     return $visibleCount
 }
 
+function Set-SamePathCopyWizardSelectionById {
+    param(
+        [object[]]$Rows,
+        [string[]]$Ids
+    )
+
+    # Verilen kimlik kümesini tam olarak uygular: kümede olan hedef seçilir, olmayan bırakılır.
+    # Profil yüklemek gibi bir "seçimi geri getir" işlemi olduğu için filtre durumuna bakılmaz.
+    $idSet = @{}
+    foreach ($id in @($Ids)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$id)) { $idSet[[string]$id] = $true }
+    }
+    $matched = 0
+    foreach ($row in @($Rows)) {
+        $isSelected = $idSet.ContainsKey([string]$row.Id)
+        if ($isSelected) { $matched++ }
+        $row.Controls['Selected'].IsChecked = $isSelected
+    }
+    return $matched
+}
+
+function Invoke-SamePathCopyWizardSelectionInvert {
+    param([object[]]$Rows)
+
+    # Seçimi ters çevirir; toplu işlemlerin geri kalanı gibi yalnızca görünen satırlara dokunur.
+    foreach ($row in @($Rows)) {
+        if (-not [bool]$row.Visible) { continue }
+        $row.Controls['Selected'].IsChecked = -not [bool]$row.Controls['Selected'].IsChecked
+    }
+}
+
 function Set-SamePathCopyWizardReachabilityState {
     param(
         [object[]]$Rows,
@@ -465,8 +496,7 @@ function Get-SamePathCopyWizardBodyXaml {
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBox x:Name="FilterBox" Style="{StaticResource SearchBox}" Width="200" Margin="0,0,10,0" />
                 <Button x:Name="ProbeButton" Style="{StaticResource GhostButton}" Content="Erişimi sına" Margin="0,0,8,0" />
-                <Button x:Name="SelectReachableButton" Style="{StaticResource GhostButton}" Content="Erişilebilirleri seç"
-                        Margin="0,0,10,0" />
+                <Button x:Name="SelectMenuButton" Style="{StaticResource GhostButton}" Content="Seç ⌄" Margin="0,0,10,0" />
                 <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel x:Name="GroupTogglePanel" Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0" />
@@ -788,7 +818,41 @@ function Show-SamePathCopyWizard {
 
     # Erişim yoklaması: pencere açılırken bir kez, sonra düğmeyle yeniden çalıştırılabilir.
     $window.FindName('ProbeButton').Add_Click({ & $script:wizardProbeReachability })
-    $window.FindName('SelectReachableButton').Add_Click({
+
+    # "Seç" düğmesi, seçim yardımcılarını tek bir açılır listede toplar: erişilebilirler, son
+    # çalıştırmada hata alanlar ve ters çevirme. Düğme başına yer harcamadan yenisi eklenebilir.
+    $selectMenuButton = $window.FindName('SelectMenuButton')
+    $selectPopup = New-Object System.Windows.Controls.Primitives.Popup
+    $selectPopup.PlacementTarget = $selectMenuButton
+    $selectPopup.Placement = 'Bottom'
+    $selectPopup.StaysOpen = $false
+    $selectPopup.AllowsTransparency = $true
+    $selectPopup.VerticalOffset = 4
+    $selectCard = New-Object System.Windows.Controls.Border
+    $selectCard.Style = $window.FindResource('Card')
+    $selectCard.Background = $window.FindResource('SurfaceBrush')
+    $selectCard.Padding = New-Object System.Windows.Thickness(6, 6, 6, 6)
+    $selectPanel = New-Object System.Windows.Controls.StackPanel
+    $selectCard.Child = $selectPanel
+    $selectPopup.Child = $selectCard
+    $script:wizardSelectPopup = $selectPopup
+    $selectMenuButton.Add_Click({ $script:wizardSelectPopup.IsOpen = -not [bool]$script:wizardSelectPopup.IsOpen })
+
+    $addSelectAction = {
+        param([string]$Label, [string]$Description, [scriptblock]$Handler)
+        $actionButton = New-Object System.Windows.Controls.Button
+        $actionButton.Style = $script:wizardWindow.FindResource('GhostButton')
+        $actionButton.Content = $Label
+        $actionButton.ToolTip = $Description
+        $actionButton.HorizontalAlignment = 'Stretch'
+        $actionButton.HorizontalContentAlignment = 'Left'
+        $actionButton.Margin = New-Object System.Windows.Thickness(0, 1, 0, 1)
+        $actionButton.Add_Click($Handler)
+        [void]$selectPanel.Children.Add($actionButton)
+    }
+
+    & $addSelectAction 'Erişilebilirleri seç' 'Yalnızca erişim yoklamasına yanıt veren hedefleri işaretler (görünen satırlarda).' {
+        $script:wizardSelectPopup.IsOpen = $false
         if ($script:wizardReachabilityStatus.Count -eq 0) { & $script:wizardProbeReachability }
         foreach ($row in $script:wizardRows) {
             if (-not [bool]$row.Visible) { continue }
@@ -796,7 +860,32 @@ function Show-SamePathCopyWizard {
             $row.Controls['Selected'].IsChecked = [bool]$row.Reachable
         }
         & $script:wizardUpdateSelectionCount
-    })
+    }
+    & $addSelectAction 'Son çalıştırmada hatalıları seç' 'En son raporda hata alan hedefleri işaretler, diğerlerini bırakır; yarım kalan gönderim tamamlanır.' {
+        $script:wizardSelectPopup.IsOpen = $false
+        $recentReports = @(Get-SamePathCopyRecentReportSummaries -Limit 1)
+        if ($recentReports.Count -eq 0) {
+            [void](Show-SamePathCopyConfirm -Title 'Rapor yok' -Message 'Henüz bir kopyalama raporu yok; hangi hedeflerin hata aldığı bilinmiyor.' `
+                -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
+            return
+        }
+        $failedIds = @($recentReports[0].FailedTargetIds)
+        if ($failedIds.Count -eq 0) {
+            [void](Show-SamePathCopyConfirm -Title 'Hata yok' -Message ("Son çalıştırmada ({0}) hata alan hedef yok." -f $recentReports[0].StampText) `
+                -ConfirmText 'Tamam' -CancelText 'Kapat' -Owner $script:wizardWindow -IconPath $script:wizardIconPath)
+            return
+        }
+        $matched = Set-SamePathCopyWizardSelectionById -Rows $script:wizardRows -Ids $failedIds
+        & $script:wizardUpdateSelectionCount
+        & $script:wizardRefreshBulkToggles
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Son raporun hatalı hedefleri seçildi: {0} ({1} satır eşleşti)." -f ($failedIds -join ', '), $matched)
+    }
+    & $addSelectAction 'Seçimi ters çevir' 'Görünen satırlarda seçiliyi bırakır, seçili olmayanı işaretler.' {
+        $script:wizardSelectPopup.IsOpen = $false
+        Invoke-SamePathCopyWizardSelectionInvert -Rows $script:wizardRows
+        & $script:wizardUpdateSelectionCount
+        & $script:wizardRefreshBulkToggles
+    }
 
     # Profiller: adlandirilmis secim kumeleri. Secilince tabloya uygulanir, kaydet/sil aninda dosyaya yazar.
     $script:wizardConfigPath = $ConfigPath

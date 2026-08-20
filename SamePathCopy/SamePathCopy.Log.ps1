@@ -191,6 +191,73 @@ function Write-SamePathCopyReport {
     }
 }
 
+function Get-SamePathCopyReportDirectory {
+    # Raporların durduğu klasör; yalnızca okunacağı için burada klasör oluşturulmaz.
+    $logPath = Get-SamePathCopyLogPath
+    if ([string]::IsNullOrWhiteSpace($logPath)) { return $null }
+    return (Join-Path (Split-Path -Parent $logPath) 'reports')
+}
+
+function Get-SamePathCopyReportRunSummary {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # Tek bir rapor CSV'sini çalıştırma özetine çevirir: sihirbazdaki "hatalıları seç" ve geçmiş listesi
+    # bu özet üzerinden çalışır. Bozuk ya da boş dosya için $null döner; çağıran atlar.
+    try {
+        $rows = @(Import-Csv -LiteralPath $Path -Delimiter ';' -Encoding UTF8)
+        if ($rows.Count -eq 0) { return $null }
+        if (-not $rows[0].PSObject.Properties['HedefKimlik'] -or -not $rows[0].PSObject.Properties['Sonuc']) { return $null }
+
+        # Zaman damgası dosya adından okunur (rapor-yyyyMMdd-HHmmss.csv); ad bozuksa dosya tarihi kullanılır.
+        $stamp = $null
+        if ([System.IO.Path]::GetFileName($Path) -match '^rapor-(?<stamp>\d{8}-\d{6})\.csv$') {
+            try {
+                $stamp = [datetime]::ParseExact($Matches['stamp'], 'yyyyMMdd-HHmmss', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            catch { $stamp = $null }
+        }
+        if ($null -eq $stamp) { $stamp = (Get-Item -LiteralPath $Path -Force).LastWriteTime }
+
+        $failedRows = @($rows | Where-Object { [string]$_.Sonuc -eq 'hatalı' })
+        $sources = @($rows | ForEach-Object { [string]$_.Kaynak } | Where-Object { $_ } | Select-Object -Unique)
+        return [pscustomobject]@{
+            Path = $Path
+            Stamp = $stamp
+            StampText = $stamp.ToString('dd.MM.yyyy HH:mm')
+            RowCount = $rows.Count
+            SuccessCount = @($rows | Where-Object { [string]$_.Sonuc -eq 'başarılı' }).Count
+            FailedCount = $failedRows.Count
+            CancelledCount = @($rows | Where-Object { [string]$_.Sonuc -eq 'iptal' }).Count
+            TargetIds = @($rows | ForEach-Object { [string]$_.HedefKimlik } | Where-Object { $_ } | Select-Object -Unique)
+            FailedTargetIds = @($failedRows | ForEach-Object { [string]$_.HedefKimlik } | Where-Object { $_ } | Select-Object -Unique)
+            SourceCount = $sources.Count
+            FirstSource = $(if ($sources.Count -gt 0) { [string]$sources[0] } else { '' })
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-SamePathCopyRecentReportSummaries {
+    param([int]$Limit = 10)
+
+    # En yeni raporlar önce gelir; damga dosya adında sıralanabilir biçimde durduğu için ada göre sıralanır.
+    $reportDirectory = Get-SamePathCopyReportDirectory
+    if ([string]::IsNullOrWhiteSpace($reportDirectory) -or -not (Test-Path -LiteralPath $reportDirectory -PathType Container)) {
+        return @()
+    }
+    $files = @(Get-ChildItem -LiteralPath $reportDirectory -Filter 'rapor-*.csv' -File -ErrorAction SilentlyContinue |
+        Sort-Object -Property Name -Descending)
+    $summaries = New-Object System.Collections.Generic.List[object]
+    foreach ($file in $files) {
+        if ($summaries.Count -ge $Limit) { break }
+        $summary = Get-SamePathCopyReportRunSummary -Path $file.FullName
+        if ($null -ne $summary) { $summaries.Add($summary) }
+    }
+    return $summaries.ToArray()
+}
+
 function Write-SamePathCopyLogStart {
     param(
         [Parameter(Mandatory = $true)][string]$Component,

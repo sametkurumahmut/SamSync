@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- Sihirbaza `Seç ⌄` menüsü eklendi: `Erişilebilirleri seç` bu menüye taşındı, yanına `Son çalıştırmada hatalıları seç` (en son CSV raporunda hata alan hedefleri işaretler, diğerlerini bırakır) ve `Seçimi ters çevir` geldi. Rapor özetleri [SamePathCopy.Log.ps1](SamePathCopy.Log.ps1) içindeki yeni ayrıştırıcıdan okunuyor; bozuk rapor dosyaları sessizce atlanıyor.
+
 - Pencere başlığındaki kaynak özeti yeniden tasarlandı. `9 kaynak öğe` gibi bir sayı ne kopyalanacağını anlatmıyordu, `... (ilk: <yol>)` satırı ise yalnızca ilk öğeyi gösteriyordu: başlık artık ortak klasörü ve sayı dökümünü veriyor (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), ayrıntı ise tıklanınca açılan listede duruyor. Liste, öğeleri yerel köke göre gruplayıp her birinin hedefte oluşacak göreli yolunu yazıyor (klasörler `\` ile bitiyor, satır ipucunda tam yol duruyor); hiçbir kökün altında olmayan öğeler ayrı başlıkta toplanıyor. Kalabalık seçimlerde liste 200 satırda kesiliyor, kalan sayı bildiriliyor ve `Yolları panoya kopyala` ile seçimin tamamı panoya alınabiliyor.
 - `Yerel kök` çipi birden çok kök tanımlıyken yolu yarıda kesiyordu; artık tek kökte yolu, çok kökte kök sayısını gösteriyor. Tam liste açılır pencerede, her kökün yanında o kökten kaç öğe seçildiğiyle (`3 öğe` / `seçimde yok`) duruyor.
 - Aynı iki çip kopyalama penceresinin başlığında da kullanılıyor; geri alma penceresi de aynı özet satırını gösteriyor.

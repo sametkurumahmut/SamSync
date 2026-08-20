@@ -70,6 +70,56 @@ try {
     $env:SAMEPATHCOPY_LOG = Join-Path $testDirectory 'olmayan:surucu\root.log'
     Write-SamePathCopyLog -Component 'Test' -Message 'yazılamayan yol'
 
+    # Rapor özetleri: geçmiş listesi ve "hatalıları seç" bu ayrıştırıcıyla çalışır.
+    $env:SAMEPATHCOPY_LOG = Join-Path $testDirectory 'log\root.log'
+    [void](Initialize-SamePathCopyLog -ScriptDirectory $toolDirectory)
+    $reportDirectory = Join-Path $testDirectory 'log\reports'
+    [void](New-Item -ItemType Directory -Path $reportDirectory -Force)
+    Assert-Equal $reportDirectory (Get-SamePathCopyReportDirectory) 'Rapor klasörü günlüğün yanında olmalı.'
+
+    function New-TestReport {
+        param([string]$Stamp, [object[]]$Rows)
+        $reportPath = Join-Path $reportDirectory ("rapor-{0}.csv" -f $Stamp)
+        @($Rows) | Export-Csv -LiteralPath $reportPath -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+        return $reportPath
+    }
+    function New-TestReportRow {
+        param([string]$TargetId, [string]$Result, [string]$Source = 'C:\Kaynak\Data')
+        return [pscustomobject]@{
+            Zaman = '2026-08-21 10:00:00'; Hedef = "Ad $TargetId"; HedefKimlik = $TargetId; Kaynak = $Source
+            HedefYolu = "\\ip\pay\Data"; Parametreler = ''; Sonuc = $Result; RobocopyKodu = 0; SaniyeSuresi = 1.0; Not = ''
+        }
+    }
+
+    $oldReportPath = New-TestReport -Stamp '20260820-090000' -Rows @(
+        New-TestReportRow -TargetId 'IG1' -Result 'başarılı'
+        New-TestReportRow -TargetId 'IG2' -Result 'başarılı'
+    )
+    [void](New-TestReport -Stamp '20260821-100000' -Rows @(
+        New-TestReportRow -TargetId 'IG1' -Result 'başarılı'
+        New-TestReportRow -TargetId 'IG2' -Result 'hatalı'
+        New-TestReportRow -TargetId 'IG2' -Result 'hatalı' -Source 'C:\Kaynak\Diger'
+        New-TestReportRow -TargetId 'IG3' -Result 'iptal'
+    ))
+
+    $summary = Get-SamePathCopyReportRunSummary -Path (Join-Path $reportDirectory 'rapor-20260821-100000.csv')
+    Assert-Equal 4 ([int]$summary.RowCount) 'Rapor satır sayısı yanlış.'
+    Assert-Equal 1 ([int]$summary.SuccessCount) 'Başarılı sayısı yanlış.'
+    Assert-Equal 2 ([int]$summary.FailedCount) 'Hatalı sayısı yanlış.'
+    Assert-Equal 1 ([int]$summary.CancelledCount) 'İptal sayısı yanlış.'
+    Assert-Equal 'IG2' (@($summary.FailedTargetIds) -join ',') 'Hatalı hedef kimlikleri tekilleşmedi.'
+    Assert-Equal 3 @($summary.TargetIds).Count 'Hedef kimlikleri eksik.'
+    Assert-Equal 2 ([int]$summary.SourceCount) 'Kaynak sayısı yanlış.'
+    Assert-Equal '21.08.2026 10:00' ([string]$summary.StampText) 'Damga dosya adından okunmadı.'
+
+    # En yeni rapor önce gelir; sınır uygulanır; bozuk dosya listeyi bozmaz.
+    Set-Content -LiteralPath (Join-Path $reportDirectory 'rapor-20260821-110000.csv') -Value 'bozuk;csv' -Encoding UTF8
+    $recent = @(Get-SamePathCopyRecentReportSummaries -Limit 5)
+    Assert-Equal 2 $recent.Count 'Bozuk rapor atlanmalı, ikisi listelenmeli.'
+    Assert-Equal '21.08.2026 10:00' ([string]$recent[0].StampText) 'En yeni rapor önce gelmeli.'
+    Assert-Equal 1 @(Get-SamePathCopyRecentReportSummaries -Limit 1).Count 'Rapor sınırı uygulanmadı.'
+    Assert-Equal 2 ([int]@(Get-SamePathCopyRecentReportSummaries -Limit 1)[0].FailedCount) 'En yeni raporun hatalı sayısı korunmalı.'
+
     # Uçtan uca: kopyalama betiği panel sonuçlarını ve oturum bilgilerini günlüğe yazmalı.
     $env:SAMEPATHCOPY_LOG = Join-Path $testDirectory 'log\e2e.log'
     $planOutput = & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File (Join-Path $projectDirectory 'Copy-SamePath.ps1') -TargetId 'all' -SourcePath (Join-Path $projectDirectory 'README.md') -PlanOnly

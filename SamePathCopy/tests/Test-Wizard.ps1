@@ -183,6 +183,23 @@ try {
     Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
     Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
 
+    # Kimliğe göre seçim: küme tam uygulanır (filtreden bağımsız), eşleşen satır sayısı döner.
+    $selectionRows = @(
+        New-FakeRow -Id 'IG1' -Group 'Unit1' -Selected $false -Backup $false -Mirror $false
+        New-FakeRow -Id 'IG2' -Group 'Unit1' -Selected $true -Backup $false -Mirror $false -Visible $false
+        New-FakeRow -Id 'IG3' -Group 'Unit2' -Selected $true -Backup $false -Mirror $false
+    )
+    Assert-Equal 2 (Set-SamePathCopyWizardSelectionById -Rows $selectionRows -Ids @('IG1', 'IG2', 'YokHedef')) 'Eşleşen satır sayısı yanlış.'
+    Assert-Equal $true ([bool]$selectionRows[0].Controls['Selected'].IsChecked) 'Kümedeki hedef seçilmedi.'
+    Assert-Equal $true ([bool]$selectionRows[1].Controls['Selected'].IsChecked) 'Gizli satır da kümeye göre seçilmeli (profil gibi).'
+    Assert-Equal $false ([bool]$selectionRows[2].Controls['Selected'].IsChecked) 'Kümede olmayan hedef bırakılmalı.'
+
+    # Ters çevirme yalnızca görünen satırlara dokunur.
+    Invoke-SamePathCopyWizardSelectionInvert -Rows $selectionRows
+    Assert-Equal $false ([bool]$selectionRows[0].Controls['Selected'].IsChecked) 'Görünen satır ters çevrilmedi.'
+    Assert-Equal $true ([bool]$selectionRows[1].Controls['Selected'].IsChecked) 'Gizli satır ters çevirmeden etkilenmemeli.'
+    Assert-Equal $true ([bool]$selectionRows[2].Controls['Selected'].IsChecked) 'Görünen satır ters çevrilmedi.'
+
     # Başlıktaki kaynak ve yerel kök çipleri: tıklanınca açılan listede öğelerin göreli yolları ve
     # köklerin tamamı görünmeli. Popup gerçekten açılabilmeli; bu yüzden pencere STA sürecinde gösterilir.
     $chipScriptPath = Join-Path $testDirectory 'chip-smoke.ps1'

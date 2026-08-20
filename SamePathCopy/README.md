@@ -89,7 +89,11 @@ Hedef listesinin üstünde üç yardımcı vardır:
 
 - **Filtre kutusu** — ada, gruba veya node kimliğine göre süzer. Süzme sırasında kolon başlığındaki toplu seçim ikonları yalnızca görünen satırlara uygulanır: `Unit2` yazıp `Gönder` kolonunu işaretlemek o gruba ait satırları seçer. Gizlenen satırların seçim durumu korunur.
 - **Grup çipleri** — her grubun adının solunda tek bir onay kutusu; o gruptaki bütün bilgisayarları tek tıkla seçer veya bırakır. Kutu grubun durumunu da gösterir: hepsi seçiliyse işaretli, hiçbiri seçili değilse boş, bir kısmı seçiliyse belirsiz.
-- **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler, `Erişilebilirleri seç` yalnızca yanıt veren hedefleri işaretler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
+- **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
+- **`Seç ⌄` menüsü** — seçim yardımcılarını tek düğmede toplar:
+  - `Erişilebilirleri seç` — yalnızca yoklamaya yanıt veren hedefleri işaretler (görünen satırlarda).
+  - `Son çalıştırmada hatalıları seç` — en son CSV raporunda hata alan hedefleri işaretler, diğerlerini bırakır; yarım kalan gönderim iki tıkla tamamlanır. Rapor yoksa ya da hata yoksa bunu söyler.
+  - `Seçimi ters çevir` — görünen satırlarda seçimi tersine çevirir.
 
 Başlık satırı seçimi tek satırda özetler: tek öğede tam yol ve türü, çok öğede ortak klasör ile sayı dökümü (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), öğeler ayrı klasörlerden geliyorsa klasör sayısı. Ayrıntı, altındaki iki tıklanabilir çipte durur — böylece kalabalık seçimlerde satır uzayıp kesilmez:
 
