@@ -109,6 +109,7 @@ Bütün hedefler için geçerli parametreler:
 | `Hızlı kopyalama` | Çok iş parçacıklı kopyalama (`robocopy /MT:8`). Yeniden başlatılabilir kip (`/Z`) bu durumda kullanılmaz. |
 | `Hariç dosyalar` | Noktalı virgülle ayrılmış dosya kalıpları kopyalanmaz (`robocopy /XF`). Örnek: `*.pdb;*.tmp;desktop.ini` |
 | `Hariç klasörler` | Noktalı virgülle ayrılmış klasör adları kopyalanmaz (`robocopy /XD`). Örnek: `.git;Logs;Temp`. Yedek klasörü zaten hep hariç tutulur. |
+| `Eşzamanlı hedef` | Aynı anda kaç bilgisayara kopyalandığı (varsayılan `4`, `1` = sırayla, en fazla `16`). Aynı hedefe iki robocopy birden gönderilmez; bir hedefin planları kendi içinde sıralı kalır, böylece `Ayna` gibi yıkıcı parametreler güvenli çalışır. |
 | `Paket arası bekleme (ms)` | Ağı boğmamak için paketler arasına bekleme koyar (`robocopy /IPG:n`). `0` = sınırsız hız. |
 | `Yeniden deneme sayısı` | `robocopy /R:n`. Boş bırakılırsa `config.json` içindeki `copy.retryCount` kullanılır. |
 | `Denemeler arası bekleme (sn)` | `robocopy /W:n`. Boş bırakılırsa `config.json` içindeki `copy.waitSeconds` kullanılır. |

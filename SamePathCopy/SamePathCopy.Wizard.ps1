@@ -42,6 +42,9 @@ function Get-SamePathCopyWizardGlobalDefinitions {
         [pscustomobject]@{ Name = 'ExcludeDirectories'; Key = 'excludeDirectories'; Type = 'text'; Header = 'Hariç klasörler'; Default = ''
             Placeholder = '.git;Logs;Temp'
             Description = 'Noktalı virgülle ayrılmış klasör adları kopyalanmaz (robocopy /XD).' }
+        [pscustomobject]@{ Name = 'ParallelTargets'; Key = 'parallelTargets'; Type = 'int'; Header = 'Eşzamanlı hedef'; Default = 4
+            Placeholder = '4'
+            Description = 'Aynı anda kaç bilgisayara kopyalanacağı. 1 = sırayla. Aynı hedefe iki kopyalama birden gönderilmez.' }
         [pscustomobject]@{ Name = 'ThrottleMilliseconds'; Key = 'throttleMilliseconds'; Type = 'int'; Header = 'Paket arası bekleme (ms)'; Default = 0
             Placeholder = '0'
             Description = 'Ağı boğmamak için paketler arasına bekleme koyar (robocopy /IPG:n). 0 = sınırsız hız.' }

@@ -29,9 +29,11 @@ $script:cancelRequested = $false
 
 trap {
     Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Hata: {0}" -f $_.Exception.Message)
-    Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Konum: {0}" -f ([string]$_.InvocationInfo.PositionMessage -replace '\r?\n', ' '))
-    # PlanOnly betikten/otomasyondan çağrılır: hata penceresi açıp beklemek yerine hatayı akışa yazıp çıkar.
-    if ($PlanOnly) {
+    Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Tür: {0} | Konum: {1}" -f $_.Exception.GetType().FullName, ([string]$_.InvocationInfo.PositionMessage -replace '\r?\n', ' '))
+    Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Yığın: {0}" -f ([string]$_.ScriptStackTrace -replace '\r?\n', ' <- '))
+    # PlanOnly ve otomatik kapanma kipi betikten/testten çağrılır: hata penceresi açıp beklemek yerine
+    # hatayı akışa yazıp çıkar; aksi hâlde kimsenin kapatmayacağı bir iletişim kutusu süreci kilitler.
+    if ($PlanOnly -or -not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) {
         Write-Error $_.Exception.Message -ErrorAction Continue
         exit 1
     }
@@ -50,17 +52,18 @@ trap {
     exit 1
 }
 
-function Invoke-Robocopy {
+function Start-SamePathCopyRobocopy {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination,
         [Parameter(Mandatory = $true)][bool]$IsDirectory,
         [Parameter(Mandatory = $true)][int]$RetryCount,
         [Parameter(Mandatory = $true)][int]$WaitSeconds,
-        $Options,
-        $Window
+        $Options
     )
 
+    # robocopy süreci başlatılır ve beklenmeden döner: birden fazla hedefe aynı anda kopyalayabilmek için
+    # bekleme işi çağırana (zamanlayıcıya) bırakılır. Sonuç Complete-SamePathCopyRobocopy ile alınır.
     if ($Destination -match '^(\\\\[^\\]+\\[^\\]+)') {
         $shareRoot = $Matches[1]
         try {
@@ -88,65 +91,51 @@ function Invoke-Robocopy {
     }
 
     $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Robocopy-{0}.log" -f [guid]::NewGuid().ToString('N'))
-    $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory -FileFilter $fileFilter -IsDirectory $IsDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $Options -LogPath $logPath)
-    try {
-        $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
-        $cancelled = $false
-        while (-not $process.WaitForExit(120)) {
-            if ($Window) {
-                # Pencerenin yanıt vermesini sağlar ve İptal düğmesinin işlenmesine izin verir.
-                Invoke-SamePathCopyUiPump
-            }
-            if ($script:cancelRequested -and -not $cancelled) {
-                $cancelled = $true
-                try { $process.Kill() } catch { }
-            }
-        }
-        $process.WaitForExit()
+    $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory `
+        -FileFilter $fileFilter -IsDirectory $IsDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $Options -LogPath $logPath)
+    $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
+    return [pscustomobject]@{ Process = $process; LogPath = $logPath; Killed = $false }
+}
 
-        $details = ''
-        if (-not $cancelled -and $process.ExitCode -ge 8 -and (Test-Path -LiteralPath $logPath -PathType Leaf)) {
-            $detailLines = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue |
+function Complete-SamePathCopyRobocopy {
+    param([Parameter(Mandatory = $true)]$Run)
+
+    $Run.Process.WaitForExit()
+    $details = ''
+    try {
+        if (-not $Run.Killed -and $Run.Process.ExitCode -ge 8 -and (Test-Path -LiteralPath $Run.LogPath -PathType Leaf)) {
+            $detailLines = @(Get-Content -LiteralPath $Run.LogPath -Encoding Unicode -ErrorAction SilentlyContinue |
                 ForEach-Object { $_.Trim() } |
                 Where-Object { $_ } |
                 Select-Object -Last 12)
             $details = $detailLines -join "`r`n"
         }
-        return [pscustomobject]@{
-            ExitCode = [int]$process.ExitCode
-            Details = $details
-            Cancelled = $cancelled
-        }
     }
     finally {
-        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-            Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $Run.LogPath -PathType Leaf) {
+            Remove-Item -LiteralPath $Run.LogPath -Force -ErrorAction SilentlyContinue
         }
+    }
+    return [pscustomobject]@{
+        ExitCode = [int]$Run.Process.ExitCode
+        Details = $details
+        Cancelled = [bool]$Run.Killed
     }
 }
 
-function Invoke-SamePathCopyBackup {
+function Start-SamePathCopyBackup {
     param(
         [Parameter(Mandatory = $true)][string]$Destination,
         [Parameter(Mandatory = $true)][string]$BackupPath,
         [Parameter(Mandatory = $true)][bool]$IsDirectory,
         [Parameter(Mandatory = $true)][int]$RetryCount,
-        [Parameter(Mandatory = $true)][int]$WaitSeconds,
-        $Window
+        [Parameter(Mandatory = $true)][int]$WaitSeconds
     )
 
     # Yalnızca hedefte hâlihazırda var olan öğe yedeklenir; yeni gönderilen öğenin yedeklenecek bir önceki hâli yoktur.
-    if (-not (Test-Path -LiteralPath $Destination)) {
-        return [pscustomobject]@{ Performed = $false; ExitCode = 0; Details = ''; BackupPath = $BackupPath }
-    }
-
-    $result = Invoke-Robocopy -Source $Destination -Destination $BackupPath -IsDirectory $IsDirectory -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $null -Window $Window
-    return [pscustomobject]@{
-        Performed = $true
-        ExitCode = [int]$result.ExitCode
-        Details = [string]$result.Details
-        BackupPath = $BackupPath
-    }
+    if (-not (Test-Path -LiteralPath $Destination)) { return $null }
+    return (Start-SamePathCopyRobocopy -Source $Destination -Destination $BackupPath -IsDirectory $IsDirectory `
+        -RetryCount $RetryCount -WaitSeconds $WaitSeconds -Options $null)
 }
 
 $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
@@ -545,80 +534,190 @@ $failedCount = 0
 $skippedCount = 0
 $completed = 0
 
-foreach ($plan in $plans) {
-    $targetName = [string]$plan.Target.name
-    if ($script:cancelRequested) {
-        $skippedCount++
-        [void](New-SamePathCopyLogEntry -Title $targetName -Detail 'İptal edildi, kopyalanmadı' -Kind 'Skipped')
-        $completed++
-        $copyProgress.Value = $completed
-        $progressCountText.Text = "{0} / {1}" -f $completed, $plans.Count
-        Invoke-SamePathCopyUiPump
-        continue
+# Hedefler eşzamanlı işlenir: her hedef için sırayla kendi planları çalışır, hedefler arasında ise
+# en fazla $parallelTargetLimit tanesi aynı anda ilerler. Aynı hedefe iki robocopy birden gönderilmez;
+# böylece ayna gibi yıkıcı parametreler kendi içinde sıralı kalır.
+# Sihirbaz dışı çağrılarda (Tümü, grup, tek hedef) da eşzamanlı kopyalama açık: varsayılan 4 hedef.
+$parallelTargetLimit = [Math]::Max(1, [Math]::Min(16, (Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'ParallelTargets' -Default 4)))
+$targetQueues = New-Object System.Collections.Generic.Queue[object]
+foreach ($targetGroup in @($plans | Group-Object -Property { [string]$_.Target.id })) {
+    $targetQueues.Enqueue([pscustomobject]@{
+        TargetId = [string]$targetGroup.Name
+        Plans = @($targetGroup.Group)
+        Index = 0
+    })
+}
+Write-SamePathCopyLog -Component 'Kopyala' -Message ("Kopyalama başlıyor: {0} işlem, {1} hedef, eşzamanlı hedef sınırı {2}" -f
+    $plans.Count, $targetQueues.Count, $parallelTargetLimit)
+
+function Complete-SamePathCopyPlanStep {
+    param([Parameter(Mandatory = $true)]$Worker)
+
+    # Süreç bitti: sonucu panele ve günlüğe yazar, gerekiyorsa aynı plan için kopyalama adımını başlatır.
+    # Dönen değer $true ise plan tamamlandı, $false ise aynı plan için yeni bir adım başladı.
+    $plan = $Worker.Plan
+    $entry = $Worker.Entry
+    $result = Complete-SamePathCopyRobocopy -Run $Worker.Run
+    $Worker.Run = $null
+
+    if ($Worker.Stage -eq 'Backup') {
+        if ([int]$result.ExitCode -le 7 -and -not $result.Cancelled) {
+            Add-SamePathCopyLogNote -Entry $entry -Text ("Yedek: {0}" -f $plan.BackupPath)
+            $removedBackups = @(Remove-SamePathCopyOldBackups -BackupRoot (Get-SamePathCopyBackupRoot -Address ([string]$plan.Target.address) -NetworkRoot ([string]$plan.Target.networkRoot)) -Keep ([int]$config.copy.backupKeep))
+            if ($removedBackups.Count -gt 0) {
+                Add-SamePathCopyLogNote -Entry $entry -Text ("Eski yedekler silindi ({0}): {1}" -f $removedBackups.Count, ($removedBackups -join ', '))
+            }
+            # Yedek tamam: asıl kopyalama başlar.
+            $Worker.Stage = 'Copy'
+            $Worker.Run = Start-SamePathCopyRobocopy -Source $plan.SourceItem.FullName -Destination $plan.Destination `
+                -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Options $plan.Options
+            return $false
+        }
+        if ($result.Cancelled) {
+            Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Skipped'
+            Add-SamePathCopyLogNote -Entry $entry -Text 'İptal edildi'
+            $script:skippedCount++
+            return $true
+        }
+        Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
+        Add-SamePathCopyLogNote -Entry $entry -Text ("Yedek alınamadı (robocopy: {0}). Kopyalama yapılmadı." -f $result.ExitCode) -Brush 'DangerBrush'
+        $script:failedCount++
+        return $true
     }
 
+    if ($result.Cancelled) {
+        Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Skipped'
+        Add-SamePathCopyLogNote -Entry $entry -Text 'İptal edildi'
+        $script:skippedCount++
+        return $true
+    }
+    if ([int]$result.ExitCode -le 7) {
+        Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Success'
+        $script:successCount++
+        return $true
+    }
+    Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
+    Add-SamePathCopyLogNote -Entry $entry -Text ("robocopy hata kodu: {0}" -f $result.ExitCode) -Brush 'DangerBrush'
+    if (-not [string]::IsNullOrWhiteSpace([string]$result.Details)) {
+        foreach ($detailLine in ([string]$result.Details -split "`r?`n")) {
+            if (-not [string]::IsNullOrWhiteSpace($detailLine)) {
+                Add-SamePathCopyLogNote -Entry $entry -Text $detailLine -Brush 'DangerBrush'
+            }
+        }
+    }
+    $script:failedCount++
+    return $true
+}
+
+function Start-SamePathCopyPlan {
+    param([Parameter(Mandatory = $true)]$Worker)
+
+    # Sıradaki planı başlatır: yedek isteniyorsa önce yedek adımı, yoksa doğrudan kopyalama.
+    $plan = $Worker.Plans[$Worker.Index]
+    $Worker.Plan = $plan
+    $targetName = [string]$plan.Target.name
     $activeOptions = @(Get-SamePathCopyActiveOptionNames -Options $plan.Options)
     $optionText = if ($activeOptions.Count -gt 0) {
         "  [{0}]" -f ((@($activeOptions | ForEach-Object { Get-SamePathCopyOptionLabel -Name $_ })) -join ', ')
     }
     else { '' }
     $progressLabel.Text = "{0}{1}" -f $targetName, $optionText
-    $entry = New-SamePathCopyLogEntry -Title ("{0}{1}" -f $targetName, $optionText) `
+    $Worker.Entry = New-SamePathCopyLogEntry -Title ("{0}{1}" -f $targetName, $optionText) `
         -Detail ("{0}  →  {1}" -f $plan.SourceItem.FullName, $plan.Destination) -Kind 'Running'
-    Invoke-SamePathCopyUiPump
 
-    try {
-        if ((Get-SamePathCopyOptionValue -Options $plan.Options -Name 'Backup') -and -not (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun')) {
-            $backupResult = Invoke-SamePathCopyBackup -Destination $plan.Destination -BackupPath $plan.BackupPath -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Window $window
-            if (-not $backupResult.Performed) {
-                Add-SamePathCopyLogNote -Entry $entry -Text 'Yedek: hedefte önceki hâli yok, atlandı'
-            }
-            elseif ([int]$backupResult.ExitCode -le 7) {
-                Add-SamePathCopyLogNote -Entry $entry -Text ("Yedek: {0}" -f $backupResult.BackupPath)
-                # Eski yedekler hedefte birikmesin: en yeni backupKeep tanesi tutulur.
-                $removedBackups = @(Remove-SamePathCopyOldBackups -BackupRoot (Get-SamePathCopyBackupRoot -Address ([string]$plan.Target.address) -NetworkRoot ([string]$plan.Target.networkRoot)) -Keep ([int]$config.copy.backupKeep))
-                if ($removedBackups.Count -gt 0) {
-                    Add-SamePathCopyLogNote -Entry $entry -Text ("Eski yedekler silindi ({0}): {1}" -f $removedBackups.Count, ($removedBackups -join ', '))
-                }
-            }
-            else {
-                throw "Yedek alınamadı (robocopy: $($backupResult.ExitCode)). Kopyalama yapılmadı: $($backupResult.BackupPath)"
-            }
+    $wantsBackup = (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'Backup') -and
+        -not (Get-SamePathCopyOptionValue -Options $plan.Options -Name 'DryRun')
+    if ($wantsBackup) {
+        $backupRun = Start-SamePathCopyBackup -Destination $plan.Destination -BackupPath $plan.BackupPath `
+            -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds)
+        if ($null -ne $backupRun) {
+            $Worker.Stage = 'Backup'
+            $Worker.Run = $backupRun
+            return
         }
+        Add-SamePathCopyLogNote -Entry $Worker.Entry -Text 'Yedek: hedefte önceki hâli yok, atlandı'
+    }
+    $Worker.Stage = 'Copy'
+    $Worker.Run = Start-SamePathCopyRobocopy -Source $plan.SourceItem.FullName -Destination $plan.Destination `
+        -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Options $plan.Options
+}
 
-        $copyResult = Invoke-Robocopy -Source $plan.SourceItem.FullName -Destination $plan.Destination -IsDirectory $plan.IsDirectory -RetryCount ([int]$config.copy.retryCount) -WaitSeconds ([int]$config.copy.waitSeconds) -Options $plan.Options -Window $window
-        if ($copyResult.Cancelled) {
-            $skippedCount++
-            Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Skipped'
-            Add-SamePathCopyLogNote -Entry $entry -Text 'İptal edildi'
+$activeWorkers = New-Object System.Collections.Generic.List[object]
+while ($targetQueues.Count -gt 0 -or $activeWorkers.Count -gt 0) {
+    # Boş yuvalar yeni hedeflerle doldurulur.
+    while (-not $script:cancelRequested -and $activeWorkers.Count -lt $parallelTargetLimit -and $targetQueues.Count -gt 0) {
+        $worker = $targetQueues.Dequeue()
+        $worker | Add-Member -NotePropertyName Stage -NotePropertyValue 'Idle' -Force
+        $worker | Add-Member -NotePropertyName Run -NotePropertyValue $null -Force
+        $worker | Add-Member -NotePropertyName Entry -NotePropertyValue $null -Force
+        $worker | Add-Member -NotePropertyName Plan -NotePropertyValue $null -Force
+        try {
+            Start-SamePathCopyPlan -Worker $worker
+            $activeWorkers.Add($worker)
         }
-        elseif ([int]$copyResult.ExitCode -le 7) {
-            $successCount++
-            Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Success'
+        catch {
+            # Paylaşıma erişilemiyor gibi başlatma hataları o hedefin bütün planlarını düşürür.
+            if ($null -eq $worker.Entry) {
+                $worker.Entry = New-SamePathCopyLogEntry -Title ([string]$worker.Plans[0].Target.name) -Detail '' -Kind 'Error'
+            }
+            Set-SamePathCopyLogEntryState -Entry $worker.Entry -Kind 'Error'
+            Add-SamePathCopyLogNote -Entry $worker.Entry -Text $_.Exception.Message -Brush 'DangerBrush'
+            $remaining = $worker.Plans.Count - $worker.Index
+            $failedCount += $remaining
+            $completed += $remaining
         }
-        else {
-            $failedCount++
-            Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
-            Add-SamePathCopyLogNote -Entry $entry -Text ("robocopy hata kodu: {0}" -f $copyResult.ExitCode) -Brush 'DangerBrush'
-            if (-not [string]::IsNullOrWhiteSpace([string]$copyResult.Details)) {
-                foreach ($detailLine in ([string]$copyResult.Details -split "`r?`n")) {
-                    if (-not [string]::IsNullOrWhiteSpace($detailLine)) {
-                        Add-SamePathCopyLogNote -Entry $entry -Text $detailLine -Brush 'DangerBrush'
-                    }
-                }
+    }
+
+    # İptal edildiyse çalışan robocopy süreçleri durdurulur, kuyrukta bekleyen hedefler atlanır.
+    if ($script:cancelRequested) {
+        foreach ($worker in $activeWorkers.ToArray()) {
+            if ($null -ne $worker.Run -and -not $worker.Run.Killed) {
+                $worker.Run.Killed = $true
+                try { $worker.Run.Process.Kill() } catch { }
+            }
+        }
+        while ($targetQueues.Count -gt 0) {
+            $pending = $targetQueues.Dequeue()
+            foreach ($pendingPlan in @($pending.Plans)) {
+                [void](New-SamePathCopyLogEntry -Title ([string]$pendingPlan.Target.name) -Detail 'İptal edildi, kopyalanmadı' -Kind 'Skipped')
+                $skippedCount++
+                $completed++
             }
         }
     }
-    catch {
-        $failedCount++
-        Set-SamePathCopyLogEntryState -Entry $entry -Kind 'Error'
-        Add-SamePathCopyLogNote -Entry $entry -Text $_.Exception.Message -Brush 'DangerBrush'
+
+    # List[object] doğrudan @() ile diziye çevrilirken PowerShell 5.1 "Bağımsız değişken türleri eşleşmiyor"
+    # hatası veriyor; ToArray() ile anlık görüntü alınır (döngü içinde listeden çıkarma da bunu gerektirir).
+    foreach ($worker in $activeWorkers.ToArray()) {
+        if ($null -eq $worker.Run) { continue }
+        if (-not $worker.Run.Process.HasExited) { continue }
+
+        $planFinished = Complete-SamePathCopyPlanStep -Worker $worker
+        if (-not $planFinished) { continue }
+
+        $completed++
+        $copyProgress.Value = $completed
+        $progressCountText.Text = "{0} / {1}" -f $completed, $plans.Count
+        $worker.Index++
+        if ($worker.Index -ge $worker.Plans.Count -or $script:cancelRequested) {
+            [void]$activeWorkers.Remove($worker)
+            continue
+        }
+        try {
+            Start-SamePathCopyPlan -Worker $worker
+        }
+        catch {
+            Set-SamePathCopyLogEntryState -Entry $worker.Entry -Kind 'Error'
+            Add-SamePathCopyLogNote -Entry $worker.Entry -Text $_.Exception.Message -Brush 'DangerBrush'
+            $remaining = $worker.Plans.Count - $worker.Index
+            $failedCount += $remaining
+            $completed += $remaining
+            [void]$activeWorkers.Remove($worker)
+        }
     }
 
-    $completed++
-    $copyProgress.Value = $completed
-    $progressCountText.Text = "{0} / {1}" -f $completed, $plans.Count
     Invoke-SamePathCopyUiPump
+    Start-Sleep -Milliseconds 60
 }
 
 $stopwatch.Stop()
