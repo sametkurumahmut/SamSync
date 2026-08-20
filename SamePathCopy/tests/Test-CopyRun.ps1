@@ -63,6 +63,39 @@ function Invoke-TestCopy {
     return $process.ExitCode
 }
 
+function Invoke-TestCheck {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][string]$TargetId,
+        [Parameter(Mandatory = $true)][string[]]$SourcePath
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $quotedSources = (@($SourcePath) | ForEach-Object { '"{0}"' -f $_ }) -join ','
+    $startInfo.Arguments = '-sta -NoProfile -ExecutionPolicy Bypass -File "{0}" -TargetId {1} -ConfigPath "{2}" -SourcePath {3} -CheckOnly' -f `
+        (Join-Path $projectDirectory 'Copy-SamePath.ps1'), $TargetId, $ConfigPath, $quotedSources
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.EnvironmentVariables['SAMEPATHCOPY_WIZARD_STATE'] = $env:SAMEPATHCOPY_WIZARD_STATE
+    $startInfo.EnvironmentVariables['SAMEPATHCOPY_LOG'] = $env:SAMEPATHCOPY_LOG
+    $startInfo.EnvironmentVariables['SAMEPATHCOPY_NODE_ID'] = 'Yerel'
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    $standardOutput = $process.StandardOutput.ReadToEnd()
+    $standardError = $process.StandardError.ReadToEnd()
+    if (-not $process.WaitForExit(120000)) {
+        try { $process.Kill() } catch { }
+        throw "Denetim 120 saniyede bitmedi (hedef: $TargetId)."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($standardError)) {
+        throw "Denetim hata akışına yazdı (hedef: $TargetId): $standardError"
+    }
+    return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $standardOutput }
+}
+
 $previousStatePath = $env:SAMEPATHCOPY_WIZARD_STATE
 $previousLogPath = $env:SAMEPATHCOPY_LOG
 try {
@@ -98,6 +131,32 @@ try {
             throw "Hedef $index için alt klasör kopyalanmadı."
         }
     }
+
+    # 1b) Eşitlik denetimi (-CheckOnly): hedeflere yazmadan durum raporlar, çıkış koduyla söyler.
+    $checkSame = Invoke-TestCheck -ConfigPath $configPath -TargetId 'all' -SourcePath @((Join-Path $sourceRoot 'Data'))
+    Assert-Equal 0 ([int]$checkSame.ExitCode) 'Bütün hedefler aynıyken denetim 0 ile çıkmalı.'
+    # Türkçe karakterler alt süreç çıktısında kod sayfasına takılabildiği için durum değerleri ASCII'dir.
+    Assert-Equal 3 (@([regex]::Matches([string]$checkSame.Output, 'Ayni')).Count) 'Denetim üç hedefi de "Ayni" raporlamalı.'
+
+    # Kaynağa yeni bir dosya eklenince bütün hedefler "Farkli" olur; denetim 1 ile çıkar. Dosya sonra silinir.
+    $checkProbeFile = Join-Path $sourceRoot 'Data\denetim-probe.txt'
+    New-TestFile -Path $checkProbeFile -Content 'denetim'
+    $checkDifferent = Invoke-TestCheck -ConfigPath $configPath -TargetId 'all' -SourcePath @((Join-Path $sourceRoot 'Data'))
+    Assert-Equal 1 ([int]$checkDifferent.ExitCode) 'Fark varken denetim 1 ile çıkmalı.'
+    Assert-Equal 3 (@([regex]::Matches([string]$checkDifferent.Output, 'Farkli')).Count) 'Denetim üç hedefi de "Farkli" raporlamalı.'
+    Remove-Item -LiteralPath $checkProbeFile -Force
+    foreach ($index in 1..3) {
+        if (Test-Path -LiteralPath (Join-Path $testDirectory "hedef$index\Data\denetim-probe.txt")) {
+            throw 'Denetim hedefe yazmamalıydı.'
+        }
+    }
+
+    # Hedefte hiç olmayan kaynak "Yok" raporlanır.
+    $neverCopied = Join-Path $sourceRoot 'HicKopyalanmadi'
+    New-TestFile -Path (Join-Path $neverCopied 'tek.txt') -Content 'tek'
+    $checkMissing = Invoke-TestCheck -ConfigPath $configPath -TargetId 'Hedef1' -SourcePath @($neverCopied)
+    Assert-Equal 1 ([int]$checkMissing.ExitCode) 'Hedefte olmayan kaynak için denetim 1 ile çıkmalı.'
+    if (([string]$checkMissing.Output) -notlike '*Yok*') { throw "Denetim 'Yok' durumunu raporlamadı: $($checkMissing.Output)" }
 
     # 2) Grup hedefi yalnızca gruptaki makinelere gider (üçü de aynı grupta) ve günlük panel satırlarını taşır.
     $logText = [string](Get-Content -LiteralPath $env:SAMEPATHCOPY_LOG -Raw -Encoding UTF8)

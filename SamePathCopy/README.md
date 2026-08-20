@@ -481,6 +481,16 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath
 
 `PlanOnly` kaynak öğenin varlığını ve yerel bilgisayarın config içindeki bir node ile eşleşmesini doğrular, hesaplanan hedefleri ekrana yazar ve `robocopy` çalıştırmaz. Tek hedefi sınamak için `all` yerine ilgili node kimliğini verin.
 
+## Eşitlik denetimi (-CheckOnly)
+
+"Bu kaynak bütün makinelerde aynı mı?" sorusu için, hedeflere hiçbir şey yazmadan:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath.ps1" -SourcePath "C:\ActiveRelease\Data" -TargetId all -CheckOnly
+```
+
+Her hedef için bir satır yazılır: `State` sütunu `Ayni`, `Farkli`, `Yok` (hedefte hiç yok), `Erisilemedi` ya da `Hata`; `Changes` / `Missing` / `DestNewer` / `Extras` sütunları sayıları verir (`DestNewer` hedefte kaynaktan daha yeni dosya demektir — kopyalama üzerine yazar). Erişilemeyen hedef için robocopy zaman aşımı beklenmez. Çıkış kodu otomasyon içindir: **0** bütün hedefler aynı, **1** fark/eksik/erişilemeyen var. Durum değerleri, alt süreç çıktısında kod sayfasına takılmaması için ASCII yazılır. Pencere açılmaz; sihirbaz penceresi de açılmaz (hedef kümesi `all`, grup, makine kimliği ya da `profile:<ad>` ile verilir). Aynı denetimin arayüzlüsü sihirbazdaki `Hedefi incele` düğmesidir.
+
 ## Kaldırma
 
 `Uninstall-ContextMenu.bat` dosyasına çift tıklayın veya komut satırından çalıştırın:

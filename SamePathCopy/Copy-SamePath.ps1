@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)][string[]]$SourcePath,
     [Parameter(Mandatory = $true)][string]$TargetId,
     [string]$ConfigPath,
-    [switch]$PlanOnly
+    [switch]$PlanOnly,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +35,7 @@ trap {
     Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Yığın: {0}" -f ([string]$_.ScriptStackTrace -replace '\r?\n', ' <- '))
     # PlanOnly ve otomatik kapanma kipi betikten/testten çağrılır: hata penceresi açıp beklemek yerine
     # hatayı akışa yazıp çıkar; aksi hâlde kimsenin kapatmayacağı bir iletişim kutusu süreci kilitler.
-    if ($PlanOnly -or -not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) {
+    if ($PlanOnly -or $CheckOnly -or -not [string]::IsNullOrWhiteSpace($env:SAMEPATHCOPY_COPYWINDOW_AUTOCLOSE)) {
         Write-Error $_.Exception.Message -ErrorAction Continue
         exit 1
     }
@@ -195,7 +196,7 @@ if ($sourceItems.Count -eq 0) {
 
 $globalOptions = $null
 if ($useWizardSettings) {
-    if ($isWizard -and -not $PlanOnly) {
+    if ($isWizard -and -not $PlanOnly -and -not $CheckOnly) {
         # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
         Write-SamePathCopyLog -Component 'Sihirbaz' -Message 'Sihirbaz penceresi açıldı.'
         $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -ConfigPath $resolvedConfigPath -LocalRoots $localIdentity.Roots -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
@@ -342,6 +343,53 @@ if ($PlanOnly) {
         }
     }
     exit 0
+}
+
+if ($CheckOnly) {
+    # Eşitlik denetimi: hedeflere hiçbir şey yazmadan "hepsi kaynakla aynı mı" sorusuna yanıt verir.
+    # Çıkış kodu otomasyon içindir: 0 = bütün hedefler aynı, 1 = fark, eksik ya da erişilemeyen hedef var.
+    # Durum değerleri alt süreç çıktısında kod sayfasına takılmasın diye ASCII yazılır.
+    Write-SamePathCopyLog -Component 'Denetim' -Message ("CheckOnly: {0} hedef, {1} kaynak denetleniyor." -f $targets.Count, $sourceItems.Count)
+    $reachability = Test-SamePathCopyTargetReachability -Targets $targets
+    $allSame = $true
+    foreach ($target in $targets) {
+        $targetId = [string]$target.id
+        $isReachable = $reachability.ContainsKey($targetId) -and [bool]$reachability[$targetId].Reachable
+        if (-not $isReachable) {
+            $allSame = $false
+            Write-SamePathCopyLog -Component 'Denetim' -Level 'WARN' -Message ("[{0}] erisilemedi; denetlenemedi." -f $target.name)
+            [pscustomobject]@{
+                Target = [string]$target.name
+                TargetId = $targetId
+                State = 'Erisilemedi'
+                Changes = 0
+                Missing = 0
+                DestNewer = 0
+                Extras = 0
+            }
+            continue
+        }
+
+        $inspection = Invoke-SamePathCopyTargetInspection -SourceItems $sourceItems -LocalRoots $localIdentity.Roots -Target $target
+        $state = if ([bool]$inspection.Failed) { 'Hata' }
+            elseif ([int]$inspection.ItemCount -gt 0 -and [int]$inspection.MissingCount -eq [int]$inspection.ItemCount) { 'Yok' }
+            elseif ([int]$inspection.ChangeCount -eq 0 -and [int]$inspection.MissingCount -eq 0) { 'Ayni' }
+            else { 'Farkli' }
+        if ($state -ne 'Ayni') { $allSame = $false }
+        Write-SamePathCopyLog -Component 'Denetim' -Message ("[{0}] {1} | degisecek: {2}, yok: {3}, hedef daha yeni: {4}, fazla: {5}" -f
+            $target.name, $state, $inspection.ChangeCount, $inspection.MissingCount, $inspection.OlderCount, $inspection.ExtraCount)
+        [pscustomobject]@{
+            Target = [string]$target.name
+            TargetId = $targetId
+            State = $state
+            Changes = [int]$inspection.ChangeCount
+            Missing = [int]$inspection.MissingCount
+            DestNewer = [int]$inspection.OlderCount
+            Extras = [int]$inspection.ExtraCount
+        }
+    }
+    Write-SamePathCopyLog -Component 'Denetim' -Message ("CheckOnly bitti: {0}" -f $(if ($allSame) { 'butun hedefler ayni' } else { 'fark var' }))
+    exit $(if ($allSame) { 0 } else { 1 })
 }
 
 $copyWindowBody = @'
