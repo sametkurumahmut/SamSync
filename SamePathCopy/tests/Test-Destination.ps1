@@ -100,6 +100,39 @@ try {
         throw "Kök verilmediğinde hata verilmedi. Alınan: $errorMessage"
     }
 
+    # Yedek kökü hedefin paylaşım yolundan üretilir.
+    Assert-Equal "\\10.10.1.11\Sim\ActiveRelease\$(Get-SamePathCopyBackupFolderName)" (Get-SamePathCopyBackupRoot -Address '10.10.1.11' -NetworkRoot 'Sim\ActiveRelease') 'Yedek kökü yanlış üretildi.'
+    Assert-Equal "\\10.10.1.11\Sim\$(Get-SamePathCopyBackupFolderName)" (Get-SamePathCopyBackupRoot -Address '10.10.1.11' -NetworkRoot '\Sim\') 'Yedek kökünde fazla ters bölü temizlenmedi.'
+
+    # Yedek temizliği: en yeni N tarih klasörü kalır, tarih biçiminde olmayan klasörlere dokunulmaz.
+    $backupRoot = Join-Path $temporaryDirectory 'yedekler'
+    foreach ($stamp in @('20260818-101500', '20260819-101500', '20260820-101500', '20260820-113000', 'elle-alinan')) {
+        [void](New-Item -ItemType Directory -Path (Join-Path $backupRoot $stamp) -Force)
+    }
+    'x' | Set-Content -LiteralPath (Join-Path $backupRoot '20260818-101500\dosya.txt') -Encoding UTF8
+    $removedNames = @(Remove-SamePathCopyOldBackups -BackupRoot $backupRoot -Keep 2)
+    Assert-Equal '20260819-101500,20260818-101500' ($removedNames -join ',') 'Silinen yedekler beklenenden farklı.'
+    $remaining = @(Get-ChildItem -LiteralPath $backupRoot -Directory | ForEach-Object { $_.Name } | Sort-Object)
+    Assert-Equal '20260820-101500,20260820-113000,elle-alinan' ($remaining -join ',') 'Kalan yedekler beklenenden farklı.'
+
+    # Keep 0 sınırsız demektir: hiçbir şey silinmez.
+    Assert-Equal 0 @(Remove-SamePathCopyOldBackups -BackupRoot $backupRoot -Keep 0).Count 'Keep 0 iken yedek silindi.'
+    # Olmayan klasör hata vermemeli.
+    Assert-Equal 0 @(Remove-SamePathCopyOldBackups -BackupRoot (Join-Path $temporaryDirectory 'yok') -Keep 3).Count 'Olmayan yedek kökü hata verdi.'
+
+    # config.json doğrulaması: backupKeep varsayılanı ve sınırları.
+    $keepConfig = @{
+        version = '1.0.0'
+        nodes = @(@{ id = 'Yerel'; name = 'Yerel'; address = '10.10.1.10'; localRoot = 'C:\Kaynak'; networkRoot = 'Sim' })
+    }
+    ($keepConfig | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $configPath -Encoding UTF8
+    Assert-Equal 5 ([int](Get-SamePathCopyConfiguration -ConfigPath $configPath).copy.backupKeep) 'backupKeep varsayılanı 5 olmalı.'
+    $keepConfig['copy'] = @{ backupKeep = 900 }
+    ($keepConfig | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $configPath -Encoding UTF8
+    $keepError = $null
+    try { [void](Get-SamePathCopyConfiguration -ConfigPath $configPath) } catch { $keepError = [string]$_.Exception.Message }
+    if ($keepError -notlike '*backupKeep*') { throw "Sınır dışı backupKeep için hata verilmedi. Alınan: $keepError" }
+
     Write-Host 'Hedef yolu ve çoklu kök testleri başarılı.'
 }
 finally {

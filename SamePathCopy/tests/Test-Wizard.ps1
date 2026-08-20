@@ -292,6 +292,54 @@ try {
         throw "Bulunmayan profil hatası akışa yazılmadı: $missingErrorText"
     }
 
+    # Süzgeç, bant genişliği ve yeniden deneme parametreleri robocopy anahtarlarına çevrilmeli.
+    $filterOptions = [pscustomobject]@{
+        ExcludeFiles = '*.pdb; *.tmp'
+        ExcludeDirectories = '.git;Logs'
+        ThrottleMilliseconds = 15
+        RetryCount = 7
+        WaitSeconds = 3
+    }
+    $filterArguments = (Get-SamePathCopyRobocopyArguments -SourceDirectory 'C:\Kaynak' -DestinationDirectory '\\ip\pay' `
+        -IsDirectory $true -RetryCount 2 -WaitSeconds 1 -Options $filterOptions) -join ' '
+    if ($filterArguments -notlike '*/XF "*.pdb" "*.tmp"*') { throw "Hariç dosyalar /XF üretmedi: $filterArguments" }
+    if ($filterArguments -notlike "*/XD `"$(Get-SamePathCopyBackupFolderName)`" `".git`" `"Logs`"*") { throw "Hariç klasörler /XD listesine eklenmedi: $filterArguments" }
+    if ($filterArguments -notlike '*/IPG:15*') { throw "Bant genişliği /IPG üretmedi: $filterArguments" }
+    if ($filterArguments -notlike '*/R:7*' -or $filterArguments -notlike '*/W:3*') { throw "Yeniden deneme değerleri ezilmedi: $filterArguments" }
+
+    # Değer verilmediğinde config.json değerleri kullanılır ve gereksiz anahtar eklenmez.
+    $defaultArguments = (Get-SamePathCopyRobocopyArguments -SourceDirectory 'C:\Kaynak' -DestinationDirectory '\\ip\pay' `
+        -IsDirectory $true -RetryCount 2 -WaitSeconds 1 `
+        -Options ([pscustomobject]@{ ExcludeFiles = ''; ExcludeDirectories = ''; ThrottleMilliseconds = 0; RetryCount = -1; WaitSeconds = -1 })) -join ' '
+    if ($defaultArguments -like '*/XF*') { throw 'Boş süzgeç için /XF eklendi.' }
+    if ($defaultArguments -like '*/IPG*') { throw 'Sıfır bekleme için /IPG eklendi.' }
+    if ($defaultArguments -notlike '*/R:2*' -or $defaultArguments -notlike '*/W:1*') { throw "config.json yeniden deneme değerleri kullanılmadı: $defaultArguments" }
+
+    # Kalıp listesi ayrıştırma: noktalı virgül ve virgül, boşluklar temizlenir.
+    Assert-Equal '*.pdb|*.tmp|desktop.ini' ((Split-SamePathCopyPatternList -Text ' *.pdb ; *.tmp , desktop.ini ') -join '|') 'Kalıp listesi yanlış ayrıştırıldı.'
+    Assert-Equal 0 @(Split-SamePathCopyPatternList -Text '  ').Count 'Boş metin kalıp üretmemeli.'
+
+    # Tipli genel ayarlar saklanıp geri okunmalı (metin ve sayı dâhil).
+    $typedSettings = Get-SamePathCopyWizardSettings -ConfigPath $configPath -Targets $targets
+    Assert-Equal '' ([string]$typedSettings.Global.ExcludeFiles) 'Metin parametresi varsayılanı boş olmalı.'
+    Assert-Equal -1 ([int]$typedSettings.Global.RetryCount) 'Sayı parametresi varsayılanı -1 (config) olmalı.'
+    $typedSettings.Global.ExcludeFiles = '*.pdb'
+    $typedSettings.Global.ThrottleMilliseconds = 25
+    $typedSettings.Global.RetryCount = 4
+    Save-SamePathCopyWizardSettings -ConfigPath $configPath -Settings $typedSettings
+    $typedReloaded = Get-SamePathCopyWizardSettings -ConfigPath $configPath -Targets $targets
+    Assert-Equal '*.pdb' ([string]$typedReloaded.Global.ExcludeFiles) 'Metin parametresi saklanmadı.'
+    Assert-Equal 25 ([int]$typedReloaded.Global.ThrottleMilliseconds) 'Sayı parametresi saklanmadı.'
+    Assert-Equal 4 ([int]$typedReloaded.Global.RetryCount) 'Yeniden deneme değeri saklanmadı.'
+
+    # Arayüz denetiminden değer okuma: boş sayı kutusu varsayılana döner, bozuk metin varsayılana düşer.
+    $intDefinition = @(Get-SamePathCopyWizardGlobalDefinitions | Where-Object { $_.Name -eq 'RetryCount' })[0]
+    Assert-Equal -1 (Get-SamePathCopyWizardControlValue -Definition $intDefinition -Control ([pscustomobject]@{ Text = '' })) 'Boş sayı kutusu -1 vermeli.'
+    Assert-Equal 5 (Get-SamePathCopyWizardControlValue -Definition $intDefinition -Control ([pscustomobject]@{ Text = ' 5 ' })) 'Sayı kutusu değeri okunmadı.'
+    Assert-Equal -1 (Get-SamePathCopyWizardControlValue -Definition $intDefinition -Control ([pscustomobject]@{ Text = 'abc' })) 'Bozuk sayı varsayılana dönmeli.'
+    $textDefinition = @(Get-SamePathCopyWizardGlobalDefinitions | Where-Object { $_.Name -eq 'ExcludeFiles' })[0]
+    Assert-Equal '*.pdb' (Get-SamePathCopyWizardControlValue -Definition $textDefinition -Control ([pscustomobject]@{ Text = '  *.pdb  ' })) 'Metin kutusu değeri kırpılmadı.'
+
     Write-Host 'Sihirbaz testleri başarılı.'
 }
 finally {

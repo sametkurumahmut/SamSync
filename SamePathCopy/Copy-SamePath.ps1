@@ -239,6 +239,11 @@ $plans = @(foreach ($target in $targets) {
         Mirror = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'Mirror'
         DryRun = Get-SamePathCopyOptionValue -Options $globalOptions -Name 'DryRun'
         FastCopy = Get-SamePathCopyOptionValue -Options $globalOptions -Name 'FastCopy'
+        ExcludeFiles = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeFiles'
+        ExcludeDirectories = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeDirectories'
+        ThrottleMilliseconds = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'ThrottleMilliseconds' -Default 0
+        RetryCount = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'RetryCount' -Default -1
+        WaitSeconds = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'WaitSeconds' -Default -1
     }
     foreach ($sourceItem in $sourceItems) {
         # Kaynak hangi yerel kökün altındaysa göreli yol o köke göre hesaplanır; hiçbirinin altında değilse tam yol korunur.
@@ -570,6 +575,11 @@ foreach ($plan in $plans) {
             }
             elseif ([int]$backupResult.ExitCode -le 7) {
                 Add-SamePathCopyLogNote -Entry $entry -Text ("Yedek: {0}" -f $backupResult.BackupPath)
+                # Eski yedekler hedefte birikmesin: en yeni backupKeep tanesi tutulur.
+                $removedBackups = @(Remove-SamePathCopyOldBackups -BackupRoot (Get-SamePathCopyBackupRoot -Address ([string]$plan.Target.address) -NetworkRoot ([string]$plan.Target.networkRoot)) -Keep ([int]$config.copy.backupKeep))
+                if ($removedBackups.Count -gt 0) {
+                    Add-SamePathCopyLogNote -Entry $entry -Text ("Eski yedekler silindi ({0}): {1}" -f $removedBackups.Count, ($removedBackups -join ', '))
+                }
             }
             else {
                 throw "Yedek alınamadı (robocopy: $($backupResult.ExitCode)). Kopyalama yapılmadı: $($backupResult.BackupPath)"

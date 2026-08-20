@@ -107,10 +107,17 @@ Bütün hedefler için geçerli parametreler:
 | --- | --- |
 | `Deneme çalıştırması` | Ne kopyalanacağını hesaplar, hiçbir şey yazmaz (`robocopy /L`). Yedek adımı da atlanır. |
 | `Hızlı kopyalama` | Çok iş parçacıklı kopyalama (`robocopy /MT:8`). Yeniden başlatılabilir kip (`/Z`) bu durumda kullanılmaz. |
+| `Hariç dosyalar` | Noktalı virgülle ayrılmış dosya kalıpları kopyalanmaz (`robocopy /XF`). Örnek: `*.pdb;*.tmp;desktop.ini` |
+| `Hariç klasörler` | Noktalı virgülle ayrılmış klasör adları kopyalanmaz (`robocopy /XD`). Örnek: `.git;Logs;Temp`. Yedek klasörü zaten hep hariç tutulur. |
+| `Paket arası bekleme (ms)` | Ağı boğmamak için paketler arasına bekleme koyar (`robocopy /IPG:n`). `0` = sınırsız hız. |
+| `Yeniden deneme sayısı` | `robocopy /R:n`. Boş bırakılırsa `config.json` içindeki `copy.retryCount` kullanılır. |
+| `Denemeler arası bekleme (sn)` | `robocopy /W:n`. Boş bırakılırsa `config.json` içindeki `copy.waitSeconds` kullanılır. |
 
 İlk açılışta bütün bilgisayarlar işaretli, parametreler kapalı gelir. Seçimler `%LOCALAPPDATA%\SamePathCopy\wizard-state.json` içinde config dosyası yoluna göre saklanır; pencere bir sonraki açılışta son hâliyle gelir. Vazgeçilse bile tablodaki son durum saklanır. `config.json`'a sonradan eklenen bilgisayar işaretli gelir, silinen bilgisayar durumdan düşer. `SAMEPATHCOPY_WIZARD_STATE` ortam değişkeni durum dosyasının yolunu değiştirir.
 
 Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
+
+Yedekler hedef paylaşımda sınırsız birikmesin diye her başarılı yedekten sonra eski tarih klasörleri silinir; kaç tanesinin tutulacağı `config.json` içindeki `copy.backupKeep` alanından belirlenir (varsayılan `5`, `0` = sınırsız). Yalnızca `yyyyMMdd-HHmmss` biçimindeki klasörler temizlenir; elle oluşturulmuş klasörlere dokunulmaz. Silinen yedekler sonuç panelinde ve günlükte görünür.
 
 #### Profiller
 

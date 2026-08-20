@@ -109,6 +109,13 @@ function Get-SamePathCopyConfiguration {
     if ([int]$config.copy.waitSeconds -lt 0 -or [int]$config.copy.waitSeconds -gt 60) {
         throw "waitSeconds 0 ile 60 arasında olmalı."
     }
+    # Yedekler hedef paylaşımda birikmesin diye kaç tanesinin tutulacağı yapılandırılır (0 = sınırsız).
+    if (-not $config.copy.PSObject.Properties['backupKeep'] -or $null -eq $config.copy.backupKeep) {
+        $config.copy | Add-Member -NotePropertyName backupKeep -NotePropertyValue 5 -Force
+    }
+    if ([int]$config.copy.backupKeep -lt 0 -or [int]$config.copy.backupKeep -gt 500) {
+        throw "backupKeep 0 ile 500 arasında olmalı (0 = sınırsız)."
+    }
 
     return $config
 }
@@ -237,6 +244,72 @@ function Get-SamePathCopyBackupPath {
     return "$backupRoot\$relativePath"
 }
 
+function Get-SamePathCopyOptionText {
+    param($Options, [Parameter(Mandatory = $true)][string]$Name)
+
+    if ($null -eq $Options -or -not $Options.PSObject.Properties[$Name]) { return '' }
+    return ([string]$Options.$Name).Trim()
+}
+
+function Get-SamePathCopyOptionNumber {
+    param($Options, [Parameter(Mandatory = $true)][string]$Name, [int]$Default = -1)
+
+    if ($null -eq $Options -or -not $Options.PSObject.Properties[$Name] -or $null -eq $Options.$Name) { return $Default }
+    $parsed = 0
+    if ([int]::TryParse([string]$Options.$Name, [ref]$parsed)) { return $parsed }
+    return $Default
+}
+
+function Split-SamePathCopyPatternList {
+    param([string]$Text)
+
+    # "*.pdb;*.tmp, desktop.ini" gibi listeleri ayirir; bos parcalar atilir.
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+    return @($Text -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Get-SamePathCopyBackupRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Address,
+        [Parameter(Mandatory = $true)][string]$NetworkRoot
+    )
+
+    return "\\$Address\$($NetworkRoot.Trim('\'))\$(Get-SamePathCopyBackupFolderName)"
+}
+
+function Remove-SamePathCopyOldBackups {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackupRoot,
+        [Parameter(Mandatory = $true)][int]$Keep
+    )
+
+    # Yedek klasörleri "yyyyMMdd-HHmmss" adlarıyla oluşur; en yeni $Keep tanesi kalır, eskiler silinir.
+    # Keep 0 ise temizlik yapılmaz. Silme hataları kopyalamayı etkilemez, silinen klasör adları döner.
+    if ($Keep -le 0) { return @() }
+    if (-not (Test-Path -LiteralPath $BackupRoot -PathType Container)) { return @() }
+
+    $removed = @()
+    try {
+        $stampFolders = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction Stop |
+            Where-Object { $_.Name -match '^\d{8}-\d{6}$' } |
+            Sort-Object Name -Descending)
+        if ($stampFolders.Count -le $Keep) { return @() }
+        foreach ($folder in @($stampFolders | Select-Object -Skip $Keep)) {
+            try {
+                Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction Stop
+                $removed += [string]$folder.Name
+            }
+            catch {
+                # Kilitli ya da yetkisiz klasör atlanır.
+            }
+        }
+    }
+    catch {
+        return @($removed)
+    }
+    return @($removed)
+}
+
 function Get-SamePathCopyRobocopyArguments {
     param(
         [Parameter(Mandatory = $true)][string]$SourceDirectory,
@@ -257,9 +330,16 @@ function Get-SamePathCopyRobocopyArguments {
         # /MIR zaten /E içerir; ikisini birlikte vermek gereksiz.
         $arguments += $(if ($useMirror) { '/MIR' } else { '/E' })
         $arguments += '/DCOPY:DAT'
-        # Yedek klasörü hedefin altında durduğu için kopyalamaya dahil edilmez.
-        $arguments += ('/XD ' + (& $quote (Get-SamePathCopyBackupFolderName)))
+        # Yedek klasörü hedefin altında durduğu için kopyalamaya dahil edilmez; kullanıcının verdiği klasörler de eklenir.
+        $excludedDirectories = @((Get-SamePathCopyBackupFolderName)) + @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeDirectories'))
+        $arguments += ('/XD ' + ((@($excludedDirectories | Select-Object -Unique) | ForEach-Object { & $quote $_ }) -join ' '))
     }
+    $excludedFiles = @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeFiles'))
+    if ($excludedFiles.Count -gt 0) {
+        $arguments += ('/XF ' + ((@($excludedFiles) | ForEach-Object { & $quote $_ }) -join ' '))
+    }
+    $throttle = Get-SamePathCopyOptionNumber -Options $Options -Name 'ThrottleMilliseconds' -Default 0
+    if ($throttle -gt 0) { $arguments += "/IPG:$throttle" }
     if (Get-SamePathCopyOptionValue -Options $Options -Name 'FastCopy') {
         # /MT yeniden başlatılabilir kip (/Z) ile birlikte kullanılmaz; hız seçilince /Z düşer.
         $arguments += '/MT:8'
@@ -269,7 +349,12 @@ function Get-SamePathCopyRobocopyArguments {
     }
     if (Get-SamePathCopyOptionValue -Options $Options -Name 'OnlyNewer') { $arguments += '/XO' }
     if (Get-SamePathCopyOptionValue -Options $Options -Name 'DryRun') { $arguments += '/L' }
-    $arguments += @('/COPY:DAT', '/FFT', "/R:$RetryCount", "/W:$WaitSeconds", '/NP', '/NJH', '/NJS', '/NFL', '/NDL')
+    # Sihirbazda deger verilmisse yeniden deneme ayarlari config.json degerlerini ezer.
+    $effectiveRetryCount = Get-SamePathCopyOptionNumber -Options $Options -Name 'RetryCount' -Default -1
+    if ($effectiveRetryCount -lt 0) { $effectiveRetryCount = $RetryCount }
+    $effectiveWaitSeconds = Get-SamePathCopyOptionNumber -Options $Options -Name 'WaitSeconds' -Default -1
+    if ($effectiveWaitSeconds -lt 0) { $effectiveWaitSeconds = $WaitSeconds }
+    $arguments += @('/COPY:DAT', '/FFT', "/R:$effectiveRetryCount", "/W:$effectiveWaitSeconds", '/NP', '/NJH', '/NJS', '/NFL', '/NDL')
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
         $arguments += ('/UNILOG:' + (& $quote $LogPath))
     }

@@ -29,12 +29,61 @@ function Get-SamePathCopyWizardOptionDefinitions {
 }
 
 function Get-SamePathCopyWizardGlobalDefinitions {
+    # Type: bool (onay kutusu), text (serbest metin), int (sayı). Yeni parametre eklemek için buraya bir satır yeter;
+    # arayüz denetimi, saklama ve robocopy argümanı bu listeden türetilir.
     return @(
-        [pscustomobject]@{ Name = 'DryRun'; Key = 'dryRun'; Header = 'Deneme çalıştırması — hiçbir şey kopyalanmaz'; Default = $false
+        [pscustomobject]@{ Name = 'DryRun'; Key = 'dryRun'; Type = 'bool'; Header = 'Deneme çalıştırması — hiçbir şey kopyalanmaz'; Default = $false
             Description = 'Ne kopyalanacağını hesaplar, hedefe yazmaz (robocopy /L). Yedek adımı da atlanır.' }
-        [pscustomobject]@{ Name = 'FastCopy'; Key = 'fastCopy'; Header = 'Hızlı kopyalama — çok iş parçacıklı'; Default = $false
+        [pscustomobject]@{ Name = 'FastCopy'; Key = 'fastCopy'; Type = 'bool'; Header = 'Hızlı kopyalama — çok iş parçacıklı'; Default = $false
             Description = 'robocopy /MT:8 kullanır. Yeniden başlatılabilir kip (/Z) bu durumda devre dışı kalır.' }
+        [pscustomobject]@{ Name = 'ExcludeFiles'; Key = 'excludeFiles'; Type = 'text'; Header = 'Hariç dosyalar'; Default = ''
+            Placeholder = '*.pdb;*.tmp;desktop.ini'
+            Description = 'Noktalı virgülle ayrılmış dosya kalıpları kopyalanmaz (robocopy /XF).' }
+        [pscustomobject]@{ Name = 'ExcludeDirectories'; Key = 'excludeDirectories'; Type = 'text'; Header = 'Hariç klasörler'; Default = ''
+            Placeholder = '.git;Logs;Temp'
+            Description = 'Noktalı virgülle ayrılmış klasör adları kopyalanmaz (robocopy /XD).' }
+        [pscustomobject]@{ Name = 'ThrottleMilliseconds'; Key = 'throttleMilliseconds'; Type = 'int'; Header = 'Paket arası bekleme (ms)'; Default = 0
+            Placeholder = '0'
+            Description = 'Ağı boğmamak için paketler arasına bekleme koyar (robocopy /IPG:n). 0 = sınırsız hız.' }
+        [pscustomobject]@{ Name = 'RetryCount'; Key = 'retryCount'; Type = 'int'; Header = 'Yeniden deneme sayısı'; Default = -1
+            Placeholder = 'config'
+            Description = 'Başarısız kopyalamanın tekrar sayısı (robocopy /R:n). Boş ya da -1 ise config.json değeri kullanılır.' }
+        [pscustomobject]@{ Name = 'WaitSeconds'; Key = 'waitSeconds'; Type = 'int'; Header = 'Denemeler arası bekleme (sn)'; Default = -1
+            Placeholder = 'config'
+            Description = 'Tekrarlar arasındaki bekleme (robocopy /W:n). Boş ya da -1 ise config.json değeri kullanılır.' }
     )
+}
+
+function Get-SamePathCopyWizardDefinitionType {
+    param([Parameter(Mandatory = $true)]$Definition)
+
+    if ($Definition.PSObject.Properties['Type'] -and -not [string]::IsNullOrWhiteSpace([string]$Definition.Type)) {
+        return [string]$Definition.Type
+    }
+    return 'bool'
+}
+
+function Get-SamePathCopyStoredValue {
+    param(
+        $Container,
+        [Parameter(Mandatory = $true)]$Definition
+    )
+
+    # Saklanan değer tipe göre okunur; eksik ya da bozuk değer varsayılana döner.
+    $name = [string]$Definition.Key
+    $type = Get-SamePathCopyWizardDefinitionType -Definition $Definition
+    if ($type -eq 'bool') {
+        return (Get-SamePathCopyStoredBoolean -Container $Container -Name $name -Default ([bool]$Definition.Default))
+    }
+    if ($null -eq $Container -or -not $Container.PSObject.Properties[$name] -or $null -eq $Container.$name) {
+        return $Definition.Default
+    }
+    if ($type -eq 'int') {
+        $parsed = 0
+        if ([int]::TryParse([string]$Container.$name, [ref]$parsed)) { return $parsed }
+        return $Definition.Default
+    }
+    return [string]$Container.$name
 }
 
 function Get-SamePathCopyStoredBoolean {
@@ -95,7 +144,7 @@ function ConvertFrom-SamePathCopyWizardStoredSettings {
 
     $global = [pscustomobject]@{}
     foreach ($definition in Get-SamePathCopyWizardGlobalDefinitions) {
-        $global | Add-Member -NotePropertyName $definition.Name -NotePropertyValue (Get-SamePathCopyStoredBoolean -Container $storedGlobal -Name $definition.Key -Default $definition.Default)
+        $global | Add-Member -NotePropertyName $definition.Name -NotePropertyValue (Get-SamePathCopyStoredValue -Container $storedGlobal -Definition $definition)
     }
 
     # config.json'a sonradan eklenen bilgisayarlar varsayilan olarak secili gelir; silinenler durumdan duser.
@@ -118,7 +167,13 @@ function ConvertTo-SamePathCopyWizardStoredSettings {
 
     $globalObject = [pscustomobject]@{}
     foreach ($definition in Get-SamePathCopyWizardGlobalDefinitions) {
-        $globalObject | Add-Member -NotePropertyName $definition.Key -NotePropertyValue ([bool]$Settings.Global.($definition.Name))
+        $value = $Settings.Global.($definition.Name)
+        $globalObject | Add-Member -NotePropertyName $definition.Key -NotePropertyValue $(
+            switch (Get-SamePathCopyWizardDefinitionType -Definition $definition) {
+                'bool' { [bool]$value }
+                'int' { [int]$value }
+                default { [string]$value }
+            })
     }
 
     $targetsObject = [pscustomobject]@{}
@@ -236,6 +291,25 @@ function Remove-SamePathCopyWizardProfile {
     $stored.profiles.PSObject.Properties.Remove([string]$match[0])
     Write-SamePathCopyWizardState -State $state
     return $true
+}
+
+function Get-SamePathCopyWizardControlValue {
+    param(
+        [Parameter(Mandatory = $true)]$Definition,
+        [Parameter(Mandatory = $true)]$Control
+    )
+
+    # Arayuzdeki denetimden tipe uygun deger okunur: bos sayi kutusu -1 (config degerini kullan) demektir.
+    $type = Get-SamePathCopyWizardDefinitionType -Definition $Definition
+    if ($type -eq 'bool') { return [bool]$Control.IsChecked }
+    $text = [string]$Control.Text
+    if ($type -eq 'int') {
+        if ([string]::IsNullOrWhiteSpace($text)) { return [int]$Definition.Default }
+        $parsed = 0
+        if ([int]::TryParse($text.Trim(), [ref]$parsed)) { return $parsed }
+        return [int]$Definition.Default
+    }
+    return $text.Trim()
 }
 
 function Set-SamePathCopyWizardColumnState {
@@ -697,8 +771,18 @@ function Show-SamePathCopyWizard {
                 $row.Controls[[string]$optionDefinition.Name].IsChecked = [bool]$entry.($optionDefinition.Name)
             }
         }
-        foreach ($globalName in @($script:wizardGlobalBoxes.Keys)) {
-            $script:wizardGlobalBoxes[$globalName].IsChecked = [bool]$AppliedSettings.Global.$globalName
+        foreach ($globalDefinition in $script:wizardGlobalDefinitions) {
+            $control = $script:wizardGlobalBoxes[[string]$globalDefinition.Name]
+            $value = $AppliedSettings.Global.($globalDefinition.Name)
+            if ((Get-SamePathCopyWizardDefinitionType -Definition $globalDefinition) -eq 'bool') {
+                $control.IsChecked = [bool]$value
+            }
+            elseif ((Get-SamePathCopyWizardDefinitionType -Definition $globalDefinition) -eq 'int' -and [int]$value -lt 0) {
+                $control.Text = ''
+            }
+            else {
+                $control.Text = [string]$value
+            }
         }
         & $script:wizardUpdateSelectionCount
     }
@@ -712,8 +796,8 @@ function Show-SamePathCopyWizard {
             $collectedTargets[[string]$row.Id] = $entry
         }
         $collectedGlobal = [pscustomobject]@{}
-        foreach ($globalName in @($script:wizardGlobalBoxes.Keys)) {
-            $collectedGlobal | Add-Member -NotePropertyName $globalName -NotePropertyValue ([bool]$script:wizardGlobalBoxes[$globalName].IsChecked)
+        foreach ($globalDefinition in $script:wizardGlobalDefinitions) {
+            $collectedGlobal | Add-Member -NotePropertyName ([string]$globalDefinition.Name) -NotePropertyValue (Get-SamePathCopyWizardControlValue -Definition $globalDefinition -Control $script:wizardGlobalBoxes[[string]$globalDefinition.Name])
         }
         return [pscustomobject]@{ Global = $collectedGlobal; Targets = $collectedTargets }
     }
@@ -787,19 +871,50 @@ function Show-SamePathCopyWizard {
         $window.FindName('LastRunChip').Visibility = 'Visible'
     }
 
+    # Genel parametreler: mantiksal olanlar onay kutusu, metin/sayi olanlar etiketli kutu olarak cizilir.
     $globalPanel = $window.FindName('GlobalOptionPanel')
     $globalBoxes = @{}
+    $globalValuePanel = New-Object System.Windows.Controls.WrapPanel
+    $globalValuePanel.Orientation = 'Horizontal'
+    $globalValuePanel.Margin = New-Object System.Windows.Thickness(0, 6, 0, 0)
     foreach ($globalDefinition in $globalDefinitions) {
-        $globalBox = New-Object System.Windows.Controls.CheckBox
-        $globalBox.Style = $window.FindResource('ModernCheckBox')
-        $globalBox.Content = [string]$globalDefinition.Header
-        $globalBox.IsChecked = [bool]$Settings.Global.($globalDefinition.Name)
-        $globalBox.Margin = New-Object System.Windows.Thickness(0, 4, 0, 4)
-        $globalBox.ToolTip = [string]$globalDefinition.Description
-        [void]$globalPanel.Children.Add($globalBox)
-        $globalBoxes[[string]$globalDefinition.Name] = $globalBox
+        $definitionType = Get-SamePathCopyWizardDefinitionType -Definition $globalDefinition
+        if ($definitionType -eq 'bool') {
+            $globalBox = New-Object System.Windows.Controls.CheckBox
+            $globalBox.Style = $window.FindResource('ModernCheckBox')
+            $globalBox.Content = [string]$globalDefinition.Header
+            $globalBox.IsChecked = [bool]$Settings.Global.($globalDefinition.Name)
+            $globalBox.Margin = New-Object System.Windows.Thickness(0, 4, 0, 4)
+            $globalBox.ToolTip = [string]$globalDefinition.Description
+            [void]$globalPanel.Children.Add($globalBox)
+            $globalBoxes[[string]$globalDefinition.Name] = $globalBox
+            continue
+        }
+
+        $valueGroup = New-Object System.Windows.Controls.StackPanel
+        $valueGroup.Orientation = 'Horizontal'
+        $valueGroup.Margin = New-Object System.Windows.Thickness(0, 4, 18, 4)
+        $valueLabel = New-Object System.Windows.Controls.TextBlock
+        $valueLabel.Style = $window.FindResource('MutedText')
+        $valueLabel.Text = [string]$globalDefinition.Header
+        $valueLabel.ToolTip = [string]$globalDefinition.Description
+        $valueLabel.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
+        [void]$valueGroup.Children.Add($valueLabel)
+        $valueBox = New-Object System.Windows.Controls.TextBox
+        $valueBox.Style = $window.FindResource('SearchBox')
+        $valueBox.Width = $(if ($definitionType -eq 'int') { 70 } else { 200 })
+        $valueBox.ToolTip = [string]$globalDefinition.Description
+        if ($globalDefinition.PSObject.Properties['Placeholder']) { $valueBox.Tag = [string]$globalDefinition.Placeholder }
+        $storedValue = $Settings.Global.($globalDefinition.Name)
+        # -1 "config.json degerini kullan" anlamina gelir; kutuda bos gorunur.
+        $valueBox.Text = $(if ($definitionType -eq 'int' -and [int]$storedValue -lt 0) { '' } else { [string]$storedValue })
+        [void]$valueGroup.Children.Add($valueBox)
+        [void]$globalValuePanel.Children.Add($valueGroup)
+        $globalBoxes[[string]$globalDefinition.Name] = $valueBox
     }
+    if ($globalValuePanel.Children.Count -gt 0) { [void]$globalPanel.Children.Add($globalValuePanel) }
     $script:wizardGlobalBoxes = $globalBoxes
+    $script:wizardGlobalDefinitions = $globalDefinitions
 
     $window.FindName('CancelButton').Add_Click({ $script:wizardWindow.DialogResult = $false })
     $window.FindName('StartButton').Add_Click({
@@ -848,7 +963,7 @@ function Show-SamePathCopyWizard {
     }
     $updatedGlobal = [pscustomobject]@{}
     foreach ($globalDefinition in $globalDefinitions) {
-        $updatedGlobal | Add-Member -NotePropertyName $globalDefinition.Name -NotePropertyValue ([bool]$globalBoxes[[string]$globalDefinition.Name].IsChecked)
+        $updatedGlobal | Add-Member -NotePropertyName $globalDefinition.Name -NotePropertyValue (Get-SamePathCopyWizardControlValue -Definition $globalDefinition -Control $globalBoxes[[string]$globalDefinition.Name])
     }
 
     return [pscustomobject]@{

@@ -2,6 +2,9 @@
 
 ## Yayımlanmamış
 
+- Sihirbaz parametreleri artık yalnızca onay kutusu değil: metin ve sayı alanları da destekleniyor. Eklenenler: hariç dosyalar (`/XF`), hariç klasörler (`/XD`), paket arası bekleme (`/IPG`), yeniden deneme sayısı (`/R`) ve denemeler arası bekleme (`/W`). Yeniden deneme alanları boş bırakılırsa `config.json` değerleri kullanılıyor.
+- Yedekler için tutma sınırı eklendi: her başarılı yedekten sonra en yeni `copy.backupKeep` (varsayılan 5, 0 = sınırsız) tarih klasörü kalıyor, eskiler siliniyor. Elle oluşturulmuş klasörlere dokunulmuyor; silinenler panelde ve günlükte görünüyor.
+
 - Sihirbaza profiller eklendi: hedef seçimi ve parametreler bir adla saklanıp tek tıkla geri yüklenebiliyor. Her profil menüde `<ad> (profil)` girdisi olarak görünüyor, komutlara `-TargetId profile:<ad>` olarak geçiyor ve klavye kısayolu bağlanabiliyor.
 - Profil adı doğrulaması, büyük/küçük harf farkında aynı profili güncelleme ve bulunmayan profil için kayıtlı profilleri sayan hata mesajı eklendi.
 - `-PlanOnly` kipinde hata artık pencere açmıyor; mesajı hata akışına yazıp 1 ile çıkıyor (otomasyon kilitlenmiyor).
