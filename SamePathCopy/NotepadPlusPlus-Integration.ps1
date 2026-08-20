@@ -13,6 +13,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $commandPrefix = '[SamePathCopy] '
+. (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+[void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
 # Notepad++ (RunDlg.cpp, Command::run) Run komut satırını MAX_PATH uzunluğundaki tampona kopyalar;
 # $(FULL_CURRENT_PATH) gibi değişkenler açılmadan önce ilk 260 karakter dışındaki kısım atılır.
 $notepadPlusPlusCommandLimit = 260
@@ -469,6 +471,7 @@ function Update-NotepadPlusPlusConfiguration {
             $commandName = "$commandPrefix$($entry.Id)"
             $commandText = ('"{0}" -nop -w hidden -ep bypass -f "{1}" -TargetId {2} -SourcePath "$(FULL_CURRENT_PATH)"{3}' -f $powershellExe, $QueueScriptPath, $entry.Id, $configPathArgument)
             if ($commandText.Length -gt $notepadPlusPlusCommandLimit) {
+                Write-SamePathCopyLog -Component 'Notepad++' -Level 'WARN' -Message ("$commandName komutu 260 karakter sınırını aştı ({0} karakter) ve eklenmedi." -f $commandText.Length)
                 Write-Warning "$commandName komutu Notepad++ sınırını aşıyor ($($commandText.Length) karakter, en fazla $notepadPlusPlusCommandLimit) ve eklenmedi. Aracı ve config dosyasını daha kısa bir yola taşıyın (örnek: C:\SamePathCopy)."
                 continue
             }
@@ -508,6 +511,10 @@ function Update-NotepadPlusPlusConfiguration {
     # İmza, shortcuts.xml son hâlini aldıktan sonra hesaplanmalıdır.
     Update-ShortcutsXmlSignature -ConfigurationDirectory $configDirectory -ShortcutsPath $shortcutsPath
     Write-Host "Notepad++ bütünleşmesi $RequestedAction`: $configDirectory"
+    Write-SamePathCopyLog -Component 'Notepad++' -Message ("{0}: {1} | komut: {2} | sekme menüsü: {3}" -f
+        $RequestedAction, $configDirectory,
+        @($userCommands.ChildNodes | Where-Object { $_.Attributes -and $_.Attributes['name'] -and ([string]$_.GetAttribute('name')).StartsWith($commandPrefix, [System.StringComparison]::Ordinal) }).Count,
+        @($tabMenu.ChildNodes | Where-Object { $_.Attributes -and $_.Attributes['MenuItemName'] -and ([string]$_.GetAttribute('MenuItemName')).StartsWith($commandPrefix, [System.StringComparison]::Ordinal) }).Count)
 }
 
 $notepadPlusPlusTargets = @(Get-NotepadPlusPlusTargets -ExplicitConfigurationDirectory $ConfigurationDirectory)

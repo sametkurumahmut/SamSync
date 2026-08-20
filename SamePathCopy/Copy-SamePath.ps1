@@ -16,11 +16,20 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
 }
 . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
 . (Join-Path $scriptDirectory 'SamePathCopy.Ui.ps1')
+. (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+
+[void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
+Write-SamePathCopyLogStart -Component 'Kopyala' -Summary ("Kopyalama isteği: hedef '{0}', {1} kaynak" -f $TargetId, @($SourcePath).Count)
+foreach ($requestedSource in @($SourcePath)) {
+    Write-SamePathCopyLog -Component 'Kopyala' -Message ("İstenen kaynak: {0}" -f $requestedSource)
+}
 
 # Kopyalama penceresindeki İptal düğmesi bu bayrağı kaldırır; çalışan robocopy süreci durdurulur.
 $script:cancelRequested = $false
 
 trap {
+    Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Hata: {0}" -f $_.Exception.Message)
+    Write-SamePathCopyLog -Component 'Kopyala' -Level 'ERROR' -Message ("Konum: {0}" -f ([string]$_.InvocationInfo.PositionMessage -replace '\r?\n', ' '))
     try {
         Add-Type -AssemblyName System.Windows.Forms
         [void][System.Windows.Forms.MessageBox]::Show(
@@ -147,10 +156,16 @@ if ($targets.Count -eq 0) {
     throw "Kopyalama için etkin hedef yok."
 }
 
+Write-SamePathCopyLog -Component 'Kopyala' -Message ("Yerel node: {0} ({1}) | kökler: {2} | config: {3} | sürüm: v{4}" -f
+    $localIdentity.Id, $localIdentity.Name, (@($localIdentity.Roots) -join ' ; '), $resolvedConfigPath, $config.version)
+Write-SamePathCopyLog -Component 'Kopyala' -Message ("Çözülen hedefler ({0}): {1}" -f $targets.Count, (@($targets | ForEach-Object { $_.id }) -join ', '))
+
 $wizardSettings = $null
 if ($useWizardSettings) {
     . (Join-Path $scriptDirectory 'SamePathCopy.Wizard.ps1')
     $wizardSettings = Get-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Targets $targets
+    Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Kayıtlı ayar okundu: {0} | seçili: {1}" -f
+        (Get-SamePathCopyWizardStatePath), (@($wizardSettings.Targets.Keys | Where-Object { $wizardSettings.Targets[$_].Selected } | Sort-Object) -join ', '))
 }
 
 $sourceItems = @(foreach ($path in @($SourcePath | Select-Object -Unique)) {
@@ -171,8 +186,13 @@ $globalOptions = $null
 if ($useWizardSettings) {
     if ($isWizard -and -not $PlanOnly) {
         # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message 'Sihirbaz penceresi açıldı.'
         $wizardResult = Show-SamePathCopyWizard -Configuration $config -Targets $targets -SourceItems $sourceItems -Settings $wizardSettings -LocalRoots $localIdentity.Roots -IconPath (Join-Path $scriptDirectory 'assets\SamePathCopy.ico')
         Save-SamePathCopyWizardSettings -ConfigPath $resolvedConfigPath -Settings $wizardResult.Settings
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Pencere kapandı: {0} | seçili: {1} | genel: {2}" -f
+            $(if ($wizardResult.Confirmed) { 'başlat' } else { 'vazgeç' }),
+            (@($wizardResult.Settings.Targets.Keys | Where-Object { $wizardResult.Settings.Targets[$_].Selected } | Sort-Object) -join ', '),
+            (@(@('DryRun', 'FastCopy') | Where-Object { Get-SamePathCopyOptionValue -Options $wizardResult.Settings.Global -Name $_ }) -join ', '))
         if (-not $wizardResult.Confirmed) { exit 0 }
         $wizardSettings = $wizardResult.Settings
     }
@@ -221,7 +241,15 @@ function Get-SamePathCopyActiveOptionNames {
         Where-Object { Get-SamePathCopyOptionValue -Options $Options -Name $_ })
 }
 
+foreach ($plan in $plans) {
+    Write-SamePathCopyLog -Component 'Plan' -Message ("[{0}] {1} → {2} | kök: {3} | parametreler: {4}" -f
+        $plan.Target.name, $plan.SourceItem.FullName, $plan.Destination,
+        $(if ($plan.MatchedRoot) { $plan.MatchedRoot } else { '(kök dışı)' }),
+        (@(Get-SamePathCopyActiveOptionNames -Options $plan.Options) -join ',' | ForEach-Object { if ($_) { $_ } else { 'yok' } }))
+}
+
 if ($PlanOnly) {
+    Write-SamePathCopyLog -Component 'Kopyala' -Message ("PlanOnly: {0} işlem hesaplandı, kopyalama yapılmadı." -f $plans.Count)
     foreach ($plan in $plans) {
         [pscustomobject]@{
             Source = $plan.SourceItem.FullName
@@ -346,6 +374,16 @@ $glyphs = @{
     Info = [pscustomobject]@{ Glyph = '•'; Brush = 'AccentBrush' }
 }
 
+function Get-SamePathCopyLogLevelForKind {
+    param([Parameter(Mandatory = $true)][string]$Kind)
+
+    switch ($Kind) {
+        'Error' { return 'ERROR' }
+        'Skipped' { return 'WARN' }
+        default { return 'INFO' }
+    }
+}
+
 function New-SamePathCopyLogEntry {
     param(
         [Parameter(Mandatory = $true)][string]$Title,
@@ -396,7 +434,11 @@ function New-SamePathCopyLogEntry {
     $logLines.Add(("{0} {1}" -f [string]$glyphs[$Kind].Glyph, $Title))
     if (-not [string]::IsNullOrWhiteSpace($Detail)) { $logLines.Add("    $Detail") }
 
-    return [pscustomobject]@{ GlyphText = $glyphText; TextPanel = $textPanel }
+    # Ekranda görünen her satır dosya günlüğüne de yazılır; böylece root.log paneldeki sonucun aynısını taşır.
+    $logMessage = if ([string]::IsNullOrWhiteSpace($Detail)) { $Title } else { "$Title | $Detail" }
+    Write-SamePathCopyLog -Component 'Panel' -Level (Get-SamePathCopyLogLevelForKind -Kind $Kind) -Message $logMessage
+
+    return [pscustomobject]@{ GlyphText = $glyphText; TextPanel = $textPanel; Title = $Title }
 }
 
 function Set-SamePathCopyLogEntryState {
@@ -407,6 +449,19 @@ function Set-SamePathCopyLogEntryState {
 
     $Entry.GlyphText.Text = [string]$glyphs[$Kind].Glyph
     $Entry.GlyphText.Foreground = $window.FindResource([string]$glyphs[$Kind].Brush)
+    Write-SamePathCopyLog -Component 'Panel' -Level (Get-SamePathCopyLogLevelForKind -Kind $Kind) -Message ("{0} → {1}" -f $Entry.Title, (Get-SamePathCopyKindLabel -Kind $Kind))
+}
+
+function Get-SamePathCopyKindLabel {
+    param([Parameter(Mandatory = $true)][string]$Kind)
+
+    switch ($Kind) {
+        'Success' { return 'başarılı' }
+        'Error' { return 'hatalı' }
+        'Skipped' { return 'atlandı' }
+        'Running' { return 'sürüyor' }
+        default { return $Kind }
+    }
 }
 
 function Add-SamePathCopyLogNote {
@@ -425,10 +480,17 @@ function Add-SamePathCopyLogNote {
     [void]$Entry.TextPanel.Children.Add($noteText)
     $logScroller.ScrollToBottom()
     $logLines.Add("    $Text")
+    $noteLevel = if ($Brush -eq 'DangerBrush') { 'ERROR' } else { 'INFO' }
+    Write-SamePathCopyLog -Component 'Panel' -Level $noteLevel -Message ("{0} | {1}" -f $Entry.Title, $Text)
 }
 
 # Olay işleyicileri betik kapsamındaki değişkenleri ve fonksiyonları görür; kapanış (GetNewClosure)
 # kullanılmaz, çünkü kapanışlar ayrı bir modül kapsamına bağlanır ve betikteki fonksiyonlara erişemez.
+$logFilePath = Get-SamePathCopyLogPath
+if (-not [string]::IsNullOrWhiteSpace($logFilePath)) {
+    # Panelde görünen satırlar dosyaya da yazıldığı için düğmenin ipucunda günlük dosyasının yolu gösterilir.
+    $copyLogButton.ToolTip = "Paneldeki satırları panoya kopyalar.`r`nDosya günlüğü: $logFilePath"
+}
 $copyLogButton.Add_Click({
     try { [System.Windows.Clipboard]::SetText(($logLines -join "`r`n")) } catch { }
 })
@@ -539,6 +601,8 @@ if ($failedCount -gt 0) { $summaryParts += "$failedCount hatalı" }
 if ($skippedCount -gt 0) { $summaryParts += "$skippedCount atlandı" }
 $summaryParts += $elapsedText
 $summaryText.Text = $summaryParts -join '  •  '
+Write-SamePathCopyLog -Component 'Kopyala' -Level $(if ($failedCount -gt 0) { 'ERROR' } elseif ($skippedCount -gt 0) { 'WARN' } else { 'INFO' }) `
+    -Message ("Bitti: {0} başarılı, {1} hatalı, {2} atlandı, süre {3}" -f $successCount, $failedCount, $skippedCount, $elapsedText)
 $cancelButton.IsEnabled = $false
 $closeButton.IsEnabled = $true
 [void]$closeButton.Focus()

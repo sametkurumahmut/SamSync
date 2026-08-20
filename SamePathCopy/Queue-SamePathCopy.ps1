@@ -8,8 +8,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+[void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
+Write-SamePathCopyLogStart -Component 'Kuyruk' -Summary ("Kuyruk isteği: hedef '{0}', kaynak '{1}'" -f $TargetId, $SourcePath)
 
 trap {
+    Write-SamePathCopyLog -Component 'Kuyruk' -Level 'ERROR' -Message ("Hata: {0}" -f $_.Exception.Message)
     try {
         Add-Type -AssemblyName System.Windows.Forms
         [void][System.Windows.Forms.MessageBox]::Show(
@@ -61,6 +65,8 @@ try {
         $hasLock = $true
     }
     if (-not $hasLock) {
+        # Aynı hedef için bir toplayıcı süreç çalışıyor; bu istek onun kuyruğuna eklendi ve burada bitiyor.
+        Write-SamePathCopyLog -Component 'Kuyruk' -Message 'Toplayıcı başka bir süreçte çalışıyor; istek kuyruğa bırakıldı.'
         exit 0
     }
 
@@ -90,6 +96,8 @@ finally {
     }
     $mutex.Dispose()
 }
+
+Write-SamePathCopyLog -Component 'Kuyruk' -Message ("Toplandı: {0} istek, {1} tekil kaynak" -f $requestFiles.Count, $paths.Count)
 
 if ($paths.Count -gt 0) {
     if ($PlanOnly) {

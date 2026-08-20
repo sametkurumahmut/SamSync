@@ -12,6 +12,9 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
     $ConfigPath = Join-Path $scriptDirectory 'config.json'
 }
 . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
+. (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+[void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
+Write-SamePathCopyLogStart -Component 'Kurulum' -Summary 'Sağ tık menüsü kurulumu'
 
 function Set-RegistryString {
     param(
@@ -115,5 +118,8 @@ foreach ($menuRoot in $menuRoots) {
 Write-Host "Sağ tık menüsü kuruldu: $($config.menuTitle)"
 Write-Host "Sürüm: v$($config.version)"
 Write-Host "Bu bilgisayar: $($localIdentity.Name) | Yerel kök: $(@($localIdentity.Roots) -join ' ; ')"
+Write-SamePathCopyLog -Component 'Kurulum' -Message ("Menü kuruldu: {0} girdi | bu bilgisayar: {1} ({2}) | config: {3} | sürüm: v{4}" -f
+    $menuEntries.Count, $localIdentity.Id, $localIdentity.Name, $resolvedConfigPath, $config.version)
+Write-SamePathCopyLog -Component 'Kurulum' -Message ("Menü girdileri: {0}" -f (@($menuEntries | ForEach-Object { $_.Id }) -join ', '))
 & (Join-Path $scriptDirectory 'NotepadPlusPlus-Integration.ps1') -Action Install -ConfigPath $resolvedConfigPath -WhatIf:$WhatIfPreference
 Write-Host 'config.json değişince menüyü yenilemek için bu betiği tekrar çalıştırın.'

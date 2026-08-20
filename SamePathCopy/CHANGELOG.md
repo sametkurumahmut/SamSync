@@ -1,5 +1,12 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- Dosya günlüğü eklendi ([SamePathCopy.Log.ps1](SamePathCopy.Log.ps1)): araç klasörünün altındaki `log\root.log` dosyasına yazılıyor, klasör yazılamıyorsa `%LOCALAPPDATA%` ve `%TEMP%` altına düşülüyor, `SAMEPATHCOPY_LOG` ile yol değiştirilebiliyor.
+- Kopyalama panelinde görünen bütün satırlar (hedef, kaynak → hedef, etkin parametreler, yedek yolu, başarılı/hatalı/atlandı durumu, robocopy hata kodu ve ayrıntıları, özet) günlüğe de yazılıyor.
+- Ayrıca oturum başlığı, yerel node ve kökler, çözülen hedefler, sihirbaz seçimleri, hesaplanan plan, kuyruk birleştirme, kurulum/kaldırma ve Notepad++ bütünleşmesi kaydediliyor; hatalar yığın konumuyla birlikte düşüyor.
+- Günlük satırları çalıştırma kimliği taşıyor (paralel kopyalamalar ayrışıyor), `root.log` 5 MB'ı geçince kaydırılıyor ve günlük yazımı hiçbir koşulda kopyalamayı durdurmuyor.
+
 ## 1.2.0
 
 - Menüye `Wizard (son ayar)` girdisi eklendi (`-TargetId wizard:last`): sihirbaz penceresini açmadan, sihirbazda en son kaydedilen hedef seçimi ve parametrelerle kopyalamayı başlatır. Etiketi `wizardLastLabel` alanından değiştirilebilir.

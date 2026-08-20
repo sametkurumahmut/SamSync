@@ -110,6 +110,22 @@ Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalam
 
 Bu girdi özellikle klavye kısayolu için düşünülmüştür: hedefler bir kez sihirbazdan seçilir, sonrasında Notepad++ içinde tek tuşla aynı hedeflere gönderilir. Kopyalama penceresi bu durumda `Son sihirbaz ayarı` etiketiyle açılır. Henüz sihirbaz kullanılmamışsa varsayılan geçerlidir (bütün hedefler, parametreler kapalı). Son ayarda hiçbir hedef seçili değilse kopyalama yapılmaz ve sihirbazı açıp seçim yapılması istenir.
 
+### Günlük
+
+Bütün betikler araç klasörünün altındaki `log\root.log` dosyasına yazar. Klasör yazılamıyorsa (salt okunur paylaşımdan çalıştırma) sırayla `%LOCALAPPDATA%\SamePathCopy\log\root.log` ve `%TEMP%\SamePathCopy\log\root.log` denenir. `SAMEPATHCOPY_LOG` ortam değişkeni dosyanın yolunu doğrudan belirler. Günlük yazımı hiçbir koşulda kopyalamayı durdurmaz; yazılamazsa sessizce atlanır.
+
+Satır biçimi:
+
+```text
+2026-08-20 16:22:44.473 [INFO ] [41a4729c] [Panel] Demo hedefi 1  [yedek] → başarılı
+```
+
+Sırasıyla zaman damgası, seviye (`INFO` / `WARN` / `ERROR`), çalıştırma kimliği ve bileşen adı yer alır. Çalıştırma kimliği her süreç için üretilir; aynı dosyaya birden fazla kopyalama paralel yazdığında satırlar bu kimlikle ayrılır. Bileşenler: `Kopyala`, `Panel`, `Sihirbaz`, `Plan`, `Kuyruk`, `Kurulum`, `Kaldırma`, `Notepad++`.
+
+**Kopyalama panelinde görünen her satır günlüğe de yazılır**: hedef başına kaynak → hedef satırı, etkin parametreler, yedek yolu, `başarılı` / `hatalı` / `atlandı` durumu, robocopy hata kodu ve hata ayrıntıları, en sonda özet. Bunların yanında oturum başlığı (sürüm, kullanıcı, süreç kimliği), yerel node ve kökler, çözülen hedefler, sihirbazdan gelen seçim ve parametreler, hesaplanan plan, kuyruk birleştirme ve kurulum/kaldırma işlemleri de kaydedilir. `Günlüğü kopyala` düğmesinin ipucunda günlük dosyasının yolu yazar.
+
+`root.log` 5 MB'ı geçtiğinde `root.1.log`, `root.2.log`, `root.3.log` olarak kaydırılır; en eskisi silinir. Günlük klasörü sürüm denetimine girmez.
+
 ### Gruplar
 
 Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:

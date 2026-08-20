@@ -3,6 +3,9 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptDirectory 'SamePathCopy.Log.ps1')
+[void](Initialize-SamePathCopyLog -ScriptDirectory $scriptDirectory)
+Write-SamePathCopyLogStart -Component 'Kaldırma' -Summary 'Sağ tık menüsü kaldırma'
 $paths = @(
     'HKCU:\Software\Classes\*\shell\SamePathCopy',
     'HKCU:\Software\Classes\Directory\shell\SamePathCopy',
@@ -25,4 +28,5 @@ Get-ChildItem -LiteralPath $commandStoreRoot -ErrorAction SilentlyContinue |
     }
 
 Write-Host 'Aynı Dizine Kopyala sağ tık menüsü kaldırıldı.'
+Write-SamePathCopyLog -Component 'Kaldırma' -Message 'Explorer menüsü kaldırıldı.'
 & (Join-Path $scriptDirectory 'NotepadPlusPlus-Integration.ps1') -Action Uninstall -WhatIf:$WhatIfPreference
