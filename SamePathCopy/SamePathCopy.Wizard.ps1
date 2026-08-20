@@ -332,6 +332,42 @@ function Set-SamePathCopyWizardColumnState {
     }
 }
 
+function Get-SamePathCopyWizardToggleState {
+    param(
+        [object[]]$Rows,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [string]$Group
+    )
+
+    # Tek onay kutusunun üç durumu: hepsi işaretli ($true), hiçbiri ($false), karışık ($null).
+    # Yalnızca görünen (filtreye uyan) satırlar sayılır; ilgili satır yoksa $false döner.
+    $relevant = @(@($Rows) | Where-Object {
+        (-not $_.PSObject.Properties['Visible'] -or [bool]$_.Visible) -and
+        ([string]::IsNullOrWhiteSpace($Group) -or [string]$_.Group -eq $Group)
+    })
+    if ($relevant.Count -eq 0) { return $false }
+    $checked = @($relevant | Where-Object { [bool]$_.Controls[$Key].IsChecked }).Count
+    if ($checked -eq 0) { return $false }
+    if ($checked -eq $relevant.Count) { return $true }
+    return $null
+}
+
+function Set-SamePathCopyWizardRowsState {
+    param(
+        [object[]]$Rows,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][bool]$Value,
+        [string]$Group
+    )
+
+    # Toplu onay kutusuna basıldığında uygulanan iş: filtre dışındaki ve gruba ait olmayan satırlara dokunulmaz.
+    foreach ($row in @($Rows)) {
+        if ($row.PSObject.Properties['Visible'] -and -not [bool]$row.Visible) { continue }
+        if (-not [string]::IsNullOrWhiteSpace($Group) -and [string]$row.Group -ne $Group) { continue }
+        $row.Controls[$Key].IsChecked = $Value
+    }
+}
+
 function Test-SamePathCopyWizardRowMatch {
     param(
         [Parameter(Mandatory = $true)]$Row,
@@ -556,21 +592,25 @@ function Show-SamePathCopyWizard {
         $script:wizardSelectionCountText.Text = $text
     }
 
-    # Her onay kutusu kolonunun başlığının altına, o kolonun tamamını işaretleyen/temizleyen iki küçük ikon konur.
-    # Hangi kolonun hangi yöne çevrileceği düğmenin Tag değerinde taşınır; işleyici tek ve paylaşımlıdır.
-    $columnToggleHandler = {
-        param($sender, $eventArgs)
-        $tag = $sender.Tag
-        Set-SamePathCopyWizardColumnState -Rows $script:wizardRows -Key ([string]$tag.Key) -Value ([bool]$tag.Value)
+    # Kolon başlığının altında o kolonun tamamını çeviren tek bir onay kutusu durur: hepsi işaretliyse
+    # işaretli, hiçbiri değilse boş, karışıksa belirsiz görünür. Basıldığında hepsi işaretlenir ya da temizlenir.
+    # Toplu kutular ve grup kutuları aynı listede tutulur; satır değiştiğinde hepsinin durumu yenilenir.
+    $script:wizardBulkToggles = New-Object System.Collections.Generic.List[object]
+
+    $script:wizardRefreshBulkToggles = {
+        foreach ($toggle in $script:wizardBulkToggles) {
+            $toggle.CheckBox.IsChecked = Get-SamePathCopyWizardToggleState -Rows $script:wizardRows -Key ([string]$toggle.Key) -Group ([string]$toggle.Group)
+        }
     }
 
-    $groupToggleHandler = {
+    $bulkToggleHandler = {
         param($sender, $eventArgs)
         $tag = $sender.Tag
-        foreach ($row in $script:wizardRows) {
-            if ([string]$row.Group -ne [string]$tag.Group) { continue }
-            $row.Controls['Selected'].IsChecked = [bool]$tag.Value
-        }
+        # Hedef değer satırlardan hesaplanır: hepsi işaretliyse temizle, değilse hepsini işaretle.
+        $currentState = Get-SamePathCopyWizardToggleState -Rows $script:wizardRows -Key ([string]$tag.Key) -Group ([string]$tag.Group)
+        Set-SamePathCopyWizardRowsState -Rows $script:wizardRows -Key ([string]$tag.Key) -Value (-not ($currentState -eq $true)) -Group ([string]$tag.Group)
+        & $script:wizardRefreshBulkToggles
+        & $script:wizardUpdateSelectionCount
     }
 
     $script:wizardUpdateSelectionCount = $updateSelectionCount
@@ -581,32 +621,26 @@ function Show-SamePathCopyWizard {
         Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Erişim yoklaması: {0} hedef, {1} erişilemez" -f $script:wizardRows.Count, $unreachable)
     }
 
-    $addColumnToggles = {
+    $addColumnToggle = {
         param([int]$Column, [string]$Key, [string]$Label)
 
-        $panel = New-Object System.Windows.Controls.StackPanel
-        $panel.Orientation = 'Horizontal'
-        $panel.HorizontalAlignment = 'Center'
-        foreach ($toggle in @(
-            [pscustomobject]@{ Glyph = '☑'; Value = $true; ToolTip = "Bütün hedeflerde '$Label' işaretle" }
-            [pscustomobject]@{ Glyph = '☐'; Value = $false; ToolTip = "Bütün hedeflerde '$Label' işaretini kaldır" }
-        )) {
-            $button = New-Object System.Windows.Controls.Button
-            $button.Style = $script:wizardWindow.FindResource('IconButton')
-            $button.Content = [string]$toggle.Glyph
-            $button.ToolTip = [string]$toggle.ToolTip
-            $button.Tag = [pscustomobject]@{ Key = $Key; Value = [bool]$toggle.Value }
-            $button.Add_Click($columnToggleHandler)
-            [void]$panel.Children.Add($button)
-        }
-        [System.Windows.Controls.Grid]::SetRow($panel, 1)
-        [System.Windows.Controls.Grid]::SetColumn($panel, $Column)
-        [void]$targetGrid.Children.Add($panel)
+        $toggleBox = New-Object System.Windows.Controls.CheckBox
+        $toggleBox.Style = $script:wizardWindow.FindResource('ModernCheckBox')
+        $toggleBox.IsThreeState = $true
+        $toggleBox.HorizontalAlignment = 'Center'
+        $toggleBox.VerticalAlignment = 'Center'
+        $toggleBox.ToolTip = "Bütün hedeflerde '$Label' işaretini aç/kapat"
+        $toggleBox.Tag = [pscustomobject]@{ Key = $Key; Group = '' }
+        $toggleBox.Add_Click($bulkToggleHandler)
+        [System.Windows.Controls.Grid]::SetRow($toggleBox, 1)
+        [System.Windows.Controls.Grid]::SetColumn($toggleBox, $Column)
+        [void]$targetGrid.Children.Add($toggleBox)
+        $script:wizardBulkToggles.Add([pscustomobject]@{ Key = $Key; Group = ''; CheckBox = $toggleBox })
     }
 
-    & $addColumnToggles 0 'Selected' 'Gönder'
+    & $addColumnToggle 0 'Selected' 'Gönder'
     foreach ($optionDefinition in $optionDefinitions) {
-        & $addColumnToggles ($firstOptionColumn + $optionDefinitions.IndexOf($optionDefinition)) ([string]$optionDefinition.Name) ([string]$optionDefinition.Header)
+        & $addColumnToggle ($firstOptionColumn + $optionDefinitions.IndexOf($optionDefinition)) ([string]$optionDefinition.Name) ([string]$optionDefinition.Header)
     }
 
     # Veri satırları iki başlık satırının (kolon adları ve toplu seçim ikonları) ardından başlar.
@@ -636,8 +670,12 @@ function Show-SamePathCopyWizard {
         $selectedBox.IsChecked = [bool]$entry.Selected
         $selectedBox.HorizontalAlignment = 'Center'
         $selectedBox.VerticalAlignment = 'Center'
-        $selectedBox.Add_Checked($updateSelectionCount)
-        $selectedBox.Add_Unchecked($updateSelectionCount)
+        $rowStateChanged = {
+            & $script:wizardUpdateSelectionCount
+            & $script:wizardRefreshBulkToggles
+        }
+        $selectedBox.Add_Checked($rowStateChanged)
+        $selectedBox.Add_Unchecked($rowStateChanged)
         [System.Windows.Controls.Grid]::SetRow($selectedBox, $rowIndex)
         [System.Windows.Controls.Grid]::SetColumn($selectedBox, 0)
         [void]$targetGrid.Children.Add($selectedBox)
@@ -683,6 +721,9 @@ function Show-SamePathCopyWizard {
             $optionBox.HorizontalAlignment = 'Center'
             $optionBox.VerticalAlignment = 'Center'
             $optionBox.ToolTip = [string]$optionDefinition.Description
+            # Hedef başına parametre değişince kolon başlığındaki toplu kutu da güncellenir.
+            $optionBox.Add_Checked($rowStateChanged)
+            $optionBox.Add_Unchecked($rowStateChanged)
             [System.Windows.Controls.Grid]::SetRow($optionBox, $rowIndex)
             [System.Windows.Controls.Grid]::SetColumn($optionBox, $optionColumn)
             [void]$targetGrid.Children.Add($optionBox)
@@ -710,6 +751,8 @@ function Show-SamePathCopyWizard {
     $script:wizardFilterBox.Add_TextChanged({
         [void](Set-SamePathCopyWizardRowFilter -Rows $script:wizardRows -Filter $script:wizardFilterBox.Text)
         & $script:wizardUpdateSelectionCount
+        # Toplu kutular yalnızca görünen satırlara göre durum gösterir; filtre değişince yenilenir.
+        & $script:wizardRefreshBulkToggles
     })
 
     # Grup başına toplu seçim: her grup için işaretle/temizle ikon çifti.
@@ -732,20 +775,18 @@ function Show-SamePathCopyWizard {
         $chipText.Style = $window.FindResource('MutedText')
         $chipText.Text = $groupName
         $chipText.VerticalAlignment = 'Center'
-        $chipText.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+        $chipText.Margin = New-Object System.Windows.Thickness(0, 0, 7, 0)
+        $groupToggleBox = New-Object System.Windows.Controls.CheckBox
+        $groupToggleBox.Style = $window.FindResource('ModernCheckBox')
+        $groupToggleBox.IsThreeState = $true
+        $groupToggleBox.VerticalAlignment = 'Center'
+        $groupToggleBox.ToolTip = "$groupName grubundaki bilgisayarların seçimini aç/kapat"
+        $groupToggleBox.Tag = [pscustomobject]@{ Key = 'Selected'; Group = [string]$groupName }
+        $groupToggleBox.Add_Click($bulkToggleHandler)
+        # Onay kutusu adın solunda durur: tek tıkla grubun tamamı seçilir ya da bırakılır.
+        [void]$chipPanel.Children.Add($groupToggleBox)
         [void]$chipPanel.Children.Add($chipText)
-        foreach ($toggle in @(
-            [pscustomobject]@{ Glyph = '☑'; Value = $true; ToolTip = "$groupName grubundaki bütün bilgisayarları seç" }
-            [pscustomobject]@{ Glyph = '☐'; Value = $false; ToolTip = "$groupName grubundaki seçimleri kaldır" }
-        )) {
-            $groupButton = New-Object System.Windows.Controls.Button
-            $groupButton.Style = $window.FindResource('IconButton')
-            $groupButton.Content = [string]$toggle.Glyph
-            $groupButton.ToolTip = [string]$toggle.ToolTip
-            $groupButton.Tag = [pscustomobject]@{ Group = [string]$groupName; Value = [bool]$toggle.Value }
-            $groupButton.Add_Click($groupToggleHandler)
-            [void]$chipPanel.Children.Add($groupButton)
-        }
+        $script:wizardBulkToggles.Add([pscustomobject]@{ Key = 'Selected'; Group = [string]$groupName; CheckBox = $groupToggleBox })
         $groupChip.Child = $chipPanel
         [void]$groupTogglePanel.Children.Add($groupChip)
     }

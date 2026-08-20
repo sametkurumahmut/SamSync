@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- Sihirbazdaki toplu seçim ikon çiftleri (`☑` / `☐`) tek onay kutusuna indirildi: hem kolon başlıklarında hem grup çiplerinde. Kutu üç durumlu — hepsi işaretli, hiçbiri, karışık — ve basıldığında hepsini işaretler ya da temizler. Satırlar değiştikçe ve filtre uygulandıkça durumu kendini güncelliyor.
+
 - Notepad++ sekme menüsünde gruplar da birbirinden ayırıcıyla ayrılıyor: her grubun önüne bir ayırıcı konuyor, grubun kendi girdisi ile makineleri aynı bölümde kalıyor.
 - Notepad++ sekme menüsünde de bölümler ayırıcıyla ayrılıyor (`tabContextMenu.xml` içine `<Item id="0" />` yazılıyor): `Tümü` | sihirbaz girdileri | geri alma | profiller | gruplar | tek makineler.
 - Kaldırma, eklenen ayırıcıları da temizliyor: yönetilen girdilerin klasör adı toplanıp o klasördeki `id="0"` girdileri kaldırılıyor (config.json'a ihtiyaç duymadan).

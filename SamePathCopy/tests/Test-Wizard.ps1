@@ -90,16 +90,46 @@ try {
     $rootBackupPath = Get-SamePathCopyBackupPath -Destination '\\10.10.1.11\Sim\ActiveRelease' -Address '10.10.1.11' -NetworkRoot 'Sim\ActiveRelease' -Stamp '20260820-101500'
     Assert-Equal "\\10.10.1.11\Sim\ActiveRelease\$(Get-SamePathCopyBackupFolderName)\20260820-101500" $rootBackupPath 'Kök hedefi için yedek yolu yanlış.'
 
-    # Kolon başlığındaki toplu seçim ikonları yalnızca kendi kolonunu değiştirmeli.
+    # Kolon başlığındaki tek onay kutusu: üç durum (hepsi / hiçbiri / karışık) ve toplu uygulama.
+    function New-FakeRow {
+        param([string]$Id, [string]$Group, [bool]$Selected, [bool]$Backup, [bool]$Mirror, [bool]$Visible = $true)
+        return [pscustomobject]@{
+            Id = $Id
+            Group = $Group
+            Visible = $Visible
+            Controls = @{
+                Selected = [pscustomobject]@{ IsChecked = $Selected }
+                Backup = [pscustomobject]@{ IsChecked = $Backup }
+                Mirror = [pscustomobject]@{ IsChecked = $Mirror }
+            }
+        }
+    }
+
     $fakeRows = @(
-        [pscustomobject]@{ Id = 'IG1'; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $true }; Backup = [pscustomobject]@{ IsChecked = $false }; Mirror = [pscustomobject]@{ IsChecked = $false } } }
-        [pscustomobject]@{ Id = 'IG2'; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $true }; Backup = [pscustomobject]@{ IsChecked = $false }; Mirror = [pscustomobject]@{ IsChecked = $true } } }
+        New-FakeRow -Id 'IG1' -Group 'Unit1' -Selected $true -Backup $false -Mirror $false
+        New-FakeRow -Id 'IG2' -Group 'Unit1' -Selected $true -Backup $false -Mirror $true
+        New-FakeRow -Id 'IG3' -Group 'Unit2' -Selected $false -Backup $false -Mirror $false
     )
-    Set-SamePathCopyWizardColumnState -Rows $fakeRows -Key 'Backup' -Value $true
-    Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Toplu seçim kolonun ilk satırını işaretlemedi.'
-    Assert-Equal $true ([bool]$fakeRows[1].Controls['Backup'].IsChecked) 'Toplu seçim kolonun bütün satırlarını işaretlemedi.'
-    Assert-Equal $true ([bool]$fakeRows[0].Controls['Selected'].IsChecked) 'Toplu seçim başka kolonu değiştirdi.'
-    Assert-Equal $true ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu seçim başka kolonu değiştirdi.'
+
+    Assert-Equal $null (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Selected') 'Karışık durumda toggle belirsiz olmalı.'
+    Assert-Equal $false (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Backup') 'Hiçbiri işaretli değilken toggle boş olmalı.'
+    Assert-Equal $true (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Selected' -Group 'Unit1') 'Grubun tamamı işaretliyken toggle işaretli olmalı.'
+    Assert-Equal $false (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Selected' -Group 'Unit2') 'Grup seçili değilken toggle boş olmalı.'
+    Assert-Equal $false (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Selected' -Group 'YokGrup') 'Satırı olmayan grup için toggle boş olmalı.'
+
+    # Toplu uygulama yalnızca kendi kolonunu ve verilen grubu değiştirir.
+    Set-SamePathCopyWizardRowsState -Rows $fakeRows -Key 'Backup' -Value $true
+    Assert-Equal $true (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Backup') 'Toplu uygulama kolonu işaretlemedi.'
+    Assert-Equal $true ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu uygulama başka kolonu değiştirdi.'
+    Set-SamePathCopyWizardRowsState -Rows $fakeRows -Key 'Selected' -Value $true -Group 'Unit2'
+    Assert-Equal $true (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Selected') 'Grup uygulaması sonrası hepsi işaretli olmalı.'
+
+    # Filtre dışındaki (gizli) satırlar ne sayıma ne de toplu uygulamaya girer.
+    $fakeRows[0].Visible = $false
+    $fakeRows[0].Controls['Backup'].IsChecked = $true
+    Set-SamePathCopyWizardRowsState -Rows $fakeRows -Key 'Backup' -Value $false
+    Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Gizli satır toplu uygulamadan etkilenmemeliydi.'
+    Assert-Equal $false (Get-SamePathCopyWizardToggleState -Rows $fakeRows -Key 'Backup') 'Gizli satır toggle durumuna karışmamalı.'
     Set-SamePathCopyWizardColumnState -Rows $fakeRows -Key 'Mirror' -Value $false
     Assert-Equal $false ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu temizleme kolonu boşaltmadı.'
     Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Toplu temizleme başka kolonu etkiledi.'
