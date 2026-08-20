@@ -39,7 +39,8 @@ function Get-WrittenShortcutsSignature {
 . (Join-Path $projectDirectory 'SamePathCopy.Common.ps1')
 $configuration = Get-SamePathCopyConfiguration -ConfigPath $configPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $configuration
-$expectedCommandCount = 1 + @(Get-EnabledSamePathCopyNodes -Configuration $configuration -ExcludeId $localIdentity.Id).Count
+$expectedEntries = @(Get-SamePathCopyMenuEntries -Configuration $configuration -ExcludeId $localIdentity.Id)
+$expectedCommandCount = $expectedEntries.Count
 
 try {
     [void](New-Item -ItemType Directory -Path $testDirectory)
@@ -87,6 +88,17 @@ try {
     Assert-Equal 1 @($tabMenu.NotepadPlus.TabContextMenu.Item | Where-Object { $_.MenuItemName -eq 'Close' }).Count 'Mevcut sekme menüsü korunmadı.'
     if ($managedCommands[0].'#text' -notlike '*$(FULL_CURRENT_PATH)*') {
         throw 'Aktif dosya yolu Notepad++ komutuna bağlanmadı.'
+    }
+
+    # Sekme menüsü, Explorer menüsüyle aynı sırayı ve etiketleri kullanmalı (grup girdileri kendi makinelerinin başında).
+    Assert-Equal (@($expectedEntries | ForEach-Object { $_.Id }) -join ' > ') (@($managedCommands | ForEach-Object { ([string]$_.name) -replace '^\[SamePathCopy\] ', '' }) -join ' > ') 'Notepad++ komut sırası menü sırasından farklı.'
+    Assert-Equal (@($expectedEntries | ForEach-Object { $_.Label }) -join ' > ') (@($managedItems | ForEach-Object { [string]$_.ItemNameAs }) -join ' > ') 'Sekme menüsü etiketleri menü sırasından farklı.'
+    foreach ($groupEntry in @($expectedEntries | Where-Object { $_.Kind -eq 'group' })) {
+        $groupCommand = @($managedCommands | Where-Object { $_.name -eq "[SamePathCopy] $($groupEntry.Id)" })
+        Assert-Equal 1 $groupCommand.Count "$($groupEntry.Id) grup komutu eklenmedi."
+        if (([string]$groupCommand[0].'#text') -notlike "*-TargetId $($groupEntry.Id) *") {
+            throw "$($groupEntry.Id) grup komutu grup hedefini geçirmiyor: $($groupCommand[0].'#text')"
+        }
     }
 
     # config.json içindeki notepadPlusPlusShortcuts girdisi komuta klavye kısayolu olarak işlenmeli.

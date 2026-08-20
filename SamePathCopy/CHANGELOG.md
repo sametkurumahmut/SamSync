@@ -2,6 +2,10 @@
 
 ## Yayımlanmamış
 
+- Node'lara `group` alanı eklendi. Menüde her grup için o gruptaki bütün makinelere gönderen bir girdi oluşuyor; grup girdisi kendi makinelerinin başında duruyor ve komutlara `-TargetId group:<ad>` olarak geçiyor. Yerel bilgisayar kendi grubunun hedeflerinden de çıkarıldığı için her eğitmen `Unit1` gibi bir girdiyle yalnızca kendi setine gönderiyor.
+- İkon artık yalnızca toplu girdilerde (`Tümü` ve gruplar) görünüyor; tek makine girdileri ikonsuz.
+- Explorer ve Notepad++ menüleri aynı `Get-SamePathCopyMenuEntries` listesinden üretiliyor; sıra ve etiketler iki menüde birebir aynı.
+- `config.json` içindeki 12 `Unit*` node'u kendi grubuna alındı.
 - Yerel node tespiti kademeli hâle geldi: `SAMEPATHCOPY_NODE_ID` ortam değişkeni, IP adresi eşleşmesi, bilgisayar adı eşleşmesi ve son ölçüt olarak `localRoot` dizininin bu bilgisayarda var olması. IP eşleşmesi ada göre eşleşmeyi ezdiği için aynı `config.json` bütün bilgisayarlara değiştirilmeden dağıtılabiliyor.
 - Çoklu eşleşme hatası hangi ölçütte oluştuğunu ve nasıl çözüleceğini söylüyor.
 - `config.json` içindeki üç `Unit*Trainer` node'undan bu bilgisayara ait `localNames` değeri kaldırıldı; kurulum artık `Root` olarak tanınıyor.

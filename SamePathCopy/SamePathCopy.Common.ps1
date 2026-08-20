@@ -68,6 +68,17 @@ function Get-SamePathCopyConfiguration {
                 }
             }
         }
+        if ($node.PSObject.Properties['group']) {
+            # Grup adı menüde etiket, komutlarda ise "group:<ad>" hedef kimliği olarak kullanıldığı için node id ile aynı karakterlerle sınırlıdır.
+            $groupName = ([string]$node.group).Trim()
+            if ($groupName -and -not [System.Text.RegularExpressions.Regex]::IsMatch(
+                    $groupName,
+                    '^[A-Za-z0-9._-]+$',
+                    [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)) {
+                throw "Node group değeri büyük/küçük İngilizce harf, rakam, nokta, alt çizgi ve tire içerebilir: '$groupName'"
+            }
+            $node.group = $groupName
+        }
     }
 
     if (-not $config.PSObject.Properties['copy'] -or -not $config.copy) {
@@ -181,6 +192,82 @@ function Get-LocalSamePathCopyIdentity {
 
     $addressesText = @($LocalAddresses) -join ', '
     throw "Bu bilgisayar config içindeki hiçbir node ile eşleşmedi. Bilgisayar adı: $LocalMachineName; IP: $addressesText. nodes listesine bu bilgisayarı ekleyin."
+}
+
+function Get-SamePathCopyNodeGroup {
+    param([Parameter(Mandatory = $true)]$Node)
+
+    if (-not $Node.PSObject.Properties['group']) { return '' }
+    return ([string]$Node.group).Trim()
+}
+
+function Get-SamePathCopyMenuEntries {
+    param(
+        [Parameter(Mandatory = $true)]$Configuration,
+        [string]$ExcludeId
+    )
+
+    # Menü sırası: Tümü, ardından her grup kendi makinelerinin başında, en sonda gruba ait olmayan makineler.
+    # Explorer ve Notepad++ menüleri aynı listeyi kullandığı için sıra ve etiketler her iki menüde birebir aynıdır.
+    $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $ExcludeId)
+    $entries = @([pscustomobject]@{ Kind = 'all'; Id = 'all'; Label = [string]$Configuration.allLabel; IsAggregate = $true })
+
+    $groupKeys = New-Object System.Collections.Generic.List[string]
+    $groupLabels = @{}
+    $groupMembers = @{}
+    foreach ($target in $targets) {
+        $groupName = Get-SamePathCopyNodeGroup -Node $target
+        if ([string]::IsNullOrWhiteSpace($groupName)) { continue }
+        $groupKey = $groupName.ToLowerInvariant()
+        if (-not $groupLabels.ContainsKey($groupKey)) {
+            $groupLabels[$groupKey] = $groupName
+            $groupMembers[$groupKey] = New-Object System.Collections.Generic.List[object]
+            $groupKeys.Add($groupKey)
+        }
+        $groupMembers[$groupKey].Add($target)
+    }
+
+    foreach ($groupKey in $groupKeys) {
+        $entries += [pscustomobject]@{ Kind = 'group'; Id = "group:$($groupLabels[$groupKey])"; Label = [string]$groupLabels[$groupKey]; IsAggregate = $true }
+        foreach ($member in $groupMembers[$groupKey]) {
+            $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$member.id; Label = [string]$member.name; IsAggregate = $false }
+        }
+    }
+    foreach ($target in $targets) {
+        if (-not [string]::IsNullOrWhiteSpace((Get-SamePathCopyNodeGroup -Node $target))) { continue }
+        $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$target.id; Label = [string]$target.name; IsAggregate = $false }
+    }
+    return $entries
+}
+
+function Resolve-SamePathCopyTargets {
+    param(
+        [Parameter(Mandatory = $true)]$Configuration,
+        [Parameter(Mandatory = $true)][string]$TargetId,
+        [Parameter(Mandatory = $true)]$LocalIdentity
+    )
+
+    $targets = @(Get-EnabledSamePathCopyNodes -Configuration $Configuration -ExcludeId $LocalIdentity.Id)
+    if ($TargetId -eq 'all') { return $targets }
+
+    if ($TargetId.StartsWith('group:', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $groupName = $TargetId.Substring(6).Trim()
+        if ([string]::IsNullOrWhiteSpace($groupName)) { throw "Grup adı verilmedi: $TargetId" }
+        $groupTargets = @($targets | Where-Object { (Get-SamePathCopyNodeGroup -Node $_).Equals($groupName, [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($groupTargets.Count -eq 0) {
+            throw "'$groupName' grubunda bu bilgisayar dışında etkin hedef yok."
+        }
+        return $groupTargets
+    }
+
+    $nodeTargets = @($targets | Where-Object { [string]$_.id -eq $TargetId })
+    if ($nodeTargets.Count -eq 0) {
+        if ($TargetId -eq $LocalIdentity.Id) {
+            throw "Kaynak bilgisayar hedef olarak seçilemez: $($LocalIdentity.Name)"
+        }
+        throw "Etkin hedef bulunamadı: $TargetId"
+    }
+    return $nodeTargets
 }
 
 function Get-SamePathCopyDestination {

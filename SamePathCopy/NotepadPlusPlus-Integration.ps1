@@ -412,7 +412,7 @@ function Update-NotepadPlusPlusConfiguration {
         [Parameter(Mandatory = $true)]$Target,
         [Parameter(Mandatory = $true)][string]$RequestedAction,
         $Configuration,
-        [object[]]$Targets,
+        [object[]]$MenuEntries,
         [string]$ResolvedConfigPath,
         [string]$QueueScriptPath,
         [hashtable]$ShortcutAssignments = @{}
@@ -465,10 +465,7 @@ function Update-NotepadPlusPlusConfiguration {
         else {
             ''
         }
-        $entries = @([pscustomobject]@{ Id = 'all'; Label = [string]$Configuration.allLabel }) + @(
-            $Targets | ForEach-Object { [pscustomobject]@{ Id = [string]$_.id; Label = [string]$_.name } }
-        )
-        foreach ($entry in $entries) {
+        foreach ($entry in $MenuEntries) {
             $commandName = "$commandPrefix$($entry.Id)"
             $commandText = ('"{0}" -nop -w hidden -ep bypass -f "{1}" -TargetId {2} -SourcePath "$(FULL_CURRENT_PATH)"{3}' -f $powershellExe, $QueueScriptPath, $entry.Id, $configPathArgument)
             if ($commandText.Length -gt $notepadPlusPlusCommandLimit) {
@@ -520,7 +517,7 @@ if ($notepadPlusPlusTargets.Count -eq 0) {
 }
 
 $configuration = $null
-$enabledTargets = @()
+$menuEntries = @()
 $resolvedConfigPath = $null
 $queueScriptPath = $null
 $shortcutAssignments = @{}
@@ -529,10 +526,10 @@ if ($Action -eq 'Install') {
     . (Join-Path $scriptDirectory 'SamePathCopy.Common.ps1')
     $configuration = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
     $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $configuration
-    $enabledTargets = @(Get-EnabledSamePathCopyNodes -Configuration $configuration -ExcludeId $localIdentity.Id)
+    $menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $configuration -ExcludeId $localIdentity.Id)
     $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
     $queueScriptPath = (Resolve-Path -LiteralPath (Join-Path $scriptDirectory 'Queue-SamePathCopy.ps1')).Path
-    $shortcutAssignments = Get-NotepadPlusPlusShortcutAssignments -Configuration $configuration -KnownIds (@('all') + @($enabledTargets | ForEach-Object { [string]$_.id }))
+    $shortcutAssignments = Get-NotepadPlusPlusShortcutAssignments -Configuration $configuration -KnownIds @($menuEntries | ForEach-Object { [string]$_.Id })
 }
 
 foreach ($target in $notepadPlusPlusTargets) {
@@ -540,7 +537,7 @@ foreach ($target in $notepadPlusPlusTargets) {
         Write-Warning "Notepad++ $($target.Version), özelleştirilebilir sekme menüsünü desteklemiyor (en az 8.4.8 gerekli): $($target.InstallationDirectory)"
         continue
     }
-    Update-NotepadPlusPlusConfiguration -Target $target -RequestedAction $Action -Configuration $configuration -Targets $enabledTargets -ResolvedConfigPath $resolvedConfigPath -QueueScriptPath $queueScriptPath -ShortcutAssignments $shortcutAssignments
+    Update-NotepadPlusPlusConfiguration -Target $target -RequestedAction $Action -Configuration $configuration -MenuEntries $menuEntries -ResolvedConfigPath $resolvedConfigPath -QueueScriptPath $queueScriptPath -ShortcutAssignments $shortcutAssignments
 }
 
 if (Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue) {

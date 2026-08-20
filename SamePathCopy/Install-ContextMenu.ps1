@@ -64,8 +64,8 @@ function Remove-RegistryTree {
 
 $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $config
-$targets = @(Get-EnabledSamePathCopyNodes -Configuration $config -ExcludeId $localIdentity.Id)
-if ($targets.Count -eq 0) {
+$menuEntries = @(Get-SamePathCopyMenuEntries -Configuration $config -ExcludeId $localIdentity.Id)
+if (@($menuEntries | Where-Object { $_.Kind -eq 'node' }).Count -eq 0) {
     throw "Menüye eklenecek etkin hedef yok."
 }
 
@@ -97,19 +97,17 @@ foreach ($menuRoot in $menuRoots) {
     Set-RegistryString -Path $menuRoot -Name 'SubCommands' -Value ''
 
     $submenuShellRoot = Join-Path $menuRoot 'shell'
-    $allKey = Join-Path $submenuShellRoot '000_All'
-    Set-RegistryString -Path $allKey -Name 'MUIVerb' -Value ([string]$config.allLabel)
-    Set-RegistryString -Path $allKey -Name 'Icon' -Value ('"{0}",0' -f $iconPath)
-    Set-RegistryString -Path $allKey -Name 'MultiSelectModel' -Value 'Document'
-    Set-RegistryString -Path (Join-Path $allKey 'command') -Name '' -Value ('"{0}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" -SourcePath "%1" -TargetId "all" -ConfigPath "{2}"' -f $powershellExe, $queueScript, $resolvedConfigPath)
-
-    $menuOrder = 10
-    foreach ($target in $targets) {
-        $targetKey = Join-Path $submenuShellRoot ("{0:D3}_{1}" -f $menuOrder, $target.id)
-        Set-RegistryString -Path $targetKey -Name 'MUIVerb' -Value ([string]$target.name)
-        Set-RegistryString -Path $targetKey -Name 'Icon' -Value ('"{0}",0' -f $iconPath)
-        Set-RegistryString -Path $targetKey -Name 'MultiSelectModel' -Value 'Document'
-        Set-RegistryString -Path (Join-Path $targetKey 'command') -Name '' -Value ('"{0}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" -SourcePath "%1" -TargetId "{2}" -ConfigPath "{3}"' -f $powershellExe, $queueScript, $target.id, $resolvedConfigPath)
+    $menuOrder = 0
+    foreach ($entry in $menuEntries) {
+        # Kayıt anahtarı adında iki nokta üst üste kullanılmadığı için "group:Unit1" -> "group_Unit1".
+        $entryKey = Join-Path $submenuShellRoot ("{0:D3}_{1}" -f $menuOrder, ($entry.Id -replace ':', '_'))
+        Set-RegistryString -Path $entryKey -Name 'MUIVerb' -Value ([string]$entry.Label)
+        # İkon yalnızca toplu girdilerde (Tümü ve gruplar) durur; tek makine girdileri ikonsuz kalarak menüde ayrışır.
+        if ($entry.IsAggregate) {
+            Set-RegistryString -Path $entryKey -Name 'Icon' -Value ('"{0}",0' -f $iconPath)
+        }
+        Set-RegistryString -Path $entryKey -Name 'MultiSelectModel' -Value 'Document'
+        Set-RegistryString -Path (Join-Path $entryKey 'command') -Name '' -Value ('"{0}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" -SourcePath "%1" -TargetId "{2}" -ConfigPath "{3}"' -f $powershellExe, $queueScript, $entry.Id, $resolvedConfigPath)
         $menuOrder += 10
     }
 }

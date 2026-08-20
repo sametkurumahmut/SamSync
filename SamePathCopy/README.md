@@ -44,6 +44,48 @@ C:\Fraps\README.HTM
 
 Bu sayede farklı sürücülerde aynı ada sahip yollar çakışmaz. UNC kaynakları `networkRoot\UNC\sunucu\paylaşım\...` altında saklanır.
 
+### Gruplar
+
+Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:
+
+```json
+{
+  "id": "Unit1IG1",
+  "group": "Unit1",
+  "name": "IG1 - 10.10.2.11",
+  "address": "10.10.1.11",
+  "localRoot": "C:\\Sim\\ActiveRelease",
+  "networkRoot": "Sim\\ActiveRelease",
+  "enabled": true
+}
+```
+
+Menü sırası: en üstte `Tümü`, ardından her grup girdisi kendi makinelerinin başında, en sonda gruba ait olmayan makineler:
+
+```text
+Tümü                        (ikonlu)
+Unit1                  (ikonlu)
+  Eğitmen - 10.10.1.10
+  IG1 - 10.10.2.11
+  IG2 - 10.10.2.12
+  IG3 - 10.10.2.13
+Unit2                  (ikonlu)
+  ...
+```
+
+İkon yalnızca toplu girdilerde (`Tümü` ve gruplar) durur; tek makine girdileri ikonsuzdur; böylece iki tür girdi menüde bakışta ayrışır.
+
+Grup girdileri komutlara `-TargetId group:Unit1` biçiminde geçer; `Queue-SamePathCopy.ps1` ve `Copy-SamePath.ps1` bu kimliği doğrudan kabul eder. Yerel bilgisayar kendi grubunun girdisinden de çıkarıldığı için, Unit1 eğitmeninde `Unit1` seçmek yalnızca o setin IG'lerine gönderir. Grubun bu bilgisayar dışında etkin üyesi kalmazsa grup girdisi menüde hiç oluşmaz.
+
+Klavye kısayolu da atanabilir; `notepadPlusPlusShortcuts` anahtarı grup kimliğini kabul eder:
+
+```json
+"notepadPlusPlusShortcuts": {
+    "all": "Ctrl+Alt+W",
+    "group:Unit1": "Ctrl+Alt+1"
+}
+```
+
 ### Birden fazla dosya ve klasör
 
 Explorer'da birden fazla dosya, birden fazla klasör veya karışık dosya/klasör seçimi yapılabilir. Seçimler kısa bir kuyrukta birleştirilir ve tek sonuç penceresinde bütün kaynak-hedef kopyalamaları gösterilir.
@@ -126,6 +168,7 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 - `name`: Menüde görünen serbest metindir.
 - `address`: IPv4 adresi veya DNS/Windows bilgisayar adıdır.
 - `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. IP adresi değişken olan (DHCP ya da Wi-Fi ile bağlanan) bilgisayarların tanınmasını sağlar. Aynı adı birden fazla node'a yazmak eşleşmeyi belirsizleştirir; o durumda ayrımı IP eşleşmesi veya `localRoot` varlığı yapar.
+- `group`: İsteğe bağlı grup adıdır. Aynı grup adını taşıyan node'lar için menüde tek tıkla o grubun tamamına gönderen bir girdi oluşur. Node kimliğiyle aynı karakterler kullanılabilir (`Unit1` gibi; boşluk yok). Büyük/küçük harf farkı gözetilmez.
 - `localRoot`: Bu bilgisayar kaynak olduğunda göreli yol hesabının başlangıcı olan, sürücü harfiyle başlayan mutlak yerel yoldur. Örnek: `E:\Samet`. Bu dizin dışındaki öğeler de tam yolları korunarak kopyalanabilir.
 - `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
 - `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.

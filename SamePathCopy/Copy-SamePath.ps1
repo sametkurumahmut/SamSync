@@ -121,16 +121,7 @@ function Invoke-Robocopy {
 
 $config = Get-SamePathCopyConfiguration -ConfigPath $ConfigPath
 $localIdentity = Get-LocalSamePathCopyIdentity -Configuration $config
-$targets = @(Get-EnabledSamePathCopyNodes -Configuration $config -ExcludeId $localIdentity.Id)
-if ($TargetId -ne 'all') {
-    $targets = @($targets | Where-Object { [string]$_.id -eq $TargetId })
-    if ($targets.Count -eq 0) {
-        if ($TargetId -eq $localIdentity.Id) {
-            throw "Kaynak bilgisayar hedef olarak seçilemez: $($localIdentity.Name)"
-        }
-        throw "Etkin hedef bulunamadı: $TargetId"
-    }
-}
+$targets = @(Resolve-SamePathCopyTargets -Configuration $config -TargetId $TargetId -LocalIdentity $localIdentity)
 if ($targets.Count -eq 0) {
     throw "Kopyalama için etkin hedef yok."
 }
