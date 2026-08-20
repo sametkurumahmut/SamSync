@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 1.2.0
 
 - Menüye `Wizard (son ayar)` girdisi eklendi (`-TargetId wizard:last`): sihirbaz penceresini açmadan, sihirbazda en son kaydedilen hedef seçimi ve parametrelerle kopyalamayı başlatır. Etiketi `wizardLastLabel` alanından değiştirilebilir.
 - Notepad++ kısayolu (`Ctrl+Alt+W`) `all` yerine `wizard:last` girdisine bağlandı: tek tuşla, hedef seçmeye uğraşmadan son ayarla gönderim yapılıyor. Kopyalama penceresi bu durumda `Son sihirbaz ayarı` etiketini gösteriyor.
