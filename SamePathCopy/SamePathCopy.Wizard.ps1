@@ -133,6 +133,19 @@ function Save-SamePathCopyWizardSettings {
     Move-Item -LiteralPath $temporaryPath -Destination $statePath -Force
 }
 
+function Set-SamePathCopyWizardColumnState {
+    param(
+        [object[]]$Rows,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][bool]$Value
+    )
+
+    # Kolon başlığındaki toplu seçim ikonlarının yaptığı iş; arayüzden ayrı sınanabilmesi için burada durur.
+    foreach ($row in @($Rows)) {
+        $row.Controls[$Key].IsChecked = $Value
+    }
+}
+
 function Get-SamePathCopyWizardBodyXaml {
     return @'
     <Grid Margin="20,18,20,18">
@@ -161,11 +174,8 @@ function Get-SamePathCopyWizardBodyXaml {
 
         <Grid Grid.Row="2" Margin="0,16,0,8">
             <TextBlock Style="{StaticResource SectionText}" Text="Hedefler" VerticalAlignment="Center" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" Margin="0,0,10,0" />
-                <Button x:Name="SelectAllButton" Style="{StaticResource GhostButton}" Content="Tümünü seç" />
-                <Button x:Name="SelectNoneButton" Style="{StaticResource GhostButton}" Content="Hiçbirini seçme" />
-            </StackPanel>
+            <TextBlock x:Name="SelectionCountText" Style="{StaticResource MutedText}" HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
         </Grid>
 
         <Border Grid.Row="3" Style="{StaticResource Card}" Padding="6">
@@ -178,7 +188,8 @@ function Get-SamePathCopyWizardBodyXaml {
                         <ColumnDefinition Width="104" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="30" />
+                        <RowDefinition Height="24" />
+                        <RowDefinition Height="26" />
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource ColumnHeaderText}" Text="Gönder"
                                HorizontalAlignment="Center" />
@@ -265,7 +276,44 @@ function Show-SamePathCopyWizard {
         $script:wizardSelectionCountText.Text = "{0} / {1} seçili" -f $selected, $script:wizardRows.Count
     }
 
-    $rowIndex = 1
+    # Her onay kutusu kolonunun başlığının altına, o kolonun tamamını işaretleyen/temizleyen iki küçük ikon konur.
+    # Hangi kolonun hangi yöne çevrileceği düğmenin Tag değerinde taşınır; işleyici tek ve paylaşımlıdır.
+    $columnToggleHandler = {
+        param($sender, $eventArgs)
+        $tag = $sender.Tag
+        Set-SamePathCopyWizardColumnState -Rows $script:wizardRows -Key ([string]$tag.Key) -Value ([bool]$tag.Value)
+    }
+
+    $addColumnToggles = {
+        param([int]$Column, [string]$Key, [string]$Label)
+
+        $panel = New-Object System.Windows.Controls.StackPanel
+        $panel.Orientation = 'Horizontal'
+        $panel.HorizontalAlignment = 'Center'
+        foreach ($toggle in @(
+            [pscustomobject]@{ Glyph = '☑'; Value = $true; ToolTip = "Bütün hedeflerde '$Label' işaretle" }
+            [pscustomobject]@{ Glyph = '☐'; Value = $false; ToolTip = "Bütün hedeflerde '$Label' işaretini kaldır" }
+        )) {
+            $button = New-Object System.Windows.Controls.Button
+            $button.Style = $script:wizardWindow.FindResource('IconButton')
+            $button.Content = [string]$toggle.Glyph
+            $button.ToolTip = [string]$toggle.ToolTip
+            $button.Tag = [pscustomobject]@{ Key = $Key; Value = [bool]$toggle.Value }
+            $button.Add_Click($columnToggleHandler)
+            [void]$panel.Children.Add($button)
+        }
+        [System.Windows.Controls.Grid]::SetRow($panel, 1)
+        [System.Windows.Controls.Grid]::SetColumn($panel, $Column)
+        [void]$targetGrid.Children.Add($panel)
+    }
+
+    & $addColumnToggles 0 'Selected' 'Gönder'
+    foreach ($optionDefinition in $optionDefinitions) {
+        & $addColumnToggles ($firstOptionColumn + $optionDefinitions.IndexOf($optionDefinition)) ([string]$optionDefinition.Name) ([string]$optionDefinition.Header)
+    }
+
+    # Veri satırları iki başlık satırının (kolon adları ve toplu seçim ikonları) ardından başlar.
+    $rowIndex = 2
     foreach ($target in $Targets) {
         $targetId = [string]$target.id
         $entry = $Settings.Targets[$targetId]
@@ -343,13 +391,6 @@ function Show-SamePathCopyWizard {
         [void]$globalPanel.Children.Add($globalBox)
         $globalBoxes[[string]$globalDefinition.Name] = $globalBox
     }
-
-    $window.FindName('SelectAllButton').Add_Click({
-        foreach ($row in $script:wizardRows) { $row.Controls['Selected'].IsChecked = $true }
-    })
-    $window.FindName('SelectNoneButton').Add_Click({
-        foreach ($row in $script:wizardRows) { $row.Controls['Selected'].IsChecked = $false }
-    })
 
     $window.FindName('CancelButton').Add_Click({ $script:wizardWindow.DialogResult = $false })
     $window.FindName('StartButton').Add_Click({

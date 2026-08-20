@@ -90,6 +90,20 @@ try {
     $rootBackupPath = Get-SamePathCopyBackupPath -Destination '\\10.10.1.11\Sim\ActiveRelease' -Address '10.10.1.11' -NetworkRoot 'Sim\ActiveRelease' -Stamp '20260820-101500'
     Assert-Equal "\\10.10.1.11\Sim\ActiveRelease\$(Get-SamePathCopyBackupFolderName)\20260820-101500" $rootBackupPath 'Kök hedefi için yedek yolu yanlış.'
 
+    # Kolon başlığındaki toplu seçim ikonları yalnızca kendi kolonunu değiştirmeli.
+    $fakeRows = @(
+        [pscustomobject]@{ Id = 'IG1'; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $true }; Backup = [pscustomobject]@{ IsChecked = $false }; Mirror = [pscustomobject]@{ IsChecked = $false } } }
+        [pscustomobject]@{ Id = 'IG2'; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $true }; Backup = [pscustomobject]@{ IsChecked = $false }; Mirror = [pscustomobject]@{ IsChecked = $true } } }
+    )
+    Set-SamePathCopyWizardColumnState -Rows $fakeRows -Key 'Backup' -Value $true
+    Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Toplu seçim kolonun ilk satırını işaretlemedi.'
+    Assert-Equal $true ([bool]$fakeRows[1].Controls['Backup'].IsChecked) 'Toplu seçim kolonun bütün satırlarını işaretlemedi.'
+    Assert-Equal $true ([bool]$fakeRows[0].Controls['Selected'].IsChecked) 'Toplu seçim başka kolonu değiştirdi.'
+    Assert-Equal $true ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu seçim başka kolonu değiştirdi.'
+    Set-SamePathCopyWizardColumnState -Rows $fakeRows -Key 'Mirror' -Value $false
+    Assert-Equal $false ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu temizleme kolonu boşaltmadı.'
+    Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Toplu temizleme başka kolonu etkiledi.'
+
     # Arayüz gerçekten açılıp tek bir sonuç nesnesi döndürmeli. Bu, olay işleyicilerinin betik kapsamını
     # görmesini ve WPF çağrılarının çıktı akışına sızmamasını (sonucu diziye çevirmemesini) doğrular.
     # WPF STA kipi gerektirdiği için ayrı bir powershell -sta süreci kullanılır.
