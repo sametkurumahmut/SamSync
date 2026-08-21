@@ -129,7 +129,12 @@ foreach ($menuRoot in $menuRoots) {
     Remove-RegistryTree -Path $menuRoot
     Set-RegistryString -Path $menuRoot -Name 'MUIVerb' -Value ([string]$config.menuTitle)
     Set-RegistryString -Path $menuRoot -Name 'Icon' -Value ('"{0}",0' -f $iconPath)
-    Set-RegistryString -Path $menuRoot -Name 'MultiSelectModel' -Value 'Document'
+    # Seçim sınırı: Windows, komut satırıyla çalışan (legacy) bir fiili seçim modeline göre gizliyor.
+    # "Document" 15 öğede kesiliyor (16 dosya seçince menü girdisi hiç görünmüyordu), "Player" 100 öğeye
+    # kadar gösteriyor. Explorer fiili yine dosya başına bir kez çalıştırıyor; Queue-SamePathCopy.ps1
+    # bu çağrıları tek bir kopyalamada topladığı için Player bu araç için doğru model.
+    # Kaynak: learn.microsoft.com/windows/win32/shell/how-to-employ-the-verb-selection-model
+    Set-RegistryString -Path $menuRoot -Name 'MultiSelectModel' -Value 'Player'
     Set-RegistryString -Path $menuRoot -Name 'SubCommands' -Value ''
 
     $submenuShellRoot = Join-Path $menuRoot 'shell'
@@ -184,7 +189,9 @@ foreach ($menuRoot in $menuRoots) {
         if ($WithIcon) {
             Set-RegistryString -Path $Path -Name 'Icon' -Value ('"{0}",0' -f $iconPath)
         }
-        Set-RegistryString -Path $Path -Name 'MultiSelectModel' -Value 'Document'
+        # Alt menüdeki fiiller de aynı modeli taşımalı: kök "Player" olsa da girdinin kendisi "Document"
+        # kalırsa 15 öğeden sonra alt menüde görünmüyor.
+        Set-RegistryString -Path $Path -Name 'MultiSelectModel' -Value 'Player'
         if ($SeparatorBefore) {
             Set-RegistryDword -Path $Path -Name 'CommandFlags' -Value $separatorBeforeFlag
         }

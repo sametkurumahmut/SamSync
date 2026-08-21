@@ -244,7 +244,23 @@ Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için,
 }
 ```
 
+### Kaç dosya seçilebilir (100 öğe sınırı)
+
+Windows, komut satırıyla çalışan bir sağ tık fiilini **seçili öğe sayısına** göre gizler. Sınır fiilin seçim modeline (`MultiSelectModel`) bağlıdır ve [Microsoft belgesinde](https://learn.microsoft.com/en-us/windows/win32/shell/how-to-employ-the-verb-selection-model) tabloyla verilir:
+
+| Seçim modeli | Komut satırı fiili | COM fiili |
+| --- | --- | --- |
+| `Document` (her öğe için ayrı pencere açan fiiller) | 15 öğe | 15 öğe |
+| `Player` (her sayıda öğeyi kabul eden fiiller) | **100 öğe** | sınırsız |
+
+Kurulum bu yüzden bütün girdileri `Player` modeliyle yazar: **16 dosya/klasör seçildiğinde menü girdisi kayboluyordu** (15'te görünüyordu), artık 100 öğeye kadar görünür. 101 ve üstünde Windows girdiyi yine gizler; o durumda öğelerin bulunduğu **klasörü** seçip gönderin (klasör kopyalaması alt ağacın tamamını götürür) ya da seçimi ikiye bölün.
+
+Explorer, fiili seçilen her öğe için **bir kez** çalıştırır — 40 dosya seçmek 40 PowerShell süreci başlatır. [Queue-SamePathCopy.ps1](Queue-SamePathCopy.ps1) bu çağrıları hedef + config başına bir kuyrukta toplar: ilk süreç toplayıcı olur, ötekiler isteklerini bırakıp çıkar, sonunda **tek bir kopyalama penceresi** açılır ve bütün seçim tek robocopy planına girer. Toplayıcı yeni istek gelmeyi bırakana kadar bekler (tek dosyada 0,4 sn, çok seçimde 1,2 sn sessizlik; en fazla 30 sn), böylece geç açılan süreçler de aynı çalıştırmaya girer. Kabuğun bütün seçimi tek komut satırına dizdiği durum da desteklenir: fazladan gelen yollar kaynak listesine katılır.
+
 ### Explorer menüsünün 16 öğe sınırı
+
+> Bu bölümdeki 16, **menüye kaç girdi sığdığı** ile ilgilidir; yukarıdaki 100 ise **kaç dosya seçilebildiği**. İkisi farklı sınırlardır.
+
 
 Windows'un klasik basamaklı sağ tık menüsü **bütün ağaçta en fazla 16 öğe** gösterir; fazlasını uyarı vermeden gizler. Alt menüye taşımak bu bütçeyi artırmaz: gözlemlenen iki durum, düz listede 19 girdiden 16'sının, alt menülü ağaçta ise `4 toplu + (1 grup + 5 girdi) + (1 grup + 5 girdi) = 16` öğenin göründüğü ve sonrasının düştüğüdür. Ayırıcı çizgiler bu bütçeden yer yemez.
 
@@ -318,7 +334,7 @@ Klavye kısayolu da atanabilir; `notepadPlusPlusShortcuts` anahtarı grup kimli�
 
 Explorer'da birden fazla dosya, birden fazla klasör veya karışık dosya/klasör seçimi yapılabilir. Seçimler kısa bir kuyrukta birleştirilir ve tek sonuç penceresinde bütün kaynak-hedef kopyalamaları gösterilir.
 
-Registry tabanlı legacy Windows menü modelinin sınırı nedeniyle en fazla 15 öğelik seçim desteklenir. Daha fazla öğe seçildiğinde Windows menüyü göstermeyebilir.
+Windows'un seçim modeli sınırı yüzünden en fazla **100 öğelik** seçim desteklenir; daha fazlasında Windows menü girdisini gizler. Ayrıntı ve nedeni için [Kaç dosya seçilebilir (100 öğe sınırı)](#kaç-dosya-seçilebilir-100-öğe-sınırı) bölümüne bakın.
 
 ## Tek yapılandırmayı bütün bilgisayarlarda kullanma
 

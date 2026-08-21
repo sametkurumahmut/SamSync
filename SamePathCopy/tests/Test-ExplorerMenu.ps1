@@ -106,6 +106,21 @@ try {
         '040_group_Unit1', '050_group_Unit2', '060_Tek1')
     Assert-Equal ($expectedSmall -join ' > ') ($smallKeys -join ' > ') 'Küçük yapılandırmada üst seviye sıra yanlış.'
 
+    # Seçim modeli: Windows, komut satırıyla çalışan "Document" fiillerini 15 öğeden sonra gizliyor
+    # (16 dosya seçince menü girdisi hiç görünmüyordu). "Player" 100 öğeye kadar gösteriyor ve
+    # Explorer fiili yine dosya başına bir kez çalıştırdığı için kuyruk mantığı bozulmuyor.
+    if ($small.Output -like '*MultiSelectModel = Document*') {
+        throw 'Menü girdileri hâlâ Document seçim modeliyle yazılıyor: 15 dosyadan sonra menüde görünmezler.'
+    }
+    if ($small.Output -notlike '*MultiSelectModel = Player*') {
+        throw 'Menü girdilerine Player seçim modeli yazılmadı.'
+    }
+    # Kök girdi ve bütün alt girdiler aynı modeli taşımalı; biri Document kalırsa o girdi kayboluyor.
+    $selectionModelCount = @([regex]::Matches($small.Output, 'MultiSelectModel = Player')).Count
+    if ($selectionModelCount -lt ($smallKeys.Count + 1)) {
+        throw "Seçim modeli bütün girdilere yazılmadı: $selectionModelCount yazım, en az $($smallKeys.Count + 1) beklenir."
+    }
+
     # Gruba ait makineler alt menüde: grup girdisi başta, sonra makineler.
     $groupChildren = @(Get-GroupChildKeys -WhatIfText $small.Output -GroupKey '040_group_Unit1')
     Assert-Equal 3 $groupChildren.Count 'Grup alt menüsünde girdi sayısı yanlış.'
