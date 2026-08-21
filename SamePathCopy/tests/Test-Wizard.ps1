@@ -194,6 +194,15 @@ Add-Type -AssemblyName PresentationFramework
     [pscustomobject]@{ id = 'IG2'; name = 'IG2'; address = '10.255.255.1' }
 )
 `$settings = Get-SamePathCopyWizardSettings -ConfigPath '$configPath' -Targets `$targets
+# Toplu kutuların açılışta satırlardan hesaplandığını sınamak için karışık bir durumla açılır:
+# seçim karışık (yalnızca IG1), yedek hepsinde açık, ayna yalnızca IG1'de, yalnızca-yeni hiçbirinde.
+`$settings.Targets['IG2'].Selected = `$false
+`$settings.Targets['IG1'].Backup = `$true
+`$settings.Targets['IG2'].Backup = `$true
+`$settings.Targets['IG1'].Mirror = `$true
+`$settings.Targets['IG2'].Mirror = `$false
+`$settings.Targets['IG1'].OnlyNewer = `$false
+`$settings.Targets['IG2'].OnlyNewer = `$false
 `$sourceItems = @(Get-Item -LiteralPath '$projectDirectory\README.md')
 # Pencere açıkken: kaynak listesini aç, sonra sürükle-bırak yolunu doğrudan çağır. Açık liste
 # kapanmalı (Popup görsel ağaçtan düşse de kendi penceresinde asılı kalır) ve yeni öğe listeye girmeli.
@@ -208,6 +217,15 @@ Add-Type -AssemblyName PresentationFramework
     & `$script:wizardRebuildSourceChips
     `$script:dropPopupClosed = (-not `$oldChip.Tag.IsOpen)
     `$script:dropChipReplaced = (`$script:wizardSourceChip -ne `$oldChip)
+    # Kolon başlıklarındaki ve grup çiplerindeki toplu kutular satırlara göre dolmuş olmalı.
+    `$script:toggleReport = (@(foreach (`$toggle in `$script:wizardBulkToggles) { `$toggleValue = `$toggle.CheckBox.IsChecked; `$toggleState = `$(if (`$null -eq `$toggleValue) { 'karisik' } elseif ([bool]`$toggleValue) { 'tam' } else { 'bos' }); "{0}{1}={2}" -f `$toggle.Key, `$(if (`$toggle.Group) { "@`$(`$toggle.Group)" } else { '' }), `$toggleState }) -join '|')
+    # Belirsiz durumun görseli: kutuda tire çizilmeli, onay işareti çizilmemeli.
+    `$mixedBox = @(`$script:wizardBulkToggles | Where-Object { [string]`$_.Key -eq 'Selected' -and -not `$_.Group })[0].CheckBox
+    [void]`$mixedBox.ApplyTemplate()
+    `$script:mixedVisual = "tire=`$(`$mixedBox.Template.FindName('Dash', `$mixedBox).Visibility) onay=`$(`$mixedBox.Template.FindName('Check', `$mixedBox).Visibility)"
+    `$fullBox = @(`$script:wizardBulkToggles | Where-Object { [string]`$_.Key -eq 'Backup' })[0].CheckBox
+    [void]`$fullBox.ApplyTemplate()
+    `$script:fullVisual = "tire=`$(`$fullBox.Template.FindName('Dash', `$fullBox).Visibility) onay=`$(`$fullBox.Template.FindName('Check', `$fullBox).Visibility)"
 })
 `$dropTimer.Start()
 `$result = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems `$sourceItems -Settings `$settings -ConfigPath '$configPath' -LocalRoots @('C:\Kok')
@@ -217,6 +235,9 @@ Add-Type -AssemblyName PresentationFramework
 "ig1 secili=`$(`$result.Settings.Targets['IG1'].Selected)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "kaynak yolu=`$(@(`$result.SourcePaths) -join ';')" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "birakma acikti=`$script:dropPopupWasOpen kapandi=`$script:dropPopupClosed yenilendi=`$script:dropChipReplaced" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"toplu kutular=`$script:toggleReport" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"karisik gorsel=`$script:mixedVisual" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"tam gorsel=`$script:fullVisual" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "@
     Set-Content -LiteralPath $uiScriptPath -Value $uiScript -Encoding UTF8
 
@@ -245,6 +266,13 @@ Add-Type -AssemblyName PresentationFramework
     # Bırakılan öğe kopyalanacak listeye girmeli; açık duran liste de kapanmalı.
     if ($uiOutput[4] -notlike '*CHANGELOG.md*') { throw "Bırakılan öğe sonuç listesine girmedi: $($uiOutput[4])" }
     Assert-Equal 'birakma acikti=True kapandi=True yenilendi=True' $uiOutput[5] 'Bırakma sırasında açık kaynak listesi kapatılmadı ya da çip yenilenmedi.'
+    # Toplu kutular pencere açılırken satırlardan hesaplanmalı: satırın kutusuna değer verildikten sonra
+    # işleyici bağlandığı için olay tetiklenmiyor, grup çipleri de satırlardan sonra oluşuyor. Saklanmış
+    # ayarla açılan pencerede bütün satırlar işaretliyken üstteki kutular boş kalıyordu.
+    Assert-Equal 'toplu kutular=Selected=karisik|Backup=tam|OnlyNewer=bos|Mirror=karisik|Selected@Unit1=tam' $uiOutput[6] 'Toplu kutular açılışta satırlara göre dolmadı.'
+    # Belirsiz durum boş kutudan ayırt edilebilmeli: tire çizilir, onay işareti çizilmez.
+    Assert-Equal 'karisik gorsel=tire=Visible onay=Collapsed' $uiOutput[7] 'Karışık durumda kutuda tire görünmedi.'
+    Assert-Equal 'tam gorsel=tire=Collapsed onay=Visible' $uiOutput[8] 'Hepsi işaretliyken kutuda onay işareti yerine tire çizildi.'
 
     # Kimliğe göre seçim: küme tam uygulanır (filtreden bağımsız), eşleşen satır sayısı döner.
     $selectionRows = @(

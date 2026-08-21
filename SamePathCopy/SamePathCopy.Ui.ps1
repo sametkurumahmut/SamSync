@@ -394,10 +394,17 @@ function Get-SamePathCopyThemeXaml {
                     <StackPanel Orientation="Horizontal" Background="Transparent">
                         <Border x:Name="Box" Width="18" Height="18" CornerRadius="4" BorderThickness="1"
                                 BorderBrush="{StaticResource BorderBrushStrong}" Background="{StaticResource SurfaceBrush}">
-                            <Path x:Name="Check" Width="12" Height="12" Stretch="Uniform"
-                                  Data="M 1,5.4 L 4.6,9 L 11,1.6" Stroke="{StaticResource AccentTextBrush}"
-                                  StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Visibility="Collapsed" />
+                            <Grid>
+                                <Path x:Name="Check" Width="12" Height="12" Stretch="Uniform"
+                                      Data="M 1,5.4 L 4.6,9 L 11,1.6" Stroke="{StaticResource AccentTextBrush}"
+                                      StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Visibility="Collapsed" />
+                                <!-- Belirsiz durum (üç durumlu kutularda "bir kısmı işaretli"): tire çizilir.
+                                     Görsel olmadan belirsiz kutu boş kutudan ayırt edilemiyordu. -->
+                                <Rectangle x:Name="Dash" Width="10" Height="2" RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Fill="{StaticResource AccentTextBrush}" Visibility="Collapsed" />
+                            </Grid>
                         </Border>
                         <ContentPresenter x:Name="Label" Margin="8,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
@@ -406,6 +413,11 @@ function Get-SamePathCopyThemeXaml {
                             <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
                             <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Dash" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />

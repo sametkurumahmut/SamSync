@@ -1644,6 +1644,12 @@ function Show-SamePathCopyWizard {
         [void]$groupTogglePanel.Children.Add($groupChip)
     }
 
+    # Toplu kutular (kolon başlıkları ve grup çipleri) satırlar kurulurken güncellenmiyor: satırın
+    # onay kutusuna değer VERİLDİKTEN sonra işleyici bağlandığı için olay tetiklenmiyor, grup çipleri de
+    # satırlardan sonra oluşuyor. Bu yüzden hepsi burada bir kez satırlardan hesaplanır; yoksa saklanmış
+    # ayarla açılan pencerede bütün satırlar işaretliyken üstteki kutular boş görünüyordu.
+    & $script:wizardRefreshBulkToggles
+
     # Erişim yoklaması: pencere açılırken bir kez, sonra düğmeyle yeniden çalıştırılabilir.
     $window.FindName('ProbeButton').Add_Click({ & $script:wizardProbeReachability })
 
@@ -1734,6 +1740,7 @@ function Show-SamePathCopyWizard {
             $row.Controls['Selected'].IsChecked = [bool]$row.Reachable
         }
         & $script:wizardUpdateSelectionCount
+        & $script:wizardRefreshBulkToggles
     }
     & $addSelectAction 'Son çalıştırmada hatalıları seç' 'En son raporda hata alan hedefleri işaretler, diğerlerini bırakır; yarım kalan gönderim tamamlanır.' {
         $script:wizardSelectPopup.IsOpen = $false
@@ -1789,6 +1796,8 @@ function Show-SamePathCopyWizard {
             }
         }
         & $script:wizardUpdateSelectionCount
+        # Profil bütün satırların seçimini ve parametrelerini değiştirir: toplu kutular da yenilenir.
+        & $script:wizardRefreshBulkToggles
     }
     $script:wizardCollectSettings = {
         $collectedTargets = @{}
