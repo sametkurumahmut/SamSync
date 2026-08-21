@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 1.3.0
 
 - Kaynak listesi açıkken pencereye dosya bırakılınca liste ekranda asılı kalıyordu: çip yeniden kurulurken görsel ağaçtan çıkarılıyor ama `Popup` kendi penceresinde çizildiği için kapanmıyordu. Kaldırılan çiplerin açılır listesi artık önce kapatılıyor.
 
