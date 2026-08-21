@@ -371,6 +371,22 @@ Invoke-SamePathCopyUiPump
     Assert-Equal 1 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'yedek') 'Node kimliğine göre süzme çalışmadı.'
     Assert-Equal 0 (Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'yokböylebir') 'Eşleşmeyen filtre satır bırakmamalı.'
 
+    # Gerçek satırlarda Elements bir List[object] ve @() ile diziye çevrilemiyor ("bağımsız değişken
+    # türleri eşleşmiyor"). Hata olay işleyicisinde sessizce yutulduğu için filtre kutusu satırları
+    # gizlemiyordu: denetimlerin görünürlüğü gerçek liste türüyle sınanır.
+    $elementList = New-Object System.Collections.Generic.List[object]
+    $elementList.Add([pscustomobject]@{ Visibility = 'Visible' })
+    $elementList.Add([pscustomobject]@{ Visibility = 'Visible' })
+    $listRows = @(
+        [pscustomobject]@{ Id = 'U1IG1'; Name = 'IG1 - 10.10.1.11'; Group = 'Unit1'; Visible = $true
+            Elements = $elementList; RowDefinition = $null; Controls = @{ Selected = [pscustomobject]@{ IsChecked = $false } } }
+    )
+    Assert-Equal 0 (Set-SamePathCopyWizardRowFilter -Rows $listRows -Filter 'yokböylebir') 'List[object] taşıyan satır süzülemedi.'
+    Assert-Equal 'Collapsed' ([string]$elementList[0].Visibility) 'Filtre dışındaki satırın denetimleri gizlenmedi.'
+    Assert-Equal 'Collapsed' ([string]$elementList[1].Visibility) 'Filtre dışındaki satırın bütün denetimleri gizlenmeli.'
+    Assert-Equal 1 (Set-SamePathCopyWizardRowFilter -Rows $listRows -Filter '46.11') 'Eşleşen satır geri gelmedi.'
+    Assert-Equal 'Visible' ([string]$elementList[0].Visibility) 'Filtreye uyan satırın denetimleri görünür olmalı.'
+
     # Toplu seçim yalnızca görünen satırlara uygulanır: filtre varken tümünü seç gizli satırlara dokunmaz.
     [void](Set-SamePathCopyWizardRowFilter -Rows $filterRows -Filter 'unit2')
     Set-SamePathCopyWizardColumnState -Rows $filterRows -Key 'Selected' -Value $true

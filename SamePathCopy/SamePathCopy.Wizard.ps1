@@ -398,8 +398,13 @@ function Set-SamePathCopyWizardRowFilter {
         $isVisible = Test-SamePathCopyWizardRowMatch -Row $row -Filter $Filter
         $row.Visible = $isVisible
         if ($isVisible) { $visibleCount++ }
-        foreach ($element in @($row.Elements)) {
-            $element.Visibility = $(if ($isVisible) { 'Visible' } else { 'Collapsed' })
+        # Elements bir List[object]: @() ile diziye çevirmek "bağımsız değişken türleri eşleşmiyor"
+        # hatası veriyor. Hata olay işleyicisinin içinde sessizce yutulduğu için filtre kutusu
+        # satırları gizleyemiyordu; liste doğrudan dolaşılıyor.
+        if ($null -ne $row.Elements) {
+            foreach ($element in $row.Elements) {
+                $element.Visibility = $(if ($isVisible) { 'Visible' } else { 'Collapsed' })
+            }
         }
         if ($row.PSObject.Properties['RowDefinition'] -and $null -ne $row.RowDefinition) {
             $row.RowDefinition.Height = [System.Windows.GridLength]::new($(if ($isVisible) { 34 } else { 0 }))
