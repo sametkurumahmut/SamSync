@@ -134,6 +134,46 @@ try {
     Assert-Equal $false ([bool]$fakeRows[1].Controls['Mirror'].IsChecked) 'Toplu temizleme kolonu boşaltmadı.'
     Assert-Equal $true ([bool]$fakeRows[0].Controls['Backup'].IsChecked) 'Toplu temizleme başka kolonu etkiledi.'
 
+    # Hedef başına düşürülen öğeler: dosya /XF, klasör /XD listesine gider, hedefler birbirine karışmaz.
+    $exclusions = @{}
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1' -Path 'C:\Kaynak\a.txt') 'Dosya düşürülemedi.'
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1' -Path 'C:\Kaynak\Alt' -IsDirectory $true) 'Klasör düşürülemedi.'
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1' -Path 'C:\Kaynak\a.txt') 'Aynı yolun ikinci kez düşürülmesi hata vermemeli.'
+    $firstExclusion = Get-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1'
+    Assert-Equal 'C:\Kaynak\a.txt' (@($firstExclusion.FilePaths) -join ';') 'Düşürülen dosya listesi yanlış.'
+    Assert-Equal 'C:\Kaynak\Alt' (@($firstExclusion.DirectoryPaths) -join ';') 'Düşürülen klasör listesi yanlış.'
+    Assert-Equal 2 ([int]$firstExclusion.Count) 'Düşürülen öğe sayısı yanlış (aynı yol yinelenmemeli).'
+    Assert-Equal 0 ([int](Get-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG2').Count) 'Bir hedefteki düşürme öbür hedefe sızdı.'
+    Assert-Equal 0 ([int](Get-SamePathCopyWizardTargetExclusion -Exclusions $null -TargetId 'IG1').Count) 'Boş küme için sayı sıfır olmalı.'
+
+    # Düşürme geri alınabilir; olmayan yolun geri alınması hata vermez.
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1' -Path 'C:\KAYNAK\A.TXT' -Excluded $false) 'Düşürme geri alınamadı.'
+    Assert-Equal 1 ([int](Get-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1').Count) 'Geri alınan yol listede kaldı (büyük/küçük harf farkı).'
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG1' -Path 'C:\yokboyle.txt' -Excluded $false) 'Olmayan yolun geri alınması hata vermemeli.'
+
+    # Üst klasörü düşürülmüş satır zaten kopyalanmaz; ad benzerliği kapsama sayılmaz.
+    Assert-Equal $true (Test-SamePathCopyWizardExclusionCovered -DirectoryPaths @('C:\Kaynak\Alt') -Path 'C:\Kaynak\Alt\x.txt') 'Alt klasördeki dosya kapsanmadı.'
+    Assert-Equal $true (Test-SamePathCopyWizardExclusionCovered -DirectoryPaths @('C:\Kaynak\Alt\') -Path 'C:\kaynak\alt\derin\y.txt') 'Derindeki dosya kapsanmadı.'
+    Assert-Equal $false (Test-SamePathCopyWizardExclusionCovered -DirectoryPaths @('C:\Kaynak\Alt') -Path 'C:\Kaynak\Alt') 'Klasörün kendisi kendisini kapsamamalı.'
+    Assert-Equal $false (Test-SamePathCopyWizardExclusionCovered -DirectoryPaths @('C:\Kaynak\Alt') -Path 'C:\Kaynak\Altin\y.txt') 'Ad benzerliği kapsama sayılmamalı.'
+    Assert-Equal $false (Test-SamePathCopyWizardExclusionCovered -DirectoryPaths @() -Path 'C:\Kaynak\a.txt') 'Düşürülen klasör yokken kapsama olmamalı.'
+
+    # Uzunluk sınırı: düşürülen yollar robocopy komut satırına sığmalı, sığmazsa yol eklenmez.
+    $limitExclusions = @{}
+    $longExcludePath = 'C:\' + ('u' * ((Get-SamePathCopyWizardExclusionLimit) - 1000))
+    Assert-Equal $true (Set-SamePathCopyWizardTargetExclusion -Exclusions $limitExclusions -TargetId 'IG1' -Path $longExcludePath) 'Sınır içindeki yol eklenmeliydi.'
+    Assert-Equal $false (Set-SamePathCopyWizardTargetExclusion -Exclusions $limitExclusions -TargetId 'IG1' -Path ($longExcludePath + 'x')) 'Sınırı aşan yol eklenmemeliydi.'
+    Assert-Equal 1 ([int](Get-SamePathCopyWizardTargetExclusion -Exclusions $limitExclusions -TargetId 'IG1').Count) 'Sınır aşımından sonra liste bozulmamalı.'
+
+    # Sonuç haritası: yalnızca gerçekten düşürülmüş hedefler yazılır.
+    [void](Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG3' -Path 'C:\Kaynak\b.txt')
+    [void](Set-SamePathCopyWizardTargetExclusion -Exclusions $exclusions -TargetId 'IG3' -Path 'C:\Kaynak\b.txt' -Excluded $false)
+    $exclusionMap = ConvertTo-SamePathCopyWizardExclusionMap -Exclusions $exclusions
+    Assert-Equal 'IG1' (@($exclusionMap.Keys) -join ';') 'Haritada yalnızca düşürmesi olan hedef durmalı.'
+    Assert-Equal 'C:\Kaynak\Alt' (@($exclusionMap['IG1'].DirectoryPaths) -join ';') 'Haritadaki klasör listesi yanlış.'
+    Assert-Equal 0 @($exclusionMap['IG1'].FilePaths).Count 'Geri alınan dosya haritada kalmamalı.'
+    Assert-Equal 0 @((ConvertTo-SamePathCopyWizardExclusionMap -Exclusions $null).Keys).Count 'Boş küme boş harita vermeli.'
+
     # Arayüz gerçekten açılıp tek bir sonuç nesnesi döndürmeli. Bu, olay işleyicilerinin betik kapsamını
     # görmesini ve WPF çağrılarının çıktı akışına sızmamasını (sonucu diziye çevirmemesini) doğrular.
     # WPF STA kipi gerektirdiği için ayrı bir powershell -sta süreci kullanılır.
@@ -358,6 +398,117 @@ Invoke-SamePathCopyUiPump
     Assert-Equal 'gecmis secim=IG1,IG2,IG3' $chipOutput[4] '"Hedefleri seç" düğmesi çalıştırmanın hedef kümesini taşımalı.'
     Assert-Equal 'kutu tipi=CheckBox' $chipOutput[5] 'Seçilebilir çipte satır başında onay kutusu olmalı.'
     if ($chipOutput[6] -notlike '*C:\Kok\Data\*') { throw "Onay kutusu işleyicisi öğe yolunu taşımalı: $($chipOutput[6])" }
+
+    # Hedef ayrıntısı: bilgisayar adına tıklanınca açılan tablo gerçek robocopy /L listesiyle dolar,
+    # satır başındaki kutuyla öğe o makineden düşürülür ve sonuç nesnesine geçer. Türkçe karakterler
+    # alt süreç çıktısında bozulabildiği için doğrulamalar ASCII parçalar üzerinden yapılır.
+    $detailRoot = Join-Path $testDirectory 'ayrinti'
+    $detailSource = Join-Path $detailRoot 'kaynak\Data'
+    [void](New-Item -ItemType Directory -Path (Join-Path $detailSource 'Alt') -Force)
+    Set-Content -LiteralPath (Join-Path $detailSource 'guncel.txt') -Value "bir`niki`nKAYNAK" -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $detailSource 'Alt\yeni.txt') -Value 'yeni' -Encoding UTF8
+    $detailTargetPath = Join-Path $detailRoot 'hedef'
+    [void](New-Item -ItemType Directory -Path (Join-Path $detailTargetPath 'Data') -Force)
+    Set-Content -LiteralPath (Join-Path $detailTargetPath 'Data\guncel.txt') -Value "bir`niki`nHEDEF (eski)" -Encoding UTF8
+    (Get-Item -LiteralPath (Join-Path $detailTargetPath 'Data\guncel.txt')).LastWriteTime = (Get-Date).AddHours(-5)
+    Set-Content -LiteralPath (Join-Path $detailTargetPath 'Data\fazla.txt') -Value 'fazla' -Encoding UTF8
+
+    $detailScriptPath = Join-Path $testDirectory 'detail-smoke.ps1'
+    $detailOutputPath = Join-Path $testDirectory 'detail-smoke-output.txt'
+    $detailScript = @"
+`$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName PresentationFramework
+. '$projectDirectory\SamePathCopy.Common.ps1'
+. '$projectDirectory\SamePathCopy.Ui.ps1'
+. '$projectDirectory\SamePathCopy.Diff.ps1'
+. '$projectDirectory\SamePathCopy.Wizard.ps1'
+`$env:SAMEPATHCOPY_WIZARD_STATE = '$($env:SAMEPATHCOPY_WIZARD_STATE)'
+`$env:SAMEPATHCOPY_DIFF_AUTOCLOSE = '400'
+`$configuration = [pscustomobject]@{ menuTitle = 'SamePathCopy'; allLabel = 'Tumu' }
+`$targets = @(
+    [pscustomobject]@{ id = 'Yakin'; name = 'Yakin'; group = 'Unit1'; address = '127.0.0.1'; networkRoot = 'C`$\$($detailTargetPath.Substring(3))' }
+    [pscustomobject]@{ id = 'Uzak'; name = 'Uzak'; group = 'Unit1'; address = '10.255.255.1'; networkRoot = 'Sim' }
+)
+`$settings = Get-SamePathCopyWizardSettings -ConfigPath '$($detailRoot)\config.json' -Targets `$targets
+`$script:report = New-Object System.Collections.Generic.List[string]
+`$detailTimer = New-Object System.Windows.Threading.DispatcherTimer
+`$detailTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+`$detailTimer.Add_Tick({
+    `$this.Stop()
+    try {
+        & `$script:wizardToggleDetail 'Yakin'
+        `$row = & `$script:wizardFindRowById 'Yakin'
+        `$script:report.Add("acik=`$(`$row.Expanded) yuklendi=`$(`$row.DetailLoaded) satir=`$(`$row.FileRows.Count)")
+        `$script:report.Add("siniflar=`$((@(`$row.FileRows | ForEach-Object { [string]`$_.Entry.Class } | Sort-Object) -join '|'))")
+        `$script:report.Add("gorunur=`$(`$row.DetailBorder.Visibility) yukseklik=`$(`$row.DetailRowDefinition.Height)")
+        `$fileRow = @(`$row.FileRows | Where-Object { [string]`$_.Entry.DisplayPath -eq 'guncel.txt' })[0]
+        `$fileRow.CheckBox.IsChecked = `$false
+        `$fileRow.CheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        `$afterFile = Get-SamePathCopyWizardTargetExclusion -Exclusions `$script:wizardTargetExclusions -TargetId 'Yakin'
+        `$script:report.Add("dosya dusuruldu=`$(`$afterFile.Count) dosyalar=`$((@(`$afterFile.FilePaths) | ForEach-Object { Split-Path -Leaf `$_ }) -join ',')")
+        `$directoryRow = @(`$row.FileRows | Where-Object { [bool]`$_.Entry.IsDirectory })[0]
+        `$directoryRow.CheckBox.IsChecked = `$false
+        `$directoryRow.CheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        `$script:report.Add("kapsanan kutu=`$(@(`$row.FileRows | Where-Object { -not `$_.CheckBox.IsEnabled }).Count) isaretli=`$(@(`$row.FileRows | Where-Object { [bool]`$_.CheckBox.IsChecked }).Count)")
+        & `$script:wizardToggleDetail 'Uzak'
+        `$farRow = & `$script:wizardFindRowById 'Uzak'
+        `$script:report.Add("uzak yuklendi=`$(`$farRow.DetailLoaded) uzak smb=`$(([string]`$farRow.DetailSummaryText.Text) -like '*SMB*')")
+        [void](Set-SamePathCopyWizardRowFilter -Rows `$script:wizardRows -Filter 'Uzak')
+        `$script:report.Add("filtre disi gorunur=`$(`$row.DetailBorder.Visibility) yukseklik=`$(`$row.DetailRowDefinition.Height)")
+        [void](Set-SamePathCopyWizardRowFilter -Rows `$script:wizardRows -Filter '')
+        `$script:report.Add("filtre geri gorunur=`$(`$row.DetailBorder.Visibility)")
+        `$compareButton = New-Object System.Windows.Controls.Button
+        `$compareButton.Tag = [pscustomobject]@{ TargetId = 'Yakin'; Path = [string]`$fileRow.Entry.ExcludePath }
+        & `$script:wizardDetailCompareHandler `$compareButton `$null
+        `$script:report.Add('karsilastirma penceresi acildi')
+        & `$script:wizardToggleDetail 'Yakin'
+        `$script:report.Add("kapandi gorunur=`$(`$row.DetailBorder.Visibility) yukseklik=`$(`$row.DetailRowDefinition.Height)")
+    }
+    catch {
+        `$script:report.Add("HATA: `$(`$_.Exception.Message) @ `$([string]`$_.InvocationInfo.PositionMessage -replace '\r?\n', ' ')")
+    }
+    `$script:wizardWindow.DialogResult = `$true
+})
+`$detailTimer.Start()
+`$detailResult = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems @(Get-Item -LiteralPath '$detailSource') -Settings `$settings -LocalRoots @('$($detailRoot)\kaynak')
+`$script:report.Add("sonuc dosya=`$(@(`$detailResult.TargetExclusions['Yakin'].FilePaths).Count) klasor=`$(@(`$detailResult.TargetExclusions['Yakin'].DirectoryPaths).Count) hedef=`$((@(`$detailResult.TargetExclusions.Keys) -join ','))")
+`$script:report | Out-File -LiteralPath '$detailOutputPath' -Encoding UTF8
+"@
+    Set-Content -LiteralPath $detailScriptPath -Value $detailScript -Encoding UTF8
+
+    $detailErrorPath = Join-Path $testDirectory 'detail-smoke-error.txt'
+    $detailProcess = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+        -ArgumentList @('-sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $detailScriptPath) `
+        -PassThru -WindowStyle Hidden -RedirectStandardError $detailErrorPath
+    if (-not $detailProcess.WaitForExit(120000)) {
+        try { $detailProcess.Kill() } catch { }
+        throw 'Ayrıntı bölümü penceresi kendi kendine kapanmadı.'
+    }
+    $detailProcess.WaitForExit()
+    $detailErrorText = if (Test-Path -LiteralPath $detailErrorPath) { [string](Get-Content -LiteralPath $detailErrorPath -Raw) } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($detailErrorText)) {
+        throw "Ayrıntı bölümü hata verdi: $detailErrorText"
+    }
+    if (-not (Test-Path -LiteralPath $detailOutputPath -PathType Leaf)) {
+        throw 'Ayrıntı bölümü sonuç üretmeden kapandı.'
+    }
+    $detailOutput = @(Get-Content -LiteralPath $detailOutputPath -Encoding UTF8)
+    if (@($detailOutput | Where-Object { $_ -like 'HATA*' }).Count -gt 0) {
+        throw "Ayrıntı bölümünde hata: $(@($detailOutput | Where-Object { $_ -like 'HATA*' }) -join ' ')"
+    }
+    Assert-Equal 'acik=True yuklendi=True satir=4' $detailOutput[0] 'Ayrıntı tablosu dört satırla açılmalı (guncel, Alt, Alt\yeni, fazla).'
+    Assert-Equal 'siniflar=Extra File|New Dir|New File|Newer' $detailOutput[1] 'Ayrıntı tablosundaki sınıflar beklenenden farklı.'
+    Assert-Equal 'gorunur=Visible yukseklik=Auto' $detailOutput[2] 'Açılan ayrıntı satırı görünür ve içerik yüksekliğinde olmalı.'
+    Assert-Equal 'dosya dusuruldu=1 dosyalar=guncel.txt' $detailOutput[3] 'İşareti kaldırılan dosya düşürülenler listesine girmedi.'
+    # Klasör düşürülünce altındaki dosya da kopyalanmaz: kutusu kapatılır ve işaretli satır sayısı düşer.
+    Assert-Equal 'kapsanan kutu=1 isaretli=1' $detailOutput[4] 'Klasör düşürülünce altındaki satırın kutusu kapanmalı.'
+    Assert-Equal 'uzak yuklendi=False uzak smb=True' $detailOutput[5] 'Erişilemeyen hedefte liste alınmaya çalışılmamalı.'
+    Assert-Equal 'filtre disi gorunur=Collapsed yukseklik=0' $detailOutput[6] 'Filtre dışında kalan satırın açık ayrıntısı kapanmalı.'
+    Assert-Equal 'filtre geri gorunur=Visible' $detailOutput[7] 'Filtreye geri dönen satırın ayrıntısı yeniden görünmeli.'
+    Assert-Equal 'karsilastirma penceresi acildi' $detailOutput[8] 'Karşılaştırma penceresi sihirbazdan açılamadı.'
+    Assert-Equal 'kapandi gorunur=Collapsed yukseklik=0' $detailOutput[9] 'İkinci tıklamada ayrıntı bölümü kapanmalı.'
+    Assert-Equal 'sonuc dosya=1 klasor=1 hedef=Yakin' $detailOutput[10] 'Düşürülen öğeler sihirbaz sonucuna geçmedi.'
+    if (Test-Path -LiteralPath (Join-Path $detailTargetPath 'Data\Alt')) { throw 'Ayrıntı listesi hedefe yazdı.' }
 
     # Filtre: ada, gruba ve kimliğe göre süzer; boş filtre bütün satırları gösterir.
     $filterRows = @(

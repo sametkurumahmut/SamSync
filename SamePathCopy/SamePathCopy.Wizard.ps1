@@ -4,6 +4,10 @@
 if (-not (Get-Command -Name 'Write-SamePathCopyLog' -ErrorAction SilentlyContinue)) {
     . (Join-Path $PSScriptRoot 'SamePathCopy.Log.ps1')
 }
+# Ayrıntı bölümündeki "Karşılaştır" düğmesi diff penceresini açıyor; katman burada yüklenir.
+if (-not (Get-Command -Name 'Show-SamePathCopyDiff' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot 'SamePathCopy.Diff.ps1')
+}
 
 # Sihirbaz ayarları config.json'a değil, bilgisayara özel bir duruma yazılır: config ortak (hatta salt okunur ağ)
 # olabilir ve seçimler kullanıcıya göre değişir. SAMEPATHCOPY_WIZARD_STATE ortam değişkeni yolu değiştirir (testler kullanır).
@@ -409,6 +413,14 @@ function Set-SamePathCopyWizardRowFilter {
         if ($row.PSObject.Properties['RowDefinition'] -and $null -ne $row.RowDefinition) {
             $row.RowDefinition.Height = [System.Windows.GridLength]::new($(if ($isVisible) { 34 } else { 0 }))
         }
+        # Açık duran ayrıntı bölümü de filtreye uyar: satır gizlenirse bölüm kapanır, geri gelirse açılır.
+        if ($row.PSObject.Properties['DetailRowDefinition'] -and $null -ne $row.DetailRowDefinition) {
+            $showDetail = $isVisible -and ($row.PSObject.Properties['Expanded'] -and [bool]$row.Expanded)
+            $row.DetailRowDefinition.Height = $(if ($showDetail) { [System.Windows.GridLength]::Auto } else { [System.Windows.GridLength]::new(0) })
+            if ($row.PSObject.Properties['DetailBorder'] -and $null -ne $row.DetailBorder) {
+                $row.DetailBorder.Visibility = $(if ($showDetail) { 'Visible' } else { 'Collapsed' })
+            }
+        }
     }
     return $visibleCount
 }
@@ -465,6 +477,99 @@ function Add-SamePathCopyWizardSourcePaths {
         $changed++
     }
     return $changed
+}
+
+function Get-SamePathCopyWizardExclusionLimit {
+    # Düşürülen yollar robocopy'ye /XF ve /XD ile tek komut satırında geçiyor; komut satırı sınırına
+    # (~8191 karakter) çarpmamak için hedef başına toplam yol uzunluğu bu değerle sınırlanıyor.
+    return 3000
+}
+
+function Get-SamePathCopyWizardTargetExclusion {
+    param(
+        [hashtable]$Exclusions,
+        [Parameter(Mandatory = $true)][string]$TargetId
+    )
+
+    # Bir hedef için düşürülen yollar: dosyalar /XF, klasörler /XD listesine gidiyor.
+    # Sıra kararlı olsun diye yollar sıralanır (günlük ve testler yinelenebilir olsun).
+    $filePaths = New-Object System.Collections.Generic.List[string]
+    $directoryPaths = New-Object System.Collections.Generic.List[string]
+    if ($null -ne $Exclusions -and $Exclusions.ContainsKey($TargetId)) {
+        foreach ($key in @($Exclusions[$TargetId].Keys | Sort-Object)) {
+            $entry = $Exclusions[$TargetId][$key]
+            if ([bool]$entry.IsDirectory) { $directoryPaths.Add([string]$entry.Path) }
+            else { $filePaths.Add([string]$entry.Path) }
+        }
+    }
+    # Uzunluk toplamı elle hesaplanır: boş listede Measure-Object hiçbir şey döndürmüyor ve
+    # StrictMode altında ".Sum" okumak hata veriyor.
+    $totalLength = 0
+    foreach ($excludedPath in @(@($filePaths.ToArray()) + @($directoryPaths.ToArray()))) {
+        $totalLength += ([string]$excludedPath).Length
+    }
+    return [pscustomobject]@{
+        FilePaths = $filePaths.ToArray()
+        DirectoryPaths = $directoryPaths.ToArray()
+        Count = ($filePaths.Count + $directoryPaths.Count)
+        Length = $totalLength
+    }
+}
+
+function Test-SamePathCopyWizardExclusionCovered {
+    param(
+        [string[]]$DirectoryPaths,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    # Üst klasörü düşürülmüş bir satır zaten kopyalanmaz: tablo bunu gösterirken kutuyu kapatıyor.
+    foreach ($directoryPath in @($DirectoryPaths)) {
+        if ([string]::IsNullOrWhiteSpace($directoryPath)) { continue }
+        $prefix = ([string]$directoryPath).TrimEnd('\') + '\'
+        if ($Path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+function Set-SamePathCopyWizardTargetExclusion {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Exclusions,
+        [Parameter(Mandatory = $true)][string]$TargetId,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [bool]$IsDirectory = $false,
+        [bool]$Excluded = $true
+    )
+
+    # Hedef başına düşürülen yol kümesini günceller. Uzunluk sınırı aşılırsa yol eklenmez ve $false döner;
+    # çağıran bunu kullanıcıya söyler. Anahtarlar küçük harfli yollardır.
+    if (-not $Exclusions.ContainsKey($TargetId)) { $Exclusions[$TargetId] = @{} }
+    $key = $Path.ToLowerInvariant()
+    if (-not $Excluded) {
+        if ($Exclusions[$TargetId].ContainsKey($key)) { $Exclusions[$TargetId].Remove($key) }
+        return $true
+    }
+    if ($Exclusions[$TargetId].ContainsKey($key)) { return $true }
+    $current = [int](Get-SamePathCopyWizardTargetExclusion -Exclusions $Exclusions -TargetId $TargetId).Length
+    if (($current + $Path.Length) -gt (Get-SamePathCopyWizardExclusionLimit)) { return $false }
+    $Exclusions[$TargetId][$key] = [pscustomobject]@{ Path = $Path; IsDirectory = $IsDirectory }
+    return $true
+}
+
+function ConvertTo-SamePathCopyWizardExclusionMap {
+    param([hashtable]$Exclusions)
+
+    # Sihirbaz sonucuna giren biçim: hedef kimliği -> { FilePaths; DirectoryPaths }. Boş hedefler yazılmaz.
+    $map = @{}
+    if ($null -eq $Exclusions) { return $map }
+    foreach ($targetId in @($Exclusions.Keys)) {
+        $exclusion = Get-SamePathCopyWizardTargetExclusion -Exclusions $Exclusions -TargetId ([string]$targetId)
+        if ([int]$exclusion.Count -eq 0) { continue }
+        $map[[string]$targetId] = [pscustomobject]@{
+            FilePaths = @($exclusion.FilePaths)
+            DirectoryPaths = @($exclusion.DirectoryPaths)
+        }
+    }
+    return $map
 }
 
 function Set-SamePathCopyWizardSelectionById {
@@ -705,7 +810,8 @@ function Get-SamePathCopyWizardBodyXaml {
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource ColumnHeaderText}" Text="Gönder"
                                HorizontalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Style="{StaticResource ColumnHeaderText}" Text="Bilgisayar" Margin="6,0,0,0" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource ColumnHeaderText}" Text="Bilgisayar" Margin="6,0,0,0"
+                       ToolTip="Bilgisayar adına tıklamak, o makineye gidecek dosyaların tablosunu satırın altında açar." />
                     <TextBlock Grid.Column="2" Style="{StaticResource ColumnHeaderText}" Text="Grup" />
                     <TextBlock Grid.Column="3" Style="{StaticResource ColumnHeaderText}" Text="Hedefte"
                                ToolTip="Seçilen öğelerin bu hedefteki durumu. 'Hedefi incele' düğmesi doldurur; kopyalamadan önce neyin değişeceğini gösterir." />
@@ -759,6 +865,11 @@ function Show-SamePathCopyWizard {
     foreach ($sourceItem in @($SourceItems)) { if ($null -ne $sourceItem) { $script:wizardSourceItems.Add($sourceItem) } }
     $script:wizardExcludedSources = @{}
     $script:wizardLocalRoots = @($LocalRoots)
+    # Satır listesi ve genel parametre denetimleri aşağıda dolduruluyor; ama kaynak çipleri kurulurken
+    # çalışan işleyiciler bunlara bakıyor ve StrictMode atanmamış değişkeni hata sayıyor: burada boş kurulur.
+    $script:wizardRows = New-Object System.Collections.Generic.List[object]
+    $script:wizardGlobalBoxes = @{}
+    $script:wizardGlobalDefinitions = @()
     $script:wizardHeadlineText = $window.FindName('SourceText')
     $script:wizardChipPanel = $window.FindName('ChipPanel')
 
@@ -769,6 +880,7 @@ function Show-SamePathCopyWizard {
         else { $script:wizardExcludedSources[$key] = $true }
         # Açık duran liste yeniden kurulmaz (kapanırdı); başlık ve çip metinleri tazelenir.
         & $script:wizardRefreshSourceTexts
+        & $script:wizardInvalidateDetails
     }
 
     # Çipler "son çalıştırma" çipinin önüne eklenir: sıra kaynak, yerel kök, son çalıştırma olur.
@@ -788,6 +900,7 @@ function Show-SamePathCopyWizard {
         $script:wizardChipPanel.Children.Insert(1, (New-SamePathCopyLocalRootChip -Window $script:wizardWindow `
             -Summary (Get-SamePathCopySourceSummary -SourceItems $effectiveItems -LocalRoots $script:wizardLocalRoots)))
         & $script:wizardRefreshSourceTexts
+        & $script:wizardInvalidateDetails
     }
 
     $script:wizardRefreshSourceTexts = {
@@ -802,6 +915,18 @@ function Show-SamePathCopyWizard {
         }
         else {
             [string]$effectiveSummary.ChipText
+        }
+    }
+
+    $script:wizardInvalidateDetails = {
+        # Kaynak listesi değiştiğinde açık ayrıntı tabloları eskir: liste silinmez ama "Yenile" denir,
+        # böylece kullanıcı eski listeye bakıp yanlış karar vermez. Satır listesi henüz boşken de çalışır.
+        foreach ($detailRow in $script:wizardRows) {
+            if (-not [bool]$detailRow.DetailLoaded) { continue }
+            $detailRow.DetailLoaded = $false
+            if (-not [bool]$detailRow.Expanded) { continue }
+            $detailRow.DetailSummaryText.Text = 'kaynak listesi değişti - Yenile ile güncelleyin'
+            $detailRow.DetailSummaryText.Foreground = $script:wizardWindow.FindResource('WarningBrush')
         }
     }
     & $script:wizardRebuildSourceChips
@@ -855,7 +980,6 @@ function Show-SamePathCopyWizard {
     $script:wizardFilterBox.Tag = 'Ada, gruba ya da kimliğe göre süz'
     $script:wizardTargets = $Targets
     $script:wizardReachabilityStatus = @{}
-    $script:wizardRows = New-Object System.Collections.Generic.List[object]
     $rows = $script:wizardRows
 
     $updateSelectionCount = {
@@ -917,8 +1041,342 @@ function Show-SamePathCopyWizard {
         & $addColumnToggle ($firstOptionColumn + $optionDefinitions.IndexOf($optionDefinition)) ([string]$optionDefinition.Name) ([string]$optionDefinition.Header)
     }
 
+    # --- Hedef ayrıntısı ---------------------------------------------------------------------------
+    # Bilgisayar adına tıklanınca satırın altında o makineye gidecek dosyalar tek tek listelenir.
+    # Liste robocopy /L ile hesaplanır; hedefe hiçbir şey yazılmaz. Satır başındaki onay kutusunun
+    # işareti kaldırılan öğe YALNIZCA o makinede kopyalamaya girmez (robocopy'ye /XF ya da /XD olarak
+    # geçer); seçim o çalıştırma içindir, kayıtlı ayarlara yazılmaz.
+    $script:wizardTargetExclusions = @{}
+    # Ayrıntı tablosunun kolon genişlikleri: sıfır olan kolon (dosya yolu) esner.
+    $script:wizardDetailColumnWidths = @(30, 18, 0, 136, 76, 30)
+
+    $script:wizardFindRowById = {
+        param([string]$TargetId)
+        foreach ($candidate in $script:wizardRows) {
+            if ([string]$candidate.Id -eq $TargetId) { return $candidate }
+        }
+        return $null
+    }
+
+    $script:wizardFindTargetById = {
+        param([string]$TargetId)
+        foreach ($candidate in $script:wizardTargets) {
+            if ([string]$candidate.id -eq $TargetId) { return $candidate }
+        }
+        return $null
+    }
+
+    $script:wizardGlobalValue = {
+        param([string]$Name)
+        # Genel parametre kutusundan o anki değeri okur; kutular henüz kurulmadıysa boş döner.
+        if (-not $script:wizardGlobalBoxes.ContainsKey($Name)) { return '' }
+        $matchingDefinitions = @($script:wizardGlobalDefinitions | Where-Object { [string]$_.Name -eq $Name })
+        if ($matchingDefinitions.Count -eq 0) { return '' }
+        return Get-SamePathCopyWizardControlValue -Definition $matchingDefinitions[0] -Control $script:wizardGlobalBoxes[$Name]
+    }
+
+    $script:wizardBuildDetailOptions = {
+        param($Row)
+        # Ayrıntı listelemesi kopyalamayla aynı süzgeçleri kullanmalı: hariç tutulan dosya/klasör
+        # kalıpları ve "Yalnızca yeni" parametresi listeyi değiştiriyor. Ayna listelemeyi değiştirmiyor
+        # (fazlalıklar her durumda listeleniyor), yalnızca satır metinlerinde kullanılıyor.
+        return [pscustomobject]@{
+            OnlyNewer = [bool]$Row.Controls['OnlyNewer'].IsChecked
+            ExcludeFiles = [string](& $script:wizardGlobalValue 'ExcludeFiles')
+            ExcludeDirectories = [string](& $script:wizardGlobalValue 'ExcludeDirectories')
+        }
+    }
+
+    $script:wizardNewDetailGrid = {
+        # Ayrıntı tablosunun her satırı aynı kolon genişliklerini kullanır: sabit genişlikler ve tek
+        # esneyen kolon sayesinde satırlar tek bir Grid paylaşmadan hizalı görünür.
+        $grid = New-Object System.Windows.Controls.Grid
+        foreach ($width in $script:wizardDetailColumnWidths) {
+            $column = New-Object System.Windows.Controls.ColumnDefinition
+            $column.Width = $(if ([double]$width -eq 0) {
+                [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+            }
+            else {
+                [System.Windows.GridLength]::new([double]$width)
+            })
+            [void]$grid.ColumnDefinitions.Add($column)
+        }
+        return $grid
+    }
+
+    $script:wizardAddDetailCell = {
+        param($Grid, [int]$Column, $Element)
+        [System.Windows.Controls.Grid]::SetColumn($Element, $Column)
+        [void]$Grid.Children.Add($Element)
+    }
+
+    $script:wizardSetDetailVisibility = {
+        param($Row)
+        $showDetail = [bool]$Row.Expanded -and [bool]$Row.Visible
+        $Row.DetailRowDefinition.Height = $(if ($showDetail) { [System.Windows.GridLength]::Auto } else { [System.Windows.GridLength]::new(0) })
+        $Row.DetailBorder.Visibility = $(if ($showDetail) { 'Visible' } else { 'Collapsed' })
+        $Row.Chevron.Text = $(if ([bool]$Row.Expanded) { '⌄' } else { '›' })
+    }
+
+    $script:wizardSyncDetailChecks = {
+        param([string]$TargetId)
+        $row = & $script:wizardFindRowById $TargetId
+        if ($null -eq $row -or $null -eq $row.FileRows) { return }
+        $exclusion = Get-SamePathCopyWizardTargetExclusion -Exclusions $script:wizardTargetExclusions -TargetId $TargetId
+        $excludedKeys = @{}
+        foreach ($excludedPath in @(@($exclusion.FilePaths) + @($exclusion.DirectoryPaths))) {
+            $excludedKeys[([string]$excludedPath).ToLowerInvariant()] = $true
+        }
+        $droppedCount = 0
+        foreach ($fileRow in $row.FileRows) {
+            $entryPath = [string]$fileRow.Entry.ExcludePath
+            $isExcluded = $excludedKeys.ContainsKey($entryPath.ToLowerInvariant())
+            # Üst klasörü düşürülmüş satır zaten kopyalanmaz: kutusu kapatılır ki tablo yanıltmasın.
+            $isCovered = Test-SamePathCopyWizardExclusionCovered -DirectoryPaths $exclusion.DirectoryPaths -Path $entryPath
+            $fileRow.CheckBox.IsChecked = -not ($isExcluded -or $isCovered)
+            $fileRow.CheckBox.IsEnabled = -not $isCovered
+            $fileRow.CheckBox.ToolTip = $(if ($isCovered) {
+                'Üst klasörün işareti kaldırıldığı için bu öğe de gönderilmiyor.'
+            }
+            else {
+                'İşareti kaldırılan öğe yalnızca bu makinede kopyalamaya girmez; öbür hedefler etkilenmez.'
+            })
+            if ($isExcluded -or $isCovered) { $droppedCount++ }
+        }
+        $totalCount = $row.FileRows.Count
+        $row.DetailSelectionText.Text = $(if ($droppedCount -gt 0) {
+            "{0} / {1} öğe gönderilecek  •  {2} öğe düşürüldü" -f ($totalCount - $droppedCount), $totalCount, $droppedCount
+        }
+        else {
+            "{0} öğe gönderilecek" -f $totalCount
+        })
+        $row.DetailSelectionText.Foreground = $script:wizardWindow.FindResource($(if ($droppedCount -gt 0) { 'WarningBrush' } else { 'TextMutedBrush' }))
+    }
+
+    $script:wizardDetailFileToggleHandler = {
+        param($sender, $eventArgs)
+        $tag = $sender.Tag
+        $applied = Set-SamePathCopyWizardTargetExclusion -Exclusions $script:wizardTargetExclusions -TargetId ([string]$tag.TargetId) `
+            -Path ([string]$tag.Path) -IsDirectory ([bool]$tag.IsDirectory) -Excluded (-not [bool]$sender.IsChecked)
+        if (-not $applied) {
+            [void](Show-SamePathCopyConfirm -Title 'Düşürülen öğe sınırı' -Owner $script:wizardWindow -IconPath $script:wizardIconPath `
+                -Message ("Bir makinede düşürülen yolların toplam uzunluğu {0} karakteri geçemiyor: robocopy komut satırına sığmıyor. Tek tek dosya yerine üst klasörü düşürün ya da 'Hariç dosyalar' kalıbını kullanın." -f (Get-SamePathCopyWizardExclusionLimit)) `
+                -ConfirmText 'Tamam' -CancelText 'Kapat')
+        }
+        & $script:wizardSyncDetailChecks ([string]$tag.TargetId)
+    }
+
+    $script:wizardRenderDetail = {
+        param([string]$TargetId)
+        $row = & $script:wizardFindRowById $TargetId
+        if ($null -eq $row) { return }
+        $row.DetailPanel.Children.Clear()
+        $row.FileRows = New-Object System.Collections.Generic.List[object]
+        $diff = $row.DetailDiff
+        if ($null -eq $diff) { return }
+
+        $row.DetailSummaryText.Text = Get-SamePathCopyFileDiffSummaryText -Diff $diff
+        $row.DetailSummaryText.Foreground = $script:wizardWindow.FindResource($(if ([bool]$diff.Failed) { 'WarningBrush' } else { 'TextMutedBrush' }))
+        if (@($diff.Entries).Count -eq 0) {
+            $emptyText = New-Object System.Windows.Controls.TextBlock
+            $emptyText.Style = $script:wizardWindow.FindResource('MutedText')
+            $emptyText.Text = $(if ([bool]$diff.Failed) {
+                'Liste alınamadı: robocopy hedefi listeleyemedi (paylaşım yetkisi ya da ağ sorunu olabilir).'
+            }
+            else {
+                'Bu makinede değişecek bir şey yok: hedef kaynakla aynı.'
+            })
+            $emptyText.Margin = New-Object System.Windows.Thickness(0, 4, 0, 2)
+            [void]$row.DetailPanel.Children.Add($emptyText)
+            $row.DetailSelectionText.Text = ''
+            return
+        }
+
+        # Tablo başlığı: kolon adları satırların üstünde durur.
+        $headerGrid = & $script:wizardNewDetailGrid
+        $headerIndex = 0
+        foreach ($headerText in @('Gönder', '', 'Dosya', 'Durum', 'Boyut', '')) {
+            if (-not [string]::IsNullOrWhiteSpace($headerText)) {
+                $headerBlock = New-Object System.Windows.Controls.TextBlock
+                $headerBlock.Style = $script:wizardWindow.FindResource('ColumnHeaderText')
+                $headerBlock.Text = $headerText
+                if ($headerIndex -eq 0) { $headerBlock.HorizontalAlignment = 'Center' }
+                if ($headerIndex -eq 4) { $headerBlock.HorizontalAlignment = 'Right' }
+                & $script:wizardAddDetailCell $headerGrid $headerIndex $headerBlock
+            }
+            $headerIndex++
+        }
+        $headerGrid.Margin = New-Object System.Windows.Thickness(0, 6, 0, 2)
+        [void]$row.DetailPanel.Children.Add($headerGrid)
+
+        # Birden çok kaynak öğe varsa satırlar öğe başlıklarının altında toplanır.
+        $showGroupHeaders = (@($diff.Groups).Count -gt 1)
+        $currentHeader = $null
+        $entryIndex = 0
+        foreach ($entry in @($diff.Entries)) {
+            if ($showGroupHeaders -and [string]$entry.ItemHeader -ne [string]$currentHeader) {
+                $currentHeader = [string]$entry.ItemHeader
+                $groupBlock = New-Object System.Windows.Controls.TextBlock
+                $groupBlock.Style = $script:wizardWindow.FindResource('ColumnHeaderText')
+                $groupBlock.Text = $currentHeader
+                $groupBlock.ToolTip = [string]$entry.SourceItemPath
+                $groupBlock.Margin = New-Object System.Windows.Thickness(30, $(if ($entryIndex -eq 0) { 4 } else { 10 }), 0, 2)
+                [void]$row.DetailPanel.Children.Add($groupBlock)
+            }
+
+            $entryGrid = & $script:wizardNewDetailGrid
+            $entryGrid.Margin = New-Object System.Windows.Thickness(0, 1, 0, 1)
+
+            $entryBox = New-Object System.Windows.Controls.CheckBox
+            $entryBox.Style = $script:wizardWindow.FindResource('ModernCheckBox')
+            $entryBox.IsChecked = $true
+            $entryBox.HorizontalAlignment = 'Center'
+            $entryBox.VerticalAlignment = 'Center'
+            $entryBox.Tag = [pscustomobject]@{ TargetId = $TargetId; Path = [string]$entry.ExcludePath; IsDirectory = [bool]$entry.IsDirectory }
+            $entryBox.Add_Click($script:wizardDetailFileToggleHandler)
+            & $script:wizardAddDetailCell $entryGrid 0 $entryBox
+
+            # Durum işareti git'teki gibi okunur: + yeni, ~ güncellenecek, ! hedef daha yeni, - fazla.
+            $signBlock = New-Object System.Windows.Controls.TextBlock
+            $signBlock.Style = $script:wizardWindow.FindResource('MonoText')
+            $signBlock.Text = [string]$entry.Sign
+            $signBlock.FontWeight = 'Bold'
+            $signBlock.HorizontalAlignment = 'Center'
+            $signBlock.Foreground = $script:wizardWindow.FindResource([string]$entry.Brush)
+            $signBlock.ToolTip = [string]$entry.ToolTip
+            & $script:wizardAddDetailCell $entryGrid 1 $signBlock
+
+            $pathBlock = New-Object System.Windows.Controls.TextBlock
+            $pathBlock.Style = $script:wizardWindow.FindResource('BodyText')
+            $pathBlock.Text = [string]$entry.DisplayPath
+            $pathBlock.ToolTip = "{0}`r`n{1}" -f [string]$entry.SourcePath, [string]$entry.DestinationPath
+            & $script:wizardAddDetailCell $entryGrid 2 $pathBlock
+
+            $statusBlock = New-Object System.Windows.Controls.TextBlock
+            $statusBlock.Style = $script:wizardWindow.FindResource('MutedText')
+            $statusBlock.Text = [string]$entry.StatusText
+            $statusBlock.Foreground = $script:wizardWindow.FindResource([string]$entry.Brush)
+            $statusBlock.ToolTip = [string]$entry.ToolTip
+            & $script:wizardAddDetailCell $entryGrid 3 $statusBlock
+
+            $sizeBlock = New-Object System.Windows.Controls.TextBlock
+            $sizeBlock.Style = $script:wizardWindow.FindResource('MutedText')
+            $sizeBlock.Text = $(if ($null -ne $entry.Size) { Format-SamePathCopySize -Bytes ([long]$entry.Size) } else { '' })
+            $sizeBlock.HorizontalAlignment = 'Right'
+            & $script:wizardAddDetailCell $entryGrid 4 $sizeBlock
+
+            if (-not [bool]$entry.IsDirectory) {
+                # Dosya satırındaki düğme karşılaştırma penceresini o dosyada açar.
+                $compareButton = New-Object System.Windows.Controls.Button
+                $compareButton.Style = $script:wizardWindow.FindResource('IconButton')
+                $compareButton.Content = '⇄'
+                $compareButton.ToolTip = 'Bu dosyanın kaynak ile hedef arasındaki farkını ayrı pencerede göster.'
+                $compareButton.Tag = [pscustomobject]@{ TargetId = $TargetId; Path = [string]$entry.ExcludePath }
+                $compareButton.Add_Click($script:wizardDetailCompareHandler)
+                & $script:wizardAddDetailCell $entryGrid 5 $compareButton
+            }
+
+            $row.FileRows.Add([pscustomobject]@{ Entry = $entry; CheckBox = $entryBox })
+            [void]$row.DetailPanel.Children.Add($entryGrid)
+            $entryIndex++
+        }
+
+        if ([bool]$diff.Truncated) {
+            $truncatedBlock = New-Object System.Windows.Controls.TextBlock
+            $truncatedBlock.Style = $script:wizardWindow.FindResource('MutedText')
+            $truncatedBlock.Text = "... ve {0} öğe daha (liste bu kadarını gösteriyor; tek tek düşürmek için süzgeç kullanın)" -f [int]$diff.HiddenCount
+            $truncatedBlock.Margin = New-Object System.Windows.Thickness(30, 4, 0, 2)
+            [void]$row.DetailPanel.Children.Add($truncatedBlock)
+        }
+        & $script:wizardSyncDetailChecks $TargetId
+    }
+
+    $script:wizardLoadDetail = {
+        param([string]$TargetId)
+        $row = & $script:wizardFindRowById $TargetId
+        if ($null -eq $row) { return }
+        $row.DetailPanel.Children.Clear()
+        $row.FileRows = New-Object System.Collections.Generic.List[object]
+        $row.DetailSelectionText.Text = ''
+        $row.DetailSummaryText.Text = 'hesaplanıyor...'
+        $row.DetailSummaryText.Foreground = $script:wizardWindow.FindResource('TextMutedBrush')
+        Invoke-SamePathCopyUiPump
+
+        if ($script:wizardReachabilityStatus.Count -eq 0) { & $script:wizardProbeReachability }
+        if ($row.Reachable -eq $false) {
+            # Erişilemeyen hedefte robocopy'nin ağ zaman aşımı beklenmez.
+            $row.DetailSummaryText.Text = 'erişilemedi: SMB portu yanıt vermiyor, liste alınamadı'
+            $row.DetailSummaryText.Foreground = $script:wizardWindow.FindResource('DangerBrush')
+            $row.DetailLoaded = $false
+            return
+        }
+
+        $effectiveItems = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources)
+        $row.DetailDiff = Get-SamePathCopyTargetFileDiff -SourceItems $effectiveItems -LocalRoots $script:wizardLocalRoots `
+            -Target (& $script:wizardFindTargetById $TargetId) -Options (& $script:wizardBuildDetailOptions $row) `
+            -MirrorEnabled ([bool]$row.Controls['Mirror'].IsChecked) -PumpAction { Invoke-SamePathCopyUiPump }
+        $row.DetailLoaded = $true
+        & $script:wizardRenderDetail $TargetId
+        Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Ayrinti listesi [{0}]: {1} satir | yeni: {2}, guncellenecek: {3}, hedef daha yeni: {4}, fazla: {5}" -f
+            $TargetId, @($row.DetailDiff.Entries).Count, $row.DetailDiff.NewCount, $row.DetailDiff.UpdateCount,
+            $row.DetailDiff.OlderCount, $row.DetailDiff.ExtraCount)
+    }
+
+    $script:wizardToggleDetail = {
+        param([string]$TargetId)
+        $row = & $script:wizardFindRowById $TargetId
+        if ($null -eq $row) { return }
+        $row.Expanded = -not [bool]$row.Expanded
+        & $script:wizardSetDetailVisibility $row
+        if ([bool]$row.Expanded -and -not [bool]$row.DetailLoaded) { & $script:wizardLoadDetail $TargetId }
+    }
+
+    $script:wizardDetailToggleHandler = {
+        param($sender, $eventArgs)
+        & $script:wizardToggleDetail ([string]$sender.Tag)
+    }
+
+    $script:wizardDetailRefreshHandler = {
+        param($sender, $eventArgs)
+        & $script:wizardLoadDetail ([string]$sender.Tag)
+    }
+
+    $script:wizardDetailResetHandler = {
+        param($sender, $eventArgs)
+        # Bu makinede düşürülen bütün öğeler geri gelir.
+        $targetId = [string]$sender.Tag
+        if ($script:wizardTargetExclusions.ContainsKey($targetId)) { $script:wizardTargetExclusions[$targetId] = @{} }
+        & $script:wizardSyncDetailChecks $targetId
+    }
+
+    $script:wizardDetailCompareHandler = {
+        param($sender, $eventArgs)
+        $tag = $sender.Tag
+        $targetId = [string]$tag.TargetId
+        $row = & $script:wizardFindRowById $targetId
+        if ($null -eq $row) { return }
+        if (-not [bool]$row.DetailLoaded -or $null -eq $row.DetailDiff) { & $script:wizardLoadDetail $targetId }
+        if ($null -eq $row.DetailDiff) { return }
+        Show-SamePathCopyDiff -Target (& $script:wizardFindTargetById $targetId) -Diff $row.DetailDiff `
+            -SelectPath ([string]$tag.Path) -Owner $script:wizardWindow -IconPath $script:wizardIconPath
+    }
+
+    $script:wizardInvalidateRowDetail = {
+        param($sender, $eventArgs)
+        # Hedef başına parametre değişince o satırın listesi eskir: "Ayna" fazlalıkların silineceğini,
+        # "Yalnızca yeni" hangi dosyaların atlanacağını değiştiriyor.
+        $row = & $script:wizardFindRowById ([string]$sender.Tag)
+        if ($null -eq $row -or -not [bool]$row.DetailLoaded) { return }
+        $row.DetailLoaded = $false
+        if (-not [bool]$row.Expanded) { return }
+        $row.DetailSummaryText.Text = 'parametreler değişti - Yenile ile güncelleyin'
+        $row.DetailSummaryText.Foreground = $script:wizardWindow.FindResource('WarningBrush')
+    }
+
     # Veri satırları iki başlık satırının (kolon adları ve toplu seçim ikonları) ardından başlar.
+    # Her hedef iki satır kullanır: veri satırı ve altındaki (kapalıyken yüksekliği sıfır) ayrıntı satırı.
     $rowIndex = 2
+    $targetIndex = 0
     foreach ($target in $Targets) {
         $targetId = [string]$target.id
         $entry = $Settings.Targets[$targetId]
@@ -932,7 +1390,8 @@ function Show-SamePathCopyWizard {
         [System.Windows.Controls.Grid]::SetRow($rowBorder, $rowIndex)
         [System.Windows.Controls.Grid]::SetColumn($rowBorder, 0)
         [System.Windows.Controls.Grid]::SetColumnSpan($rowBorder, $targetGrid.ColumnDefinitions.Count)
-        if ($rowIndex % 2 -eq 0) {
+        # Şeritli zemin hedef sırasına göre verilir: satır dizini artık iki adım artıyor.
+        if ($targetIndex % 2 -eq 0) {
             $rowBorder.Background = $window.FindResource('SurfaceAltBrush')
         }
         [void]$targetGrid.Children.Add($rowBorder)
@@ -957,9 +1416,22 @@ function Show-SamePathCopyWizard {
         $controls['Selected'] = $selectedBox
 
         # Ad hücresi, erişilebilirlik noktası ile adı yan yana taşır; nokta yoklama sonucuna göre renklenir.
+        # Hücrenin kendisi tıklanabilir: altındaki ayrıntı tablosunu açar/kapatır. Zemin Transparent
+        # olmalı, aksi hâlde (null zemin) StackPanel fare olaylarını almıyor.
         $namePanel = New-Object System.Windows.Controls.StackPanel
         $namePanel.Orientation = 'Horizontal'
         $namePanel.Margin = New-Object System.Windows.Thickness(6, 0, 8, 0)
+        $namePanel.Background = [System.Windows.Media.Brushes]::Transparent
+        $namePanel.Cursor = 'Hand'
+        $namePanel.Tag = $targetId
+        $namePanel.ToolTip = 'Bu makineye gidecek dosyaları tek tek görmek için tıklayın.'
+        $namePanel.Add_MouseLeftButtonUp($script:wizardDetailToggleHandler)
+        $chevron = New-Object System.Windows.Controls.TextBlock
+        $chevron.Style = $window.FindResource('MutedText')
+        $chevron.Text = '›'
+        $chevron.Width = 11
+        $chevron.VerticalAlignment = 'Center'
+        [void]$namePanel.Children.Add($chevron)
         $reachabilityDot = New-Object System.Windows.Controls.TextBlock
         $reachabilityDot.Style = $window.FindResource('MutedText')
         $reachabilityDot.Text = '○'
@@ -1009,6 +1481,9 @@ function Show-SamePathCopyWizard {
             # Hedef başına parametre değişince kolon başlığındaki toplu kutu da güncellenir.
             $optionBox.Add_Checked($rowStateChanged)
             $optionBox.Add_Unchecked($rowStateChanged)
+            # Elle değiştirilen parametre açık ayrıntı listesini eskitir; Tag satırı bulmak için duruyor.
+            $optionBox.Tag = $targetId
+            $optionBox.Add_Click($script:wizardInvalidateRowDetail)
             [System.Windows.Controls.Grid]::SetRow($optionBox, $rowIndex)
             [System.Windows.Controls.Grid]::SetColumn($optionBox, $optionColumn)
             [void]$targetGrid.Children.Add($optionBox)
@@ -1016,6 +1491,79 @@ function Show-SamePathCopyWizard {
             $controls[[string]$optionDefinition.Name] = $optionBox
             $optionColumn++
         }
+
+        # Ayrıntı satırı: veri satırının altında, bütün kolonları kaplayan bir kart. Kapalıyken
+        # yüksekliği sıfırdır; açıldığında Auto olur ve içeriği kadar yer kaplar.
+        $detailDefinition = New-Object System.Windows.Controls.RowDefinition
+        $detailDefinition.Height = [System.Windows.GridLength]::new(0)
+        [void]$targetGrid.RowDefinitions.Add($detailDefinition)
+
+        $detailBorder = New-Object System.Windows.Controls.Border
+        $detailBorder.Style = $window.FindResource('Card')
+        $detailBorder.Background = $window.FindResource('SurfaceAltBrush')
+        $detailBorder.Margin = New-Object System.Windows.Thickness(6, 0, 6, 8)
+        $detailBorder.Padding = New-Object System.Windows.Thickness(12, 6, 12, 10)
+        $detailBorder.Visibility = 'Collapsed'
+        [System.Windows.Controls.Grid]::SetRow($detailBorder, ($rowIndex + 1))
+        [System.Windows.Controls.Grid]::SetColumn($detailBorder, 0)
+        [System.Windows.Controls.Grid]::SetColumnSpan($detailBorder, $targetGrid.ColumnDefinitions.Count)
+        [void]$targetGrid.Children.Add($detailBorder)
+
+        $detailLayout = New-Object System.Windows.Controls.DockPanel
+        $detailLayout.LastChildFill = $true
+        $detailHeader = New-Object System.Windows.Controls.Grid
+        $detailHeader.Margin = New-Object System.Windows.Thickness(0, 0, 0, 2)
+        [System.Windows.Controls.DockPanel]::SetDock($detailHeader, 'Top')
+
+        $detailTitlePanel = New-Object System.Windows.Controls.StackPanel
+        $detailTitleText = New-Object System.Windows.Controls.TextBlock
+        $detailTitleText.Style = $window.FindResource('SectionText')
+        $detailTitleText.Text = "{0} - gönderilecek dosyalar" -f [string]$target.name
+        $detailTitleText.ToolTip = "İşaretler: + hedefte yok (yeni)   ~ üzerine yazılacak   ! hedefteki dosya daha yeni   - hedefte fazla"
+        [void]$detailTitlePanel.Children.Add($detailTitleText)
+        $detailSummaryText = New-Object System.Windows.Controls.TextBlock
+        $detailSummaryText.Style = $window.FindResource('MutedText')
+        $detailSummaryText.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
+        [void]$detailTitlePanel.Children.Add($detailSummaryText)
+        $detailSelectionText = New-Object System.Windows.Controls.TextBlock
+        $detailSelectionText.Style = $window.FindResource('MutedText')
+        [void]$detailTitlePanel.Children.Add($detailSelectionText)
+        [void]$detailHeader.Children.Add($detailTitlePanel)
+
+        $detailButtonPanel = New-Object System.Windows.Controls.StackPanel
+        $detailButtonPanel.Orientation = 'Horizontal'
+        $detailButtonPanel.HorizontalAlignment = 'Right'
+        $detailButtonPanel.VerticalAlignment = 'Top'
+        foreach ($detailAction in @(
+            [pscustomobject]@{ Label = 'Yenile'; ToolTip = 'Listeyi robocopy /L ile yeniden hesaplar.'; Handler = $script:wizardDetailRefreshHandler }
+            [pscustomobject]@{ Label = 'Düşürülenleri geri al'; ToolTip = 'Bu makinede işareti kaldırılan bütün öğeleri geri getirir.'; Handler = $script:wizardDetailResetHandler }
+        )) {
+            $detailButton = New-Object System.Windows.Controls.Button
+            $detailButton.Style = $window.FindResource('GhostButton')
+            $detailButton.Content = [string]$detailAction.Label
+            $detailButton.ToolTip = [string]$detailAction.ToolTip
+            $detailButton.Tag = $targetId
+            $detailButton.Add_Click($detailAction.Handler)
+            [void]$detailButtonPanel.Children.Add($detailButton)
+        }
+        $detailCompareButton = New-Object System.Windows.Controls.Button
+        $detailCompareButton.Style = $window.FindResource('GhostButton')
+        $detailCompareButton.Content = 'Karşılaştır ⇄'
+        $detailCompareButton.ToolTip = 'Ayrı pencerede: bu makinedeki hâli ile gönderilecek hâli satır satır karşılaştırır.'
+        $detailCompareButton.Tag = [pscustomobject]@{ TargetId = $targetId; Path = '' }
+        $detailCompareButton.Add_Click($script:wizardDetailCompareHandler)
+        [void]$detailButtonPanel.Children.Add($detailCompareButton)
+        [void]$detailHeader.Children.Add($detailButtonPanel)
+        [void]$detailLayout.Children.Add($detailHeader)
+
+        $detailScroller = New-Object System.Windows.Controls.ScrollViewer
+        $detailScroller.VerticalScrollBarVisibility = 'Auto'
+        $detailScroller.HorizontalScrollBarVisibility = 'Disabled'
+        $detailScroller.MaxHeight = 260
+        $detailPanel = New-Object System.Windows.Controls.StackPanel
+        $detailScroller.Content = $detailPanel
+        [void]$detailLayout.Children.Add($detailScroller)
+        $detailBorder.Child = $detailLayout
 
         $rows.Add([pscustomobject]@{
             Id = $targetId
@@ -1028,8 +1576,20 @@ function Show-SamePathCopyWizard {
             Reachable = $null
             ReachabilityDot = $reachabilityDot
             InspectText = $inspectText
+            # Ayrıntı bölümü: açık mı, listesi hesaplandı mı, hangi denetimleri taşıyor.
+            Expanded = $false
+            DetailLoaded = $false
+            DetailRowDefinition = $detailDefinition
+            DetailBorder = $detailBorder
+            DetailPanel = $detailPanel
+            DetailSummaryText = $detailSummaryText
+            DetailSelectionText = $detailSelectionText
+            DetailDiff = $null
+            FileRows = $null
+            Chevron = $chevron
         })
-        $rowIndex++
+        $rowIndex += 2
+        $targetIndex++
     }
     & $updateSelectionCount
 
@@ -1445,5 +2005,7 @@ function Show-SamePathCopyWizard {
         # Çipte bırakılan ve pencereye eklenen öğelerden sonra kopyalamaya girecek liste.
         SourcePaths = @(@(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources) |
             ForEach-Object { [string]$_.FullName })
+        # Hedef başına ayrıntı tablosunda işareti kaldırılan yollar: kopyalama bunları /XF ve /XD ile atlar.
+        TargetExclusions = (ConvertTo-SamePathCopyWizardExclusionMap -Exclusions $script:wizardTargetExclusions)
     }
 }

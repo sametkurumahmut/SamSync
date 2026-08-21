@@ -195,6 +195,9 @@ if ($sourceItems.Count -eq 0) {
 }
 
 $globalOptions = $null
+# Sihirbazın ayrıntı tablosunda hedef başına düşürülen yollar: hedef kimliği -> { FilePaths; DirectoryPaths }.
+# Yalnızca pencere açıldığında dolar; kısayol, profil ve otomasyon kiplerinde boş kalır.
+$wizardTargetExclusions = @{}
 if ($useWizardSettings) {
     if ($isWizard -and -not $PlanOnly -and -not $CheckOnly) {
         # Arayüz, kullanıcı vazgeçse bile tablodaki son hâli döndürür; ayarlar her iki durumda da saklanır.
@@ -220,6 +223,16 @@ if ($useWizardSettings) {
             $sourceItems = @(foreach ($wizardSourcePath in $wizardSourcePaths) {
                 Get-Item -LiteralPath $wizardSourcePath -Force
             })
+        }
+        # Ayrıntı tablosunda tek tek işareti kaldırılan öğeler yalnızca kendi hedefinde düşürülür.
+        if ($wizardResult.PSObject.Properties['TargetExclusions'] -and $null -ne $wizardResult.TargetExclusions) {
+            $wizardTargetExclusions = $wizardResult.TargetExclusions
+            foreach ($exclusionTargetId in @($wizardTargetExclusions.Keys | Sort-Object)) {
+                $exclusionEntry = $wizardTargetExclusions[$exclusionTargetId]
+                Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("[{0}] ayrıntı tablosunda düşürülen: {1} dosya, {2} klasör | {3}" -f
+                    $exclusionTargetId, @($exclusionEntry.FilePaths).Count, @($exclusionEntry.DirectoryPaths).Count,
+                    ((@($exclusionEntry.FilePaths) + @($exclusionEntry.DirectoryPaths)) -join ', '))
+            }
         }
     }
     $globalOptions = $wizardSettings.Global
@@ -300,6 +313,7 @@ $plans = @(foreach ($target in $targets) {
     $targetId = [string]$target.id
     # Hedef başına parametreler sihirbazdan gelir; sihirbaz dışı çağrılarda hepsi kapalıdır (eski davranış).
     $targetOptions = if ($useWizardSettings) { $wizardSettings.Targets[$targetId] } else { $null }
+    $targetExclusion = if ($wizardTargetExclusions.ContainsKey($targetId)) { $wizardTargetExclusions[$targetId] } else { $null }
     $options = [pscustomobject]@{
         Backup = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'Backup'
         OnlyNewer = Get-SamePathCopyOptionValue -Options $targetOptions -Name 'OnlyNewer'
@@ -308,6 +322,9 @@ $plans = @(foreach ($target in $targets) {
         FastCopy = Get-SamePathCopyOptionValue -Options $globalOptions -Name 'FastCopy'
         ExcludeFiles = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeFiles'
         ExcludeDirectories = Get-SamePathCopyOptionText -Options $globalOptions -Name 'ExcludeDirectories'
+        # Bu hedefte ayrıntı tablosundan düşürülen yollar; robocopy'ye /XF ve /XD olarak eklenir.
+        ExcludeFilePaths = @(if ($null -ne $targetExclusion) { @($targetExclusion.FilePaths) })
+        ExcludeDirectoryPaths = @(if ($null -ne $targetExclusion) { @($targetExclusion.DirectoryPaths) })
         ThrottleMilliseconds = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'ThrottleMilliseconds' -Default 0
         Notify = $(if ($null -ne $globalOptions -and $globalOptions.PSObject.Properties['Notify']) { [bool]$globalOptions.Notify } else { $true })
         RetryCount = Get-SamePathCopyOptionNumber -Options $globalOptions -Name 'RetryCount' -Default -1

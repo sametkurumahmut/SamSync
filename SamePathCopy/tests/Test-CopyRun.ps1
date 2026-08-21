@@ -290,6 +290,39 @@ try {
     }
     if (@($reportRows | Where-Object { $_.Sonuc -eq 'başarılı' }).Count -lt 1) { throw 'Raporda başarılı satır yok.' }
 
+    # 8) Sihirbazın ayrıntı tablosunda düşürülen yollar gerçekten atlanıyor mu? Düşürme robocopy'ye
+    # tam yolla /XF ve /XD olarak geçiyor; bu kabulün doğruluğu gerçek robocopy ile sınanır.
+    # (Uçtan uca yol sihirbaz penceresinden geçtiği için burada argüman üreticisi doğrudan çalıştırılır.)
+    $excludeSource = Join-Path $testDirectory 'dislama\kaynak'
+    [void](New-Item -ItemType Directory -Path (Join-Path $excludeSource 'Alt') -Force)
+    New-TestFile -Path (Join-Path $excludeSource 'gitsin.txt') -Content 'gitsin'
+    New-TestFile -Path (Join-Path $excludeSource 'gitmesin.txt') -Content 'gitmesin'
+    New-TestFile -Path (Join-Path $excludeSource 'Alt\gitmesin.txt') -Content 'alt'
+    $excludeDestination = Join-Path $testDirectory 'dislama\hedef'
+    [void](New-Item -ItemType Directory -Path $excludeDestination -Force)
+    # Hedefte kaynakta olmayan bir dosya: ayna açık ama dosya düşürülmüş olduğu için silinmemeli.
+    New-TestFile -Path (Join-Path $excludeDestination 'korunsun.txt') -Content 'korunsun'
+    $excludeArguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $excludeSource -DestinationDirectory $excludeDestination `
+        -IsDirectory $true -RetryCount 0 -WaitSeconds 0 -Options ([pscustomobject]@{
+            Mirror = $true
+            ExcludeFilePaths = @((Join-Path $excludeSource 'gitmesin.txt'), (Join-Path $excludeDestination 'korunsun.txt'))
+            ExcludeDirectoryPaths = @((Join-Path $excludeSource 'Alt'))
+        }))
+    $excludeProcess = [System.Diagnostics.Process]::Start((New-Object System.Diagnostics.ProcessStartInfo -Property @{
+        FileName = 'robocopy.exe'; Arguments = ($excludeArguments -join ' '); UseShellExecute = $false; CreateNoWindow = $true
+    }))
+    if (-not $excludeProcess.WaitForExit(60000)) {
+        try { $excludeProcess.Kill() } catch { }
+        throw 'Düşürme sınamasındaki robocopy bitmedi.'
+    }
+    if ($excludeProcess.ExitCode -ge 8) { throw "Düşürme sınamasında robocopy hata verdi: $($excludeProcess.ExitCode)" }
+    if (-not (Test-Path -LiteralPath (Join-Path $excludeDestination 'gitsin.txt') -PathType Leaf)) { throw 'Düşürülmeyen dosya kopyalanmadı.' }
+    if (Test-Path -LiteralPath (Join-Path $excludeDestination 'gitmesin.txt')) { throw 'Düşürülen dosya kopyalandı (/XF tam yol ile çalışmıyor).' }
+    if (Test-Path -LiteralPath (Join-Path $excludeDestination 'Alt')) { throw 'Düşürülen klasör kopyalandı (/XD tam yol ile çalışmıyor).' }
+    if (-not (Test-Path -LiteralPath (Join-Path $excludeDestination 'korunsun.txt') -PathType Leaf)) {
+        throw 'Hedefteki fazlalık düşürülmüş olmasına rağmen ayna tarafından silindi (/XF hedef yolunda çalışmıyor).'
+    }
+
     Write-Host 'Kopyalama çalıştırma testleri başarılı.'
 }
 finally {
