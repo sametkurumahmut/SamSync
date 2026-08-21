@@ -308,6 +308,50 @@ try {
     Assert-Equal 'aynı' ([string]$sameWithExtras.Text) 'Yalnızca fazlalık varken rozet "aynı" kalmalı.'
     if (([string]$sameWithExtras.ToolTip) -notlike '*fazladan: 4*') { throw "Aynı rozetinin ipucunda fazlalık sayısı yok: $($sameWithExtras.ToolTip)" }
 
+    # Satır dökümü: her sınıf satırı sırasıyla girdiye çevrilir, yıldızlı adlar tekilleştirilir.
+    Assert-Equal 6 @($listingSummary.Entries).Count 'Listeleme girdileri eksik.'
+    Assert-Equal 'New File' ([string]$listingSummary.Entries[0].Class) 'İlk girdinin sınıfı yanlış.'
+    Assert-Equal 'C:\x\a.txt' ([string]$listingSummary.Entries[0].Path) 'İlk girdinin yolu yanlış.'
+    Assert-Equal $false ([bool]$listingSummary.Entries[0].IsDirectory) 'Dosya girdisi klasör sayıldı.'
+    Assert-Equal 'New Dir' ([string]$listingSummary.Entries[1].Class) 'Klasör girdisinin sınıfı yanlış.'
+    Assert-Equal $true ([bool]$listingSummary.Entries[1].IsDirectory) 'Klasör girdisi dosya sayıldı.'
+    Assert-Equal 'Extra File' ([string]$listingSummary.Entries[5].Class) 'Fazlalık sınıfı "Extra File" olarak yazılmalı.'
+
+    # /NS verilmediğinde robocopy klasör satırlarına dosya sayısı (fazlalıkta -1) koyuyor; yol bundan ayrılmalı.
+    $countedSummary = Get-SamePathCopyListingSummary -Lines @(
+        '   New Dir             4    C:\x\Alt\'
+        '  *EXTRA Dir          -1    \\ip\pay\Fazla\'
+        '   New File          1024    C:\x\b.txt'
+        '        C:\x\'
+        'Toplam    Kopyalanan'
+    )
+    Assert-Equal 3 @($countedSummary.Entries).Count 'Sayı taşıyan satırlar ayrıştırılamadı.'
+    Assert-Equal 'C:\x\Alt\' ([string]$countedSummary.Entries[0].Path) 'Klasör satırındaki dosya sayısı yola karıştı.'
+    Assert-Equal '\\ip\pay\Fazla\' ([string]$countedSummary.Entries[1].Path) 'Fazlalık satırındaki -1 yola karıştı.'
+    Assert-Equal 'C:\x\b.txt' ([string]$countedSummary.Entries[2].Path) 'Dosya satırındaki boyut yola karıştı.'
+
+    # Sınıf gösterimi: işaret, metin ve fırça. Ayna açıkken fazlalık "silinecek" olur ve kırmızıya döner.
+    Assert-Equal '+' ([string](Get-SamePathCopyChangeClassInfo -Class 'New File').Sign) 'Yeni dosya işareti + olmalı.'
+    Assert-Equal 'SuccessBrush' ([string](Get-SamePathCopyChangeClassInfo -Class 'New File').Brush) 'Yeni dosya yeşil olmalı.'
+    Assert-Equal '~' ([string](Get-SamePathCopyChangeClassInfo -Class 'Newer').Sign) 'Güncellenecek dosya işareti ~ olmalı.'
+    Assert-Equal '~' ([string](Get-SamePathCopyChangeClassInfo -Class 'Changed').Sign) 'Boyutu farklı dosya işareti ~ olmalı.'
+    Assert-Equal '!' ([string](Get-SamePathCopyChangeClassInfo -Class 'Older').Sign) 'Hedef daha yeni işareti ! olmalı.'
+    Assert-Equal 'WarningBrush' ([string](Get-SamePathCopyChangeClassInfo -Class 'Older').Brush) 'Hedef daha yeni uyarı renginde olmalı.'
+    Assert-Equal 'hedefte fazla' ([string](Get-SamePathCopyChangeClassInfo -Class 'Extra File').Text) 'Ayna kapalıyken fazlalık silinmiyor.'
+    Assert-Equal 'TextMutedBrush' ([string](Get-SamePathCopyChangeClassInfo -Class 'Extra File').Brush) 'Ayna kapalıyken fazlalık soluk olmalı.'
+    Assert-Equal 'silinecek' ([string](Get-SamePathCopyChangeClassInfo -Class 'Extra File' -MirrorEnabled $true).Text) 'Ayna açıkken fazlalık silinecek demeli.'
+    Assert-Equal 'DangerBrush' ([string](Get-SamePathCopyChangeClassInfo -Class 'Extra File' -MirrorEnabled $true).Brush) 'Ayna açıkken fazlalık kırmızı olmalı.'
+    Assert-Equal '?' ([string](Get-SamePathCopyChangeClassInfo -Class 'BilinmeyenSinif').Sign) 'Bilinmeyen sınıf işareti ? olmalı.'
+
+    # Yol eşlemesi: kaynak kökünden hedef köküne (ve tersine) taşıma, kökün kendisi ve kök dışı yol.
+    Assert-Equal '\\ip\pay\Alt\a.txt' (Get-SamePathCopyMappedPath -Path 'C:\Kaynak\Alt\a.txt' -FromRoot 'C:\Kaynak' -ToRoot '\\ip\pay') 'Yol hedefe eşlenemedi.'
+    Assert-Equal '\\ip\pay' (Get-SamePathCopyMappedPath -Path 'C:\Kaynak\' -FromRoot 'C:\Kaynak' -ToRoot '\\ip\pay') 'Kökün kendisi eşlenemedi.'
+    Assert-Equal 'D:\Baska\a.txt' (Get-SamePathCopyMappedPath -Path 'D:\Baska\a.txt' -FromRoot 'C:\Kaynak' -ToRoot '\\ip\pay') 'Kök dışı yol değiştirilmemeli.'
+    Assert-Equal 'Alt\a.txt' (Get-SamePathCopyPathUnderRoot -Path 'C:\Kaynak\Alt\a.txt' -Root 'C:\Kaynak\') 'Kök altındaki yol çıkarılamadı.'
+    Assert-Equal '' (Get-SamePathCopyPathUnderRoot -Path 'C:\Kaynak' -Root 'C:\Kaynak') 'Kökün kendisi için boş metin dönmeli.'
+    Assert-Equal 'C:\' (Get-SamePathCopyTrimmedPath -Path 'C:\') 'Sürücü kökündeki ters bölü korunmalı.'
+    Assert-Equal 'C:\Kaynak' (Get-SamePathCopyTrimmedPath -Path 'C:\Kaynak\') 'Sondaki ters bölü atılmalı.'
+
     # Hedef inceleme gerçek robocopy ile: yerel yönetim paylaşımı üzerinden üç durum sınanır.
     $inspectRoot = Join-Path $temporaryDirectory 'incele'
     $inspectSource = Join-Path $inspectRoot 'kaynak\Data'
@@ -353,6 +397,106 @@ try {
     $newerBadge = Get-SamePathCopyInspectionText -Inspection $newerInspection
     Assert-Equal 'WarningBrush' ([string]$newerBadge.Brush) 'Hedef daha yeniyken rozet uyarı renginde olmalı.'
     if (([string]$newerBadge.Text) -notlike '!*') { throw "Hedef daha yeniyken rozet ünlem taşımalı: $($newerBadge.Text)" }
+
+    # Hedef başına dosya listesi gerçek robocopy ile: yeni, güncellenecek, hedefte fazla ve hedef
+    # daha yeni durumlarının hepsi tek listede görünmeli. Hedefe hiçbir şey yazılmamalı.
+    $diffRoot = Join-Path $temporaryDirectory 'fark'
+    $diffSource = Join-Path $diffRoot 'kaynak\Data'
+    [void](New-Item -ItemType Directory -Path (Join-Path $diffSource 'Alt') -Force)
+    Set-Content -LiteralPath (Join-Path $diffSource 'ayni.txt') -Value 'ayni' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $diffSource 'guncel.txt') -Value 'kaynak surumu' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $diffSource 'Alt\yeni.txt') -Value 'yeni' -Encoding UTF8
+    $diffTargetPath = Join-Path $diffRoot 'hedef'
+    [void](New-Item -ItemType Directory -Path (Join-Path $diffTargetPath 'Data') -Force)
+    Set-Content -LiteralPath (Join-Path $diffTargetPath 'Data\ayni.txt') -Value 'ayni' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $diffTargetPath 'Data\guncel.txt') -Value 'hedef surumu (eski)' -Encoding UTF8
+    (Get-Item -LiteralPath (Join-Path $diffTargetPath 'Data\guncel.txt')).LastWriteTime = (Get-Date).AddHours(-4)
+    Set-Content -LiteralPath (Join-Path $diffTargetPath 'Data\fazla.txt') -Value 'fazla' -Encoding UTF8
+
+    $diffTarget = New-InspectTarget -Id 'Fark' -LocalPath $diffTargetPath
+    $fileDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) -Target $diffTarget -MirrorEnabled $true
+    Assert-Equal $false ([bool]$fileDiff.Failed) 'Dosya listesi robocopy hatası verdi.'
+    $diffByPath = @{}
+    foreach ($entry in @($fileDiff.Entries)) { $diffByPath[[string]$entry.DisplayPath] = $entry }
+    if ($diffByPath.ContainsKey('ayni.txt')) { throw 'Hedefle aynı olan dosya listeye girmemeli.' }
+    Assert-Equal 'Newer' ([string]$diffByPath['guncel.txt'].Class) 'Kaynağı yeni olan dosya "Newer" olmalı.'
+    Assert-Equal '~' ([string]$diffByPath['guncel.txt'].Sign) 'Güncellenecek dosyanın işareti ~ olmalı.'
+    Assert-Equal 'New File' ([string]$diffByPath['Alt\yeni.txt'].Class) 'Hedefte olmayan dosya "New File" olmalı.'
+    Assert-Equal $true ([bool]$diffByPath['Alt\'].IsDirectory) 'Hedefte olmayan klasör satırı klasör olmalı.'
+    Assert-Equal 'Extra File' ([string]$diffByPath['fazla.txt'].Class) 'Hedefteki fazla dosya listeye girmedi.'
+    Assert-Equal 'silinecek' ([string]$diffByPath['fazla.txt'].StatusText) 'Ayna açıkken fazlalık "silinecek" demeli.'
+    Assert-Equal 1 ([int]$fileDiff.UpdateCount) 'Güncellenecek sayısı yanlış.'
+    Assert-Equal 2 ([int]$fileDiff.NewCount) 'Yeni sayısı yanlış (dosya + klasör).'
+    Assert-Equal 1 ([int]$fileDiff.ExtraCount) 'Fazlalık sayısı yanlış.'
+    Assert-Equal 0 ([int]$fileDiff.HiddenCount) 'Küçük listede kırpma olmamalı.'
+
+    # Kaynak tarafındaki girdi kaynak yolunu, hedefteki fazlalık hedef yolunu düşürme anahtarı yapar.
+    Assert-Equal (Join-Path $diffSource 'guncel.txt') ([string]$diffByPath['guncel.txt'].ExcludePath) 'Kaynak girdisinin düşürme yolu kaynak olmalı.'
+    if (([string]$diffByPath['fazla.txt'].ExcludePath) -notlike '\\127.0.0.1\*') { throw "Fazlalığın düşürme yolu hedef paylaşımı olmalı: $($diffByPath['fazla.txt'].ExcludePath)" }
+    if (([string]$diffByPath['guncel.txt'].DestinationPath) -notlike '\\127.0.0.1\*Data\guncel.txt') { throw "Girdinin hedef yolu yanlış: $($diffByPath['guncel.txt'].DestinationPath)" }
+    if ([long]$diffByPath['guncel.txt'].Size -le 0) { throw 'Kaynak dosyasının boyutu okunmadı.' }
+    if (Test-Path -LiteralPath (Join-Path $diffTargetPath 'Data\Alt')) { throw 'Listeleme hedefe yazdı.' }
+
+    # Özet metni: sıfır olan sınıflar yazılmaz, ayna kapalıyken fazlalık silinmiş gibi anlatılmaz.
+    Assert-Equal '+2 yeni  •  ~1 güncellenecek  •  -1 silinecek' (Get-SamePathCopyFileDiffSummaryText -Diff $fileDiff) 'Ayna açık özet metni yanlış.'
+    $fileDiffNoMirror = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) -Target $diffTarget
+    Assert-Equal '+2 yeni  •  ~1 güncellenecek  •  -1 hedefte fazla' (Get-SamePathCopyFileDiffSummaryText -Diff $fileDiffNoMirror) 'Ayna kapalı özet metni yanlış.'
+
+    # Hedef hiç yoksa robocopy her şeyi yeni sayar: öğenin kendisi de satır olarak görünür.
+    $emptyTargetPath = Join-Path $diffRoot 'bosHedef'
+    [void](New-Item -ItemType Directory -Path $emptyTargetPath -Force)
+    $missingDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) -Target (New-InspectTarget -Id 'BosHedef' -LocalPath $emptyTargetPath)
+    Assert-Equal 0 ([int]$missingDiff.SameItemCount) 'Hedefte hiç olmayan öğe "aynı" sayılmamalı.'
+    if (@($missingDiff.Entries | Where-Object { [string]$_.DisplayPath -eq 'Data\' }).Count -ne 1) {
+        throw "Hedefte olmayan kök klasör kendi adıyla listelenmeli: $(@($missingDiff.Entries | ForEach-Object { $_.DisplayPath }) -join ', ')"
+    }
+
+    # Hedef kaynakla birebir aynıysa liste boş kalır ve öğe "aynı" sayılır.
+    $sameDiffTargetPath = Join-Path $diffRoot 'ayniHedef'
+    [void](New-Item -ItemType Directory -Path $sameDiffTargetPath -Force)
+    $robocopyOutput = robocopy $diffSource (Join-Path $sameDiffTargetPath 'Data') /E /COPY:DAT /FFT /R:0 /W:0
+    $sameDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) -Target (New-InspectTarget -Id 'AyniHedef' -LocalPath $sameDiffTargetPath)
+    Assert-Equal 0 @($sameDiff.Entries).Count 'Birebir kopyada liste boş olmalı.'
+    Assert-Equal 1 ([int]$sameDiff.SameItemCount) 'Birebir kopyada öğe "aynı" sayılmalı.'
+    Assert-Equal 'hedef kaynakla aynı' (Get-SamePathCopyFileDiffSummaryText -Diff $sameDiff) 'Fark yokken özet metni yanlış.'
+
+    # Kalabalık listede kırpma: sınır kadar satır girer, kalanı sayı olarak bildirilir.
+    $cappedDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) -Target (New-InspectTarget -Id 'Kirpik' -LocalPath $emptyTargetPath) -MaxEntries 2
+    Assert-Equal 2 @($cappedDiff.Entries).Count 'Satır sınırı uygulanmadı.'
+    Assert-Equal $true ([bool]$cappedDiff.Truncated) 'Kırpılan liste bildirilmedi.'
+    if ([int]$cappedDiff.HiddenCount -le 0) { throw 'Listeye girmeyen satır sayısı bildirilmedi.' }
+
+    # Erişilemeyen hedefte robocopy zaman aşımına düşer: liste hata döner, süreç kilitlenmez.
+    $unreachableDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `
+        -LocalRoots @((Join-Path $diffRoot 'kaynak')) `
+        -Target ([pscustomobject]@{ id = 'Yok'; name = 'Yok'; address = '10.255.255.1'; networkRoot = 'Sim' }) -TimeoutSeconds 6
+    # robocopy erişilemeyen paylaşımda hızlı dönüyor ama çıkış kodu 8'in altında kalabiliyor ve her şeyi
+    # "yeni" sayıyor: hata günlükteki "ERROR nn (0x...)" satırından anlaşılıyor ve özete yazılıyor.
+    Assert-Equal $true ([bool]$unreachableDiff.Failed) 'Erişilemeyen hedef hata olarak dönmeli.'
+    if ((Get-SamePathCopyFileDiffSummaryText -Diff $unreachableDiff) -notlike '*liste eksik olabilir*') {
+        throw "Hata durumunda özet listenin eksik olabileceğini söylemeli: $(Get-SamePathCopyFileDiffSummaryText -Diff $unreachableDiff)"
+    }
+    Assert-Equal 'liste alınamadı' (Get-SamePathCopyFileDiffSummaryText -Diff ([pscustomobject]@{
+        Failed = $true; Entries = @(); NewCount = 0; UpdateCount = 0; OlderCount = 0; ExtraCount = 0
+        Truncated = $false; HiddenCount = 0; MirrorEnabled = $false })) 'Hiç satır gelmeyen hatada özet metni yanlış.'
+
+    # Yol bazlı hariç tutma: ayrıntı tablosunda düşürülen yollar /XF ve /XD listelerine eklenmeli.
+    $pathExcludeArguments = (Get-SamePathCopyRobocopyArguments -SourceDirectory 'C:\Kaynak' -DestinationDirectory '\\ip\pay' `
+        -IsDirectory $true -RetryCount 0 -WaitSeconds 0 -Options ([pscustomobject]@{
+            ExcludeFiles = '*.tmp'
+            ExcludeFilePaths = @('C:\Kaynak\a.txt', '\\ip\pay\fazla.txt')
+            ExcludeDirectoryPaths = @('C:\Kaynak\Alt')
+        })) -join ' '
+    if ($pathExcludeArguments -notlike '*/XF "*.tmp" "C:\Kaynak\a.txt" "\\ip\pay\fazla.txt"*') { throw "Düşürülen dosya yolları /XF listesine eklenmedi: $pathExcludeArguments" }
+    if ($pathExcludeArguments -notlike "*/XD `"$(Get-SamePathCopyBackupFolderName)`" `"C:\Kaynak\Alt`"*") { throw "Düşürülen klasör yolu /XD listesine eklenmedi: $pathExcludeArguments" }
+    $noPathExcludeArguments = (Get-SamePathCopyRobocopyArguments -SourceDirectory 'C:\Kaynak' -DestinationDirectory '\\ip\pay' `
+        -IsDirectory $true -RetryCount 0 -WaitSeconds 0 -Options ([pscustomobject]@{ ExcludeFilePaths = @(); ExcludeDirectoryPaths = @() })) -join ' '
+    if ($noPathExcludeArguments -like '*/XF*') { throw "Boş düşürme listesi için /XF eklendi: $noPathExcludeArguments" }
 
     Write-Host 'Hedef yolu ve çoklu kök testleri başarılı.'
 }

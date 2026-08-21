@@ -353,12 +353,18 @@ function Get-SamePathCopyRobocopyArguments {
         $arguments += $(if ($useMirror) { '/MIR' } else { '/E' })
         $arguments += '/DCOPY:DAT'
         # Yedek klasörü hedefin altında durduğu için kopyalamaya dahil edilmez; kullanıcının verdiği klasörler de eklenir.
-        $excludedDirectories = @((Get-SamePathCopyBackupFolderName)) + @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeDirectories'))
+        # ExcludeDirectoryPaths: sihirbazın ayrıntı tablosunda işareti kaldırılan klasörlerin tam yolları.
+        $excludedDirectories = @((Get-SamePathCopyBackupFolderName)) +
+            @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeDirectories')) +
+            @(Get-SamePathCopyOptionList -Options $Options -Name 'ExcludeDirectoryPaths')
         $arguments += ('/XD ' + ((@($excludedDirectories | Select-Object -Unique) | ForEach-Object { & $quote $_ }) -join ' '))
     }
-    $excludedFiles = @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeFiles'))
+    # ExcludeFilePaths: aynı tabloda işareti kaldırılan dosyaların tam yolları. Hedef tarafındaki fazlalık
+    # da buraya girebilir: /XF verilen yol hem kopyalanmaz hem de /MIR ile silinmez.
+    $excludedFiles = @(Split-SamePathCopyPatternList -Text (Get-SamePathCopyOptionText -Options $Options -Name 'ExcludeFiles')) +
+        @(Get-SamePathCopyOptionList -Options $Options -Name 'ExcludeFilePaths')
     if ($excludedFiles.Count -gt 0) {
-        $arguments += ('/XF ' + ((@($excludedFiles) | ForEach-Object { & $quote $_ }) -join ' '))
+        $arguments += ('/XF ' + ((@($excludedFiles | Select-Object -Unique) | ForEach-Object { & $quote $_ }) -join ' '))
     }
     $throttle = Get-SamePathCopyOptionNumber -Options $Options -Name 'ThrottleMilliseconds' -Default 0
     if ($throttle -gt 0) { $arguments += "/IPG:$throttle" }
@@ -409,6 +415,14 @@ function Get-SamePathCopyOptionValue {
 
     if ($null -eq $Options -or -not $Options.PSObject.Properties[$Name]) { return $false }
     return [bool]$Options.$Name
+}
+
+function Get-SamePathCopyOptionList {
+    param($Options, [Parameter(Mandatory = $true)][string]$Name)
+
+    # Yol listesi taşıyan parametreler (hedef başına düşürülen dosya/klasörler) için: eksik alan boş dizi döner.
+    if ($null -eq $Options -or -not $Options.PSObject.Properties[$Name]) { return @() }
+    return @(@($Options.$Name) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
 }
 
 function Test-SamePathCopyTargetReachability {
@@ -538,24 +552,38 @@ function Get-SamePathCopyListingSummary {
     # yollar buradan çıkarılır; ayna onayında ve deneme çalıştırmasında kullanılır.
     $extras = New-Object System.Collections.Generic.List[string]
     $changes = New-Object System.Collections.Generic.List[string]
+    $entries = New-Object System.Collections.Generic.List[object]
     $classCounts = @{ 'New File' = 0; 'New Dir' = 0; 'Newer' = 0; 'Older' = 0; 'Changed' = 0 }
     foreach ($line in @($Lines)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $trimmed = $line.Trim()
-        if ($trimmed -match '^\*EXTRA (File|Dir)\s+(?<path>.+)$') {
-            $extras.Add($Matches['path'].Trim())
+        # Satır biçimi: "<sınıf>  [<sayı>]  <tam yol>". Sınıfsız satırlar taranan klasör başlıklarıdır.
+        # Sayı alanı yalnızca /NS verilmediğinde çıkar (klasörlerde dosya sayısı, fazlalıkta -1); atılır.
+        if ($trimmed -notmatch '^(?<class>\*EXTRA File|\*EXTRA Dir|New File|New Dir|Newer|Older|Changed)\s+(?<rest>\S.*)$') { continue }
+        $class = [string]$Matches['class']
+        $path = ([string]$Matches['rest']).Trim()
+        if ($path -match '^-?\d+\s+(?<real>\S.*)$') { $path = ([string]$Matches['real']).Trim() }
+        # Sınıf adları arayüzde ve testlerde tek biçimde kullanılsın diye yıldız açılır: "Extra File".
+        $normalizedClass = $class.Replace('*EXTRA ', 'Extra ')
+        $entries.Add([pscustomobject]@{
+            Class = $normalizedClass
+            Path = $path
+            IsDirectory = ($normalizedClass -eq 'New Dir' -or $normalizedClass -eq 'Extra Dir')
+        })
+        if ($normalizedClass.StartsWith('Extra ')) {
+            $extras.Add($path)
             continue
         }
-        if ($trimmed -match '^(?<class>New File|Newer|Older|Changed|New Dir)\s+(?<path>.+)$') {
-            $changes.Add($Matches['path'].Trim())
-            $classCounts[$Matches['class']] = [int]$classCounts[$Matches['class']] + 1
-        }
+        $changes.Add($path)
+        $classCounts[$normalizedClass] = [int]$classCounts[$normalizedClass] + 1
     }
     return [pscustomobject]@{
         ExtraCount = $extras.Count
         ChangeCount = $changes.Count
         Extras = @($extras)
         Changes = @($changes)
+        # Satır dökümü: sihirbazın hedef başına dosya listesi bu girdilerden kurulur.
+        Entries = $entries.ToArray()
         # Sınıf dökümü: "Older" kaynak dosyanın hedeftekinden ESKİ olduğunu söyler; robocopy yine de
         # üzerine yazacağı için hedefte daha yeni dosyayı ezme uyarısı bu sayıdan üretilir.
         NewCount = [int]$classCounts['New File'] + [int]$classCounts['New Dir']
@@ -649,57 +677,18 @@ function Invoke-SamePathCopyTargetInspection {
             continue
         }
 
-        if ($isDirectory) {
-            $sourceDirectory = [string]$item.FullName
-            $destinationDirectory = $destination
-            $fileFilter = $null
-        }
-        else {
-            $sourceDirectory = [System.IO.Path]::GetDirectoryName([string]$item.FullName)
-            $destinationDirectory = [System.IO.Path]::GetDirectoryName($destination)
-            $fileFilter = [System.IO.Path]::GetFileName([string]$item.FullName)
-        }
-
-        $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Inspect-{0}.log" -f [guid]::NewGuid().ToString('N'))
-        $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory `
-            -FileFilter $fileFilter -IsDirectory $isDirectory -RetryCount 0 -WaitSeconds 0 -Options $null -LogPath $logPath -Listing)
-        try {
-            $process = Start-Process -FilePath 'robocopy.exe' -ArgumentList ($arguments -join ' ') -WindowStyle Hidden -PassThru
-            $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-            while (-not $process.WaitForExit(120)) {
-                if ($null -ne $PumpAction) { & $PumpAction }
-                if ([DateTime]::UtcNow -gt $deadline) {
-                    try { $process.Kill() } catch { }
-                    $failed = $true
-                    break
-                }
-            }
-            $process.WaitForExit()
-            # robocopy'de 8 ve üzeri hata demektir; /L kipinde de erişim hatası bu şekilde döner.
-            if ($process.ExitCode -ge 8) { $failed = $true }
-
-            $lines = @()
-            if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-                $lines = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue)
-            }
-            $summary = Get-SamePathCopyListingSummary -Lines $lines
-            $changeCount += [int]$summary.ChangeCount
-            $newCount += [int]$summary.NewCount
-            $newerCount += [int]$summary.NewerCount
-            $olderCount += [int]$summary.OlderCount
-            $changedCount += [int]$summary.ChangedCount
-            # Dosya süzgeçli listelemede robocopy hedefteki diğer dosyaları da "fazla" sayabildiği için
-            # fazlalıklar yalnızca klasör incelemesinde toplanır (dosya kopyalamada zaten anlamı yok).
-            if ($isDirectory) { $extraCount += [int]$summary.ExtraCount }
-        }
-        catch {
-            $failed = $true
-        }
-        finally {
-            if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-                Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
-            }
-        }
+        $run = Invoke-SamePathCopyListingRun -SourcePath ([string]$item.FullName) -DestinationPath $destination `
+            -IsDirectory $isDirectory -Options $null -TimeoutSeconds $TimeoutSeconds -PumpAction $PumpAction
+        if ([bool]$run.Failed) { $failed = $true }
+        $summary = Get-SamePathCopyListingSummary -Lines $run.Lines
+        $changeCount += [int]$summary.ChangeCount
+        $newCount += [int]$summary.NewCount
+        $newerCount += [int]$summary.NewerCount
+        $olderCount += [int]$summary.OlderCount
+        $changedCount += [int]$summary.ChangedCount
+        # Dosya süzgeçli listelemede robocopy hedefteki diğer dosyaları da "fazla" sayabildiği için
+        # fazlalıklar yalnızca klasör incelemesinde toplanır (dosya kopyalamada zaten anlamı yok).
+        if ($isDirectory) { $extraCount += [int]$summary.ExtraCount }
     }
 
     return [pscustomobject]@{
@@ -756,6 +745,334 @@ function Get-SamePathCopyInspectionText {
         $brush = 'WarningBrush'
     }
     return [pscustomobject]@{ Text = $text; Brush = $brush; ToolTip = ($toolTipParts -join "`r`n") }
+}
+
+function Get-SamePathCopyTrimmedPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # Yol karşılaştırmaları için sondaki ters bölü atılır; "C:\" gibi sürücü kökleri korunur.
+    if ($Path.Length -gt 3) { return $Path.TrimEnd('\') }
+    return $Path
+}
+
+function Get-SamePathCopyMappedPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$FromRoot,
+        [Parameter(Mandatory = $true)][string]$ToRoot
+    )
+
+    # Bir kökün altındaki yolu öbür köke taşır: robocopy'nin listelediği kaynak yolundan hedef yolunu
+    # (ya da hedefteki fazlalıktan onun kaynak karşılığını) üretmek için kullanılır. Kök dışı yola dokunulmaz.
+    $trimmedFrom = Get-SamePathCopyTrimmedPath -Path $FromRoot
+    $trimmedTo = Get-SamePathCopyTrimmedPath -Path $ToRoot
+    $trimmedPath = Get-SamePathCopyTrimmedPath -Path $Path
+    if ($trimmedPath.Equals($trimmedFrom, [System.StringComparison]::OrdinalIgnoreCase)) { return $trimmedTo }
+    if ($trimmedPath.StartsWith($trimmedFrom + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ($trimmedTo + '\' + $trimmedPath.Substring($trimmedFrom.Length + 1))
+    }
+    return $trimmedPath
+}
+
+function Get-SamePathCopyPathUnderRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    # Yolun kökten sonraki kısmı; yol kökün kendisiyse boş metin döner. Kök dışı yol olduğu gibi kalır.
+    $trimmedRoot = Get-SamePathCopyTrimmedPath -Path $Root
+    $trimmedPath = Get-SamePathCopyTrimmedPath -Path $Path
+    if ($trimmedPath.Equals($trimmedRoot, [System.StringComparison]::OrdinalIgnoreCase)) { return '' }
+    if ($trimmedPath.StartsWith($trimmedRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $trimmedPath.Substring($trimmedRoot.Length + 1)
+    }
+    return $trimmedPath
+}
+
+function Get-SamePathCopyChangeClassInfo {
+    param(
+        [Parameter(Mandatory = $true)][string]$Class,
+        [bool]$MirrorEnabled = $false
+    )
+
+    # robocopy sınıfını arayüz gösterimine çevirir. İşaretler git'teki gibi okunur: "+" hedefte olmayan,
+    # "~" üzerine yazılacak, "!" hedefteki daha yeni dosyanın geri alınacağı, "-" hedefte fazla olan.
+    # Fırça adları tema kaynaklarındaki anahtarlardır; pencere FindResource ile çözer.
+    switch ($Class) {
+        'New Dir' {
+            return [pscustomobject]@{ Sign = '+'; Text = 'yeni klasör'; Brush = 'SuccessBrush'; Order = 0
+                ToolTip = 'Bu klasör hedefte yok; içeriğiyle birlikte oluşturulacak.' }
+        }
+        'New File' {
+            return [pscustomobject]@{ Sign = '+'; Text = 'yeni'; Brush = 'SuccessBrush'; Order = 1
+                ToolTip = 'Dosya hedefte yok; ilk kez kopyalanacak.' }
+        }
+        'Newer' {
+            return [pscustomobject]@{ Sign = '~'; Text = 'güncellenecek'; Brush = 'AccentBrush'; Order = 2
+                ToolTip = 'Kaynak daha yeni; hedefteki dosyanın üzerine yazılacak.' }
+        }
+        'Changed' {
+            return [pscustomobject]@{ Sign = '~'; Text = 'boyutu farklı'; Brush = 'AccentBrush'; Order = 3
+                ToolTip = 'Tarihler aynı, boyut farklı; hedefteki dosyanın üzerine yazılacak.' }
+        }
+        'Older' {
+            return [pscustomobject]@{ Sign = '!'; Text = 'hedef daha yeni'; Brush = 'WarningBrush'; Order = 4
+                ToolTip = 'Hedefteki dosya kaynaktan DAHA YENİ; kopyalama onu eski hâline döndürür. İşareti kaldırmak bu dosyayı korur.' }
+        }
+        'Extra Dir' {
+            if ($MirrorEnabled) {
+                return [pscustomobject]@{ Sign = '-'; Text = 'silinecek klasör'; Brush = 'DangerBrush'; Order = 5
+                    ToolTip = 'Kaynakta yok, hedefte var. Ayna açık olduğu için içeriğiyle birlikte silinecek.' }
+            }
+            return [pscustomobject]@{ Sign = '-'; Text = 'hedefte fazla klasör'; Brush = 'TextMutedBrush'; Order = 5
+                ToolTip = 'Kaynakta yok, hedefte var. Ayna kapalı olduğu için silinmez, olduğu gibi kalır.' }
+        }
+        'Extra File' {
+            if ($MirrorEnabled) {
+                return [pscustomobject]@{ Sign = '-'; Text = 'silinecek'; Brush = 'DangerBrush'; Order = 6
+                    ToolTip = 'Kaynakta yok, hedefte var. Ayna açık olduğu için silinecek; işareti kaldırmak dosyayı korur.' }
+            }
+            return [pscustomobject]@{ Sign = '-'; Text = 'hedefte fazla'; Brush = 'TextMutedBrush'; Order = 6
+                ToolTip = 'Kaynakta yok, hedefte var. Ayna kapalı olduğu için silinmez, olduğu gibi kalır.' }
+        }
+    }
+    return [pscustomobject]@{ Sign = '?'; Text = $Class; Brush = 'TextMutedBrush'; Order = 9; ToolTip = '' }
+}
+
+function Invoke-SamePathCopyListingRun {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [Parameter(Mandatory = $true)][bool]$IsDirectory,
+        $Options,
+        [int]$TimeoutSeconds = 120,
+        [scriptblock]$PumpAction
+    )
+
+    # Tek bir kaynak öğe için "hedefe hiçbir şey yazmadan ne değişecek" listelemesi (robocopy /L).
+    # Kaynak dosyaysa üst klasörler karşılaştırılıp yalnızca o dosya süzülür. Hedef klasör hiç yoksa
+    # robocopy her şeyi "New" diye listeler; bu yüzden ayrı bir "yok" dalı gerekmez.
+    # PumpAction arayüzden çağrıldığında pencerenin donmaması için bekleme döngüsünde çalıştırılır.
+    if ($IsDirectory) {
+        $sourceDirectory = $SourcePath
+        $destinationDirectory = $DestinationPath
+        $fileFilter = $null
+    }
+    else {
+        $sourceDirectory = [System.IO.Path]::GetDirectoryName($SourcePath)
+        $destinationDirectory = [System.IO.Path]::GetDirectoryName($DestinationPath)
+        $fileFilter = [System.IO.Path]::GetFileName($SourcePath)
+    }
+
+    $failed = $false
+    $lines = @()
+    $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("SamePathCopy-Inspect-{0}.log" -f [guid]::NewGuid().ToString('N'))
+    $arguments = @(Get-SamePathCopyRobocopyArguments -SourceDirectory $sourceDirectory -DestinationDirectory $destinationDirectory `
+        -FileFilter $fileFilter -IsDirectory $IsDirectory -RetryCount 0 -WaitSeconds 0 -Options $Options -LogPath $logPath -Listing)
+    try {
+        # Start-Process -PassThru çıkış kodunu güvenilir vermiyor; süreç .NET üzerinden başlatılır.
+        # /UNILOG çıktıyı dosyaya yazdığı için konsol akışlarını yönlendirmek gerekmiyor.
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = 'robocopy.exe'
+        $startInfo.Arguments = ($arguments -join ' ')
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while (-not $process.WaitForExit(120)) {
+            if ($null -ne $PumpAction) { & $PumpAction }
+            if ([DateTime]::UtcNow -gt $deadline) {
+                try { $process.Kill() } catch { }
+                $failed = $true
+                break
+            }
+        }
+        $process.WaitForExit()
+        # robocopy'de 8 ve üzeri hata demektir; /L kipinde de erişim hatası bu şekilde döner.
+        if ($process.ExitCode -ge 8) { $failed = $true }
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            $lines = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue)
+        }
+        # Erişilemeyen paylaşımda robocopy hızlı dönüyor ama çıkış kodu her zaman 8'in üstünde olmuyor;
+        # günlüğe yazdığı "ERROR nn (0x...)" satırı hatayı kesin gösteriyor.
+        foreach ($line in $lines) {
+            if ([string]$line -match 'ERROR \d+ \(0x') {
+                $failed = $true
+                break
+            }
+        }
+    }
+    catch {
+        $failed = $true
+    }
+    finally {
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    return [pscustomobject]@{
+        Lines = @($lines)
+        Failed = $failed
+        SourceDirectory = $sourceDirectory
+        DestinationDirectory = $destinationDirectory
+        FileFilter = $fileFilter
+    }
+}
+
+function Get-SamePathCopyTargetFileDiff {
+    param(
+        [Parameter(Mandatory = $true)]$SourceItems,
+        [string[]]$LocalRoots,
+        [Parameter(Mandatory = $true)]$Target,
+        $Options,
+        [bool]$MirrorEnabled = $false,
+        [int]$MaxEntries = 400,
+        [int]$TimeoutSeconds = 120,
+        [scriptblock]$PumpAction
+    )
+
+    # Bir hedefe gerçekten hangi dosyaların gideceğini dosya dosya çıkarır: her kaynak öğe için
+    # robocopy /L çalıştırılır, çıktının sınıf satırları girdiye çevrilir. Sihirbazdaki ayrıntı tablosu
+    # ve diff penceresi bu listeyi kullanır; hedefe hiçbir şey yazılmaz.
+    # Girdiler öğeye göre gruplanır: her grubun başlığı öğenin hedefteki göreli yoludur.
+    $entries = New-Object System.Collections.Generic.List[object]
+    $groups = New-Object System.Collections.Generic.List[object]
+    $failed = $false
+    $hiddenCount = 0
+    $sameItemCount = 0
+    $items = @(@($SourceItems) | Where-Object { $null -ne $_ })
+
+    foreach ($item in $items) {
+        $isDirectory = [bool]$item.PSIsContainer
+        $sourcePath = [string]$item.FullName
+        $destination = Get-SamePathCopyDestination -SourcePath $sourcePath -LocalRoots $LocalRoots `
+            -Address ([string]$Target.address) -NetworkRoot ([string]$Target.networkRoot)
+        $itemHeader = $sourcePath
+        try {
+            $relative = [string](Get-SamePathCopySourceRelativePath -SourcePath $sourcePath -LocalRoots $LocalRoots).RelativePath
+            if (-not [string]::IsNullOrWhiteSpace($relative)) { $itemHeader = $relative }
+        }
+        catch { }
+
+        $run = Invoke-SamePathCopyListingRun -SourcePath $sourcePath -DestinationPath $destination `
+            -IsDirectory $isDirectory -Options $Options -TimeoutSeconds $TimeoutSeconds -PumpAction $PumpAction
+        if ([bool]$run.Failed) { $failed = $true }
+        $summary = Get-SamePathCopyListingSummary -Lines $run.Lines
+        $itemEntryCount = 0
+
+        foreach ($listed in @($summary.Entries)) {
+            $isExtra = ([string]$listed.Class).StartsWith('Extra ')
+            # Dosya süzgeçli listelemede robocopy hedefteki diğer dosyaları da "fazla" sayıyor;
+            # tek dosya kopyalamasında fazlalığın anlamı olmadığı için atlanır (inceleme de böyle davranıyor).
+            if ($isExtra -and -not $isDirectory) { continue }
+            $itemEntryCount++
+            if ($entries.Count -ge $MaxEntries) {
+                $hiddenCount++
+                continue
+            }
+
+            if ($isExtra) {
+                $entryDestination = [string]$listed.Path
+                $entrySource = Get-SamePathCopyMappedPath -Path $entryDestination -FromRoot ([string]$run.DestinationDirectory) -ToRoot ([string]$run.SourceDirectory)
+                $relativeRoot = [string]$run.DestinationDirectory
+                $relativeSource = $entryDestination
+            }
+            else {
+                $entrySource = [string]$listed.Path
+                $entryDestination = Get-SamePathCopyMappedPath -Path $entrySource -FromRoot ([string]$run.SourceDirectory) -ToRoot ([string]$run.DestinationDirectory)
+                $relativeRoot = [string]$run.SourceDirectory
+                $relativeSource = $entrySource
+            }
+
+            # Satırda gösterilen yol öğenin kendisine göredir; öğenin kökü listelendiğinde adı yazılır.
+            $displayPath = [string](Get-SamePathCopyPathUnderRoot -Path $relativeSource -Root $relativeRoot)
+            if ([string]::IsNullOrWhiteSpace($displayPath)) {
+                $displayPath = [System.IO.Path]::GetFileName((Get-SamePathCopyTrimmedPath -Path $relativeRoot))
+            }
+            if ([bool]$listed.IsDirectory) { $displayPath = $displayPath.TrimEnd('\') + '\' }
+
+            $size = $null
+            if (-not [bool]$listed.IsDirectory -and -not $isExtra) {
+                # Boyut yerel diskten okunur: hedef paylaşımını dosya dosya yoklamak listeyi yavaşlatır.
+                try { $size = [long]([System.IO.FileInfo]::new($entrySource)).Length } catch { $size = $null }
+            }
+            $classInfo = Get-SamePathCopyChangeClassInfo -Class ([string]$listed.Class) -MirrorEnabled $MirrorEnabled
+            $entries.Add([pscustomobject]@{
+                SourceItemPath = $sourcePath
+                ItemHeader = $itemHeader
+                Class = [string]$listed.Class
+                Sign = [string]$classInfo.Sign
+                StatusText = [string]$classInfo.Text
+                Brush = [string]$classInfo.Brush
+                ToolTip = [string]$classInfo.ToolTip
+                Order = [int]$classInfo.Order
+                IsDirectory = [bool]$listed.IsDirectory
+                IsExtra = $isExtra
+                DisplayPath = $displayPath
+                SourcePath = $entrySource
+                DestinationPath = $entryDestination
+                # Kopyalamadan düşürmek için robocopy'ye verilecek yol: kaynak tarafı kaynak yolunu,
+                # hedefteki fazlalık ise hedef yolunu kullanır.
+                ExcludePath = (Get-SamePathCopyTrimmedPath -Path $(if ($isExtra) { $entryDestination } else { $entrySource }))
+                Size = $size
+            })
+        }
+
+        if ($itemEntryCount -eq 0) { $sameItemCount++ }
+        $groups.Add([pscustomobject]@{
+            Header = $itemHeader
+            SourcePath = $sourcePath
+            DestinationPath = $destination
+            IsDirectory = $isDirectory
+            EntryCount = $itemEntryCount
+        })
+    }
+
+    # Sınıf sayımı: List[object] @() ile diziye çevrilemiyor ("bağımsız değişken türleri eşleşmiyor"),
+    # bu yüzden sayım ToArray() üzerinden yapılır.
+    $entryArray = $entries.ToArray()
+    $countOf = {
+        param([string[]]$Classes)
+        return @(@($entryArray) | Where-Object { $Classes -contains [string]$_.Class }).Count
+    }
+    return [pscustomobject]@{
+        TargetId = [string]$Target.id
+        ItemCount = $items.Count
+        SameItemCount = $sameItemCount
+        Entries = $entryArray
+        Groups = $groups.ToArray()
+        NewCount = (& $countOf @('New File', 'New Dir'))
+        UpdateCount = (& $countOf @('Newer', 'Changed'))
+        OlderCount = (& $countOf @('Older'))
+        ExtraCount = (& $countOf @('Extra File', 'Extra Dir'))
+        HiddenCount = $hiddenCount
+        Truncated = ($hiddenCount -gt 0)
+        MirrorEnabled = $MirrorEnabled
+        Failed = $failed
+    }
+}
+
+function Get-SamePathCopyFileDiffSummaryText {
+    param([Parameter(Mandatory = $true)]$Diff)
+
+    # Ayrıntı bölümünün başlığındaki tek satırlık döküm: sıfır olan sınıflar yazılmaz.
+    if ([bool]$Diff.Failed -and @($Diff.Entries).Count -eq 0) { return 'liste alınamadı' }
+    $parts = New-Object System.Collections.Generic.List[string]
+    # Not: hata varken satırlar da gelebilir (ör. erişilemeyen paylaşımda robocopy her şeyi "yeni"
+    # sayıyor); bu yüzden döküm yazılır ama sonuna listenin eksik olabileceği eklenir.
+    if ([int]$Diff.NewCount -gt 0) { $parts.Add("+{0} yeni" -f [int]$Diff.NewCount) }
+    if ([int]$Diff.UpdateCount -gt 0) { $parts.Add("~{0} güncellenecek" -f [int]$Diff.UpdateCount) }
+    if ([int]$Diff.OlderCount -gt 0) { $parts.Add("!{0} hedef daha yeni" -f [int]$Diff.OlderCount) }
+    if ([int]$Diff.ExtraCount -gt 0) {
+        # Metot çağrısının içinde -f bağımsız değişkenleri parantezlenmezse virgül metoda ayrı argüman gider.
+        $parts.Add(("-{0} {1}" -f [int]$Diff.ExtraCount, $(if ([bool]$Diff.MirrorEnabled) { 'silinecek' } else { 'hedefte fazla' })))
+    }
+    $text = $(if ($parts.Count -eq 0) { 'hedef kaynakla aynı' } else { $parts -join '  •  ' })
+    if ([bool]$Diff.Truncated) { $text += ("  •  {0} satır listeye girmedi" -f [int]$Diff.HiddenCount) }
+    if ([bool]$Diff.Failed) { $text += '  •  liste eksik olabilir: robocopy hata verdi' }
+    return $text
 }
 
 function Get-SamePathCopyNodeGroup {

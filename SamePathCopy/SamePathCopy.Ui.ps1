@@ -92,6 +92,11 @@ function Get-SamePathCopyThemeXaml {
     <SolidColorBrush x:Key="SuccessBrush" Color="%%Success%%" />
     <SolidColorBrush x:Key="DangerBrush" Color="%%Danger%%" />
     <SolidColorBrush x:Key="WarningBrush" Color="%%Warning%%" />
+    <!-- Soluk fırçalar satır zemini içindir: diff penceresindeki eklenen/kalkan satırlar ve seçili satır. -->
+    <SolidColorBrush x:Key="SuccessSoftBrush" Color="%%Success%%" Opacity="0.17" />
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="%%Danger%%" Opacity="0.17" />
+    <SolidColorBrush x:Key="WarningSoftBrush" Color="%%Warning%%" Opacity="0.17" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="%%Accent%%" Opacity="0.15" />
 
     <Style x:Key="TitleText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="19" />
@@ -119,6 +124,14 @@ function Get-SamePathCopyThemeXaml {
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="MonoText" TargetType="TextBlock">
+        <!-- Satır farkı ve durum işaretleri eşit genişlikli yazıyla hizalanır. -->
+        <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style x:Key="ColumnHeaderText" TargetType="TextBlock">
