@@ -1,5 +1,17 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- Sihirbazda bilgisayar adına tıklamak, satırın altında o makineye ne gideceğini **dosya dosya** gösteren bir tablo açıyor; tekrar tıklamak kapatıyor. Her satırda git'teki gibi bir işaret (`+` hedefte yok, `~` üzerine yazılacak, `!` hedefteki dosya daha yeni, `-` hedefte fazla), öğeye göre göreli yol, durum metni ve boyut duruyor; işaret ve durum renkli (yeşil / vurgu / uyarı / kırmızı). Liste ilk açılışta `robocopy /L` ile hesaplanıyor (hedefe hiçbir şey yazılmıyor, pencere donmuyor), sonra önbellekten geliyor. Erişilemeyen hedefte robocopy zaman aşımı beklenmiyor. Kalabalık listeler 400 satırda kesiliyor.
+
+- Ayrıntı tablosundaki satırlar varsayılan olarak işaretli; işareti kaldırılan öğe **yalnızca o makinede** kopyalamaya girmiyor. Yol robocopy'ye tam yolla `/XF` (dosyalar; hedefteki fazlalık da olabilir, öyleyse ayna onu silmiyor) ya da `/XD` (klasörler) olarak geçiyor. Klasörün işareti kaldırılınca altındaki satırların kutuları kapanıyor, çünkü onlar da kopyalanmıyor. Düşürülen yollar tek bir robocopy komut satırına sığmak zorunda olduğu için hedef başına toplam uzunluk sınırı var; sınıra gelince neden eklenmediği söyleniyor. Düşürme yalnızca o çalıştırma için geçerli, kayıtlı ayarlara yazılmıyor. Kartta ayrıca `Yenile` ve `Düşürülenleri geri al` düğmeleri var; kaynak listesi ya da hedef parametresi değişince açık kart "Yenile ile güncelleyin" diyor.
+
+- Yeni **karşılaştırma penceresi** (`Karşılaştır ⇄`): solda o makinede etkilenecek öğelerin listesi, sağda seçilen dosyanın kaynak ile hedef arasındaki **satır satır farkı** (eklenen satır yeşil `+`, kalkan satır kırmızı `-`, satır numaraları iki taraf için ayrı). Üstte iki tarafın boyutu ve tarihi yazıyor. Fark LCS ile hesaplanıyor; ortak baş ve son kırpılıyor, uzun değişmeyen bloklar `... N satır aynı` satırına iniyor. İkili, çok büyük, hedefte olmayan ya da okunamayan dosyalarda satır farkı yerine nedeni yazıyor. Pencere yalnızca okuma yapıyor. Ayrıntı tablosundaki her dosya satırının kendi `⇄` düğmesi pencereyi o dosyada açıyor. Katman [SamePathCopy.Diff.ps1](SamePathCopy.Diff.ps1) içinde ve [tests/Test-Diff.ps1](tests/Test-Diff.ps1) ile sınanıyor.
+
+- Sihirbazın filtre kutusu satırları gizlemiyordu: `N / M seçili` göstergesi değişiyor ama tablodan satır düşmüyordu. Satırın denetim listesi `@()` ile diziye çevriliyordu ve bu PowerShell 5.1 sürümünde `List[object]` için "bağımsız değişken türleri eşleşmiyor" hatası veriyor; hata `TextChanged` işleyicisinin içinde sessizce yutulduğu için görünürlük döngüsü hiç çalışmıyordu. Liste artık doğrudan dolaşılıyor.
+
+- Listeleme özeti (`robocopy /L` çıktısı) artık satır dökümü de veriyor ve klasör satırlarındaki dosya sayısını yoldan ayırıyor. robocopy sürecini `System.Diagnostics.Process` başlatıyor (`Start-Process -PassThru` çıkış kodunu güvenilir vermiyor) ve erişilemeyen paylaşımda günlüğe düşen `ERROR nn (0x...)` satırı hata sayılıyor: robocopy o durumda 8'in altında bir kod dönüp her şeyi "yeni" listeliyor.
+
 ## 1.3.0
 
 - Kaynak listesi açıkken pencereye dosya bırakılınca liste ekranda asılı kalıyordu: çip yeniden kurulurken görsel ağaçtan çıkarılıyor ama `Popup` kendi penceresinde çizildiği için kapanmıyordu. Kaldırılan çiplerin açılır listesi artık önce kapatılıyor.

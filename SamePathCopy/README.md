@@ -90,7 +90,7 @@ Hedef listesinin üstünde üç yardımcı vardır:
 - **Filtre kutusu** — ada, gruba veya node kimliğine göre süzer. Süzme sırasında kolon başlığındaki toplu seçim ikonları yalnızca görünen satırlara uygulanır: `Unit2` yazıp `Gönder` kolonunu işaretlemek o gruba ait satırları seçer. Gizlenen satırların seçim durumu korunur.
 - **Grup çipleri** — her grubun adının solunda tek bir onay kutusu; o gruptaki bütün bilgisayarları tek tıkla seçer veya bırakır. Kutu grubun durumunu da gösterir: hepsi seçiliyse işaretli, hiçbiri seçili değilse boş, bir kısmı seçiliyse belirsiz.
 - **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
-- **`Hedefi incele`** — seçili hedeflerde `robocopy /L` çalıştırıp tabloya eklenen `Hedefte` kolonunu doldurur: `aynı` (yeşil), `N değişecek`, `hedefte yok`, `erişilemedi`. Hedefteki dosya kaynaktakinden **daha yeniyse** rozet uyarı rengine döner ve `!` ile başlar — kopyalama o dosyanın üzerine yazar; ipucunda döküm (hedefte olmayan / kaynak daha yeni / hedef daha yeni / boyutu farklı / fazladan) yazar. Hedefe hiçbir şey yazılmaz; erişilemeyen hedefler atlanır.
+- **`Hedefi incele`** — seçili hedeflerde `robocopy /L` çalıştırıp tabloya eklenen `Hedefte` kolonunu doldurur: `aynı` (yeşil), `N değişecek`, `hedefte yok`, `erişilemedi`. Hedefteki dosya kaynaktakinden **daha yeniyse** rozet uyarı rengine döner ve `!` ile başlar — kopyalama o dosyanın üzerine yazar; ipucunda döküm (hedefte olmayan / kaynak daha yeni / hedef daha yeni / boyutu farklı / fazladan) yazar. Hedefe hiçbir şey yazılmaz; erişilemeyen hedefler atlanır. Hangi **dosyaların** değişeceğini görmek için bilgisayar adına tıklayın (aşağıdaki *Makine başına dosya listesi*).
 - **`Seç ⌄` menüsü** — seçim yardımcılarını tek düğmede toplar:
   - `Erişilebilirleri seç` — yalnızca yoklamaya yanıt veren hedefleri işaretler (görünen satırlarda).
   - `Son çalıştırmada hatalıları seç` — en son CSV raporunda hata alan hedefleri işaretler, diğerlerini bırakır; yarım kalan gönderim iki tıkla tamamlanır. Rapor yoksa ya da hata yoksa bunu söyler.
@@ -134,6 +134,27 @@ Bütün hedefler için geçerli parametreler:
 Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
 
 Yedekler hedef paylaşımda sınırsız birikmesin diye her başarılı yedekten sonra eski tarih klasörleri silinir; kaç tanesinin tutulacağı `config.json` içindeki `copy.backupKeep` alanından belirlenir (varsayılan `5`, `0` = sınırsız). Yalnızca `yyyyMMdd-HHmmss` biçimindeki klasörler temizlenir; elle oluşturulmuş klasörlere dokunulmaz. Silinen yedekler sonuç panelinde ve günlükte görünür.
+
+#### Makine başına dosya listesi
+
+Tablodaki **bilgisayar adına tıklamak**, o satırın altında büyük bir kart açar: kopyalama o makinede tam olarak neyi yapacak, dosya dosya. Adın solundaki `›` işareti açıldığında `⌄` olur; tekrar tıklamak kartı kapatır. Her satırda git'i andıran bir işaret, öğeye göre göreli yol, durum metni ve boyut vardır:
+
+| İşaret | Durum | Ne anlama gelir |
+| --- | --- | --- |
+| `+` (yeşil) | `yeni` / `yeni klasör` | Hedefte yok; ilk kez kopyalanacak. |
+| `~` (vurgu rengi) | `güncellenecek` / `boyutu farklı` | Hedefteki dosyanın üzerine yazılacak. |
+| `!` (uyarı rengi) | `hedef daha yeni` | Hedefteki dosya kaynaktan **daha yeni**; kopyalama onu eski hâline döndürür. |
+| `-` (kırmızı / soluk) | `silinecek` / `hedefte fazla` | Kaynakta yok, hedefte var. Yalnızca `Ayna` açıkken silinir; kapalıysa olduğu gibi kalır. |
+
+Liste ilk açılışta `robocopy /L` ile hesaplanır — hedefe hiçbir şey yazılmaz — ve sonraki açılışlarda önbellekten gelir. Hesaplama sırasında `hesaplanıyor...` yazar ve pencere yanıt vermeye devam eder. Erişim yoklamasına yanıt vermeyen hedefte robocopy'nin ağ zaman aşımı beklenmez, kart bunu söyler. Kalabalık listeler 400 satırda kesilir; kalan sayı satır olarak bildirilir. Birden çok kaynak öğe seçildiyse satırlar öğe başlıkları altında gruplanır.
+
+Satırların hepsi işaretli gelir. **Bir satırın işaretini kaldırmak o öğeyi yalnızca o makinede** kopyalamadan düşürür; öbür hedefler etkilenmez. Yol robocopy'ye tam yolla geçer: dosyalar `/XF`, klasörler `/XD`. Hedefteki fazlalığın işaretini kaldırmak onu `/XF` listesine koyar, yani `Ayna` açık olsa bile o dosya silinmez. Bir klasörün işareti kaldırılınca altındaki satırların kutuları kapanır, çünkü onlar da kopyalanmaz. Düşürülen yollar tek bir robocopy komut satırına sığmak zorunda olduğundan hedef başına toplam uzunluk sınırı vardır; sınıra gelindiğinde neden eklenmediği söylenir (bu durumda tek tek dosya yerine üst klasörü düşürün ya da `Hariç dosyalar` kalıbını kullanın). Düşürme yalnızca o çalıştırma için geçerlidir, `wizard-state.json` içine yazılmaz.
+
+Kartın sağ üstündeki düğmeler: `Yenile` listeyi yeniden hesaplar, `Düşürülenleri geri al` o makinede düşürülen bütün öğeleri geri getirir, `Karşılaştır ⇄` aşağıdaki pencereyi açar. Kaynak listesi değişirse (çipten öğe düşürülür ya da pencereye dosya bırakılır) veya o satırın `Ayna` / `Yalnızca yeni` parametresi elle değiştirilirse açık kart eski listeyi göstermek yerine `Yenile ile güncelleyin` der.
+
+#### Karşılaştırma penceresi
+
+Ayrıntı kartındaki `Karşılaştır ⇄` düğmesi (ya da bir dosya satırının kendi `⇄` düğmesi) ayrı bir pencere açar: solda o makinede etkilenecek öğelerin listesi, sağda seçilen dosyanın **kaynak ile hedef arasındaki satır satır farkı**. Eklenecek satırlar yeşil `+`, hedeften kalkacak satırlar kırmızı `-` ile işaretlenir; iki taraf için ayrı satır numaraları yazılır. Üstte iki dosyanın boyutu, tarihi ve hedef yolu durur. Satır farkı LCS ile hesaplanır: ortak baş ve son kırpılır, uzun değişmeyen bloklar `... N satır aynı` satırına iner, böylece on binlerce satırlık bir dosyada yalnızca değişikliğin çevresi görünür. İkili (NUL baytı taşıyan), çok büyük (2 MB üstü), hedefte olmayan ya da okunamayan dosyalarda satır farkı yerine nedeni yazılır — boyut ve tarih karşılaştırması yine görünür. Pencere yalnızca okuma yapar; `Listeyi panoya kopyala` bütün satırları işaretleriyle panoya alır. Karşılaştırma katmanı [SamePathCopy.Diff.ps1](SamePathCopy.Diff.ps1) içindedir.
 
 #### Profiller
 
