@@ -768,7 +768,13 @@ function Show-SamePathCopyWizard {
 
     # Çipler "son çalıştırma" çipinin önüne eklenir: sıra kaynak, yerel kök, son çalıştırma olur.
     $script:wizardRebuildSourceChips = {
-        while ($script:wizardChipPanel.Children.Count -gt 1) { $script:wizardChipPanel.Children.RemoveAt(0) }
+        # Açık duran liste, çip ağaçtan çıkarılınca ekranda asılı kalır: Popup kendi penceresinde
+        # çizildiği için görsel ağaçtan düşmek onu kapatmıyor. Kaldırılan her çipin listesi önce kapatılır.
+        while ($script:wizardChipPanel.Children.Count -gt 1) {
+            $removedChip = $script:wizardChipPanel.Children[0]
+            if ($removedChip.Tag -is [System.Windows.Controls.Primitives.Popup]) { $removedChip.Tag.IsOpen = $false }
+            $script:wizardChipPanel.Children.RemoveAt(0)
+        }
         $effectiveItems = @(Get-SamePathCopyWizardEffectiveSourceItems -SourceItems $script:wizardSourceItems -ExcludedPaths $script:wizardExcludedSources)
         $summary = Get-SamePathCopySourceSummary -SourceItems $script:wizardSourceItems.ToArray() -LocalRoots $script:wizardLocalRoots
         $script:wizardSourceChip = New-SamePathCopySourceChip -Window $script:wizardWindow -Summary $summary `
@@ -836,8 +842,8 @@ function Show-SamePathCopyWizard {
     }
     # Olay işleyicileri betik kapsamındaki değişkenleri ve fonksiyonları görür. Kapanış (GetNewClosure)
     # kullanılmaz: kapanışlar ayrı bir modül kapsamına bağlanır ve betikte tanımlı fonksiyonlara erişemez.
-    $script:wizardWindow = $window
-    $script:wizardIconPath = $IconPath
+    # $script:wizardWindow ve $script:wizardIconPath başlık bölümünde atandı: oradaki çip işleyicileri
+    # de bunları kullanıyor.
     $script:wizardOptionDefinitions = $optionDefinitions
     $script:wizardSelectionCountText = $window.FindName('SelectionCountText')
     $script:wizardFilterBox = $window.FindName('FilterBox')

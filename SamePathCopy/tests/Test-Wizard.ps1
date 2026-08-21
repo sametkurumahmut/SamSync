@@ -141,6 +141,8 @@ try {
     $uiOutputPath = Join-Path $testDirectory 'ui-smoke-output.txt'
     $uiScript = @"
 `$ErrorActionPreference = 'Stop'
+# WPF türleri pencere açılana kadar yüklenmiyor; zamanlayıcı pencereden önce kurulduğu için burada yüklenir.
+Add-Type -AssemblyName PresentationFramework
 . '$projectDirectory\SamePathCopy.Common.ps1'
 . '$projectDirectory\SamePathCopy.Ui.ps1'
 . '$projectDirectory\SamePathCopy.Wizard.ps1'
@@ -153,12 +155,28 @@ try {
 )
 `$settings = Get-SamePathCopyWizardSettings -ConfigPath '$configPath' -Targets `$targets
 `$sourceItems = @(Get-Item -LiteralPath '$projectDirectory\README.md')
+# Pencere açıkken: kaynak listesini aç, sonra sürükle-bırak yolunu doğrudan çağır. Açık liste
+# kapanmalı (Popup görsel ağaçtan düşse de kendi penceresinde asılı kalır) ve yeni öğe listeye girmeli.
+`$dropTimer = New-Object System.Windows.Threading.DispatcherTimer
+`$dropTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+`$dropTimer.Add_Tick({
+    `$this.Stop()
+    `$oldChip = `$script:wizardSourceChip
+    `$oldChip.Tag.IsOpen = `$true
+    `$script:dropPopupWasOpen = `$oldChip.Tag.IsOpen
+    [void](Add-SamePathCopyWizardSourcePaths -SourceItems `$script:wizardSourceItems -Paths @('$projectDirectory\CHANGELOG.md') -ExcludedPaths `$script:wizardExcludedSources)
+    & `$script:wizardRebuildSourceChips
+    `$script:dropPopupClosed = (-not `$oldChip.Tag.IsOpen)
+    `$script:dropChipReplaced = (`$script:wizardSourceChip -ne `$oldChip)
+})
+`$dropTimer.Start()
 `$result = Show-SamePathCopyWizard -Configuration `$configuration -Targets `$targets -SourceItems `$sourceItems -Settings `$settings -ConfigPath '$configPath' -LocalRoots @('C:\Kok')
 "sonuc sayisi=`$(@(`$result).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8
 "confirmed=`$(`$result.Confirmed)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "hedef sayisi=`$(@(`$result.Settings.Targets.Keys).Count)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "ig1 secili=`$(`$result.Settings.Targets['IG1'].Selected)" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "kaynak yolu=`$(@(`$result.SourcePaths) -join ';')" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
+"birakma acikti=`$script:dropPopupWasOpen kapandi=`$script:dropPopupClosed yenilendi=`$script:dropChipReplaced" | Out-File -LiteralPath '$uiOutputPath' -Encoding UTF8 -Append
 "@
     Set-Content -LiteralPath $uiScriptPath -Value $uiScript -Encoding UTF8
 
@@ -183,7 +201,10 @@ try {
     Assert-Equal 'confirmed=True' $uiOutput[1] 'Onaylanan pencere Confirmed=true döndürmeli.'
     Assert-Equal 'hedef sayisi=2' $uiOutput[2] 'Sihirbaz sonucu bütün hedefleri taşımalı.'
     Assert-Equal 'ig1 secili=True' $uiOutput[3] 'Hedefler varsayılan olarak seçili gelmeli.'
-    if ($uiOutput[4] -notlike '*README.md') { throw "Sihirbaz sonucu kaynak listesini taşımalı: $($uiOutput[4])" }
+    if ($uiOutput[4] -notlike '*README.md*') { throw "Sihirbaz sonucu kaynak listesini taşımalı: $($uiOutput[4])" }
+    # Bırakılan öğe kopyalanacak listeye girmeli; açık duran liste de kapanmalı.
+    if ($uiOutput[4] -notlike '*CHANGELOG.md*') { throw "Bırakılan öğe sonuç listesine girmedi: $($uiOutput[4])" }
+    Assert-Equal 'birakma acikti=True kapandi=True yenilendi=True' $uiOutput[5] 'Bırakma sırasında açık kaynak listesi kapatılmadı ya da çip yenilenmedi.'
 
     # Kimliğe göre seçim: küme tam uygulanır (filtreden bağımsız), eşleşen satır sayısı döner.
     $selectionRows = @(

@@ -2,6 +2,8 @@
 
 ## Yayımlanmamış
 
+- Kaynak listesi açıkken pencereye dosya bırakılınca liste ekranda asılı kalıyordu: çip yeniden kurulurken görsel ağaçtan çıkarılıyor ama `Popup` kendi penceresinde çizildiği için kapanmıyordu. Kaldırılan çiplerin açılır listesi artık önce kapatılıyor.
+
 - `Son gönderim` çipi tıklanabilir oldu: son 10 çalıştırma CSV raporlarından listeleniyor (tarih, hedef sayısı, başarılı/hatalı/iptal dökümü, kaynak). `Hedefleri seç` o çalıştırmanın hedef kümesini tabloya uyguluyor, `Raporu aç` CSV'yi açıyor. Günlük özeti yoksa ama rapor varsa çip `Geçmiş` etiketiyle yine görünüyor.
 
 - Sihirbazda kaynak listesi artık düzenlenebiliyor: kaynak çipinin açılır listesindeki onay kutusuyla öğe o kopyalamadan düşürülüyor (çip `Kaynak: 7 / 9 öğe` gösteriyor), pencereye sürüklenip bırakılan dosya/klasör listeye ekleniyor. Başlık, yerel kök çipi ve `Hedefi incele` rozetleri yalnızca kalan öğeleri sayıyor; kopyalama sihirbazın döndürdüğü son listeyle yapılıyor. Bütün öğelerin işareti kaldırılırsa kopyalama başlamıyor; değişiklik yalnızca o çalıştırma için geçerli.
