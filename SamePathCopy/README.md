@@ -530,6 +530,42 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath
 
 Her hedef için bir satır yazılır: `State` sütunu `Ayni`, `Farkli`, `Yok` (hedefte hiç yok), `Erisilemedi` ya da `Hata`; `Changes` / `Missing` / `DestNewer` / `Extras` sütunları sayıları verir (`DestNewer` hedefte kaynaktan daha yeni dosya demektir — kopyalama üzerine yazar). Erişilemeyen hedef için robocopy zaman aşımı beklenmez. Çıkış kodu otomasyon içindir: **0** bütün hedefler aynı, **1** fark/eksik/erişilemeyen var. Durum değerleri, alt süreç çıktısında kod sayfasına takılmaması için ASCII yazılır. Pencere açılmaz; sihirbaz penceresi de açılmaz (hedef kümesi `all`, grup, makine kimliği ya da `profile:<ad>` ile verilir). Aynı denetimin arayüzlüsü sihirbazdaki `Hedefi incele` düğmesidir.
 
+## Geliştirme ve testler
+
+Bütün test takımlarını tek komutla koşturmak için:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-SamePathCopyTests.ps1"
+```
+
+Koşucu her takımı **ayrı bir süreçte** çalıştırır (takımların hepsi `Assert-Equal`'i kendi içinde tanımlıyor ve ortam değişkeni paylaşıyor) ve **üç durum** ayırır:
+
+| Durum | Anlamı |
+| --- | --- |
+| `geçti` | Takım sıfır çıkış koduyla bitti. |
+| `kaldı` | Takım hata verdi ya da zaman aşımına düştü. Son 20 satır çıktısı ekrana yazılır. |
+| `atlandı` | Takım bu ortamda **koşulamadı**. Nedeni satırda yazar; bu bir başarısızlık değildir. |
+
+Çıkış kodu yalnızca `kaldı` varsa `1` olur — atlanan takım otomasyonu kırmızıya çevirmez. Takımların günlüğü ve sihirbaz durumu geçici bir klasöre yönlendirilir, böylece `log\root.log` ve kayıtlı sihirbaz ayarınız kirlenmez; tertemiz koşuda o klasör silinir, kalan varsa yolu yazılır.
+
+Ortam gereksinimleri (takımların kodundan okunarak koşucuya yazıldı):
+
+| Takım | Gereksinim |
+| --- | --- |
+| `Test-CopyRun`, `Test-Destination`, `Test-Queue` | Yönetim paylaşımı: hedefleri `\\127.0.0.1\C$\...` üzerine kuruyorlar, **yükseltilmiş oturum** gerekiyor. |
+| `Test-Diff` | Yönetim paylaşımı + etkileşimli masaüstü oturumu (gerçek WPF penceresi açıyor). |
+| `Test-Wizard` | Yönetim paylaşımı + masaüstü oturumu + bu makinenin `config.json` içindeki bir node ile eşleşmesi. |
+| `Test-NotepadPlusPlusIntegration` | `config.json` ve yerel kimlik. Kurulu Notepad++ **gerekmiyor**: takım kendi sahte kurulumunu geçici klasörde kuruyor. |
+| Diğerleri | Yok. |
+
+Anahtarlar:
+
+- `-Only Diff,Queue` — yalnızca verilen takımlar (`Diff`, `Test-Diff` ve `Test-Diff.ps1` aynı şeyi seçer).
+- `-SkipUi` — pencere açan takımları atlar (uzak oturum, hızlı denetim).
+- `-TimeoutSeconds 900` — takım başına üst sınır; aşan takım öldürülür ve `kaldı` sayılır.
+
+Yeni bir takım eklemek için `tests\Test-<ad>.ps1` yazmak yeterli: koşucu onu kendiliğinden bulur ve gereksinimsiz koşar (satırda `(gereksinim tanımlı değil)` yazar). Ortam gerektiriyorsa koşucudaki `$suiteRequirements` tablosuna bir satır eklenir. Tabloda kalmış ama dosyası silinmiş bir takım varsa koşu sonunda uyarı verilir.
+
 ## Kaldırma
 
 `Uninstall-ContextMenu.bat` dosyasına çift tıklayın veya komut satırından çalıştırın:
