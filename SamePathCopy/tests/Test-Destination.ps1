@@ -470,6 +470,16 @@ try {
     Assert-Equal 2 @($cappedDiff.Entries).Count 'Satır sınırı uygulanmadı.'
     Assert-Equal $true ([bool]$cappedDiff.Truncated) 'Kırpılan liste bildirilmedi.'
     if ([int]$cappedDiff.HiddenCount -le 0) { throw 'Listeye girmeyen satır sayısı bildirilmedi.' }
+    # Sayılar listeleme özetinden toplandığı için kırpma onları eksiltmemeli (rozet doğru kalsın).
+    Assert-Equal ([int]$missingDiff.NewCount) ([int]$cappedDiff.NewCount) 'Liste kırpılınca sınıf sayıları eksildi.'
+
+    # Dosya listesi "Hedefte" kolonundaki rozete de çevrilebilmeli: satıra tıklayan kullanıcı kolonu boş görmez.
+    $diffInspection = Get-SamePathCopyFileDiffInspection -Diff $fileDiff
+    Assert-Equal 3 ([int]$diffInspection.ChangeCount) 'Rozet için değişecek sayısı yanlış (2 yeni + 1 güncellenecek).'
+    Assert-Equal 1 ([int]$diffInspection.ExtraCount) 'Rozet için fazlalık sayısı yanlış.'
+    Assert-Equal '3 değişecek' ([string](Get-SamePathCopyInspectionText -Inspection $diffInspection).Text) 'Dosya listesinden üretilen rozet metni yanlış.'
+    $sameDiffInspection = Get-SamePathCopyFileDiffInspection -Diff $sameDiff
+    Assert-Equal 'aynı' ([string](Get-SamePathCopyInspectionText -Inspection $sameDiffInspection).Text) 'Fark yokken rozet "aynı" olmalı.'
 
     # Erişilemeyen hedefte robocopy zaman aşımına düşer: liste hata döner, süreç kilitlenmez.
     $unreachableDiff = Get-SamePathCopyTargetFileDiff -SourceItems @(Get-Item -LiteralPath $diffSource) `

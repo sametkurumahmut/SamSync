@@ -456,7 +456,11 @@ function Show-SamePathCopyDiff {
 
         $countText = New-Object System.Windows.Controls.TextBlock
         $countText.Style = $script:diffWindow.FindResource('MutedText')
-        $countText.Text = "+{0} satır eklenecek, -{1} satır kalkacak" -f [int]$comparisonDiff.AddedCount, [int]$comparisonDiff.RemovedCount
+        # Sıfır olan taraf yazılmaz: "-0 satır kalkacak" gürültü.
+        $countParts = New-Object System.Collections.Generic.List[string]
+        if ([int]$comparisonDiff.AddedCount -gt 0) { $countParts.Add(("+{0} satır eklenecek" -f [int]$comparisonDiff.AddedCount)) }
+        if ([int]$comparisonDiff.RemovedCount -gt 0) { $countParts.Add(("-{0} satır kalkacak" -f [int]$comparisonDiff.RemovedCount)) }
+        $countText.Text = ($countParts -join ', ')
         $countText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
         [void]$script:diffLinePanel.Children.Add($countText)
 

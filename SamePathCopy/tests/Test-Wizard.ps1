@@ -438,7 +438,7 @@ Add-Type -AssemblyName PresentationFramework
     try {
         & `$script:wizardToggleDetail 'Yakin'
         `$row = & `$script:wizardFindRowById 'Yakin'
-        `$script:report.Add("acik=`$(`$row.Expanded) yuklendi=`$(`$row.DetailLoaded) satir=`$(`$row.FileRows.Count)")
+        `$script:report.Add("acik=`$(`$row.Expanded) yuklendi=`$(`$row.DetailLoaded) satir=`$(`$row.FileRows.Count) rozet=`$((([string]`$row.InspectText.Text) -replace '[^\d!]',''))")
         `$script:report.Add("siniflar=`$((@(`$row.FileRows | ForEach-Object { [string]`$_.Entry.Class } | Sort-Object) -join '|'))")
         `$script:report.Add("gorunur=`$(`$row.DetailBorder.Visibility) yukseklik=`$(`$row.DetailRowDefinition.Height)")
         `$fileRow = @(`$row.FileRows | Where-Object { [string]`$_.Entry.DisplayPath -eq 'guncel.txt' })[0]
@@ -496,7 +496,8 @@ Add-Type -AssemblyName PresentationFramework
     if (@($detailOutput | Where-Object { $_ -like 'HATA*' }).Count -gt 0) {
         throw "Ayrıntı bölümünde hata: $(@($detailOutput | Where-Object { $_ -like 'HATA*' }) -join ' ')"
     }
-    Assert-Equal 'acik=True yuklendi=True satir=4' $detailOutput[0] 'Ayrıntı tablosu dört satırla açılmalı (guncel, Alt, Alt\yeni, fazla).'
+    # Rozetteki sayı: 1 güncellenecek + 2 yeni (klasör ve altındaki dosya) = 3 değişecek.
+    Assert-Equal 'acik=True yuklendi=True satir=4 rozet=3' $detailOutput[0] 'Ayrıntı tablosu dört satırla açılmalı (guncel, Alt, Alt\yeni, fazla) ve "Hedefte" rozetini doldurmalı.'
     Assert-Equal 'siniflar=Extra File|New Dir|New File|Newer' $detailOutput[1] 'Ayrıntı tablosundaki sınıflar beklenenden farklı.'
     Assert-Equal 'gorunur=Visible yukseklik=Auto' $detailOutput[2] 'Açılan ayrıntı satırı görünür ve içerik yüksekliğinde olmalı.'
     Assert-Equal 'dosya dusuruldu=1 dosyalar=guncel.txt' $detailOutput[3] 'İşareti kaldırılan dosya düşürülenler listesine girmedi.'

@@ -942,6 +942,13 @@ function Get-SamePathCopyTargetFileDiff {
     $failed = $false
     $hiddenCount = 0
     $sameItemCount = 0
+    # Sınıf sayıları listeleme özetinden toplanır, girdilerden sayılmaz: liste MaxEntries ile kırpılınca
+    # sayılar yanlış olurdu. Rozet ve özet metni bu sayılardan üretiliyor.
+    $newCount = 0
+    $newerCount = 0
+    $changedCount = 0
+    $olderCount = 0
+    $extraCount = 0
     $items = @(@($SourceItems) | Where-Object { $null -ne $_ })
 
     foreach ($item in $items) {
@@ -960,6 +967,13 @@ function Get-SamePathCopyTargetFileDiff {
             -IsDirectory $isDirectory -Options $Options -TimeoutSeconds $TimeoutSeconds -PumpAction $PumpAction
         if ([bool]$run.Failed) { $failed = $true }
         $summary = Get-SamePathCopyListingSummary -Lines $run.Lines
+        $newCount += [int]$summary.NewCount
+        $newerCount += [int]$summary.NewerCount
+        $changedCount += [int]$summary.ChangedCount
+        $olderCount += [int]$summary.OlderCount
+        # Dosya süzgeçli listelemede robocopy hedefteki diğer dosyaları da "fazla" sayıyor; fazlalıklar
+        # yalnızca klasör kopyalamasında anlamlı (satır olarak da yalnızca orada listeleniyor).
+        if ($isDirectory) { $extraCount += [int]$summary.ExtraCount }
         $itemEntryCount = 0
 
         foreach ($listed in @($summary.Entries)) {
@@ -1030,27 +1044,44 @@ function Get-SamePathCopyTargetFileDiff {
         })
     }
 
-    # Sınıf sayımı: List[object] @() ile diziye çevrilemiyor ("bağımsız değişken türleri eşleşmiyor"),
-    # bu yüzden sayım ToArray() üzerinden yapılır.
-    $entryArray = $entries.ToArray()
-    $countOf = {
-        param([string[]]$Classes)
-        return @(@($entryArray) | Where-Object { $Classes -contains [string]$_.Class }).Count
-    }
     return [pscustomobject]@{
         TargetId = [string]$Target.id
         ItemCount = $items.Count
         SameItemCount = $sameItemCount
-        Entries = $entryArray
+        # List[object] @() ile diziye çevrilemiyor ("bağımsız değişken türleri eşleşmiyor"): ToArray().
+        Entries = $entries.ToArray()
         Groups = $groups.ToArray()
-        NewCount = (& $countOf @('New File', 'New Dir'))
-        UpdateCount = (& $countOf @('Newer', 'Changed'))
-        OlderCount = (& $countOf @('Older'))
-        ExtraCount = (& $countOf @('Extra File', 'Extra Dir'))
+        NewCount = $newCount
+        NewerCount = $newerCount
+        ChangedCount = $changedCount
+        UpdateCount = ($newerCount + $changedCount)
+        OlderCount = $olderCount
+        ExtraCount = $extraCount
+        ChangeCount = ($newCount + $newerCount + $changedCount + $olderCount)
         HiddenCount = $hiddenCount
         Truncated = ($hiddenCount -gt 0)
         MirrorEnabled = $MirrorEnabled
         Failed = $failed
+    }
+}
+
+function Get-SamePathCopyFileDiffInspection {
+    param([Parameter(Mandatory = $true)]$Diff)
+
+    # Dosya listesini "Hedefte" kolonundaki rozetin beklediği biçime çevirir: satıra tıklayıp listeyi
+    # gören kullanıcı, kolonun boş kalmasını değil aynı sonucu görür. Hedefte hiç olmayan öğeler burada
+    # ayrı sayılmaz; onların dosyaları "yeni" olarak listeye girdiği için değişecek sayısında görünür.
+    return [pscustomobject]@{
+        TargetId = [string]$Diff.TargetId
+        ItemCount = [int]$Diff.ItemCount
+        MissingCount = 0
+        ChangeCount = [int]$Diff.ChangeCount
+        NewCount = [int]$Diff.NewCount
+        NewerCount = [int]$Diff.NewerCount
+        OlderCount = [int]$Diff.OlderCount
+        ChangedCount = [int]$Diff.ChangedCount
+        ExtraCount = [int]$Diff.ExtraCount
+        Failed = [bool]$Diff.Failed
     }
 }
 

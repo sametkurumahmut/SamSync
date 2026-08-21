@@ -853,7 +853,7 @@ function Show-SamePathCopyWizard {
     $globalDefinitions = @(Get-SamePathCopyWizardGlobalDefinitions)
 
     $window = New-SamePathCopyWindow -Title ("{0} - Sihirbaz" -f [string]$Configuration.menuTitle) `
-        -BodyXaml (Get-SamePathCopyWizardBodyXaml) -Width 940 -Height 660 -MinWidth 760 -MinHeight 520 -IconPath $IconPath
+        -BodyXaml (Get-SamePathCopyWizardBodyXaml) -Width 1040 -Height 780 -MinWidth 800 -MinHeight 560 -IconPath $IconPath
 
     # Başlık, seçimi tek satırda özetler; ayrıntı (hangi öğe, hangi kök, hedefte hangi göreli yol)
     # tıklanan çiplerin açılır listesinde durur. Kaynak listesi burada değişebilir: çipteki onay
@@ -1048,7 +1048,7 @@ function Show-SamePathCopyWizard {
     # geçer); seçim o çalıştırma içindir, kayıtlı ayarlara yazılmaz.
     $script:wizardTargetExclusions = @{}
     # Ayrıntı tablosunun kolon genişlikleri: sıfır olan kolon (dosya yolu) esner.
-    $script:wizardDetailColumnWidths = @(30, 18, 0, 136, 76, 30)
+    $script:wizardDetailColumnWidths = @(46, 18, 0, 136, 76, 30)
 
     $script:wizardFindRowById = {
         param([string]$TargetId)
@@ -1317,6 +1317,13 @@ function Show-SamePathCopyWizard {
             -MirrorEnabled ([bool]$row.Controls['Mirror'].IsChecked) -PumpAction { Invoke-SamePathCopyUiPump }
         $row.DetailLoaded = $true
         & $script:wizardRenderDetail $TargetId
+        # "Hedefte" kolonu, listeyi gören kullanıcı için de dolar: aynı sayılardan aynı rozet üretilir.
+        $badge = Get-SamePathCopyInspectionText -Inspection (Get-SamePathCopyFileDiffInspection -Diff $row.DetailDiff)
+        $row.InspectText.Text = [string]$badge.Text
+        $row.InspectText.Foreground = $script:wizardWindow.FindResource([string]$badge.Brush)
+        $row.InspectText.ToolTip = $(if ([string]$badge.ToolTip) { [string]$badge.ToolTip } else { $null })
+        # Açılan kart tablo alanının altına düşebiliyor; görünür alana kaydırılır.
+        $row.DetailBorder.BringIntoView()
         Write-SamePathCopyLog -Component 'Sihirbaz' -Message ("Ayrinti listesi [{0}]: {1} satir | yeni: {2}, guncellenecek: {3}, hedef daha yeni: {4}, fazla: {5}" -f
             $TargetId, @($row.DetailDiff.Entries).Count, $row.DetailDiff.NewCount, $row.DetailDiff.UpdateCount,
             $row.DetailDiff.OlderCount, $row.DetailDiff.ExtraCount)
@@ -1559,7 +1566,7 @@ function Show-SamePathCopyWizard {
         $detailScroller = New-Object System.Windows.Controls.ScrollViewer
         $detailScroller.VerticalScrollBarVisibility = 'Auto'
         $detailScroller.HorizontalScrollBarVisibility = 'Disabled'
-        $detailScroller.MaxHeight = 260
+        $detailScroller.MaxHeight = 220
         $detailPanel = New-Object System.Windows.Controls.StackPanel
         $detailScroller.Content = $detailPanel
         [void]$detailLayout.Children.Add($detailScroller)
