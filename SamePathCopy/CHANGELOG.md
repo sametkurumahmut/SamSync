@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 1.3.1
 
 - Bütün test takımlarını tek komutla koşturan [tests/Invoke-SamePathCopyTests.ps1](tests/Invoke-SamePathCopyTests.ps1) eklendi. On takım vardı ama koşucu betik yoktu: "bütün takımlar geçti" iddiasının tekrarlanabilir bir karşılığı yoktu. Koşucu üç durum ayırıyor — `geçti` / `kaldı` / **`atlandı`** — çünkü takımların bir kısmı yükseltilmiş oturum (yönetim paylaşımına yazıyorlar), bir kısmı etkileşimli masaüstü (gerçek WPF penceresi açıyorlar), bir kısmı da bu makinenin `config.json` içinde tanımlı olmasını gerektiriyor. İkili bir sonuç, yükseltilmemiş bir oturumda üç yanlış kırmızı verip koşucuyu güvenilmez yapardı. Çıkış kodu yalnızca gerçek başarısızlıkta `1`; atlanan takım otomasyonu kırmızıya çevirmiyor.
 - Koşucu takımların günlüğünü ve sihirbaz durumunu geçici klasöre yönlendiriyor: testler bugüne kadar deponun `log\root.log` dosyasını kendi kayıtlarıyla dolduruyordu (240 kopyalama satırı, 30 hata kaydı — hepsi testten). Tertemiz koşuda geçici klasör siliniyor, kalan takım varsa günlüğün yolu yazılıyor.
