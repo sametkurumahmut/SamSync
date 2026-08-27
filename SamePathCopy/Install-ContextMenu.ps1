@@ -142,37 +142,35 @@ foreach ($menuRoot in $menuRoots) {
     # Windows'un klasik basamaklı sağ tık menüsü BÜTÜN ağaçta en fazla 16 öğe gösterir: alt menüye taşımak
     # bütçeyi artırmıyor, 17. öğe uyarı vermeden düşüyor (gözlemlendi: düz 19 girdinin 16'sı, alt menülü
     # ağaçta 4 + (1+5) + (1+5) = 16 öğe göründü). Ayırıcılar bu bütçeden yer yemiyor.
-    # Bu yüzden bütçe önceden hesaplanır ve sığmıyorsa tek makine girdileri menüye konmaz; sihirbaz zaten
-    # makine seçimini yapıyor. Davranış config.json içindeki menuShowNodes ile değiştirilir (auto/always/never).
-    $menuItemBudget = 16
+    # Bütçeyi kimin harcayacağına Get-SamePathCopyMenuPlan karar veriyor: bu makinenin KENDİ grubunun
+    # makineleri menüde tek tek açılıyor, sığmayan gruplar grup girdisi olarak kalıyor (hepsi ya da hiçbiri).
+    # Davranış config.json içindeki menuShowNodes ile değiştirilir (auto/always/never).
+    $menuItemBudget = Get-SamePathCopyMenuItemBudget
     $separatorBeforeFlag = 0x20
 
-    $aggregateEntries = @($menuEntries | Where-Object { $_.Kind -ne 'node' -and $_.Kind -ne 'group' })
-    $groupEntries = @($menuEntries | Where-Object { $_.Kind -eq 'group' })
-    $nodeEntries = @($menuEntries | Where-Object { $_.Kind -eq 'node' })
-    # Grup alt menüsünde grubun kendi "hepsine gönder" girdisi de bir öğe sayılır.
-    $itemsWithNodes = $aggregateEntries.Count + ($groupEntries.Count * 2) + $nodeEntries.Count
-    $itemsWithoutNodes = $aggregateEntries.Count + $groupEntries.Count
+    $menuPlan = Get-SamePathCopyMenuPlan -Entries $menuEntries -LocalGroup ([string]$localIdentity.Group) `
+        -ShowNodes ([string]$config.menuShowNodes) -Budget $menuItemBudget
+    # Grup adları büyük/küçük harf farkıyla karşılaştırılır: config'te yazıldığı gibi kalabilir.
+    $expandedGroupKeys = @(@($menuPlan.ExpandedGroups) | ForEach-Object { ([string]$_).ToLowerInvariant() })
 
-    $includeNodes = switch ([string]$config.menuShowNodes) {
-        'always' { $true }
-        'never' { $false }
-        default { $itemsWithNodes -le $menuItemBudget }
+    if ([bool]$menuPlan.OverBudget) {
+        Write-Warning ("Explorer menüsünde {0} öğe olacak; Windows en fazla {1} öğe gösterir ve fazlasını sessizce gizler. config.json içinde menuShowNodes değerini auto yapın." -f $menuPlan.ItemCount, $menuItemBudget)
+        Write-SamePathCopyLog -Component 'Kurulum' -Level 'WARN' -Message ("Menü {0} öğe ile {1} sınırını aşıyor (menuShowNodes={2})." -f
+            $menuPlan.ItemCount, $menuItemBudget, $config.menuShowNodes)
     }
-    # Grup yoksa tek makineler menüdeki tek hedeftir; bu durumda bütçeyi aşsa da konurlar.
-    if (-not $includeNodes -and $groupEntries.Count -eq 0) { $includeNodes = $true }
-
-    $plannedItemCount = if ($includeNodes) { $itemsWithNodes } else { $itemsWithoutNodes }
-    if ($includeNodes -and $plannedItemCount -gt $menuItemBudget) {
-        Write-Warning ("Explorer menüsünde {0} öğe olacak; Windows en fazla {1} öğe gösterir ve fazlasını sessizce gizler. config.json içinde menuShowNodes değerini auto yapın." -f $plannedItemCount, $menuItemBudget)
-        Write-SamePathCopyLog -Component 'Kurulum' -Level 'WARN' -Message ("Menü {0} öğe ile 16 sınırını aşıyor (menuShowNodes={1})." -f $plannedItemCount, $config.menuShowNodes)
+    if ([bool]$menuPlan.LocalGroupExpanded) {
+        Write-Host ("Bu makinenin grubu ({0}) menüde tek tek açıldı." -f $menuPlan.LocalGroup)
     }
-    if (-not $includeNodes -and $nodeEntries.Count -gt 0) {
-        Write-Host ("Menüde tek makine girdileri gösterilmiyor: {0} makine + {1} grup + {2} toplu girdi Windows'un 16 öğe sınırını aşıyor. Tek makineye göndermek için Wizard'ı kullanın (menuShowNodes=always ile zorlanabilir)." -f
-            $nodeEntries.Count, $groupEntries.Count, $aggregateEntries.Count)
-        Write-SamePathCopyLog -Component 'Kurulum' -Message ("Tek makine girdileri menüye konmadı: {0} makine, sınır {1}, planlanan {2}" -f
-            $nodeEntries.Count, $menuItemBudget, $itemsWithNodes)
+    if (@($menuPlan.CollapsedGroups).Count -gt 0) {
+        Write-Host ("Şu grupların makineleri menüde tek tek gösterilmiyor ({0} makine): {1}. O gruplara grup girdisiyle ya da Wizard'la gönderilir (menuShowNodes=always ile zorlanabilir)." -f
+            $menuPlan.HiddenNodeCount, (@($menuPlan.CollapsedGroups) -join ', '))
     }
+    Write-SamePathCopyLog -Component 'Kurulum' -Message ("Menü planı: {0}/{1} öğe | yerel grup: {2} (açık: {3}) | açılan: {4} | kapalı: {5} | gruba ait olmayanlar: {6} | menüye girmeyen makine: {7}" -f
+        $menuPlan.ItemCount, $menuItemBudget,
+        $(if ($menuPlan.LocalGroup) { $menuPlan.LocalGroup } else { '(yok)' }), $menuPlan.LocalGroupExpanded,
+        $(if (@($menuPlan.ExpandedGroups).Count -gt 0) { (@($menuPlan.ExpandedGroups) -join ',') } else { 'yok' }),
+        $(if (@($menuPlan.CollapsedGroups).Count -gt 0) { (@($menuPlan.CollapsedGroups) -join ',') } else { 'yok' }),
+        $menuPlan.IncludeUngroupedNodes, $menuPlan.HiddenNodeCount)
 
     function Set-MenuItem {
         param(
@@ -205,8 +203,8 @@ foreach ($menuRoot in $menuRoots) {
     foreach ($entry in $menuEntries) {
         # Gruba ait makineler üst seviyede değil, grubun alt menüsünde oluşur.
         if ($entry.Kind -eq 'node' -and -not [string]::IsNullOrWhiteSpace([string]$entry.GroupName)) { continue }
-        # Bütçe yetmiyorsa tek makine girdileri menüye hiç konmaz.
-        if ($entry.Kind -eq 'node' -and -not $includeNodes) { continue }
+        # Bütçe yetmiyorsa gruba ait olmayan makineler menüye konmaz.
+        if ($entry.Kind -eq 'node' -and -not [bool]$menuPlan.IncludeUngroupedNodes) { continue }
 
         $needsSeparator = ($previousSection -ne '' -and $previousSection -ne [string]$entry.Section)
         # Kayıt anahtarı adında iki nokta üst üste kullanılmadığı için "group:Unit1" -> "group_Unit1".
@@ -214,7 +212,8 @@ foreach ($menuRoot in $menuRoots) {
 
         if ($entry.Kind -eq 'group') {
             $groupMembers = @($menuEntries | Where-Object { $_.Kind -eq 'node' -and [string]$_.GroupName -eq [string]$entry.GroupName })
-            if ($includeNodes -and $groupMembers.Count -gt 0) {
+            $expandThisGroup = ($expandedGroupKeys -contains ([string]$entry.GroupName).ToLowerInvariant())
+            if ($expandThisGroup -and $groupMembers.Count -gt 0) {
                 # Grup alt menüsü: SubCommands boş bırakılıp altına kendi shell anahtarı açılır.
                 Set-MenuItem -Path $entryKey -Label ([string]$entry.Label) -WithIcon -SeparatorBefore:$needsSeparator
                 Set-RegistryString -Path $entryKey -Name 'SubCommands' -Value ''
@@ -230,7 +229,7 @@ foreach ($menuRoot in $menuRoots) {
                 }
             }
             else {
-                # Tek makineler menüye konmuyorsa grup girdisi doğrudan komuta bağlanır (alt menü gereksiz).
+                # Bu grup açılmıyorsa girdi doğrudan komuta bağlanır: tıklamak grubun tamamına gönderir.
                 Set-MenuItem -Path $entryKey -Label ([string]$entry.Label) -TargetId ([string]$entry.Id) `
                     -WithIcon -SeparatorBefore:$needsSeparator
             }

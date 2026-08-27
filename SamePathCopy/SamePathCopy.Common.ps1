@@ -159,6 +159,8 @@ function ConvertTo-SamePathCopyIdentity {
     return [pscustomobject]@{
         Id = [string]$Node.id
         Name = [string]$Node.name
+        # Bu makinenin grubu: Explorer menüsünde kendi grubunun makineleri öne alınıyor.
+        Group = (Get-SamePathCopyNodeGroup -Node $Node)
         Roots = $roots
         # Root, tek köklü kullanımlar ve ekranda gösterim için ilk kökü verir.
         Root = if ($roots.Count -gt 0) { [string]$roots[0] } else { '' }
@@ -1190,6 +1192,105 @@ function Get-SamePathCopyMenuEntries {
         $entries += [pscustomobject]@{ Kind = 'node'; Id = [string]$target.id; Label = [string]$target.name; IsAggregate = $false; Section = 'tek'; GroupName = '' }
     }
     return $entries
+}
+
+function Get-SamePathCopyMenuItemBudget {
+    # Windows'un klasik basamaklı sağ tık menüsü BÜTÜN ağaçta en fazla bu kadar öğe gösterir; alt menüye
+    # taşımak bütçeyi artırmıyor, fazlası uyarı vermeden düşüyor. Ayırıcılar bu bütçeden yer yemiyor.
+    return 16
+}
+
+function Get-SamePathCopyMenuPlan {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Entries,
+        # Bu makinenin grubu. Kendi grubunun makineleri menüde önce yer buluyor: kullanıcı en çok
+        # kendi setindeki makinelere gönderiyor, öbür setler grup girdisiyle zaten erişilebilir.
+        [string]$LocalGroup,
+        [string]$ShowNodes = 'auto',
+        [int]$Budget = 16
+    )
+
+    # Menü bütçesini kimin harcayacağına karar verir. Öncelik sırası:
+    #   1. Toplu girdiler (Tümü, sihirbaz, geri alma, profiller) — her zaman.
+    #   2. Bütün grup girdileri — her zaman: böylece hiçbir grup menüden düşmez.
+    #   3. Gruba ait olmayan makineler — düşerlerse menüden hiç erişilemezler (grup girdileri yok).
+    #   4. Bu makinenin kendi grubunun makineleri (alt menüde).
+    #   5. Kalan grupların makineleri: HEPSİ sığıyorsa açılır, sığmıyorsa hiçbiri. Yarısını açmak
+    #      "neden Unit1 açık da Unit3 kapalı" sorusunu doğuruyor; simetri korunuyor.
+    # Bir grubu açmanın bedeli: grubun kendi "Tümü" girdisi + üye sayısı (grup girdisi zaten sayıldı).
+    $aggregateEntries = @($Entries | Where-Object { [string]$_.Kind -ne 'node' -and [string]$_.Kind -ne 'group' })
+    $groupEntries = @($Entries | Where-Object { [string]$_.Kind -eq 'group' })
+    $groupedNodes = @($Entries | Where-Object { [string]$_.Kind -eq 'node' -and -not [string]::IsNullOrWhiteSpace([string]$_.GroupName) })
+    $ungroupedNodes = @($Entries | Where-Object { [string]$_.Kind -eq 'node' -and [string]::IsNullOrWhiteSpace([string]$_.GroupName) })
+
+    $memberCounts = @{}
+    foreach ($groupEntry in $groupEntries) { $memberCounts[([string]$groupEntry.GroupName).ToLowerInvariant()] = 0 }
+    foreach ($nodeEntry in $groupedNodes) {
+        $key = ([string]$nodeEntry.GroupName).ToLowerInvariant()
+        if (-not $memberCounts.ContainsKey($key)) { $memberCounts[$key] = 0 }
+        $memberCounts[$key] = [int]$memberCounts[$key] + 1
+    }
+
+    $expanded = New-Object System.Collections.Generic.List[string]
+    $itemCount = $aggregateEntries.Count + $groupEntries.Count
+    $includeUngrouped = $false
+    # Grup tanımlı değilse tek makineler menüdeki tek hedeftir: bütçeye ve ayara bakılmadan konur.
+    $noGroups = ($groupEntries.Count -eq 0)
+
+    if ($noGroups) {
+        $includeUngrouped = $true
+        $itemCount += $ungroupedNodes.Count
+    }
+    elseif ($ShowNodes -eq 'always') {
+        $includeUngrouped = $true
+        $itemCount += $ungroupedNodes.Count
+        foreach ($groupEntry in $groupEntries) {
+            $expanded.Add([string]$groupEntry.GroupName)
+            $itemCount += 1 + [int]$memberCounts[([string]$groupEntry.GroupName).ToLowerInvariant()]
+        }
+    }
+    elseif ($ShowNodes -ne 'never') {
+        if (($itemCount + $ungroupedNodes.Count) -le $Budget) {
+            $includeUngrouped = $true
+            $itemCount += $ungroupedNodes.Count
+        }
+        $localKey = ([string]$LocalGroup).Trim().ToLowerInvariant()
+        $localGroupEntries = @($groupEntries | Where-Object { ([string]$_.GroupName).ToLowerInvariant() -eq $localKey })
+        if (-not [string]::IsNullOrWhiteSpace($localKey) -and $localGroupEntries.Count -gt 0) {
+            $localCost = 1 + [int]$memberCounts[$localKey]
+            if (($itemCount + $localCost) -le $Budget) {
+                $expanded.Add([string]$localGroupEntries[0].GroupName)
+                $itemCount += $localCost
+            }
+        }
+        $remainingEntries = @($groupEntries | Where-Object { ([string]$_.GroupName).ToLowerInvariant() -ne $localKey })
+        $remainingCost = 0
+        foreach ($groupEntry in $remainingEntries) { $remainingCost += 1 + [int]$memberCounts[([string]$groupEntry.GroupName).ToLowerInvariant()] }
+        if ($remainingEntries.Count -gt 0 -and ($itemCount + $remainingCost) -le $Budget) {
+            foreach ($groupEntry in $remainingEntries) { $expanded.Add([string]$groupEntry.GroupName) }
+            $itemCount += $remainingCost
+        }
+    }
+
+    $expandedArray = $expanded.ToArray()
+    $expandedKeys = @(@($expandedArray) | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    $collapsedGroups = @(@($groupEntries) | Where-Object { $expandedKeys -notcontains ([string]$_.GroupName).ToLowerInvariant() } |
+        ForEach-Object { [string]$_.GroupName })
+    $hiddenNodeCount = 0
+    foreach ($collapsedGroup in $collapsedGroups) { $hiddenNodeCount += [int]$memberCounts[([string]$collapsedGroup).ToLowerInvariant()] }
+    if (-not $includeUngrouped) { $hiddenNodeCount += $ungroupedNodes.Count }
+
+    return [pscustomobject]@{
+        ExpandedGroups = $expandedArray
+        CollapsedGroups = $collapsedGroups
+        IncludeUngroupedNodes = $includeUngrouped
+        LocalGroup = ([string]$LocalGroup).Trim()
+        LocalGroupExpanded = ($expandedKeys -contains ([string]$LocalGroup).Trim().ToLowerInvariant())
+        ItemCount = $itemCount
+        Budget = $Budget
+        OverBudget = ($itemCount -gt $Budget)
+        HiddenNodeCount = $hiddenNodeCount
+    }
 }
 
 function Get-SamePathCopyMenuSectionKey {

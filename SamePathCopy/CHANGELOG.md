@@ -1,5 +1,11 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- Explorer menüsünde **bu makinenin kendi grubunun makineleri** artık tek tek açılıyor. 16 öğe sınırı yüzünden daha önce hiçbir makine görünmüyordu, yalnızca grup girdileri vardı; oysa kullanıcı en çok kendi setindeki makinelere gönderiyor. Kendi grubu alt menüde açılıyor, sığmayan gruplar grup girdisi olarak kalıyor (tıklamak grubun tamamına gönderiyor). `Unit2` setindeki bir eğitmen istasyonunda menü şöyle oluyor: `Tümü`, sihirbaz girdileri, `Yedekten geri al`, `Unit1`, `Unit2 ▸ (Tümü, IG1, IG2, IG3)`, `Unit3`, gruba ait olmayan makineler — 12 öğe.
+- Bütçe kararı [SamePathCopy.Common.ps1](SamePathCopy.Common.ps1) içindeki `Get-SamePathCopyMenuPlan` işlevine taşındı ve saf işlev olarak sınanıyor. Öncelik: toplu girdiler → bütün grup girdileri → gruba ait olmayan makineler (düşerlerse menüden hiç erişilemezler) → kendi grubu → kalan gruplar (hepsi ya da hiçbiri; yarısını açmak asimetri yaratıyor). Kimlik nesnesi artık makinenin grubunu da taşıyor.
+- Notepad++ sekme menüsü değişmedi: orada öğe sınırı yok, bütün makineler listelenmeye devam ediyor.
+
 ## 1.3.1
 
 - Bütün test takımlarını tek komutla koşturan [tests/Invoke-SamePathCopyTests.ps1](tests/Invoke-SamePathCopyTests.ps1) eklendi. On takım vardı ama koşucu betik yoktu: "bütün takımlar geçti" iddiasının tekrarlanabilir bir karşılığı yoktu. Koşucu üç durum ayırıyor — `geçti` / `kaldı` / **`atlandı`** — çünkü takımların bir kısmı yükseltilmiş oturum (yönetim paylaşımına yazıyorlar), bir kısmı etkileşimli masaüstü (gerçek WPF penceresi açıyorlar), bir kısmı da bu makinenin `config.json` içinde tanımlı olmasını gerektiriyor. İkili bir sonuç, yükseltilmemiş bir oturumda üç yanlış kırmızı verip koşucuyu güvenilmez yapardı. Çıkış kodu yalnızca gerçek başarısızlıkta `1`; atlanan takım otomasyonu kırmızıya çevirmiyor.

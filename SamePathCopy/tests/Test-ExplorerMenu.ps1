@@ -19,10 +19,14 @@ function New-TestConfigFile {
         [Parameter(Mandatory = $true)][int]$GroupCount,
         [Parameter(Mandatory = $true)][int]$MachinesPerGroup,
         [int]$UngroupedCount = 0,
-        [string]$MenuShowNodes = 'auto'
+        [string]$MenuShowNodes = 'auto',
+        # Yerel makinenin grubu: kurulum kendi grubunun makinelerini menüde tek tek açıyor.
+        [string]$LocalGroup = ''
     )
 
-    $nodes = @(@{ id = 'Yerel'; name = 'Yerel'; address = '10.10.1.209'; localRoot = 'C:\Kaynak'; networkRoot = 'proje' })
+    $localNode = @{ id = 'Yerel'; name = 'Yerel'; address = '10.10.1.209'; localRoot = 'C:\Kaynak'; networkRoot = 'proje' }
+    if (-not [string]::IsNullOrWhiteSpace($LocalGroup)) { $localNode['group'] = $LocalGroup }
+    $nodes = @($localNode)
     if ($GroupCount -gt 0) {
         foreach ($setIndex in 1..$GroupCount) {
             foreach ($machineIndex in 1..$MachinesPerGroup) {
@@ -144,6 +148,29 @@ try {
             throw "Aynı bölümün içine ayırıcı konuldu: $unexpectedSeparatorKey"
         }
     }
+
+    # 1b) Yerel makine bir gruptaysa: kendi grubunun makineleri açılır, öbür gruplar grup girdisi kalır.
+    # 4 toplu + 3 grup + 1 tek makine = 8; kendi grubu (1 "Tümü" + 4 makine) ile 13 ≤ 16, öbür iki grup
+    # 5+5 ile sığmıyor. Kullanıcının istediği davranış tam olarak bu: en çok kendi setine gönderiyor.
+    $ownGroupConfigPath = Join-Path $testDirectory 'config-kendi-grubu.json'
+    New-TestConfigFile -Path $ownGroupConfigPath -GroupCount 3 -MachinesPerGroup 4 -UngroupedCount 1 -LocalGroup 'Unit2'
+    $ownGroup = Get-MenuWhatIfText -ConfigPath $ownGroupConfigPath
+    if (-not [string]::IsNullOrWhiteSpace($ownGroup.Error)) { throw "Kendi grubu yapılandırmasında hata: $($ownGroup.Error)" }
+    $ownGroupKeys = @(Get-TopLevelKeys -WhatIfText $ownGroup.Output)
+    Assert-Equal '000_all > 010_wizard > 020_wizard_last > 030_restore > 040_group_Unit1 > 050_group_Unit2 > 060_group_Unit3 > 070_Tek1' `
+        ($ownGroupKeys -join ' > ') 'Kendi grubu açıkken üst seviye sıra yanlış.'
+    # Kendi grubunun alt menüsü: grubun "Tümü" girdisi + kalan dört makine (yerel makine hedef değil).
+    Assert-Equal 5 @(Get-GroupChildKeys -WhatIfText $ownGroup.Output -GroupKey '050_group_Unit2').Count 'Kendi grubunun makineleri alt menüde açılmadı.'
+    Assert-Equal '000_group_Unit2' (@(Get-GroupChildKeys -WhatIfText $ownGroup.Output -GroupKey '050_group_Unit2')[0]) 'Kendi grubunun alt menüsünde toplu girdi başta değil.'
+    # Öbür gruplar: alt menü yok, girdinin kendisi doğrudan komuta bağlı.
+    Assert-Equal 0 @(Get-GroupChildKeys -WhatIfText $ownGroup.Output -GroupKey '040_group_Unit1').Count 'Sığmayan grup için alt menü oluştu.'
+    Assert-Equal 0 @(Get-GroupChildKeys -WhatIfText $ownGroup.Output -GroupKey '060_group_Unit3').Count 'Sığmayan grup için alt menü oluştu.'
+    if ($ownGroup.Output -notlike '*040_group_Unit1\command*') { throw 'Kapalı grup girdisi doğrudan komuta bağlanmadı.' }
+    if ($ownGroup.Output -notlike '*-TargetId "group:Unit1"*') { throw 'Kapalı grup girdisi grup hedefini taşımıyor.' }
+    # Yerel makine kendi menüsünde hedef olmamalı.
+    if ($ownGroup.Output -like '*-TargetId "Yerel"*') { throw 'Yerel makine hedef olarak menüye girdi.' }
+    # Gruba ait olmayan makine menüde kalmalı: grup girdisi olmadığı için başka yolu yok.
+    if ($ownGroup.Output -notlike '*-TargetId "Tek1"*') { throw 'Gruba ait olmayan makine menüye konmadı.' }
 
     # 2) Sığmayan yapılandırma (3 grup × 4 makine): tek makineler menüye konmaz, gruplar doğrudan komut olur.
     $bigConfigPath = Join-Path $testDirectory 'config-buyuk.json'

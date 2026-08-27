@@ -264,15 +264,42 @@ Explorer, fiili seçilen her öğe için **bir kez** çalıştırır — 40 dosy
 
 Windows'un klasik basamaklı sağ tık menüsü **bütün ağaçta en fazla 16 öğe** gösterir; fazlasını uyarı vermeden gizler. Alt menüye taşımak bu bütçeyi artırmaz: gözlemlenen iki durum, düz listede 19 girdiden 16'sının, alt menülü ağaçta ise `4 toplu + (1 grup + 5 girdi) + (1 grup + 5 girdi) = 16` öğenin göründüğü ve sonrasının düştüğüdür. Ayırıcı çizgiler bu bütçeden yer yemez.
 
-Kurulum bu yüzden öğe sayısını önceden hesaplar ve `config.json` içindeki `menuShowNodes` alanına göre davranır:
+Kurulum bu yüzden bütçeyi kimin harcayacağına önceden karar verir. Öncelik sırası:
+
+1. **Toplu girdiler** (`Tümü`, sihirbaz girdileri, `Yedekten geri al`, profiller) — her zaman.
+2. **Bütün grup girdileri** — her zaman: hiçbir grup menüden düşmez, grup girdisine tıklamak o grubun tamamına gönderir.
+3. **Gruba ait olmayan makineler** — düşerlerse menüden hiç erişilemezler (arkalarında bir grup girdisi yok), bu yüzden grup açmadan önce yer bulurlar.
+4. **Bu makinenin kendi grubunun makineleri** — alt menüde tek tek açılır. En çok kendi setindeki makinelere gönderildiği için bütçede öncelik onların.
+5. **Kalan grupların makineleri** — hepsi sığıyorsa açılır, sığmıyorsa hiçbiri. Yarısını açmak "neden Unit1 açık da Unit3 kapalı" sorusunu doğuracağı için simetri korunur.
+
+Bir grubu açmanın bedeli grubun kendi `<grup> - Tümü` girdisi + üye sayısıdır; grup girdisinin kendisi zaten sayılmıştır.
+
+Örnek — bu makine `Unit2` setindeki eğitmen istasyonuysa (3 set × 4 makine + 1 gruba ait olmayan makine):
+
+```text
+Tümü                        (ikonlu)
+Wizard                      (ikonlu)
+Wizard (son ayar)           (ikonlu)
+Yedekten geri al            (ikonlu)
+Unit1                  → tıklamak Unit1'in tamamına gönderir
+Unit2 ▸                → Unit2 - Tümü, IG1, IG2, IG3
+Unit3                  → tıklamak Unit3'ün tamamına gönderir
+Root                        (gruba ait olmayan makine)
+```
+
+12 öğe: kendi setindeki makinelere tek tıkla gönderilir, öbür setler grup girdisiyle erişilebilir kalır. Geliştirme makinesi gibi **gruba ait olmayan** bir makinede açılacak kendi grup yoktur; o durumda bütün gruplar grup girdisi olarak kalır (7 öğe).
+
+`config.json` içindeki `menuShowNodes` alanı bu davranışı değiştirir:
 
 | Değer | Davranış |
 | --- | --- |
-| `auto` (varsayılan) | Toplu girdiler + gruplar + makineler 16'ya sığıyorsa hepsi konur; sığmıyorsa **tek makine girdileri menüye konmaz** ve grup girdileri doğrudan komuta bağlanır. Kurulum hangi girdilerin çıkarıldığını yazar. |
-| `always` | Tek makineler her hâlükârda konur; sınır aşılıyorsa uyarı verilir (Windows fazlasını gizler). |
-| `never` | Tek makine girdileri hiç konmaz, yalnızca toplu girdiler ve gruplar görünür. |
+| `auto` (varsayılan) | Yukarıdaki öncelik sırası uygulanır. Kurulum hangi grupların açıldığını ve hangilerinin grup girdisi olarak kaldığını yazar. |
+| `always` | Bütün grupların makineleri konur; sınır aşılıyorsa uyarı verilir (Windows fazlasını gizler). |
+| `never` | Hiçbir makine girdisi konmaz, yalnızca toplu girdiler ve gruplar görünür. |
 
-Grup tanımlı değilse tek makineler menüdeki tek hedef olduğu için bütçeye bakılmaksızın konur.
+Grup tanımlı değilse tek makineler menüdeki tek hedef olduğu için bütçeye ve bu ayara bakılmaksızın konur.
+
+Bu bütçe yalnızca **Explorer** menüsü içindir. Notepad++ sekme menüsünde öğe sınırı yoktur; orada bütün makineler her zaman listelenir.
 
 Sığan bir yapılandırmada menü şöyle görünür (gruplar alt menüde, bölümler ayırıcıyla ayrılmış):
 
@@ -290,7 +317,7 @@ Unit2              ▸   (ikonlu)       Eğitmen - 10.10.1.10
 Arşiv sunucusu                             IG2 - 10.10.1.12
 ```
 
-12 makineli üç setli yapılandırmada (`4 + 3 + 12 = 19`) tek makineler sığmadığı için menü yalnızca toplu girdilerle ve üç grup girdisiyle (7 öğe) kurulur; tek bir makineye göndermek için sihirbaz kullanılır (filtre + onay kutuları) ya da o makine için bir profil kaydedilir.
+12 makineli üç setli yapılandırmada bütün makineler sığmaz (`4 + 3 + 12 = 19`): menü kendi grubunun makinelerini açar, öbür iki grup girdi olarak kalır (yukarıdaki örnek, 12 öğe). Gruba ait olmayan bir makinede kurulduysa açılacak kendi grup olmadığı için menü yalnızca toplu girdilerle ve üç grup girdisiyle (7 öğe) kurulur. Kapalı bir gruptaki tek bir makineye göndermek için sihirbaz kullanılır (filtre + onay kutuları) ya da o makine için bir profil kaydedilir.
 
 Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): `Tümü`, sihirbaz girdileri, geri alma, profiller, gruplar ve tek makineler arasında. İkon yalnızca toplu girdilerde durur; tek makine girdileri ikonsuzdur.
 
