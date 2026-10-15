@@ -22,8 +22,8 @@ import { readStored, writeStored } from '../lib/persist';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
-export type Page = 'send' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
-export const PAGES: Page[] = ['send', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
+export type Page = 'send' | 'compare' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
+export const PAGES: Page[] = ['send', 'compare', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
 
 export interface Toast {
   id: number;
@@ -31,6 +31,15 @@ export interface Toast {
   title: string;
   message?: string;
   action?: { label: string; run: () => void };
+}
+
+/** A tab on the Send page: its own sources and targets. A right-click launch opens a new one. */
+export interface Workspace {
+  id: string;
+  name: string;
+  /** Kept for inactive tabs; the active tab's live values are sendPaths and targets. */
+  paths: string[];
+  targets: string[];
 }
 
 export interface LiveRun {
@@ -72,6 +81,13 @@ interface State {
   sendPaths: string[];
   sendInfos: SourceInfo[];
   targets: string[];
+  workspaces: Workspace[];
+  activeWorkspace: string;
+  /** force: a new tab even when the open one is empty. */
+  newWorkspace(opts?: { name?: string; paths?: string[]; targets?: string[]; force?: boolean }): Promise<void>;
+  switchWorkspace(id: string): Promise<void>;
+  closeWorkspace(id: string): Promise<void>;
+  renameWorkspace(id: string, name: string): void;
   options: SendOptions;
 
   planning: { taskId: string; message: string; done?: number; total?: number } | null;
@@ -143,6 +159,8 @@ export const useApp = create<State>((set, get) => ({
   sendPaths: [],
   sendInfos: [],
   targets: [],
+  workspaces: [{ id: 'w1', name: '', paths: [], targets: [] }],
+  activeWorkspace: 'w1',
   options: DEFAULT_OPTIONS,
   planning: null,
   review: null,
@@ -169,16 +187,15 @@ export const useApp = create<State>((set, get) => ({
       const s = boot.settings;
       const options: SendOptions = { ...baseOptions(boot), ...(s.lastOptions ?? {}), dryRun: false };
       const known = new Set(boot.config.nodes.map((n) => n.id));
-      // the targets and sources picked last time come back, even if nothing was sent
-      const targets = readStored<string[] | null>('samsync.send.targets', null) ?? s.lastTargets;
-      set({ boot, options, targets: targets.filter((id) => known.has(id)) });
+      // the Send tabs come back with their sources and targets, even if nothing was sent
+      const tabs = readStored<{ active: string; list: Workspace[] } | null>('samsync.workspaces', null);
+      const active = tabs?.list.find((w) => w.id === tabs.active) ?? tabs?.list[0];
+      const targets = active?.targets ?? s.lastTargets;
+      set({ boot, options, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
-      // a start from the right-click menu brings its own items: the list kept from last time stays out
-      const fromMenu = pendingOpen.some((r) => r.paths.length && !r.send && !r.restore);
-      const keptPaths = readStored<string[]>('samsync.send.paths', []);
-      if (keptPaths.length && !fromMenu) await get().addSendPaths(keptPaths);
+      if (active?.paths.length) await get().addSendPaths(active.paths);
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
@@ -258,13 +275,50 @@ export const useApp = create<State>((set, get) => ({
     const next = [...cur, ...add];
     set({ sendPaths: next });
     const infos = await api.describeSources(next);
-    set({ sendInfos: infos });
+    if (get().sendPaths === next) set({ sendInfos: infos });
   },
   removeSendPath(p) {
     set((s) => ({ sendPaths: s.sendPaths.filter((x) => x !== p), sendInfos: s.sendInfos.filter((x) => x.path !== p) }));
   },
   clearSendPaths() {
     set({ sendPaths: [], sendInfos: [] });
+  },
+  async newWorkspace(opts = {}) {
+    const st = get();
+    const cur = st.workspaces.find((w) => w.id === st.activeWorkspace);
+    // an empty tab is used as it is instead of piling up empty ones
+    if (cur && !st.sendPaths.length && !opts.force) {
+      set({ workspaces: st.workspaces.map((w) => (w.id === cur.id ? { ...w, name: opts.name ?? w.name } : w)), targets: opts.targets ?? st.targets });
+      if (opts.paths?.length) await get().addSendPaths(opts.paths);
+      return;
+    }
+    const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, targets: st.targets } : w));
+    const targets = opts.targets ?? st.targets;
+    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendInfos: [], targets });
+    if (opts.paths?.length) await get().addSendPaths(opts.paths);
+  },
+  async switchWorkspace(id) {
+    const st = get();
+    if (id === st.activeWorkspace) return;
+    const next = st.workspaces.find((w) => w.id === id);
+    if (!next) return;
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, targets: st.targets } : w));
+    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendInfos: [], targets: next.targets });
+    await get().addSendPaths(next.paths);
+  },
+  async closeWorkspace(id) {
+    const st = get();
+    if (st.workspaces.length === 1) {
+      set({ sendPaths: [], sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [] })) });
+      return;
+    }
+    const i = st.workspaces.findIndex((w) => w.id === id);
+    if (id === st.activeWorkspace) await get().switchWorkspace(st.workspaces[i + 1]?.id ?? st.workspaces[i - 1].id);
+    set((s) => ({ workspaces: s.workspaces.filter((w) => w.id !== id) }));
+  },
+  renameWorkspace(id, name) {
+    set((s) => ({ workspaces: s.workspaces.map((w) => (w.id === id ? { ...w, name: name.trim() } : w)) }));
   },
   setTargets(ids) {
     set({ targets: ids });
@@ -370,8 +424,9 @@ export const useApp = create<State>((set, get) => ({
 }));
 
 useApp.subscribe((s, prev) => {
-  if (s.sendPaths !== prev.sendPaths) writeStored('samsync.send.paths', s.sendPaths);
-  if (s.targets !== prev.targets && s.boot) writeStored('samsync.send.targets', s.targets);
+  if (!s.boot || (s.sendPaths === prev.sendPaths && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
+  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, targets: s.targets } : w));
+  writeStored('samsync.workspaces', { active: s.activeWorkspace, list });
 });
 
 useApp.subscribe((s) => {
@@ -461,6 +516,12 @@ function initialPage(): Page {
   return kept && PAGES.includes(kept) ? kept : 'send';
 }
 
+/** A tab named after what came from the menu: the first item, and how many more. */
+function tabName(paths: string[]): string {
+  const first = paths[0]?.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+  return paths.length > 1 ? `${first} +${paths.length - 1}` : first;
+}
+
 /** Launches that arrive before the bootstrap; handled right after it. */
 const pendingOpen: OpenRequest[] = [];
 
@@ -526,24 +587,16 @@ async function handleOpen(r: OpenRequest) {
   }
   if (!r.targets?.length) {
     st.setPage('send');
-    // the menu's items are the new selection; what was on the list can be brought back with one click
-    const before = st.sendPaths;
-    const fresh = r.paths.filter((p) => !before.some((b) => b.toLowerCase() === p.toLowerCase()));
-    if (before.length && fresh.length) {
-      st.clearSendPaths();
-      await st.addSendPaths(r.paths);
-      st.toast('info', t('Gönder listesi menüden gelen öğelerle değişti'), t('Önceki listede {n} öğe vardı.', { n: before.length }), { label: t('Öncekilerle birleştir'), run: () => void useApp.getState().addSendPaths(before) });
-    } else await st.addSendPaths(r.paths);
+    // the menu's items get a tab of their own; the lists already open stay as they are
+    await st.newWorkspace({ name: tabName(r.paths), paths: r.paths });
     return;
   }
   const to = resolveTargets(r.targets);
   if (!to || !r.paths.length) return;
   if (r.send) return sendNow(r.paths, to);
   st.setPage('send');
-  // a launch with --to is its own send; it does not mix with what was already on the list
-  st.clearSendPaths();
-  await st.addSendPaths(r.paths);
-  st.setTargets(to.targets);
+  // a launch with --to is its own send in its own tab
+  await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, targets: to.targets });
   if (to.options) st.setOptions(to.options);
   await st.startPlan({ sources: r.paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: to.targets, label: to.label });
 }

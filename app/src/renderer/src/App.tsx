@@ -17,6 +17,7 @@ import {
   Loader2,
   AlertTriangle,
   Zap,
+  GitCompare,
 } from 'lucide-react';
 import { useApp, PAGES, type Page } from './store/app';
 import { cls } from './lib/format';
@@ -27,6 +28,7 @@ import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { SendPage } from './pages/SendPage';
+import { ComparePage } from './pages/ComparePage';
 import { GitPage } from './pages/GitPage';
 import { SyncPage } from './pages/SyncPage';
 import { TargetsPage } from './pages/TargetsPage';
@@ -40,6 +42,7 @@ import { t, tk } from '@shared/i18n';
 
 const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
   { id: 'send', label: tk('Gönder'), icon: Send, hint: tk('Dosya ve klasörleri makinelere gönder') },
+  { id: 'compare', label: tk('Karşılaştır'), icon: GitCompare, hint: tk('Kaynakları hedeflerle karşılaştır, farklara bak') },
   { id: 'git', label: 'Git', icon: GitBranch, hint: tk('Commit ve yerel değişiklikleri gönder') },
   { id: 'sync', label: tk('Senkron'), icon: ArrowLeftRight, hint: tk('Klasörleri karşılaştır ve eşitle') },
   { id: 'automation', label: tk('Otomasyon'), icon: Zap, hint: tk('Değişince gönder, zamanlanmış senkron') },
@@ -50,6 +53,7 @@ const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
 
 const TITLES: Record<Page, string> = {
   send: tk('Gönder'),
+  compare: tk('Karşılaştır'),
   git: 'Git',
   sync: tk('Senkron'),
   automation: tk('Otomasyon'),
@@ -88,7 +92,7 @@ function Shell() {
         e.preventDefault();
         useApp.setState((s) => ({ palette: !s.palette }));
       }
-      if ((e.ctrlKey || e.metaKey) && /^[1-8]$/.test(e.key)) {
+      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key)) {
         e.preventDefault();
         setPage(PAGES[Number(e.key) - 1]);
       }
@@ -243,6 +247,7 @@ function Shell() {
         ) : (
           <>
             {page === 'send' && <SendPage />}
+            {page === 'compare' && <ComparePage />}
             {page === 'git' && <GitPage />}
             {page === 'sync' && <SyncPage />}
             {page === 'automation' && <AutomationPage />}

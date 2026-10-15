@@ -152,7 +152,7 @@ SamSync.exe --to last --yes "C:\...\Data\x.entity"
 | `--plan-only` | prints where each item would go on each target, without a window (the old `-PlanOnly`) |
 | `--check-only` | prints whether each target holds the same items, without a window (the old `-CheckOnly`) |
 
-Shortcuts: `Ctrl+K` command palette, `Ctrl+1…8` pages, `F12` developer tools.
+Shortcuts: `Ctrl+K` command palette, `Ctrl+1…9` pages, `F12` developer tools.
 
 ### Plan and equality check without a window
 

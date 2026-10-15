@@ -10,6 +10,7 @@ import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
 import { useStartWatchFromSend } from './AutomationPage';
+import { WorkspaceTabs } from '../components/WorkspaceTabs';
 
 export const MODE_OPTIONS: { value: SendMode; label: string; tip: string }[] = [
   { value: 'overwrite', label: tk('Üzerine yaz'), tip: tk('Yeni ve değişen her dosyayı yazar.\nHedefteki daha yeni dosyalar da güncellenir (uyarıyla).') },
@@ -79,8 +80,9 @@ export function SendPage() {
           {t('Klasör ekle')}
         </Button>
       </div>
-      <div className="page-body fill">
-        <div className="send-grid">
+      <div className="page-body fill" style={{ display: 'flex', flexDirection: 'column' }}>
+        <WorkspaceTabs />
+        <div className="send-grid" style={{ flex: 1, minHeight: 0 }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
             <div className="card sources-card">
               <div className="card-head">

@@ -152,7 +152,7 @@ SamSync.exe --to last --yes "C:\...\Data\x.entity"
 | `--plan-only` | her öğenin her hedefte nereye gideceğini pencere açmadan yazar (eski `-PlanOnly`) |
 | `--check-only` | her hedefte öğelerin aynı olup olmadığını pencere açmadan yazar (eski `-CheckOnly`) |
 
-Kısayollar: `Ctrl+K` komut paleti, `Ctrl+1…8` sayfalar, `F12` geliştirici araçları.
+Kısayollar: `Ctrl+K` komut paleti, `Ctrl+1…9` sayfalar, `F12` geliştirici araçları.
 
 ### Pencere açmadan plan ve eşitlik denetimi
 
