@@ -1,6 +1,6 @@
-# Builds SamSync for Windows, macOS and Linux when a version tag is pushed and uploads the
-# installers plus the latest*.yml update feeds to one draft GitHub Release. Publish the draft
-# when it looks right; installed apps then update from it.
+# Builds SamSync for Windows, macOS and Linux when a version tag is pushed, uploads the installers
+# plus the latest*.yml update feeds to one draft GitHub Release, and publishes it once every platform
+# built and passed its tests; installed apps then update from it. A failed build leaves the draft.
 #   1. bump "version" in app/package.json   2. git tag v2.1.0   3. git push origin v2.1.0
 name: Release
 
@@ -38,3 +38,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # no signing certificates in CI: macOS builds are unsigned (no auto-update there)
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+  publish:
+    # only when all three builds above succeeded
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

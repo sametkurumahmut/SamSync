@@ -201,7 +201,7 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-The workflow tests and packages the app on Windows, macOS and Linux and uploads everything to a **draft** GitHub Release (with the `latest*.yml` update feeds). Publishing the draft delivers the update to installed apps. `ci.yml` runs the type check and tests on all three systems for every pull request.
+The workflow tests and packages the app on Windows, macOS and Linux and uploads everything to a GitHub Release (with the `latest*.yml` update feeds). Once all three builds pass, the workflow publishes the release itself and installed apps get the update; if one fails, the release stays a draft. `ci.yml` runs the type check and tests on all three systems for every pull request.
 
 ## Data
 

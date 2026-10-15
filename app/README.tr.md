@@ -201,7 +201,7 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-İş akışı Windows, macOS ve Linux'ta test edip paketler ve hepsini **taslak** bir GitHub Release'e yükler (`latest*.yml` güncelleme dosyalarıyla). Taslağı yayımlayınca kurulu uygulamalar güncellemeyi alır. `ci.yml` her PR'da üç işletim sisteminde tip denetimi ve testleri çalıştırır.
+İş akışı Windows, macOS ve Linux'ta test edip paketler ve hepsini bir GitHub Release'e yükler (`latest*.yml` güncelleme dosyalarıyla). Üç derleme de geçerse iş akışı sürümü kendisi yayımlar ve kurulu uygulamalar güncellemeyi alır; biri başarısız olursa sürüm taslak kalır. `ci.yml` her PR'da üç işletim sisteminde tip denetimi ve testleri çalıştırır.
 
 ## Veriler
 
