@@ -4,7 +4,7 @@
 
 Dosyaları, klasörleri ve Git değişikliklerini birden çok makineye **aynı göreli yolla** gönderen; hedefleri karşılaştıran, eşitleyen, değişiklikleri kendiliğinden gönderen ve gerektiğinde eski hâline döndüren masaüstü uygulaması. Windows, macOS ve Linux'ta çalışır (Electron + React + TypeScript).
 
-Eski PowerShell aracının (`../src`) yerini alır ve onun `config.json` dosyasını olduğu gibi okur.
+Eski PowerShell aracının ([`../legacy`](../legacy/README.tr.md)) yerini alır ve onun `config.json` dosyasını olduğu gibi okur.
 
 ## Kurulum
 
@@ -21,7 +21,7 @@ macOS (`.dmg`) ve Linux (`.AppImage`) paketleri kendi işletim sistemlerinde ür
 
 Yapılandırma yoksa karşılama ekranı üç yol sunar:
 
-- **Mevcut config.json'ı kullan** — ağ paylaşımındaki ortak dosya ya da eski aracın `src/config.json` dosyası. Uygulama değişiklikleri o dosyaya yazar; eski aracın alanları (`version`, `menuTitle`, `notepadPlusPlusShortcuts`…) korunur, PowerShell aracı aynı dosyayla çalışmaya devam eder.
+- **Mevcut config.json'ı kullan** — ağ paylaşımındaki ortak dosya ya da eski aracın `legacy/config.json` dosyası. Uygulama değişiklikleri o dosyaya yazar; eski aracın alanları (`version`, `menuTitle`, `notepadPlusPlusShortcuts`…) korunur, PowerShell aracı aynı dosyayla çalışmaya devam eder.
 - **Kopyasını içe aktar** — makineleri bu bilgisayarın kendi yapılandırmasına kopyalar.
 - **Sıfırdan başla** — makineleri Hedefler sayfasından tek tek ekleyin.
 

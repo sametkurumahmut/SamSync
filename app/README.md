@@ -4,7 +4,7 @@
 
 A desktop app that sends files, folders and Git changes to many machines at **the same relative path**, compares and synchronizes targets, sends changes automatically, and rolls them back when needed. Runs on Windows, macOS and Linux (Electron + React + TypeScript).
 
-It replaces the old PowerShell tool (`../src`) and reads that tool's `config.json` as is.
+It replaces the old PowerShell tool ([`../legacy`](../legacy/README.md)) and reads that tool's `config.json` as is.
 
 The user interface is in Turkish. Below, UI labels are given in Turkish with the English meaning next to them, e.g. **Gönder** (Send).
 
@@ -23,7 +23,7 @@ macOS (`.dmg`) and Linux (`.AppImage`) packages have to be built on their own op
 
 Without a configuration, the welcome screen offers three ways in:
 
-- **Mevcut config.json'ı kullan** (use an existing config.json) — the shared file on a network share, or the old tool's `src/config.json`. The app writes its changes to that file and keeps the old tool's fields (`version`, `menuTitle`, `notepadPlusPlusShortcuts`…), so the PowerShell tool keeps working with the same file.
+- **Mevcut config.json'ı kullan** (use an existing config.json) — the shared file on a network share, or the old tool's `legacy/config.json`. The app writes its changes to that file and keeps the old tool's fields (`version`, `menuTitle`, `notepadPlusPlusShortcuts`…), so the PowerShell tool keeps working with the same file.
 - **Kopyasını içe aktar** (import a copy) — copies the machines into this computer's own configuration.
 - **Sıfırdan başla** (start from scratch) — add the machines one by one on the **Hedefler** (Targets) page.
 
