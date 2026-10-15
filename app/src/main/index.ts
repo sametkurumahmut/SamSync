@@ -132,6 +132,10 @@ if (launch.removeIntegrations) {
       const r = await dialog.showOpenDialog(win!, { title: opts.title, defaultPath: opts.defaultPath, filters: opts.filters, properties: props });
       return r.canceled ? [] : r.filePaths;
     },
+    async pickSave(opts: PickOptions) {
+      const r = await dialog.showSaveDialog(win!, { title: opts.title, defaultPath: opts.defaultPath, filters: opts.filters });
+      return r.canceled || !r.filePath ? null : r.filePath;
+    },
     async openPath(p) {
       const err = await shell.openPath(p);
       if (err) throw new Error(err);

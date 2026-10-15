@@ -82,6 +82,11 @@ export interface Api {
   bootstrap(): Promise<Bootstrap>;
   saveConfig(cfg: AppConfig): Promise<{ config: AppConfig; identity: LocalIdentity }>;
   readConfigFile(path: string): Promise<AppConfig>;
+  /** The configuration file (or another one) as text. */
+  configText(path?: string): Promise<string>;
+  saveConfigText(text: string): Promise<Bootstrap>;
+  exportConfig(dest: string): Promise<void>;
+  pickSave(opts: PickOptions): Promise<string | null>;
   useConfigFile(path: string | null): Promise<Bootstrap>;
   saveSettings(patch: Partial<LocalSettings>): Promise<LocalSettings>;
   setSecret(nodeId: string, secret: string | null): Promise<boolean>;
@@ -162,6 +167,10 @@ export const API_METHODS = {
   bootstrap: true,
   saveConfig: true,
   readConfigFile: true,
+  configText: true,
+  saveConfigText: true,
+  exportConfig: true,
+  pickSave: true,
   useConfigFile: true,
   saveSettings: true,
   setSecret: true,

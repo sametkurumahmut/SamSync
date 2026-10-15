@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput } from '../components/ui';
 import { ago, cls } from '../lib/format';
 import { t } from '@shared/i18n';
+import { ConfigEditor } from '../components/ConfigEditor';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -18,6 +19,7 @@ export function rootPreview(n: Partial<NodeConfig>, platform: string): string {
 
 export function TargetsPage() {
   const boot = useApp((s) => s.boot!);
+  const [editingJson, setEditingJson] = useState(false);
   const cfg = boot.config;
   const probes = useApp((s) => s.probes);
   const probing = useApp((s) => s.probing);
@@ -129,6 +131,10 @@ export function TargetsPage() {
                 <Button size="sm" icon={<ExternalLink size={13} />} onClick={() => void api.openPath(boot.configPath).catch((e) => toast('error', t('Açılamadı'), (e as Error).message))}>
                   {t('Düzenleyicide aç')}
                 </Button>
+                <Button size="sm" icon={<FileJson size={13} />} onClick={() => setEditingJson(true)}>
+                  {t('JSON olarak düzenle…')}
+                </Button>
+                {editingJson && <ConfigEditor onClose={() => setEditingJson(false)} />}
                 <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => useApp.getState().setPage('settings')}>
                   {t('Dosyayı değiştir…')}
                 </Button>

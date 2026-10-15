@@ -175,8 +175,10 @@ export const useApp = create<State>((set, get) => ({
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
+      // a start from the right-click menu brings its own items: the list kept from last time stays out
+      const fromMenu = pendingOpen.some((r) => r.paths.length && !r.send && !r.restore);
       const keptPaths = readStored<string[]>('samsync.send.paths', []);
-      if (keptPaths.length) await get().addSendPaths(keptPaths);
+      if (keptPaths.length && !fromMenu) await get().addSendPaths(keptPaths);
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
@@ -524,7 +526,14 @@ async function handleOpen(r: OpenRequest) {
   }
   if (!r.targets?.length) {
     st.setPage('send');
-    await st.addSendPaths(r.paths);
+    // the menu's items are the new selection; what was on the list can be brought back with one click
+    const before = st.sendPaths;
+    const fresh = r.paths.filter((p) => !before.some((b) => b.toLowerCase() === p.toLowerCase()));
+    if (before.length && fresh.length) {
+      st.clearSendPaths();
+      await st.addSendPaths(r.paths);
+      st.toast('info', t('Gönder listesi menüden gelen öğelerle değişti'), t('Önceki listede {n} öğe vardı.', { n: before.length }), { label: t('Öncekilerle birleştir'), run: () => void useApp.getState().addSendPaths(before) });
+    } else await st.addSendPaths(r.paths);
     return;
   }
   const to = resolveTargets(r.targets);

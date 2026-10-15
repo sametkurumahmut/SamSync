@@ -25,7 +25,7 @@ import type {
   NodeConfig,
 } from '../shared/types';
 import type { CoreContext } from './context';
-import { DEFAULT_SETTINGS, automationSettings, emptyConfig, loadConfig, readJson, saveConfigFile, writeJsonAtomic, normalizeConfig } from './config';
+import { DEFAULT_SETTINGS, automationSettings, emptyConfig, loadConfig, readJson, saveConfigFile, writeJsonAtomic, normalizeConfig, serializeConfig } from './config';
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
@@ -54,6 +54,8 @@ export interface HostAdapter {
   systemLanguages?: string[];
   emit(e: AppEvent): void;
   pick?(opts: PickOptions): Promise<string[]>;
+  /** A save dialog; null when cancelled. */
+  pickSave?(opts: PickOptions): Promise<string | null>;
   openPath?(p: string): Promise<void>;
   showInFolder?(p: string): Promise<void>;
   openExternal?(url: string): Promise<void>;
@@ -247,6 +249,47 @@ export class Service implements Api {
     this.automation?.emit();
     this.log.info(t('Config'), t('Yapılandırma kaydedildi ({n} node)', { n: this.config.nodes.length }));
     return { config: this.config, identity: this.identity };
+  }
+
+  /** The configuration file as text, edited as it is (fields of the old tool and unknown ones included). */
+  async configText(p?: string): Promise<string> {
+    try {
+      return (await fsp.readFile(p || this.configPath, 'utf8')).replace(/^\uFEFF/, '');
+    } catch (e) {
+      if (p) throw e;
+      return `${JSON.stringify(serializeConfig(this.config), null, 2)}\n`;
+    }
+  }
+
+  /** Writes edited configuration text after checking it; the file keeps the text exactly as written. */
+  async saveConfigText(text: string): Promise<Bootstrap> {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text.replace(/^\uFEFF/, ''));
+    } catch (e) {
+      throw new Error(t('JSON okunamadı: {error}', { error: errMessage(e) }));
+    }
+    normalizeConfig(raw);
+    await fsp.mkdir(path.dirname(this.configPath), { recursive: true });
+    const tmp = `${this.configPath}.samsync-tmp`;
+    await fsp.writeFile(tmp, text.endsWith('\n') ? text : `${text}\n`, 'utf8');
+    await fsp.rename(tmp, this.configPath);
+    await this.loadConfigFrom(this.configPath);
+    this.host.emit({ type: 'config-changed', config: this.config });
+    this.host.updater?.configure(this.config.update, this.settings);
+    this.automation?.emit();
+    this.log.info(t('Config'), t('Yapılandırma metin olarak kaydedildi ({n} node)', { n: this.config.nodes.length }));
+    return this.bootstrap();
+  }
+
+  /** Saves a copy of the configuration file somewhere else. */
+  async exportConfig(dest: string): Promise<void> {
+    await fsp.writeFile(dest, await this.configText(), 'utf8');
+    this.log.info(t('Config'), t('Yapılandırma dışa aktarıldı: {path}', { path: dest }));
+  }
+
+  async pickSave(opts: PickOptions): Promise<string | null> {
+    return this.host.pickSave ? this.host.pickSave(opts) : null;
   }
 
   async readConfigFile(p: string): Promise<AppConfig> {

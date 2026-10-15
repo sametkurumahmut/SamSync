@@ -8,6 +8,7 @@ import { ago, cls, dateTime } from '../lib/format';
 import { t, tk } from '@shared/i18n';
 import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
+import { ConfigEditor } from '../components/ConfigEditor';
 import { tx } from '../lib/i18n';
 
 const LANG_NAMES = { tr: 'Türkçe', en: 'English' } as const; // i18n-ignore: each language by its own name
@@ -41,6 +42,7 @@ export function SettingsPage() {
   const [copy, setCopy] = useState<CopySettings>(boot.config.copy);
   const [upd, setUpd] = useState<UpdateConfig>(boot.config.update ?? { source: 'github' });
   const integration = useApp((st) => st.integration);
+  const [editingJson, setEditingJson] = useState(false);
   const [integrationBusy, setIntegrationBusy] = useState(false);
   const [wizardBusy, setWizardBusy] = useState(false);
   const copyDirty = JSON.stringify(copy) !== JSON.stringify(boot.config.copy);
@@ -287,6 +289,10 @@ export function SettingsPage() {
               <Button icon={<Upload size={14} />} onClick={() => void importFile()} disabled={!boot.isElectron}>
                 {t('Makineleri içe aktar…')}
               </Button>
+              <Button icon={<FileJson size={14} />} onClick={() => setEditingJson(true)}>
+                {t('JSON olarak düzenle…')}
+              </Button>
+              {editingJson && <ConfigEditor onClose={() => setEditingJson(false)} />}
               {boot.settings.configPath && (
                 <Button variant="ghost" icon={<RotateCcw size={14} />} onClick={async () => setBoot(await api.useConfigFile(null))}>
                   {t('Varsayılana dön')}
