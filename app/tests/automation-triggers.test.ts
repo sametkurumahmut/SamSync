@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { Service } from '../src/core/service';
 import { nextRun } from '../src/core/automation';
-import { classifyReflog, parseReflogLine, selectMoves } from '../src/core/gitwatch';
+import { changedFiles, classifyReflog, parseReflogLine, selectMoves } from '../src/core/gitwatch';
 import type { SyncSchedule, WatchConfig } from '../src/shared/types';
 import { tmpDir, write, read, pathNode, defaultOptions, sleep, gitCmd } from './helpers';
 
@@ -48,6 +48,22 @@ describe('reflog', () => {
       { from: sha('2'), to: sha('3'), event: 'commit' },
       { from: sha('3'), to: sha('5'), event: 'pull' },
     ]);
+  });
+
+  it('lists what a commit changed below a watched sub folder, with paths under that folder', async () => {
+    const repo = path.join(await tmpDir(), 'repo');
+    await write(path.join(repo, 'top.txt'), '1');
+    await write(path.join(repo, 'sub', 'a.txt'), '1');
+    gitCmd(repo, 'init', '-q', '-b', 'master');
+    gitCmd(repo, 'add', '.');
+    gitCmd(repo, 'commit', '-q', '-m', 'first');
+    const from = gitCmd(repo, 'rev-parse', 'HEAD').trim();
+    await write(path.join(repo, 'top.txt'), '2');
+    await write(path.join(repo, 'sub', 'a.txt'), '2');
+    gitCmd(repo, 'commit', '-q', '-am', 'second');
+    const to = gitCmd(repo, 'rev-parse', 'HEAD').trim();
+    expect(await changedFiles(path.join(repo, 'sub'), from, to)).toEqual([path.join(repo, 'sub', 'a.txt')]);
+    expect((await changedFiles(repo, from, to)).sort()).toEqual([path.join(repo, 'sub', 'a.txt'), path.join(repo, 'top.txt')].sort());
   });
 
   it('can skip a schedule slot that passed while the app was closed', () => {

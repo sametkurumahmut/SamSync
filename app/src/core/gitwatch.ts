@@ -70,16 +70,20 @@ export function selectMoves(entries: ReflogEntry[], events: GitEvent[], pending:
   return out;
 }
 
-/** Files a range of commits touched, as absolute paths under the work tree (deleted ones included). */
+/**
+ * Files a range of commits touched under `repo` (deleted ones included), as absolute paths below `repo` as it
+ * was given. Git reports paths from the top of the work tree, which it resolves through links (on macOS
+ * /var is /private/var), so the paths are rebuilt from the folder's own prefix instead of git's top folder.
+ */
 export async function changedFiles(repo: string, from: string, to: string): Promise<string[]> {
-  const top = (await gitText(repo, ['rev-parse', '--show-toplevel'])).trim();
+  const prefix = (await gitText(repo, ['rev-parse', '--show-prefix'])).trim();
   const out = ZERO.test(from)
     ? await gitText(repo, ['diff-tree', '--root', '--no-commit-id', '--name-only', '-r', '-z', to])
     : await gitText(repo, ['diff', '--name-only', '--no-renames', '-z', from, to]);
   return out
     .split('\0')
-    .filter(Boolean)
-    .map((p) => path.normalize(path.join(top, p)));
+    .filter((p) => p && p.startsWith(prefix))
+    .map((p) => path.normalize(path.join(repo, p.slice(prefix.length))));
 }
 
 /** Polls the reflog of the repository that holds `repo` and reports new HEAD moves. */
