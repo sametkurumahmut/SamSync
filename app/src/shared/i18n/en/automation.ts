@@ -55,6 +55,14 @@ const d: Dict = {
   'Fazlası birden değişirse (ör. dal değişince) gönderilmez; 0 = sınırsız': 'If more change at once (e.g. a branch switch) nothing is sent; 0 = no limit',
   'Kaçırılan zamanlamaları açılışta çalıştır': 'Run missed schedules at start',
   'Uygulama kapalıyken saati geçen senkron işi, uygulama açılınca çalışır': 'A sync job whose time passed while the app was closed runs when the app opens',
+
+  // unsaved edits
+  'Kaydetmeden kapat': 'Close without saving',
+  'Kaydedilmemiş değişiklikler var': 'There are unsaved changes',
+  'Kapatırsanız bu değişiklikler kaybolur.': 'If you close now, these changes are lost.',
+  'Kopyalama ayarları': 'Copy settings',
+  'Güncelleme kaynağı': 'Update source',
+  'Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.': 'There are unsaved changes: {what}. Leave the page? These changes are lost.',
 };
 
 export default d;

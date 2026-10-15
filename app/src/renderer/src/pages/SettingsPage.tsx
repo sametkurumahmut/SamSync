@@ -7,6 +7,7 @@ import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from 
 import { ago, cls, dateTime } from '../lib/format';
 import { t, tk } from '@shared/i18n';
 import { menuEntries } from '@shared/menu';
+import { useUnsaved } from '../lib/unsaved';
 import { tx } from '../lib/i18n';
 
 const LANG_NAMES = { tr: 'Türkçe', en: 'English' } as const; // i18n-ignore: each language by its own name
@@ -44,6 +45,8 @@ export function SettingsPage() {
   const [wizardBusy, setWizardBusy] = useState(false);
   const copyDirty = JSON.stringify(copy) !== JSON.stringify(boot.config.copy);
   const updDirty = JSON.stringify(upd) !== JSON.stringify(boot.config.update ?? { source: 'github' });
+  useUnsaved('settings.copy', t('Kopyalama ayarları'), copyDirty);
+  useUnsaved('settings.update', t('Güncelleme kaynağı'), updDirty);
 
   useEffect(() => setCopy(boot.config.copy), [boot.config.copy]);
   useEffect(() => {
@@ -586,6 +589,7 @@ function NppShortcuts() {
   const saved = boot.config.notepadPlusPlusShortcuts ?? { 'wizard:last': 'Ctrl+Alt+W' };
   const [rows, setRows] = useState<{ id: string; keys: string }[]>(() => Object.entries(saved).map(([id, keys]) => ({ id, keys })));
   const dirty = JSON.stringify(Object.fromEntries(rows.filter((r) => r.id).map((r) => [r.id, r.keys.trim()]))) !== JSON.stringify(saved);
+  useUnsaved('settings.npp', t('Notepad++ kısayolları'), dirty);
   return (
     <Field label={t('Notepad++ kısayolları')} style={{ marginTop: 6 }}>
       {rows.map((r, i) => (

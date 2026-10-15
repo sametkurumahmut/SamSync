@@ -267,6 +267,20 @@ if (launch.removeIntegrations) {
       rendererReady = false;
     });
     win.webContents.on('did-start-loading', () => (rendererReady = false));
+    // the page refuses to unload while a form has unsaved edits: ask before throwing them away
+    win.webContents.on('will-prevent-unload', (e) => {
+      const choice = dialog.showMessageBoxSync(win!, {
+        type: 'question',
+        buttons: [t('Kaydetmeden kapat'), t('Vazgeç')],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'SamSync',
+        message: t('Kaydedilmemiş değişiklikler var'),
+        detail: t('Kapatırsanız bu değişiklikler kaybolur.'),
+      });
+      if (choice === 0) e.preventDefault();
+      else quitting = false;
+    });
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) void shell.openExternal(url);
       return { action: 'deny' };

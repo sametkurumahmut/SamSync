@@ -37,6 +37,7 @@ import { DiffView } from '../components/DiffView';
 import { compareOptions } from './SendPage';
 import { ago, bytes, cls, num, shortDateTime, splitPath } from '../lib/format';
 import { locale, t, tk } from '@shared/i18n';
+import { readStored, writeStored } from '../lib/persist';
 
 const VARIANTS: { value: SyncVariant; label: string; desc: string; icon: typeof ArrowRight }[] = [
   { value: 'twoWay', label: tk('İki yönlü'), desc: tk('Değişiklikleri iki tarafa da yayar, silinenleri son eşitlemeden anlar'), icon: ArrowLeftRight },
@@ -103,7 +104,11 @@ export function SyncPage() {
   const saveConfig = useApp((s) => s.saveConfig);
   const toast = useApp((s) => s.toast);
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem('samsync.sync.job'));
-  const [draft, setDraft] = useState<SyncJob | null>(null);
+  const [draft, setDraftState] = useState<SyncJob | null>(() => readStored<SyncJob | null>('samsync.sync.draft', null));
+  const setDraft = (d: SyncJob | null) => {
+    setDraftState(d);
+    writeStored('samsync.sync.draft', d);
+  };
   const jobs = cfg.syncJobs;
   const effectiveId = activeId && jobs.some((j) => j.id === activeId) ? activeId : jobs[0]?.id ?? null;
   const saved = jobs.find((j) => j.id === effectiveId) ?? null;

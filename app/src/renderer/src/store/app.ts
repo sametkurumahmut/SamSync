@@ -18,6 +18,7 @@ import type {
 } from '@shared/types';
 import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
+import { readStored, writeStored } from '../lib/persist';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
@@ -62,6 +63,9 @@ interface State {
   lang: Lang;
   /** Explorer menu and Notepad++ integration (Windows). */
   integration: IntegrationStatus | null;
+  /** Forms with unsaved edits (key -> what it is); leaving the page or closing the app asks first. */
+  unsaved: Record<string, string>;
+  setUnsaved(key: string, label: string | null): void;
   /** "Restore from backup" from the Explorer or Notepad++ menu: the Backups page takes these items. */
   restoreRequest: { paths: string[]; seq: number } | null;
 
@@ -115,7 +119,7 @@ document.documentElement.lang = firstLang;
 
 export const useApp = create<State>((set, get) => ({
   boot: null,
-  page: PAGES.includes(location.hash.replace('#', '') as Page) ? (location.hash.replace('#', '') as Page) : 'send',
+  page: initialPage(),
   collapsed: localStorage.getItem('samsync.collapsed') === '1',
   dark: true,
   probes: {},
@@ -127,6 +131,15 @@ export const useApp = create<State>((set, get) => ({
   lang: firstLang,
   integration: null,
   restoreRequest: null,
+  unsaved: {},
+  setUnsaved(key, label) {
+    const cur = get().unsaved;
+    if ((cur[key] ?? null) === label) return;
+    const next = { ...cur };
+    if (label) next[key] = label;
+    else delete next[key];
+    set({ unsaved: next });
+  },
   sendPaths: [],
   sendInfos: [],
   targets: [],
@@ -139,6 +152,13 @@ export const useApp = create<State>((set, get) => ({
 
   async init() {
     onEvent((e) => handleEvent(e));
+    // closing the window with unsaved edits asks (Electron shows its own dialog for this)
+    window.addEventListener('beforeunload', (e) => {
+      if (Object.keys(get().unsaved).length) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
     media.addEventListener('change', () => get().applyTheme());
     window.addEventListener('hashchange', () => {
       const p = location.hash.replace('#', '') as Page;
@@ -149,10 +169,14 @@ export const useApp = create<State>((set, get) => ({
       const s = boot.settings;
       const options: SendOptions = { ...baseOptions(boot), ...(s.lastOptions ?? {}), dryRun: false };
       const known = new Set(boot.config.nodes.map((n) => n.id));
-      set({ boot, options, targets: s.lastTargets.filter((id) => known.has(id)) });
+      // the targets and sources picked last time come back, even if nothing was sent
+      const targets = readStored<string[] | null>('samsync.send.targets', null) ?? s.lastTargets;
+      set({ boot, options, targets: targets.filter((id) => known.has(id)) });
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
+      const keptPaths = readStored<string[]>('samsync.send.paths', []);
+      if (keptPaths.length) await get().addSendPaths(keptPaths);
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
@@ -169,8 +193,11 @@ export const useApp = create<State>((set, get) => ({
   },
 
   setPage(p) {
+    const open = Object.values(get().unsaved);
+    if (p !== get().page && open.length && !confirm(t('Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.', { what: open.join(', ') }))) return;
     location.hash = p;
     set({ page: p });
+    writeStored('samsync.page', p);
   },
 
   toggleSidebar() {
@@ -340,6 +367,11 @@ export const useApp = create<State>((set, get) => ({
   },
 }));
 
+useApp.subscribe((s, prev) => {
+  if (s.sendPaths !== prev.sendPaths) writeStored('samsync.send.paths', s.sendPaths);
+  if (s.targets !== prev.targets && s.boot) writeStored('samsync.send.targets', s.targets);
+});
+
 useApp.subscribe((s) => {
   if (!s.boot) return;
   const lang = resolveLang(s.boot.settings.language, s.boot.systemLang);
@@ -417,6 +449,14 @@ function handleEvent(e: AppEvent) {
       useApp.setState({ automation: e.state });
       break;
   }
+}
+
+/** The page from the address (palette, reload) or the one open when the app was closed. */
+function initialPage(): Page {
+  const fromHash = location.hash.replace('#', '') as Page;
+  if (PAGES.includes(fromHash)) return fromHash;
+  const kept = readStored<Page | null>('samsync.page', null);
+  return kept && PAGES.includes(kept) ? kept : 'send';
 }
 
 /** Launches that arrive before the bootstrap; handled right after it. */

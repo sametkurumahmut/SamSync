@@ -8,6 +8,7 @@ import { TargetPicker } from '../components/TargetPicker';
 import { baseName, bytes, cls, dateTime } from '../lib/format';
 import { t } from '@shared/i18n';
 import { tx } from '../lib/i18n';
+import { readStored, writeStored } from '../lib/persist';
 
 /** A version is a date folder inside one backup folder: the configured one or an older one at the target root. */
 const versionKey = (v: BackupVersion) => `${v.folder}/${v.stamp}`;
@@ -19,7 +20,11 @@ export function BackupsPage() {
   const setTargets = useApp((s) => s.setTargets);
   const watchRun = useApp((s) => s.watchRun);
   const toast = useApp((s) => s.toast);
-  const [input, setInput] = useState('');
+  const [input, setInputState] = useState(() => readStored('samsync.backups.input', ''));
+  const setInput = (v: string) => {
+    setInputState(v);
+    writeStored('samsync.backups.input', v || null);
+  };
   const [rel, setRel] = useState('');
   const [mapInfo, setMapInfo] = useState<{ outside: boolean; root?: string } | null>(null);
   const [results, setResults] = useState<BackupLookup[] | null>(null);
