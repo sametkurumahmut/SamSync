@@ -29,8 +29,6 @@ const d: Dict = {
   'Otomasyon duraklatıldı: izlemeler değişiklik toplamıyor, zamanlanmış işler çalışmıyor.':
     'Automation is paused: watches are not collecting changes and scheduled jobs are not running.',
   'Canlı izleme': 'Live watch',
-  'Dosya kaydedildiğinde birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere gönderir. Erişilemeyen makinelere dakikada bir yeniden dener.':
-    'When a file is saved, it waits a few seconds, then sends only what changed to the selected machines. Unreachable machines are retried every minute.',
   'Yeni izleme': 'New watch',
   'İzleme yok': 'No watches',
   'İzleme ekle': 'Add watch',
@@ -39,10 +37,6 @@ const d: Dict = {
     'Select sources and targets on the Send page and press {watch}, or add one here.',
   İzle: 'Watch',
   '… ve {n} yol daha': pl('… and {n} more path', '… and {n} more paths'),
-  '{n} hedef erişilemedi; değişiklikler dakikada bir yeniden denenecek.': pl(
-    '{n} target could not be reached; the changes will be retried every minute.',
-    '{n} targets could not be reached; the changes will be retried every minute.',
-  ),
   '{n} değişiklik bekliyor': pl('{n} change waiting', '{n} changes waiting'),
   'Henüz değişiklik olmadı': 'No changes yet',
   '{n} işlem': pl('{n} operation', '{n} operations'),

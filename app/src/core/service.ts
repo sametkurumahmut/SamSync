@@ -22,9 +22,10 @@ import type {
   AutomationState,
   WatchConfig,
   WizardImportResult,
+  NodeConfig,
 } from '../shared/types';
 import type { CoreContext } from './context';
-import { DEFAULT_SETTINGS, emptyConfig, loadConfig, readJson, saveConfigFile, writeJsonAtomic, normalizeConfig } from './config';
+import { DEFAULT_SETTINGS, automationSettings, emptyConfig, loadConfig, readJson, saveConfigFile, writeJsonAtomic, normalizeConfig } from './config';
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
@@ -138,9 +139,9 @@ export class Service implements Api {
     this.host.updater?.configure(this.config.update, this.settings);
     this.automation = new Automation({
       ctx: () => this.ctx(),
-      runPlan: (plan, notify) => {
+      runPlan: (plan, notify, nodes) => {
         try {
-          return this.runPlan(plan, 'default', { notify });
+          return this.runPlan(plan, 'default', { notify, nodes });
         } catch {
           return null;
         }
@@ -158,6 +159,7 @@ export class Service implements Api {
       },
       isPaused: () => !!this.settings.automationPaused,
       notify: (title, body) => this.host.notify?.(title, body),
+      settings: () => automationSettings(this.settings),
       emit: (state) => {
         this.host.emit({ type: 'automation', state });
         this.host.applySettings?.(this.settings, state);
@@ -265,7 +267,7 @@ export class Service implements Api {
     await this.persistSettings();
     if (pinChanged) this.identity = detectIdentity(this.config, this.settings.localNodeId);
     if ('updateAutoCheck' in patch || 'updateAutoDownload' in patch) this.host.updater?.configure(this.config.update, this.settings);
-    if ('automationPaused' in patch) this.automation?.setPaused();
+    if ('automationPaused' in patch || 'automation' in patch) this.automation?.setPaused();
     if ('language' in patch) setLang(this.uiLang());
     if (this.automation) this.host.applySettings?.(this.settings, this.automation.snapshot());
     return this.settings;
@@ -392,22 +394,24 @@ export class Service implements Api {
   }
 
   /** Runs a plan; 'default' runs every operation the planner selected. Throws when there is nothing to do. */
-  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean } = {}): RunHandle {
+  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; nodes?: NodeConfig[] } = {}): RunHandle {
     const ctx = this.ctx();
+    // targets outside the configuration (a watch's plain folders) come with the plan
+    const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
     const groups: ExecGroup[] = [];
     for (const tp of plan.targets) {
       if (!tp.reachable) {
         // a machine that was off counts as failed, so "select the failed ones" and "resend to failed" include it
         if (overrides.unreachableFails) {
           const why = tp.error || t('Hedefe erişilemiyor');
-          groups.push({ key: tp.targetId, title: tp.targetName, rootLabel: tp.root, open: () => Promise.reject(new Error(why)), node: findNode(this.config, tp.targetId) ?? undefined, ops: [] });
+          groups.push({ key: tp.targetId, title: tp.targetName, rootLabel: tp.root, open: () => Promise.reject(new Error(why)), node: nodeOf(tp.targetId), ops: [] });
         }
         continue;
       }
       const ids = selected === 'default' ? new Set(tp.ops.filter((o) => o.selected).map((o) => o.id)) : new Set(selected[tp.targetId] ?? []);
       const ops = tp.ops.filter((o) => ids.has(o.id));
       if (!ops.length) continue;
-      const node = findNode(this.config, tp.targetId)!;
+      const node = nodeOf(tp.targetId)!;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,
@@ -631,7 +635,8 @@ export class Service implements Api {
 
   async watchAdd(cfg: Omit<WatchConfig, 'id'>): Promise<AutomationState> {
     if (!cfg.paths.length) throw new Error(t('İzlenecek dosya ya da klasör yok.'));
-    if (!cfg.targetIds.length) throw new Error(t('Hedef seçilmedi.'));
+    if (!cfg.targetIds.length && !cfg.folders?.length && !cfg.syncJobId) throw new Error(t('Hedef seçilmedi.'));
+    if (cfg.trigger === 'git' && !(await git.findRepoRoot(cfg.paths[0]))) throw new Error(t('{path} bir Git deposunda değil.', { path: cfg.paths[0] }));
     this.log.info(t('İzleme'), t('{name}: {n} yol → {targets}', { name: cfg.name, n: cfg.paths.length, targets: cfg.targetIds.join(', ') }));
     return this.automation!.addWatch(cfg);
   }

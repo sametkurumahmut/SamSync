@@ -24,14 +24,18 @@ import {
   MinusCircle,
   PanelBottomClose,
   ArrowRight,
+  GitBranch,
+  Settings2,
+  Workflow,
 } from 'lucide-react';
-import type { SendOptions, WatchConfig, WatchState, ScheduleState, SyncSchedule } from '@shared/types';
+import type { AutomationSettings, GitEvent, SendOptions, WatchConfig, WatchState, ScheduleState, SyncSchedule } from '@shared/types';
+import { automationSettings, DEFAULT_GIT_EVENTS } from '@shared/automation';
 import { useApp, DEFAULT_OPTIONS } from '../store/app';
 import { api } from '../lib/api';
-import { Button, Empty, Field, Modal, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { Button, Checkbox, Empty, Field, Modal, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { ago, baseName, cls, num } from '../lib/format';
-import { t, locale } from '@shared/i18n';
+import { t, tk, locale } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { withoutMirror } from '@shared/options';
 
@@ -99,6 +103,7 @@ export function AutomationPage() {
   const scheduled = automation.schedules;
   const unscheduled = jobs.filter((j) => !j.schedule);
   const anything = automation.watches.length + scheduled.length > 0;
+  const settings = automationSettings(boot.settings);
 
   const pause = async (p: boolean) => {
     const a = await api.automationPause(p);
@@ -149,7 +154,7 @@ export function AutomationPage() {
           <div className="grow">
             <h2>{t('Canlı izleme')}</h2>
             <div className="faint" style={{ fontSize: 12.5 }}>
-              {t('Dosya kaydedildiğinde birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere gönderir. Erişilemeyen makinelere dakikada bir yeniden dener.')}
+              {t('Dosya kaydedildiğinde ya da Git’te commit veya pull olduğunda birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere ya da klasörlere gönderir; istenirse bir senkron işini çalıştırır.')}
             </div>
           </div>
           <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>
@@ -183,8 +188,27 @@ export function AutomationPage() {
                     ))}
                     {w.paths.length > 4 && <div className="faint" style={{ fontSize: 11.5 }}>{t('… ve {n} yol daha', { n: w.paths.length - 4 })}</div>}
                   </div>
-                  <div className="row muted" style={{ fontSize: 12.5, gap: 6 }}>
-                    <ArrowRight size={13} /> <TargetSummary value={w.targetIds} />
+                  {w.trigger === 'git' && (
+                    <div className="row muted" style={{ fontSize: 12, gap: 6 }}>
+                      <GitBranch size={13} /> {(cfg?.gitEvents ?? DEFAULT_GIT_EVENTS).map((e) => t(GIT_EVENTS[e])).join(', ')}
+                    </div>
+                  )}
+                  <div className="row muted" style={{ fontSize: 12.5, gap: 6, flexWrap: 'wrap' }}>
+                    <ArrowRight size={13} />
+                    {w.syncJobId ? (
+                      <span className="row" style={{ gap: 4 }}>
+                        <Workflow size={13} /> {jobs.find((j) => j.id === w.syncJobId)?.name ?? w.syncJobId}
+                      </span>
+                    ) : (
+                      <>
+                        {w.targetIds.length > 0 && <TargetSummary value={w.targetIds} />}
+                        {(w.folders ?? []).map((d) => (
+                          <span key={d} className="mono ellipsis" style={{ fontSize: 11.5 }} title={d}>
+                            {d}
+                          </span>
+                        ))}
+                      </>
+                    )}
                   </div>
                   {w.error && (
                     <div className="alert error" style={{ fontSize: 12 }}>
@@ -193,7 +217,12 @@ export function AutomationPage() {
                   )}
                   {w.deferredTargets.length > 0 && (
                     <div className="alert warn" style={{ fontSize: 12 }}>
-                      <WifiOff size={14} /> {t('{n} hedef erişilemedi; değişiklikler dakikada bir yeniden denenecek.', { n: w.deferredTargets.length })}
+                      <WifiOff size={14} /> {t('{n} hedef erişilemedi; değişiklikler {m} dakikada bir yeniden denenecek.', { n: w.deferredTargets.length, m: settings.retryEveryMinutes })}
+                    </div>
+                  )}
+                  {(w.unreachableTargets?.length ?? 0) > 0 && (
+                    <div className="alert warn" style={{ fontSize: 12 }}>
+                      <WifiOff size={14} /> {t('Son gönderimde erişilemedi: {names}. Yeniden deneme kapalı, bu değişiklikleri almadılar.', { names: w.unreachableTargets!.join(', ') })}
                     </div>
                   )}
                   <div className="auto-foot">
@@ -292,6 +321,8 @@ export function AutomationPage() {
             {t('Zamanlanmamış {n} iş daha var: {names}', { n: unscheduled.length, names: unscheduled.map((j) => j.name).join(', ') })}
           </div>
         )}
+
+        <AutomationSettingsCard value={settings} onChange={(automation) => void saveSettings({ automation })} />
       </div>
       {editing && <WatchEditor initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </div>
@@ -323,6 +354,17 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const [targets, setTargets] = useState<string[]>(initial?.targetIds ?? st.targets);
   const [opts, setOpts] = useState<SendOptions>(initial?.options ?? { ...DEFAULT_OPTIONS, ...st.options, dryRun: false, propagateDeletes: false, mode: st.options.mode === 'mirror' ? 'overwrite' : st.options.mode, perTarget: withoutMirror(st.options.perTarget) });
   const [quiet, setQuiet] = useState((initial?.quietMs ?? 2000) / 1000);
+  const jobs = st.boot!.config.syncJobs;
+  const [trigger, setTrigger] = useState<'files' | 'git'>(initial?.trigger ?? 'files');
+  const [events, setEvents] = useState<GitEvent[]>(initial?.gitEvents ?? DEFAULT_GIT_EVENTS);
+  const [action, setAction] = useState<'send' | 'sync'>(initial?.syncJobId ? 'sync' : 'send');
+  const [folders, setFolders] = useState<string[]>(initial?.folders ?? []);
+  const [jobId, setJobId] = useState(initial?.syncJobId ?? jobs[0]?.id ?? '');
+  const [syncOnStart, setSyncOnStart] = useState(!!initial?.syncOnStart);
+  const [folderInput, setFolderInput] = useState('');
+  const sendTargets = action === 'send' ? targets : [];
+  const sendFolders = action === 'send' ? folders : [];
+  const ready = paths.length > 0 && (trigger !== 'git' || (paths.length === 1 && events.length > 0)) && (action === 'send' ? sendTargets.length + sendFolders.length > 0 : !!jobId);
   const [manual, setManual] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (p: Partial<SendOptions>) => setOpts((o) => ({ ...o, ...p }));
@@ -330,7 +372,19 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const save = async () => {
     setSaving(true);
     try {
-      const cfg = { name: name.trim() || baseName(paths[0] ?? t('İzleme')), paths, targetIds: targets, options: opts, quietMs: Math.max(500, Math.round(quiet * 1000)), enabled: initial?.enabled ?? true };
+      const cfg = {
+        name: name.trim() || baseName(paths[0] ?? t('İzleme')),
+        paths,
+        targetIds: sendTargets,
+        folders: sendFolders,
+        syncJobId: action === 'sync' ? jobId : undefined,
+        trigger,
+        gitEvents: trigger === 'git' ? events : undefined,
+        syncOnStart,
+        options: opts,
+        quietMs: Math.max(500, Math.round(quiet * 1000)),
+        enabled: initial?.enabled ?? true,
+      };
       const a = initial ? await api.watchUpdate(initial.id, cfg) : await api.watchAdd(cfg);
       useApp.setState({ automation: a });
       await st.saveSettings({});
@@ -356,11 +410,11 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
       footer={
         <>
           <span className="faint" style={{ fontSize: 12 }}>
-            {t('{n} yol', { n: paths.length })} → {t('{n} hedef', { n: targets.length })}
+            {t('{n} yol', { n: paths.length })} → {action === 'sync' ? jobs.find((j) => j.id === jobId)?.name ?? '' : t('{n} hedef', { n: sendTargets.length + sendFolders.length })}
           </span>
           <span className="spacer" />
           <Button onClick={onClose}>{t('Vazgeç')}</Button>
-          <Button variant="primary" loading={saving} disabled={!paths.length || !targets.length} onClick={() => void save()}>
+          <Button variant="primary" loading={saving} disabled={!ready} onClick={() => void save()}>
             {initial ? t('Kaydet') : t('İzlemeyi başlat')}
           </Button>
         </>
@@ -369,8 +423,33 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
       <Field label={t('Ad')}>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={paths[0] ? baseName(paths[0]) : t('ör. Senaryolar')} autoFocus />
       </Field>
+      <Field label={t('Ne zaman')} style={{ marginTop: 14 }}>
+        <Segmented
+          value={trigger}
+          onChange={setTrigger}
+          options={[
+            { value: 'files', label: t('Dosya kaydedilince'), icon: <Eye size={14} /> },
+            { value: 'git', label: t('Git’te commit ya da pull olunca'), icon: <GitBranch size={14} /> },
+          ]}
+        />
+      </Field>
+      {trigger === 'git' && (
+        <div className="card flat" style={{ padding: '10px 12px', marginTop: 8 }}>
+          <div className="row" style={{ flexWrap: 'wrap', gap: '6px 16px' }}>
+            {(Object.keys(GIT_EVENTS) as GitEvent[]).map((e) => (
+              <label key={e} className="row" style={{ gap: 6, fontSize: 12.5, cursor: 'pointer' }}>
+                <Checkbox checked={events.includes(e)} onChange={(v) => setEvents(v ? [...events, e] : events.filter((x) => x !== e))} />
+                {t(GIT_EVENTS[e])}
+              </label>
+            ))}
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+            {t('HEAD bu yollardan biriyle ilerleyince o commit’lerin değiştirdiği dosyalar gönderilir (diskteki hâlleriyle). Dal değiştirmek varsayılan olarak bir şey göndermez. Aşağıya deponun klasörünü (ya da içindeki bir alt klasörü) ekleyin.')}
+          </div>
+        </div>
+      )}
       <div className="section-title" style={{ marginTop: 16 }}>
-        {t('İzlenecek dosya ve klasörler')}
+        {trigger === 'git' ? t('Git deposu') : t('İzlenecek dosya ve klasörler')}
       </div>
       <div className="card flat" style={{ maxHeight: 170, overflow: 'auto' }}>
         {paths.map((p) => (
@@ -400,17 +479,77 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
         <Button size="sm" icon={<FolderOpen size={13} />} disabled={!isElectron} onClick={async () => setPaths([...new Set([...paths, ...(await api.pick({ folders: true, multi: true }))])])}>
           {t('Klasör')}
         </Button>
-        <Button size="sm" icon={<FilePlus size={13} />} disabled={!isElectron} onClick={async () => setPaths([...new Set([...paths, ...(await api.pick({ files: true, multi: true }))])])}>
+        <Button size="sm" icon={<FilePlus size={13} />} disabled={!isElectron || trigger === 'git'} onClick={async () => setPaths([...new Set([...paths, ...(await api.pick({ files: true, multi: true }))])])}>
           {t('Dosya')}
         </Button>
       </div>
 
-      <div className="section-title" style={{ marginTop: 16 }}>
-        {t('Hedefler')}
-      </div>
-      <div className="card flat" style={{ display: 'flex', flexDirection: 'column' }}>
-        <TargetPicker value={targets} onChange={setTargets} maxHeight={240} />
-      </div>
+      <Field label={t('Ne yapılsın')} style={{ marginTop: 16 }}>
+        <Segmented
+          value={action}
+          onChange={setAction}
+          options={[
+            { value: 'send', label: t('Makinelere ya da klasörlere gönder'), icon: <ArrowRight size={14} /> },
+            { value: 'sync', label: t('Senkron işini çalıştır'), icon: <Workflow size={14} />, tip: t('Canlı senkron: değişince işin bütün çiftleri işin kipiyle eşitlenir') },
+          ]}
+        />
+      </Field>
+      {action === 'sync' ? (
+        <Field label={t('Senkron işi')} style={{ marginTop: 10 }} help={t('İzlenen yolda bir değişiklik olunca bu iş, kendi kipiyle (iki yönlü, ayna, güncelle…) çalışır.')}>
+          {jobs.length ? (
+            <select className="select" value={jobId} onChange={(e) => setJobId(e.target.value)}>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="faint" style={{ fontSize: 12.5 }}>{t('Önce Senkron sayfasında bir iş oluşturun.')}</div>
+          )}
+        </Field>
+      ) : (
+        <>
+          <div className="section-title" style={{ marginTop: 16 }}>
+            {t('Makineler')}
+          </div>
+          <div className="card flat" style={{ display: 'flex', flexDirection: 'column' }}>
+            <TargetPicker value={targets} onChange={setTargets} maxHeight={240} />
+          </div>
+          <div className="section-title" style={{ marginTop: 16 }}>
+            {t('Klasörler (yapılandırma gerekmez)')}
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginBottom: 6 }}>
+            {t('Yerel, bağlı ya da ağ (\\\\sunucu\\paylaşım) klasörü. İzlenen her klasörün içeriği buraya, kendi içindeki yoluyla yazılır.')}
+          </div>
+          {folders.map((d) => (
+            <div key={d} className="list-row">
+              <Folder size={13} className="faint" />
+              <span className="mono ellipsis grow" style={{ fontSize: 12 }} title={d}>
+                {d}
+              </span>
+              <Button size="sm" variant="ghost" iconOnly icon={<X size={13} />} onClick={() => setFolders(folders.filter((x) => x !== d))} />
+            </div>
+          ))}
+          <div className="row" style={{ marginTop: 6 }}>
+            <input
+              className="input sm mono grow"
+              value={folderInput}
+              placeholder={t('Hedef klasör yolunu yapıştırıp Enter’a basın')}
+              onChange={(e) => setFolderInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && folderInput.trim()) {
+                  setFolders([...new Set([...folders, folderInput.trim().replace(/^"|"$/g, '')])]);
+                  setFolderInput('');
+                }
+              }}
+            />
+            <Button size="sm" icon={<FolderOpen size={13} />} disabled={!isElectron} onClick={async () => setFolders([...new Set([...folders, ...(await api.pick({ folders: true, multi: true }))])])}>
+              {t('Klasör')}
+            </Button>
+          </div>
+        </>
+      )}
 
       <div className="section-title" style={{ marginTop: 16 }}>
         {t('Davranış')}
@@ -430,6 +569,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
           <input className="input" type="number" min={0.5} step={0.5} value={quiet} onChange={(e) => setQuiet(Number(e.target.value) || 2)} style={{ width: 90 }} />
         </Field>
       </div>
+      <ToggleRow icon={<Play size={16} className="faint" />} title={t('Başlarken mevcut farkları da gönder')} desc={t('İzleme açılınca, hedefte eksik ya da farklı olanlar önce bir kez gönderilir')} on={syncOnStart} onChange={setSyncOnStart} />
       <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan dosyanın eski hâli hedefte saklanır')} on={opts.backup} onChange={(v) => set({ backup: v })} />
       <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinen dosyaları hedefte de sil')} desc={t('Kapalıyken yalnızca yeni ve değişen dosyalar gider')} on={opts.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />
       <div className="form-grid" style={{ marginTop: 8 }}>
@@ -444,5 +584,75 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
         <File size={12} style={{ verticalAlign: -2 }} /> {t('Geçici dosyalar (~$…, .tmp, .swp) ve .git klasörü her zaman yok sayılır.')}
       </div>
     </Modal>
+  );
+}
+
+const GIT_EVENTS: Record<GitEvent, string> = {
+  commit: tk('Commit'),
+  amend: tk('Commit düzeltme (amend)'),
+  merge: tk('Merge'),
+  pull: tk('Pull'),
+  rebase: tk('Rebase'),
+  pick: tk('Cherry-pick, revert'),
+  reset: tk('Reset'),
+  checkout: tk('Dal değiştirme (checkout)'),
+};
+
+/** How automatic sends behave on this machine. */
+function AutomationSettingsCard({ value, onChange }: { value: AutomationSettings; onChange: (v: AutomationSettings) => void }) {
+  const set = (p: Partial<AutomationSettings>) => onChange({ ...value, ...p });
+  return (
+    <>
+      <div className="auto-section-head" style={{ marginTop: 26 }}>
+        <div className="icon-tile accent">
+          <Settings2 size={15} />
+        </div>
+        <div className="grow">
+          <h2>{t('Otomasyon ayarları')}</h2>
+          <div className="faint" style={{ fontSize: 12.5 }}>
+            {t('Bu bilgisayardaki bütün izlemeler ve zamanlanmış işler için geçerlidir.')}
+          </div>
+        </div>
+      </div>
+      <div className="card" style={{ padding: '6px 16px 14px' }}>
+        <ToggleRow
+          icon={<WifiOff size={16} className="faint" />}
+          title={t('Erişilemeyen makinelere yeniden dene')}
+          desc={t('Kapalıyken erişilemeyen makine o değişiklikleri almaz; açıkken değişiklikler saklanır ve makine erişilebilir olunca gönderilir')}
+          on={value.retryUnreachable}
+          onChange={(v) => set({ retryUnreachable: v })}
+        />
+        {value.retryUnreachable && (
+          <Field label={t('Yeniden deneme aralığı (dk)')} style={{ margin: '4px 0 6px 30px', maxWidth: 220 }}>
+            <input className="input" type="number" min={1} max={1440} value={value.retryEveryMinutes} onChange={(e) => set({ retryEveryMinutes: Math.max(1, Math.round(Number(e.target.value) || 1)) })} />
+          </Field>
+        )}
+        <div className="divider" />
+        <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Field label={t('Bildirim')}>
+            <Segmented
+              value={value.notify}
+              onChange={(notify) => set({ notify })}
+              options={[
+                { value: 'never', label: t('Hiç') },
+                { value: 'errors', label: t('Yalnızca hatalarda') },
+                { value: 'always', label: t('Her gönderimde') },
+              ]}
+            />
+          </Field>
+          <Field label={t('Tek seferde en çok dosya')} help={t('Fazlası birden değişirse (ör. dal değişince) gönderilmez; 0 = sınırsız')}>
+            <input className="input" type="number" min={0} value={value.maxFilesPerSend} onChange={(e) => set({ maxFilesPerSend: Math.max(0, Math.round(Number(e.target.value) || 0)) })} style={{ width: 140 }} />
+          </Field>
+        </div>
+        <div className="divider" />
+        <ToggleRow
+          icon={<Clock size={16} className="faint" />}
+          title={t('Kaçırılan zamanlamaları açılışta çalıştır')}
+          desc={t('Uygulama kapalıyken saati geçen senkron işi, uygulama açılınca çalışır')}
+          on={value.catchUpSchedules}
+          onChange={(v) => set({ catchUpSchedules: v })}
+        />
+      </div>
+    </>
   );
 }

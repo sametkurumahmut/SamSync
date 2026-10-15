@@ -20,6 +20,8 @@ export const DEFAULT_COPY: CopySettings = {
   excludeDirs: ['.git', '.svn', '.vs', 'node_modules'],
 };
 
+export { DEFAULT_AUTOMATION, automationSettings } from '../shared/automation';
+
 export const DEFAULT_SETTINGS: LocalSettings = {
   theme: 'dark',
   accent: '#2f7cf6',

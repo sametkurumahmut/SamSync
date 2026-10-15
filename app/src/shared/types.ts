@@ -196,6 +196,7 @@ export interface LocalSettings {
   /** Last run time of scheduled sync jobs on this machine (job id -> ms). */
   scheduleRuns: Record<string, number>;
   automationPaused: boolean;
+  automation?: AutomationSettings;
   closeToTray: boolean;
   launchAtLogin: boolean;
   /** Explorer right-click menu (Windows); on in the installed app unless turned off. */
@@ -223,15 +224,42 @@ export interface WizardImportResult {
   config: AppConfig;
 }
 
+/** HEAD moves of a Git repository that can start an automatic send (read from the reflog). */
+export type GitEvent = 'commit' | 'amend' | 'merge' | 'pull' | 'rebase' | 'pick' | 'reset' | 'checkout';
+
 export interface WatchConfig {
   id: string;
   name: string;
   paths: string[];
+  /** Machines from the configuration. */
   targetIds: string[];
+  /** Plain folders (local, mounted or UNC), no configuration needed: each watched folder's content goes into them. */
+  folders?: string[];
+  /** Run this sync job on a change instead of sending (live sync). */
+  syncJobId?: string;
+  /** files (default): what changed on disk. git: what a commit, pull… changed in the repository paths[0]. */
+  trigger?: 'files' | 'git';
+  /** For trigger git; default commit, amend, merge and pull. */
+  gitEvents?: GitEvent[];
+  /** Send the differences that already exist when the watch starts. */
+  syncOnStart?: boolean;
   options: SendOptions;
   /** Quiet period before a batch of changes is sent. */
   quietMs: number;
   enabled: boolean;
+}
+
+/** How automatic sends behave on this machine (Automation → Settings). */
+export interface AutomationSettings {
+  /** Unreachable targets keep their changes and get them again later. Off by default. */
+  retryUnreachable: boolean;
+  retryEveryMinutes: number;
+  /** Desktop notification after automatic sends and scheduled syncs. */
+  notify: 'never' | 'errors' | 'always';
+  /** A watch that sees more changed files than this at once does not send them (0 = no limit). */
+  maxFilesPerSend: number;
+  /** A scheduled time that passed while the app was closed runs at start. */
+  catchUpSchedules: boolean;
 }
 
 export type WatchStatus = 'watching' | 'pending' | 'sending' | 'paused' | 'error';
@@ -244,8 +272,13 @@ export interface WatchState {
   enabled: boolean;
   status: WatchStatus;
   pendingFiles: number;
-  /** Targets that were unreachable; their changes are retried every minute. */
+  /** Targets that were unreachable and get their changes again later (retry on). */
   deferredTargets: string[];
+  /** Targets the last send could not reach (retry off: they miss these changes). */
+  unreachableTargets?: string[];
+  trigger?: WatchConfig['trigger'];
+  folders?: string[];
+  syncJobId?: string;
   lastRunAt?: number;
   lastRunId?: string;
   lastStatus?: RunStatus | 'nothing';
