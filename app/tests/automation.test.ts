@@ -144,8 +144,8 @@ describe('watch → automatic send (end to end)', () => {
       const st = (await svc.automationState()).watches[0];
       expect(st.lastStatus).toBe('ok');
       expect(events.some((e) => e.type === 'automation')).toBe(true);
-      // the runs land in history like manual sends
-      expect((await svc.runs()).length).toBeGreaterThanOrEqual(2);
+      // the runs land in history like manual sends (written just after the run ends, so wait for it)
+      await until(async () => (await svc.runs()).length >= 2);
       // pausing stops watching
       await svc.automationPause(true);
       expect((await svc.automationState()).watches[0].status).toBe('paused');
