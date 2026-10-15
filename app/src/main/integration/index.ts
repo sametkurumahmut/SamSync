@@ -37,7 +37,8 @@ export async function removeIntegrations(): Promise<void> {
 
 export class Integrations {
   private st: IntegrationStatus = {
-    supported: process.platform === 'win32',
+    // SAMSYNC_NO_INTEGRATION: a test run of a packaged build leaves this machine's menus alone
+    supported: process.platform === 'win32' && !process.env.SAMSYNC_NO_INTEGRATION,
     explorer: { enabled: true, installed: false, expanded: [], collapsed: [], overBudget: false },
     notepadPlusPlus: { enabled: true, installs: [], waitingForExit: false },
   };
