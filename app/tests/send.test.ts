@@ -172,6 +172,46 @@ describe('send plan + run', () => {
     expect(plan.targets[1].reachable).toBe(false);
   });
 
+  it('fills {source} and {destination} of the post-copy command, and counts a machine that was off as failed', async () => {
+    await write(path.join(src, 'F', 'a.txt'), 'a');
+    const ctx = ctxFor();
+    const plan = await buildSendPlan(ctx, req([path.join(src, 'F')], {}, ['T1']));
+    const node = ctx.config.nodes[0];
+    const groups: ExecGroup[] = [
+      {
+        key: 'T1',
+        title: 'T1',
+        rootLabel: t1,
+        node,
+        open: () => transportForNode(ctx, node),
+        ops: plan.targets[0].ops.filter((o) => o.selected).map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src })),
+      },
+      // what the service adds for an unreachable target: no operations, and opening it fails
+      { key: 'Off', title: 'Off', rootLabel: '\\\\10.0.0.9\\x', open: () => Promise.reject(new Error('erişilemiyor')), ops: [] },
+    ];
+    const done = await startRun(ctx, groups, {
+      label: 't',
+      origin: 'send',
+      dryRun: false,
+      backup: false,
+      backupKeep: 2,
+      backupFolderName: ctx.config.copy.backupFolderName,
+      verify: false,
+      retryCount: 0,
+      waitSeconds: 0,
+      parallelGroups: 2,
+      parallelFiles: 4,
+      postCommand: 'echo {source} {destination}',
+      postCommandTimeoutSeconds: 10,
+      postSource: { path: path.join(src, 'F'), rel: 'F' },
+      sources: [],
+      targetIds: [],
+    }).done;
+    expect(done.log.some((l) => l.message.includes(`echo ${path.join(src, 'F')} ${path.join(t1, 'F')}`))).toBe(true);
+    expect(done.targets.find((x) => x.key === 'Off')).toMatchObject({ status: 'failed', error: 'erişilemiyor' });
+    expect(done.status).toBe('partial');
+  });
+
   it('git deletions remove files on the target', async () => {
     await write(path.join(t1, 'old.txt'), 'old');
     const ctx = ctxFor();

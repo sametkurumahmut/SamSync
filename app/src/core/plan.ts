@@ -11,6 +11,7 @@ import { compareMeta, gitBlobId, streamsEqual } from './compare';
 import { blobInfo } from './git';
 import { probeNode } from './probe';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
+import { t } from '../shared/i18n';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -104,17 +105,17 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
     try {
       st = await fsp.stat(abs);
     } catch (e) {
-      warnings.push(`Kaynak bulunamadı: ${abs} (${errMessage(e)})`);
+      warnings.push(t('Kaynak bulunamadı: {path} ({error})', { path: abs, error: errMessage(e) }));
       sources.push({ path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside, error: errMessage(e) });
       continue;
     }
     if (!m.rel) {
-      warnings.push(`${abs} yerel kökün kendisi: kökün tamamı gönderilecek.`);
+      warnings.push(t('{path} yerel kökün kendisi: kökün tamamı gönderilecek.', { path: abs }));
     }
     if (st.isDirectory()) {
-      progress({ message: `Kaynak taranıyor: ${abs}` });
+      progress({ message: t('Kaynak taranıyor: {path}', { path: abs }) });
       const scan = await scanTree(new FsTransport(abs), '', { filter, cancel, caseInsensitive: true });
-      for (const e of scan.errors) warnings.push(`Okunamadı: ${abs}/${e.rel} (${e.error})`);
+      for (const e of scan.errors) warnings.push(t('Okunamadı: {path} ({error})', { path: `${abs}/${e.rel}`, error: e.error }));
       units.push({ kind: 'dir', sourceIndex: i, rel: m.rel, abs, entries: scan.entries });
       let size = 0;
       let files = 0;
@@ -127,7 +128,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
       units.push({ kind: 'file', sourceIndex: i, rel: m.rel, abs, size: st.size, mtimeMs: Math.floor(st.mtimeMs) });
       sources.push({ path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, rel: m.rel, root: m.root, outsideRoots: m.outside });
     }
-    if (m.outside) warnings.push(`${abs} hiçbir yerel kökün altında değil; tam yoluyla (${m.rel}) gönderilecek.`);
+    if (m.outside) warnings.push(t('{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.', { path: abs, rel: m.rel }));
   }
 
   for (const g of gitGroups.values()) {
@@ -152,7 +153,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
         units.push({ kind: 'git', sourceIndex: it.i, rel: m.rel, repo: g.repo, rev: g.rev, path: it.path, blob: b.blob, size: b.size, mtimeMs: at || Date.now() });
       }
       sources.push({ path: abs, exists: true, isDir: false, size: b.size, mtimeMs: at, rel: m.rel, root: m.root, outsideRoots: m.outside });
-      if (m.outside) warnings.push(`${it.path} hiçbir yerel kökün altında değil; tam yoluyla (${m.rel}) gönderilecek.`);
+      if (m.outside) warnings.push(t('{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.', { path: it.path, rel: m.rel }));
     }
   }
 
@@ -195,9 +196,9 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
   const probe = await probeNode(ctx.config, node);
   if (!probe.ok) return { ...base, reachable: false, error: probe.detail };
 
-  let t: Transport;
+  let tgt: Transport;
   try {
-    t = await transportForNode(ctx, node);
+    tgt = await transportForNode(ctx, node);
   } catch (e) {
     return { ...base, reachable: false, error: errMessage(e) };
   }
@@ -207,7 +208,7 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
   const classify = async (src: { size: number; mtimeMs: number }, dst: Entry, readSrc: () => Promise<NodeJS.ReadableStream>, rel: string): Promise<PlanCategory> => {
     const v = compareMeta(src, dst, opt.compare, time);
     if (v === 'equal') return 'same';
-    if (v === 'needsContent') return (await streamsEqual((await readSrc()) as any, await t.readStream(rel))) ? 'same' : 'changed';
+    if (v === 'needsContent') return (await streamsEqual((await readSrc()) as any, await tgt.readStream(rel))) ? 'same' : 'changed';
     if (v === 'dstNewer') return 'targetNewer';
     return 'changed';
   };
@@ -216,35 +217,35 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
     await mapLimit(units, 12, async (u) => {
       cancel.throwIfCancelled();
       if (u.kind === 'delete') {
-        const dst = await t.stat(u.rel);
+        const dst = await tgt.stat(u.rel);
         if (!dst) return push(b, { kind: 'delete', rel: u.rel, isDir: false, category: 'same', size: 0, selected: false, sourceIndex: u.sourceIndex });
         push(b, { kind: 'delete', rel: u.rel, isDir: dst.isDir, category: 'deleted', size: dst.size, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: opt.propagateDeletes, sourceIndex: u.sourceIndex });
         return;
       }
       if (u.kind === 'file' || u.kind === 'git') {
-        const dst = await t.stat(u.rel);
+        const dst = await tgt.stat(u.rel);
         const src = u.kind === 'file' ? ({ kind: 'fs', abs: u.abs } as const) : ({ kind: 'git', repo: u.repo, rev: u.rev, path: u.path, blob: u.blob } as const);
         const common = { kind: 'copy' as const, rel: u.rel, isDir: false, src, size: u.size, srcMtime: u.mtimeMs, sourceIndex: u.sourceIndex };
         if (!dst) return push(b, { ...common, category: 'new', selected: true });
-        if (dst.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: dst.mtimeMs, replaceType: true, note: 'Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.' });
+        if (dst.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: dst.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.') });
         let cat: PlanCategory;
         if (u.kind === 'git' || u.blob) {
           // Commit content: the blob id tells equality exactly, time stamps mean nothing here.
           if (dst.size !== u.size) cat = 'changed';
-          else cat = (await gitBlobId(await t.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
+          else cat = (await gitBlobId(await tgt.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
         } else {
           cat = await classify(u, dst, async () => fs.createReadStream(u.abs), u.rel);
         }
         return push(b, { ...common, category: cat, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       }
       // folder
-      const dstRoot = await t.stat(u.rel);
+      const dstRoot = await tgt.stat(u.rel);
       if (dstRoot && !dstRoot.isDir) {
-        push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: 'Hedefte aynı adda dosya var; dosya kaldırılıp klasör oluşturulacak.' });
+        push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var; dosya kaldırılıp klasör oluşturulacak.') });
       } else if (!dstRoot) {
         push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
       }
-      const dstScan = dstRoot?.isDir ? await scanTree(t, u.rel, { filter, cancel, caseInsensitive: true }) : null;
+      const dstScan = dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter, cancel, caseInsensitive: true }) : null;
       const dstEntries = dstScan?.entries ?? new Map<string, Entry>();
       const local = new FsTransport(u.abs);
       const files: [string, Entry][] = [];
@@ -253,7 +254,7 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
         const d = dstEntries.get(key);
         if (e.isDir) {
           if (!d) push(b, { kind: 'mkdir', rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
-          else if (!d.isDir) push(b, { kind: 'mkdir', rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: 'Hedefte aynı adda dosya var.' });
+          else if (!d.isDir) push(b, { kind: 'mkdir', rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var.') });
         } else files.push([key, e]);
       }
       await mapLimit(files, 8, async ([key, e]) => {
@@ -262,7 +263,7 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
         const d = dstEntries.get(key);
         const common = { kind: 'copy' as const, rel, isDir: false, src: { kind: 'fs' as const, abs: local.localPath(e.rel) }, size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
         if (!d) return push(b, { ...common, category: 'new', selected: true });
-        if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: 'Hedefte aynı adda klasör var.' });
+        if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
         const cat = await classify(e, d, () => local.readStream(e.rel), rel);
         push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       });
@@ -276,7 +277,7 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
       }
     });
   } catch (e) {
-    await t.close();
+    await tgt.close();
     if (cancel.cancelled) throw e;
     return { ...base, reachable: false, error: errMessage(e), counts: b.counts, ops: b.ops };
   }
@@ -284,8 +285,8 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
   b.ops.sort((x, y) => x.rel.localeCompare(y.rel));
   b.ops.forEach((op, i) => (op.id = String(i)));
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
-  const freeBytes = await t.freeSpace();
-  await t.close();
+  const freeBytes = await tgt.freeSpace();
+  await tgt.close();
   return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes };
 }
 
@@ -303,24 +304,24 @@ export async function buildSendPlan(
   const requested = req.targetIds;
   const nodes = expandTargetIds(ctx.config, requested, ctx.localNodeId);
   if (ctx.localNodeId && requested.some((id) => id.toLowerCase() === ctx.localNodeId!.toLowerCase()))
-    warnings.push('Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).');
-  if (!nodes.length) warnings.push('Gönderilecek etkin hedef yok.');
+    warnings.push(t('Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).'));
+  if (!nodes.length) warnings.push(t('Gönderilecek etkin hedef yok.'));
 
   let done = 0;
-  progress({ message: 'Hedefler inceleniyor', done, total: nodes.length });
+  progress({ message: t('Hedefler inceleniyor'), done, total: nodes.length });
   const targets = await mapLimit(nodes, 6, async (n) => {
     const tp = await planTarget(ctx, req, n, units, filter, cancel);
-    progress({ message: `${n.name} incelendi`, done: ++done, total: nodes.length });
+    progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
     return tp;
   });
 
   for (const tp of targets) {
     if (tp.freeBytes != null && tp.bytes > tp.freeBytes)
-      warnings.push(`${tp.targetName}: hedefte ${formatBytes(tp.freeBytes)} boş alan var, ${formatBytes(tp.bytes)} yazılacak.`);
+      warnings.push(t('{name}: hedefte {free} boş alan var, {size} yazılacak.', { name: tp.targetName, free: formatBytes(tp.freeBytes), size: formatBytes(tp.bytes) }));
   }
   if (req.options.mode === 'mirror') {
-    const del = targets.reduce((s, t) => s + t.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
-    if (del) warnings.push(`Ayna kipi: hedeflerde toplam ${del} fazla öğe silinecek.`);
+    const del = targets.reduce((s, tp) => s + tp.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
+    if (del) warnings.push(t('Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.', { n: del }));
   }
   return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started };
 }

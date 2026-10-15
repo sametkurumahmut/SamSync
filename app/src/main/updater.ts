@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 import type { LocalSettings, UpdateConfig, UpdateState } from '../shared/types';
+import { t } from '../shared/i18n';
 
 const { autoUpdater } = electronUpdater;
 
@@ -66,18 +67,23 @@ export class Updater {
   }
 
   state(): UpdateState {
+    // the reason is text: build it again so a language change shows up
+    if (this.st.phase === 'unsupported') {
+      const reason = this.supportReason();
+      if (reason && reason !== this.st.detail) this.st = { ...this.st, detail: reason };
+    }
     return this.st;
   }
 
   private supportReason(): string | null {
-    if (!app.isPackaged) return 'Geliştirme modunda güncelleme denetlenmez.';
-    if (process.env.PORTABLE_EXECUTABLE_DIR) return 'Taşınabilir (portable) sürüm kendini güncelleyemez; kurulum sürümünü kullanın.';
-    if (this.cfg.source === 'off') return 'Güncellemeler kapalı.';
-    if (this.cfg.source === 'folder' && process.platform !== 'win32') return 'Klasörden güncelleme yalnızca Windows kurulumunda desteklenir.';
-    if (this.cfg.source === 'folder' && !this.cfg.folder) return 'Güncelleme klasörü ayarlanmamış.';
-    if (this.cfg.source === 'url' && !this.cfg.url) return 'Güncelleme adresi ayarlanmamış.';
-    if (process.platform === 'linux' && !process.env.APPIMAGE && this.cfg.source !== 'folder') return 'Linux’ta otomatik güncelleme yalnızca AppImage paketinde çalışır.';
-    if (this.cfg.source === 'github' && !githubFeed()) return 'Bu pakette GitHub güncelleme adresi yok.';
+    if (!app.isPackaged) return t('Geliştirme modunda güncelleme denetlenmez.');
+    if (process.env.PORTABLE_EXECUTABLE_DIR) return t('Taşınabilir (portable) sürüm kendini güncelleyemez; kurulum sürümünü kullanın.');
+    if (this.cfg.source === 'off') return t('Güncellemeler kapalı.');
+    if (this.cfg.source === 'folder' && process.platform !== 'win32') return t('Klasörden güncelleme yalnızca Windows kurulumunda desteklenir.');
+    if (this.cfg.source === 'folder' && !this.cfg.folder) return t('Güncelleme klasörü ayarlanmamış.');
+    if (this.cfg.source === 'url' && !this.cfg.url) return t('Güncelleme adresi ayarlanmamış.');
+    if (process.platform === 'linux' && !process.env.APPIMAGE && this.cfg.source !== 'folder') return t('Linux’ta otomatik güncelleme yalnızca AppImage paketinde çalışır.');
+    if (this.cfg.source === 'github' && !githubFeed()) return t('Bu pakette GitHub güncelleme adresi yok.');
     return null;
   }
 
@@ -138,7 +144,7 @@ export class Updater {
     const folder = this.cfg.folder!;
     const yml = await fsp.readFile(path.join(folder, 'latest.yml'), 'utf8');
     const info = parseLatestYml(yml);
-    if (!info.version || !info.path) throw new Error('latest.yml içinde version/path yok');
+    if (!info.version || !info.path) throw new Error(t('latest.yml içinde version/path yok'));
     this.folderInfo = info;
     if (cmpSemver(info.version, app.getVersion()) > 0) {
       this.set({ phase: 'available', version: info.version, releaseDate: info.releaseDate, checkedAt: Date.now() });
@@ -175,7 +181,7 @@ export class Updater {
         ws.on('finish', () => resolve());
         rs.pipe(ws);
       });
-      if (info.sha512 && hash.digest('base64') !== info.sha512) throw new Error('Kurulum dosyasının özeti latest.yml ile tutmuyor');
+      if (info.sha512 && hash.digest('base64') !== info.sha512) throw new Error(t('Kurulum dosyasının özeti latest.yml ile tutmuyor'));
       this.folderInstaller = dst;
       this.set({ phase: 'ready', percent: 100 });
     } catch (e) {

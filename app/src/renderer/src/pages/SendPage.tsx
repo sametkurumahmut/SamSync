@@ -6,19 +6,30 @@ import { Button, Segmented, TagInput, ToggleRow, Field } from '../components/ui'
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
 import type { SendMode, CompareMethod } from '@shared/types';
+import { t, tk } from '@shared/i18n';
+import { tx } from '../lib/i18n';
 import { useStartWatchFromSend } from './AutomationPage';
 
 export const MODE_OPTIONS: { value: SendMode; label: string; tip: string }[] = [
-  { value: 'overwrite', label: 'Üzerine yaz', tip: 'Yeni ve değişen her dosyayı yazar.\nHedefteki daha yeni dosyalar da güncellenir (uyarıyla).' },
-  { value: 'update', label: 'Yalnızca yeni', tip: 'Hedefte daha yeni ya da aynı yaştaki dosyalara dokunmaz.' },
-  { value: 'mirror', label: 'Ayna', tip: 'Klasörleri birebir eşitler:\nhedefte olup kaynakta olmayan dosyaları siler.' },
+  { value: 'overwrite', label: tk('Üzerine yaz'), tip: tk('Yeni ve değişen her dosyayı yazar.\nHedefteki daha yeni dosyalar da güncellenir (uyarıyla).') },
+  { value: 'update', label: tk('Yalnızca yeni'), tip: tk('Hedefte daha yeni ya da aynı yaştaki dosyalara dokunmaz.') },
+  { value: 'mirror', label: tk('Ayna'), tip: tk('Klasörleri birebir eşitler:\nhedefte olup kaynakta olmayan dosyaları siler.') },
 ];
 
 export const COMPARE_OPTIONS: { value: CompareMethod; label: string; tip: string }[] = [
-  { value: 'timeSize', label: 'Tarih + boyut', tip: 'Hızlı: değiştirilme tarihi ve boyut' },
-  { value: 'content', label: 'İçerik', tip: 'Kesin: aynı boyuttaki dosyaları bayt bayt karşılaştırır (yavaş)' },
-  { value: 'size', label: 'Boyut', tip: 'Yalnızca boyuta bakar' },
+  { value: 'timeSize', label: tk('Tarih + boyut'), tip: tk('Hızlı: değiştirilme tarihi ve boyut') },
+  { value: 'content', label: tk('İçerik'), tip: tk('Kesin: aynı boyuttaki dosyaları bayt bayt karşılaştırır (yavaş)') },
+  { value: 'size', label: tk('Boyut'), tip: tk('Yalnızca boyuta bakar') },
 ];
+
+/** The option lists above in the current language, for Segmented. */
+export function modeOptions() {
+  return MODE_OPTIONS.map((o) => ({ ...o, label: t(o.label), tip: t(o.tip) }));
+}
+
+export function compareOptions() {
+  return COMPARE_OPTIONS.map((o) => ({ ...o, label: t(o.label), tip: t(o.tip) }));
+}
 
 export function SendPage() {
   const paths = useApp((s) => s.sendPaths);
@@ -36,11 +47,11 @@ export function SendPage() {
   const startWatch = useStartWatchFromSend();
 
   const pickFiles = async () => {
-    const p = await api.pick({ files: true, multi: true, title: 'Gönderilecek dosyalar' });
+    const p = await api.pick({ files: true, multi: true, title: t('Gönderilecek dosyalar') });
     if (p.length) await add(p);
   };
   const pickFolders = async () => {
-    const p = await api.pick({ folders: true, multi: true, title: 'Gönderilecek klasörler' });
+    const p = await api.pick({ folders: true, multi: true, title: t('Gönderilecek klasörler') });
     if (p.length) await add(p);
   };
 
@@ -49,20 +60,21 @@ export function SendPage() {
   const dirs = infos.filter((i) => i.isDir).length;
   const missing = infos.filter((i) => !i.exists).length;
 
-  const review = () => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : `${paths.length} öğe` });
+  const review = () => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
+  const modeLabel = MODE_OPTIONS.find((m) => m.value === options.mode)?.label;
 
   return (
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Gönder</h1>
-          <div className="sub">Dosya ve klasörleri seçili makinelere, yerel köke göre aynı göreli yolla gönderin.</div>
+          <h1>{t('Gönder')}</h1>
+          <div className="sub">{t('Dosya ve klasörleri seçili makinelere, yerel köke göre aynı göreli yolla gönderin.')}</div>
         </div>
         <Button icon={<FilePlus size={15} />} onClick={pickFiles} disabled={!isElectron}>
-          Dosya ekle
+          {t('Dosya ekle')}
         </Button>
         <Button icon={<FolderPlus size={15} />} onClick={pickFolders} disabled={!isElectron}>
-          Klasör ekle
+          {t('Klasör ekle')}
         </Button>
       </div>
       <div className="page-body fill">
@@ -73,10 +85,10 @@ export function SendPage() {
                 <div className="icon-tile">
                   <UploadCloud size={15} />
                 </div>
-                <h2>Kaynaklar</h2>
+                <h2>{t('Kaynaklar')}</h2>
                 {infos.length > 0 && (
                   <span className="hint">
-                    {num(infos.length)} öğe • {files} dosya, {dirs} klasör • {bytes(totalSize)}
+                    {t('{n} öğe', { n: num(infos.length) })} • {t('{n} dosya', { n: files })}, {t('{n} klasör', { n: dirs })} • {bytes(totalSize)}
                   </span>
                 )}
                 <span className="spacer" />
@@ -88,13 +100,13 @@ export function SendPage() {
                       icon={<Copy size={13} />}
                       onClick={() => {
                         void navigator.clipboard.writeText(paths.join('\n'));
-                        toast('ok', 'Yollar panoya kopyalandı');
+                        toast('ok', t('Yollar panoya kopyalandı'));
                       }}
                     >
-                      Kopyala
+                      {t('Kopyala')}
                     </Button>
                     <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={clear}>
-                      Temizle
+                      {t('Temizle')}
                     </Button>
                   </>
                 )}
@@ -104,20 +116,20 @@ export function SendPage() {
                   <div className="empty-icon" style={{ width: 60, height: 60, borderRadius: 18 }}>
                     <UploadCloud size={26} />
                   </div>
-                  <h3>Dosya veya klasörleri buraya sürükleyin</h3>
-                  <p className="muted">Ya da seçin. Explorer’da sağ tık → “SamSync ile gönder” de buraya getirir.</p>
+                  <h3>{t('Dosya veya klasörleri buraya sürükleyin')}</h3>
+                  <p className="muted">{t('Ya da seçin. Explorer’da sağ tık → “SamSync ile gönder” de buraya getirir.')}</p>
                   <div className="row" style={{ marginTop: 6 }}>
                     <Button icon={<FilePlus size={15} />} onClick={pickFiles} disabled={!isElectron}>
-                      Dosya seç
+                      {t('Dosya seç')}
                     </Button>
                     <Button icon={<FolderPlus size={15} />} onClick={pickFolders} disabled={!isElectron}>
-                      Klasör seç
+                      {t('Klasör seç')}
                     </Button>
                   </div>
                   <div className="row" style={{ marginTop: 10, width: 'min(520px, 100%)' }}>
                     <input
                       className="input sm mono"
-                      placeholder="…ya da tam yolu yapıştırın ve Enter’a basın"
+                      placeholder={t('…ya da tam yolu yapıştırın ve Enter’a basın')}
                       value={manual}
                       onChange={(e) => setManual(e.target.value)}
                       onKeyDown={(e) => {
@@ -133,7 +145,7 @@ export function SendPage() {
                 <div className="source-list">
                   {missing > 0 && (
                     <div className="alert error" style={{ margin: 10 }}>
-                      <AlertTriangle size={15} /> {missing} öğe bulunamadı; gönderimde atlanacak.
+                      <AlertTriangle size={15} /> {t('{n} öğe bulunamadı; gönderimde atlanacak.', { n: missing })}
                     </div>
                   )}
                   {infos.map((i) => (
@@ -144,14 +156,14 @@ export function SendPage() {
                           <span className="ellipsis" style={{ fontWeight: 580 }}>
                             {baseName(i.path)}
                           </span>
-                          {!i.exists && <span className="badge red">bulunamadı</span>}
+                          {!i.exists && <span className="badge red">{t('bulunamadı')}</span>}
                           {i.outsideRoots ? (
-                            <span className="badge amber" data-tip={'Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur'}>
-                              kök dışı
+                            <span className="badge amber" data-tip={t('Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur')}>
+                              {t('kök dışı')}
                             </span>
                           ) : (
                             i.root && (
-                              <span className="badge" data-tip={`Yerel kök: ${i.root}`}>
+                              <span className="badge" data-tip={t('Yerel kök: {path}', { path: i.root })}>
                                 {baseName(i.root)}
                               </span>
                             )
@@ -160,20 +172,20 @@ export function SendPage() {
                         <div className="row faint mono" style={{ fontSize: 11.5, gap: 6 }}>
                           <ArrowRight size={11} style={{ flex: 'none' }} />
                           <span className="ellipsis selectable" title={i.path}>
-                            {i.rel || '(kökün kendisi)'}
+                            {i.rel || t('(kökün kendisi)')}
                             {i.isDir ? '/' : ''}
                           </span>
                         </div>
                       </div>
                       <span className="faint tabular nowrap" style={{ fontSize: 12 }}>
-                        {i.isDir ? `${num(i.fileCount ?? 0)}${i.fileCountCapped ? '+' : ''} dosya • ${bytes(i.size)}` : bytes(i.size)}
+                        {i.isDir ? `${t('{n} dosya', { n: num(i.fileCount ?? 0) + (i.fileCountCapped ? '+' : '') })} • ${bytes(i.size)}` : bytes(i.size)}
                       </span>
-                      <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(i.path)} tip="Listeden çıkar" />
+                      <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(i.path)} tip={t('Listeden çıkar')} />
                     </div>
                   ))}
                   {paths.length > infos.length && (
                     <div className="row faint" style={{ padding: 12 }}>
-                      <div className="spinner" /> Kaynaklar okunuyor…
+                      <div className="spinner" /> {t('Kaynaklar okunuyor…')}
                     </div>
                   )}
                 </div>
@@ -187,7 +199,7 @@ export function SendPage() {
               <div className="icon-tile">
                 <Send size={15} />
               </div>
-              <h2>Hedefler</h2>
+              <h2>{t('Hedefler')}</h2>
               <span className="spacer" />
             </div>
             <TargetPicker value={targets} onChange={setTargets} />
@@ -197,20 +209,24 @@ export function SendPage() {
         <div className="action-bar">
           <div className="grow row" style={{ gap: 10 }}>
             <span className="tabular">
-              <b>{num(paths.length)}</b> kaynak <ArrowRight size={13} style={{ verticalAlign: -2 }} /> <b>{targets.length}</b> hedef
+              {tx(
+                '{sources} kaynak {arrow} {targets} hedef',
+                { sources: <b>{num(paths.length)}</b>, arrow: <ArrowRight size={13} style={{ verticalAlign: -2 }} />, targets: <b>{targets.length}</b> },
+                { s: paths.length, n: targets.length },
+              )}
             </span>
-            <span className="badge outline">{MODE_OPTIONS.find((m) => m.value === options.mode)?.label}</span>
-            {options.backup && <span className="badge blue">yedekli</span>}
-            {options.dryRun && <span className="badge amber">deneme</span>}
+            <span className="badge outline">{modeLabel && t(modeLabel)}</span>
+            {options.backup && <span className="badge blue">{t('yedekli')}</span>}
+            {options.dryRun && <span className="badge amber">{t('deneme')}</span>}
           </div>
-          <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={'Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir'}>
-            İzle
+          <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
+            {t('İzle')}
           </Button>
-          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', options: { dryRun: true }, label: 'Deneme' })}>
-            Deneme
+          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
+            {t('Deneme')}
           </Button>
           <Button size="lg" variant="primary" icon={<Send size={15} />} disabled={!paths.length || !targets.length} onClick={review}>
-            İncele ve gönder
+            {t('İncele ve gönder')}
           </Button>
         </div>
       </div>
@@ -229,32 +245,32 @@ export function OptionsCard({ git }: { git?: boolean }) {
         <div className="icon-tile">
           <ShieldCheck size={15} />
         </div>
-        <h2>Seçenekler</h2>
+        <h2>{t('Seçenekler')}</h2>
       </div>
       <div className="card-body options-body">
         <div className="options-row">
-          <Field label="Kip">
-            <Segmented value={options.mode} onChange={(v) => set({ mode: v })} options={MODE_OPTIONS} />
+          <Field label={t('Kip')}>
+            <Segmented value={options.mode} onChange={(v) => set({ mode: v })} options={modeOptions()} />
           </Field>
           {!git && (
-            <Field label="Karşılaştırma">
-              <Segmented value={options.compare} onChange={(v) => set({ compare: v })} options={COMPARE_OPTIONS} />
+            <Field label={t('Karşılaştırma')}>
+              <Segmented value={options.compare} onChange={(v) => set({ compare: v })} options={compareOptions()} />
             </Field>
           )}
-          <Field label="Eşzamanlı hedef">
+          <Field label={t('Eşzamanlı hedef')}>
             <input className="input" type="number" min={1} max={16} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(16, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
           </Field>
         </div>
         <div className="options-toggles">
-          <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title="Yedek al" desc="Üzerine yazılan ve silinen dosyaların eski hâli hedefte saklanır" on={options.backup} onChange={(v) => set({ backup: v })} />
-          <ToggleRow icon={<ShieldCheck size={16} className="faint" />} title="Doğrula" desc="Yazdıktan sonra içerik özetini karşılaştırır" on={options.verify} onChange={(v) => set({ verify: v })} />
-          {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title="Silinenleri hedefte de sil" desc="Git’te silinen ya da taşınan dosyalar hedeften kaldırılır" on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}
-          <ToggleRow icon={<Bell size={16} className="faint" />} title="Bitince bildir" desc="Masaüstü bildirimi gösterir" on={options.notify} onChange={(v) => set({ notify: v })} />
-          {postCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title="Sonrası komut" desc={<span className="mono">{postCommand}</span>} on={options.runPostCommand} onChange={(v) => set({ runPostCommand: v })} />}
+          <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan ve silinen dosyaların eski hâli hedefte saklanır')} on={options.backup} onChange={(v) => set({ backup: v })} />
+          <ToggleRow icon={<ShieldCheck size={16} className="faint" />} title={t('Doğrula')} desc={t('Yazdıktan sonra içerik özetini karşılaştırır')} on={options.verify} onChange={(v) => set({ verify: v })} />
+          {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinenleri hedefte de sil')} desc={t('Git’te silinen ya da taşınan dosyalar hedeften kaldırılır')} on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}
+          <ToggleRow icon={<Bell size={16} className="faint" />} title={t('Bitince bildir')} desc={t('Masaüstü bildirimi gösterir')} on={options.notify} onChange={(v) => set({ notify: v })} />
+          {postCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Sonrası komut')} desc={<span className="mono">{postCommand}</span>} on={options.runPostCommand} onChange={(v) => set({ runPostCommand: v })} />}
         </div>
         <button className="link-btn row" style={{ gap: 4, marginTop: 4 }} onClick={() => setFilters((f) => !f)}>
           {filters ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <Filter size={13} /> Filtreler
+          <Filter size={13} /> {t('Filtreler')}
           {(options.excludeFiles.length > 0 || options.excludeDirs.length > 0) && (
             <span className="badge" style={{ marginLeft: 4 }}>
               {options.excludeFiles.length + options.excludeDirs.length}
@@ -263,10 +279,10 @@ export function OptionsCard({ git }: { git?: boolean }) {
         </button>
         {filters && (
           <div className="options-row" style={{ marginTop: 10 }}>
-            <Field label="Hariç dosyalar" help="*.pdb, *.tmp, desktop.ini — ada göre her klasörde">
+            <Field label={t('Hariç dosyalar')} help={t('*.pdb, *.tmp, desktop.ini — ada göre her klasörde')}>
               <TagInput value={options.excludeFiles} onChange={(v) => set({ excludeFiles: v })} placeholder="*.pdb" />
             </Field>
-            <Field label="Hariç klasörler" help=".git, Logs, bin/Debug — ada ya da göreli yola göre">
+            <Field label={t('Hariç klasörler')} help={t('.git, Logs, bin/Debug — ada ya da göreli yola göre')}>
               <TagInput value={options.excludeDirs} onChange={(v) => set({ excludeDirs: v })} placeholder="Logs" />
             </Field>
           </div>

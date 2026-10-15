@@ -1,3 +1,5 @@
+import { locale, t } from '@shared/i18n';
+
 export function bytes(n: number | undefined): string {
   if (n == null || !Number.isFinite(n)) return '–';
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -7,20 +9,19 @@ export function bytes(n: number | undefined): string {
     v /= 1024;
     i++;
   }
-  return `${i === 0 ? v : v.toLocaleString('tr-TR', { maximumFractionDigits: v >= 100 ? 0 : 1 })} ${u[i]}`;
+  return `${i === 0 ? v : v.toLocaleString(locale(), { maximumFractionDigits: v >= 100 ? 0 : 1 })} ${u[i]}`;
 }
 
 export function num(n: number): string {
-  return n.toLocaleString('tr-TR');
+  return n.toLocaleString(locale());
 }
 
-const rtf = new Intl.RelativeTimeFormat('tr', { numeric: 'auto' });
-
-export function ago(t: number | undefined): string {
-  if (!t) return '–';
-  const s = Math.round((t - Date.now()) / 1000);
+export function ago(at: number | undefined): string {
+  if (!at) return '–';
+  const s = Math.round((at - Date.now()) / 1000);
   const a = Math.abs(s);
-  if (a < 45) return 'az önce';
+  if (a < 45) return t('az önce');
+  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
   if (a < 3600) return rtf.format(Math.round(s / 60), 'minute');
   if (a < 86400) return rtf.format(Math.round(s / 3600), 'hour');
   if (a < 86400 * 30) return rtf.format(Math.round(s / 86400), 'day');
@@ -30,7 +31,7 @@ export function ago(t: number | undefined): string {
 
 export function dateTime(t: number | undefined): string {
   if (!t) return '–';
-  return new Date(t).toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(t).toLocaleString(locale(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function shortDateTime(t: number | undefined): string {
@@ -39,19 +40,19 @@ export function shortDateTime(t: number | undefined): string {
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
   return sameDay
-    ? d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    ? d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString(locale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 export function duration(ms: number | undefined): string {
   if (ms == null) return '–';
   if (ms < 1000) return `${ms} ms`;
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)} sn`;
+  if (s < 60) return t('{s} sn', { s: s.toFixed(s < 10 ? 1 : 0) });
   const m = Math.floor(s / 60);
   const r = Math.round(s % 60);
-  if (m < 60) return `${m} dk ${r} sn`;
-  return `${Math.floor(m / 60)} sa ${m % 60} dk`;
+  if (m < 60) return t('{m} dk {s} sn', { m, s: r });
+  return t('{h} sa {m} dk', { h: Math.floor(m / 60), m: m % 60 });
 }
 
 export function splitPath(p: string): { dir: string; name: string } {

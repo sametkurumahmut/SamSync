@@ -34,32 +34,34 @@ import { api, newTaskId, onEvent } from '../lib/api';
 import { Button, Empty, Field, Modal, Segmented, TagInput, Popover, MenuList, SearchInput, Switch } from '../components/ui';
 import { describeSchedule } from './AutomationPage';
 import { DiffView } from '../components/DiffView';
-import { COMPARE_OPTIONS } from './SendPage';
+import { compareOptions } from './SendPage';
 import { ago, bytes, cls, num, shortDateTime, splitPath } from '../lib/format';
+import { locale, t, tk } from '@shared/i18n';
 
 const VARIANTS: { value: SyncVariant; label: string; desc: string; icon: typeof ArrowRight }[] = [
-  { value: 'twoWay', label: 'İki yönlü', desc: 'Değişiklikleri iki tarafa da yayar, silinenleri son eşitlemeden anlar', icon: ArrowLeftRight },
-  { value: 'mirror', label: 'Ayna', desc: 'Sağ taraf solun birebir kopyası olur; fazlalar silinir', icon: ArrowRight },
-  { value: 'update', label: 'Güncelle', desc: 'Yeni ve değişen dosyaları sağa kopyalar, hiçbir şey silmez', icon: ArrowRightToLine },
-  { value: 'custom', label: 'Özel', desc: 'Her durum için yapılacak işlemi siz seçersiniz', icon: Settings2 },
+  { value: 'twoWay', label: tk('İki yönlü'), desc: tk('Değişiklikleri iki tarafa da yayar, silinenleri son eşitlemeden anlar'), icon: ArrowLeftRight },
+  { value: 'mirror', label: tk('Ayna'), desc: tk('Sağ taraf solun birebir kopyası olur; fazlalar silinir'), icon: ArrowRight },
+  { value: 'update', label: tk('Güncelle'), desc: tk('Yeni ve değişen dosyaları sağa kopyalar, hiçbir şey silmez'), icon: ArrowRightToLine },
+  { value: 'custom', label: tk('Özel'), desc: tk('Her durum için yapılacak işlemi siz seçersiniz'), icon: Settings2 },
 ];
 
+/** Labels are tk() keys: show them with t(). */
 export const CAT: Record<Category, { label: string; sign: string }> = {
-  leftOnly: { label: 'Yalnız solda', sign: '◧' },
-  leftNewer: { label: 'Sol daha yeni', sign: '◀' },
-  different: { label: 'Farklı', sign: '≠' },
-  rightNewer: { label: 'Sağ daha yeni', sign: '▶' },
-  rightOnly: { label: 'Yalnız sağda', sign: '◨' },
-  conflict: { label: 'Çakışma', sign: '!' },
-  equal: { label: 'Aynı', sign: '=' },
+  leftOnly: { label: tk('Yalnız solda'), sign: '◧' },
+  leftNewer: { label: tk('Sol daha yeni'), sign: '◀' },
+  different: { label: tk('Farklı'), sign: '≠' },
+  rightNewer: { label: tk('Sağ daha yeni'), sign: '▶' },
+  rightOnly: { label: tk('Yalnız sağda'), sign: '◨' },
+  conflict: { label: tk('Çakışma'), sign: '!' },
+  equal: { label: tk('Aynı'), sign: '=' },
 };
 
 const ACTION: Record<SyncAction, { label: string; short: string }> = {
-  copyRight: { label: 'Sağa kopyala', short: '→' },
-  copyLeft: { label: 'Sola kopyala', short: '←' },
-  deleteRight: { label: 'Sağdan sil', short: '✕→' },
-  deleteLeft: { label: 'Soldan sil', short: '←✕' },
-  none: { label: 'Bir şey yapma', short: '=' },
+  copyRight: { label: tk('Sağa kopyala'), short: '→' },
+  copyLeft: { label: tk('Sola kopyala'), short: '←' },
+  deleteRight: { label: tk('Sağdan sil'), short: '✕→' },
+  deleteLeft: { label: tk('Soldan sil'), short: '←✕' },
+  none: { label: tk('Bir şey yapma'), short: '=' },
 };
 
 function ActionIcon({ a }: { a: SyncAction }) {
@@ -86,7 +88,7 @@ function newJob(): SyncJob {
   const id = 'job-' + Math.random().toString(36).slice(2, 8);
   return {
     id,
-    name: 'Yeni senkron işi',
+    name: t('Yeni senkron işi'),
     pairs: [{ id: 'p1', left: { kind: 'local', path: '' }, right: { kind: 'node', nodeId: '', subPath: '' } }],
     compare: 'timeSize',
     variant: 'mirror',
@@ -126,8 +128,8 @@ export function SyncPage() {
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Senkron</h1>
-          <div className="sub">Klasör çiftlerini karşılaştırın; farkları görüp işlemleri tek tek ayarlayın, sonra eşitleyin.</div>
+          <h1>{t('Senkron')}</h1>
+          <div className="sub">{t('Klasör çiftlerini karşılaştırın; farkları görüp işlemleri tek tek ayarlayın, sonra eşitleyin.')}</div>
         </div>
         <Button
           icon={<Plus size={15} />}
@@ -136,14 +138,14 @@ export function SyncPage() {
             if (await persist(j)) select(j.id);
           }}
         >
-          Yeni iş
+          {t('Yeni iş')}
         </Button>
       </div>
       <div className="page-body fill">
         <div className="sync-layout">
           <div className="card sync-jobs">
             <div className="pane-head">
-              <b>İşler</b>
+              <b>{t('İşler')}</b>
               <span className="faint">{jobs.length}</span>
             </div>
             <div className="pane-scroll" style={{ padding: 6 }}>
@@ -159,7 +161,7 @@ export function SyncPage() {
                         {j.name}
                       </div>
                       <div className="faint ellipsis" style={{ fontSize: 11.5 }}>
-                        {V.label} • {j.pairs.length} çift • {j.lastRun ? ago(Date.parse(j.lastRun)) : 'hiç çalışmadı'}
+                        {t(V.label)} • {t('{n} çift', { n: j.pairs.length })} • {j.lastRun ? ago(Date.parse(j.lastRun)) : t('hiç çalışmadı')}
                       </div>
                     </div>
                   </button>
@@ -167,15 +169,15 @@ export function SyncPage() {
               })}
               {!jobs.length && (
                 <div className="faint" style={{ padding: 14, fontSize: 12.5 }}>
-                  Henüz iş yok. “Yeni iş” ile bir klasör çifti tanımlayın.
+                  {t('Henüz iş yok. “Yeni iş” ile bir klasör çifti tanımlayın.')}
                 </div>
               )}
             </div>
           </div>
           {!job ? (
             <div className="card" style={{ display: 'grid', placeItems: 'center' }}>
-              <Empty icon={<ArrowLeftRight size={22} />} title="Bir senkron işi seçin ya da oluşturun">
-                Sol ve sağ klasörleri karşılaştırın, her dosya için yapılacak işlemi görün ve değiştirin. Sağ taraf bir hedef makinenin klasörü ya da herhangi bir klasör olabilir.
+              <Empty icon={<ArrowLeftRight size={22} />} title={t('Bir senkron işi seçin ya da oluşturun')}>
+                {t('Sol ve sağ klasörleri karşılaştırın, her dosya için yapılacak işlemi görün ve değiştirin. Sağ taraf bir hedef makinenin klasörü ya da herhangi bir klasör olabilir.')}
               </Empty>
             </div>
           ) : (
@@ -184,10 +186,10 @@ export function SyncPage() {
               job={job}
               dirty={dirty}
               onChange={update}
-              onSave={() => void persist().then((ok) => ok && toast('ok', 'İş kaydedildi'))}
+              onSave={() => void persist().then((ok) => ok && toast('ok', t('İş kaydedildi')))}
               onRevert={() => setDraft(null)}
               onDelete={async () => {
-                if (!confirm(`“${job.name}” silinsin mi?`)) return;
+                if (!confirm(t('“{name}” silinsin mi?', { name: job.name }))) return;
                 await saveConfig({ ...cfg, syncJobs: jobs.filter((x) => x.id !== job.id) });
                 await api.resetSyncState(job.id);
                 setActiveId(null);
@@ -233,11 +235,11 @@ function JobView({
   const ready = job.pairs.every((p) => (p.left.kind === 'local' ? p.left.path : p.left.nodeId) && (p.right.kind === 'local' ? p.right.path : p.right.nodeId));
 
   const compare = async () => {
-    if (!ready) return toast('warn', 'Klasörler eksik', 'Her çiftin iki tarafını da seçin.');
+    if (!ready) return toast('warn', t('Klasörler eksik'), t('Her çiftin iki tarafını da seçin.'));
     if (dirty) await onPersist(job);
     const id = newTaskId();
     taskRef.current = id;
-    setComparing('Taranıyor…');
+    setComparing(t('Taranıyor…'));
     setOverrides({});
     const unsub = onEvent((e) => {
       if (e.type === 'task-progress' && e.taskId === id) setComparing(e.message);
@@ -246,7 +248,7 @@ function JobView({
       const r = await api.compareJob(job, id);
       setResult(r);
     } catch (e) {
-      toast('error', 'Karşılaştırma başarısız', (e as Error).message);
+      toast('error', t('Karşılaştırma başarısız'), (e as Error).message);
     } finally {
       unsub();
       setComparing(null);
@@ -276,7 +278,7 @@ function JobView({
       watchRun(id);
       setResult(null);
     } catch (e) {
-      toast('error', 'Senkron başlatılamadı', (e as Error).message);
+      toast('error', t('Senkron başlatılamadı'), (e as Error).message);
     }
   };
 
@@ -291,16 +293,16 @@ function JobView({
           <span className="spacer" />
           {dirty && (
             <>
-              <span className="badge amber">kaydedilmedi</span>
+              <span className="badge amber">{t('kaydedilmedi')}</span>
               <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={onRevert}>
-                Geri al
+                {t('Geri al')}
               </Button>
               <Button size="sm" icon={<Save size={13} />} onClick={onSave}>
-                Kaydet
+                {t('Kaydet')}
               </Button>
             </>
           )}
-          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} tip="İşi sil" onClick={onDelete} />
+          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} tip={t('İşi sil')} onClick={onDelete} />
         </div>
         <div className="card-body sync-config">
           <div className="variant-grid">
@@ -308,9 +310,9 @@ function JobView({
               <button key={v.value} className={cls('variant', job.variant === v.value && 'on')} onClick={() => onChange({ variant: v.value, custom: v.value === 'custom' ? job.custom ?? { leftOnly: 'copyRight', rightOnly: 'none', leftNewer: 'copyRight', rightNewer: 'none', different: 'copyRight' } : job.custom })}>
                 <v.icon size={18} />
                 <div>
-                  <div style={{ fontWeight: 620 }}>{v.label}</div>
+                  <div style={{ fontWeight: 620 }}>{t(v.label)}</div>
                   <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.35 }}>
-                    {v.desc}
+                    {t(v.desc)}
                   </div>
                 </div>
               </button>
@@ -318,33 +320,33 @@ function JobView({
           </div>
           {job.variant === 'custom' && <CustomEditor value={job.custom!} onChange={(custom) => onChange({ custom })} />}
           <div className="row" style={{ gap: 14, flexWrap: 'wrap', marginTop: 12 }}>
-            <Field label="Karşılaştırma">
-              <Segmented value={job.compare} onChange={(compare) => onChange({ compare })} options={COMPARE_OPTIONS} />
+            <Field label={t('Karşılaştırma')}>
+              <Segmented value={job.compare} onChange={(compare) => onChange({ compare })} options={compareOptions()} />
             </Field>
-            <Field label="Silinen / üzerine yazılan dosyalar">
+            <Field label={t('Silinen / üzerine yazılan dosyalar')}>
               <Segmented
                 value={job.deletion}
                 onChange={(deletion) => onChange({ deletion })}
                 options={[
-                  { value: 'versioning', label: 'Sürümle (yedekle)', tip: 'Eski hâller o tarafın yedek klasörüne taşınır' },
-                  { value: 'permanent', label: 'Kalıcı sil' },
+                  { value: 'versioning', label: t('Sürümle (yedekle)'), tip: t('Eski hâller o tarafın yedek klasörüne taşınır') },
+                  { value: 'permanent', label: t('Kalıcı sil') },
                 ]}
               />
             </Field>
             {job.deletion === 'versioning' && (
-              <Field label="Saklanacak sürüm">
+              <Field label={t('Saklanacak sürüm')}>
                 <input className="input" type="number" min={0} value={job.versioningKeep} onChange={(e) => onChange({ versioningKeep: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} />
               </Field>
             )}
-            <Field label="Filtre">
+            <Field label={t('Filtre')}>
               <button ref={filterRef} className="btn" onClick={() => setFilterOpen((o) => !o)}>
-                <Filter size={14} /> Filtre {filterCount > 0 && <span className="badge blue">{filterCount}</span>}
+                <Filter size={14} /> {t('Filtre')} {filterCount > 0 && <span className="badge blue">{filterCount}</span>}
               </button>
             </Field>
           </div>
           <ScheduleEditor job={job} onChange={(schedule) => onChange({ schedule })} />
           <div className="divider" />
-          <div className="section-title">Klasör çiftleri</div>
+          <div className="section-title">{t('Klasör çiftleri')}</div>
           <div className="col" style={{ gap: 8 }}>
             {job.pairs.map((p, i) => (
               <PairEditor
@@ -358,23 +360,23 @@ function JobView({
           </div>
           <div className="row" style={{ marginTop: 10 }}>
             <Button size="sm" icon={<Plus size={13} />} onClick={() => onChange({ pairs: [...job.pairs, { id: 'p' + Date.now().toString(36), left: { kind: 'local', path: '' }, right: { kind: 'node', nodeId: '', subPath: '' } }] })}>
-              Çift ekle
+              {t('Çift ekle')}
             </Button>
             <span className="spacer" />
             <Button
               size="sm"
               variant="ghost"
               icon={<RotateCcw size={13} />}
-              tip="İki yönlü eşitlemenin hatırladığı son durumu siler"
+              tip={t('İki yönlü eşitlemenin hatırladığı son durumu siler')}
               onClick={async () => {
                 await api.resetSyncState(job.id);
-                toast('ok', 'Eşitleme geçmişi sıfırlandı');
+                toast('ok', t('Eşitleme geçmişi sıfırlandı'));
               }}
             >
-              Durumu sıfırla
+              {t('Durumu sıfırla')}
             </Button>
             <Button variant="primary" icon={comparing ? undefined : <Scale size={15} />} loading={!!comparing} onClick={() => void compare()} disabled={!ready}>
-              Karşılaştır
+              {t('Karşılaştır')}
             </Button>
           </div>
         </div>
@@ -386,7 +388,7 @@ function JobView({
           <span className="muted ellipsis">{comparing}</span>
           <span className="spacer" />
           <Button size="sm" onClick={() => taskRef.current && void api.cancelTask(taskRef.current)}>
-            Durdur
+            {t('Durdur')}
           </Button>
         </div>
       )}
@@ -394,7 +396,7 @@ function JobView({
       {result && !comparing && (
         <ResultView
           result={result}
-          variant={V.label}
+          variant={t(V.label)}
           overrides={overrides}
           setOverride={(pairId, keys, a) =>
             setOverrides((o) => {
@@ -413,20 +415,20 @@ function JobView({
       {filterOpen && (
         <Popover anchor={filterRef.current} onClose={() => setFilterOpen(false)} width={460}>
           <div style={{ padding: 10 }} className="col">
-            <Field label="Dahil et" help="Boş = her şey. Örnek: *.entity, Data/**">
+            <Field label={t('Dahil et')} help={t('Boş = her şey. Örnek: *.entity, Data/**')}>
               <TagInput value={job.filter.include} onChange={(include) => onChange({ filter: { ...job.filter, include } })} placeholder="*" />
             </Field>
-            <Field label="Hariç tut" help="Örnek: *.tmp, Logs/, .git/, bin/*.pdb">
+            <Field label={t('Hariç tut')} help={t('Örnek: *.tmp, Logs/, .git/, bin/*.pdb')}>
               <TagInput value={job.filter.exclude} onChange={(exclude) => onChange({ filter: { ...job.filter, exclude } })} placeholder="*.tmp" />
             </Field>
             <div className="row" style={{ gap: 10 }}>
-              <Field label="En az (KB)">
+              <Field label={t('En az (KB)')}>
                 <input className="input" type="number" min={0} value={job.filter.minSizeKb ?? ''} onChange={(e) => onChange({ filter: { ...job.filter, minSizeKb: e.target.value === '' ? undefined : Number(e.target.value) } })} />
               </Field>
-              <Field label="En çok (KB)">
+              <Field label={t('En çok (KB)')}>
                 <input className="input" type="number" min={0} value={job.filter.maxSizeKb ?? ''} onChange={(e) => onChange({ filter: { ...job.filter, maxSizeKb: e.target.value === '' ? undefined : Number(e.target.value) } })} />
               </Field>
-              <Field label="Son N gün">
+              <Field label={t('Son N gün')}>
                 <input className="input" type="number" min={0} value={job.filter.newerThanDays ?? ''} onChange={(e) => onChange({ filter: { ...job.filter, newerThanDays: e.target.value === '' ? undefined : Number(e.target.value) } })} />
               </Field>
             </div>
@@ -436,7 +438,7 @@ function JobView({
 
       {confirmRun && result && (
         <Modal
-          title="Senkronizasyonu başlat"
+          title={t('Senkronizasyonu başlat')}
           icon={
             <div className="icon-tile accent">
               <Play size={16} />
@@ -446,38 +448,38 @@ function JobView({
           footer={
             <>
               <span className="spacer" />
-              <Button onClick={() => setConfirmRun(false)}>Vazgeç</Button>
+              <Button onClick={() => setConfirmRun(false)}>{t('Vazgeç')}</Button>
               <Button icon={<FlaskConical size={14} />} onClick={() => void run(true)}>
-                Deneme
+                {t('Deneme')}
               </Button>
               <Button variant="primary" icon={<Play size={14} />} onClick={() => void run(false)}>
-                Başlat
+                {t('Başlat')}
               </Button>
             </>
           }
         >
           <div className="stat-grid">
             <div className="stat">
-              <div className="k">Sağa kopyala</div>
+              <div className="k">{t('Sağa kopyala')}</div>
               <div className="v">{num(stats.copyRight)}</div>
             </div>
             <div className="stat">
-              <div className="k">Sola kopyala</div>
+              <div className="k">{t('Sola kopyala')}</div>
               <div className="v">{num(stats.copyLeft)}</div>
             </div>
             <div className="stat">
-              <div className="k">Silinecek</div>
+              <div className="k">{t('Silinecek')}</div>
               <div className="v" style={{ color: stats.deleteLeft + stats.deleteRight ? 'var(--red)' : undefined }}>
                 {num(stats.deleteLeft + stats.deleteRight)}
               </div>
             </div>
             <div className="stat">
-              <div className="k">Veri</div>
+              <div className="k">{t('Veri')}</div>
               <div className="v">{bytes(stats.bytes)}</div>
             </div>
           </div>
           <p className="muted" style={{ marginTop: 14 }}>
-            {job.deletion === 'versioning' ? `Silinen ve üzerine yazılan dosyalar her iki tarafın ${backupFolder} klasörüne taşınır.` : 'Silinen dosyalar kalıcı olarak kaldırılır.'}
+            {job.deletion === 'versioning' ? t('Silinen ve üzerine yazılan dosyalar her iki tarafın {folder} klasörüne taşınır.', { folder: backupFolder }) : t('Silinen dosyalar kalıcı olarak kaldırılır.')}
           </p>
         </Modal>
       )}
@@ -500,12 +502,12 @@ function CustomEditor({ value, onChange }: { value: CustomActions; onChange: (v:
         <div key={c} className="custom-cell">
           <div className="row" style={{ gap: 6 }}>
             <span className={cls('sign', c)}>{CAT[c].sign}</span>
-            <span style={{ fontWeight: 560, fontSize: 12.5 }}>{CAT[c].label}</span>
+            <span style={{ fontWeight: 560, fontSize: 12.5 }}>{t(CAT[c].label)}</span>
           </div>
           <select className="select" value={value[c]} onChange={(e) => onChange({ ...value, [c]: e.target.value as SyncAction })}>
             {allowed[c].map((a) => (
               <option key={a} value={a}>
-                {ACTION[a].short} {ACTION[a].label}
+                {ACTION[a].short} {t(ACTION[a].label)}
               </option>
             ))}
           </select>
@@ -521,11 +523,11 @@ function PairEditor({ pair, onChange, onRemove, index }: { pair: SyncPair; onCha
       <span className="faint tabular" style={{ width: 16 }}>
         {index + 1}
       </span>
-      <EndpointEditor value={pair.left} onChange={(left) => onChange({ ...pair, left })} side="Sol" />
+      <EndpointEditor value={pair.left} onChange={(left) => onChange({ ...pair, left })} side={t('Sol')} />
       <div className="pair-arrow">
         <ArrowLeftRight size={16} />
       </div>
-      <EndpointEditor value={pair.right} onChange={(right) => onChange({ ...pair, right })} side="Sağ" />
+      <EndpointEditor value={pair.right} onChange={(right) => onChange({ ...pair, right })} side={t('Sağ')} />
       {onRemove ? <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={onRemove} /> : <span style={{ width: 27 }} />}
     </div>
   );
@@ -543,19 +545,19 @@ function EndpointEditor({ value, onChange, side }: { value: Endpoint; onChange: 
         value={value.kind}
         onChange={(k) => onChange(k === 'local' ? { kind: 'local', path: '' } : { kind: 'node', nodeId: '', subPath: '' })}
         options={[
-          { value: 'local', label: '', icon: <Laptop size={13} />, tip: `${side}: bu makinede bir klasör` },
-          { value: 'node', label: '', icon: <Server size={13} />, tip: `${side}: bir hedef makinenin klasörü` },
+          { value: 'local', label: '', icon: <Laptop size={13} />, tip: t('{side}: bu makinede bir klasör', { side }) },
+          { value: 'node', label: '', icon: <Server size={13} />, tip: t('{side}: bir hedef makinenin klasörü', { side }) },
         ]}
       />
       {value.kind === 'local' ? (
         <>
-          <input className="input sm mono grow" value={value.path} placeholder="C:\klasör\yolu" onChange={(e) => onChange({ kind: 'local', path: e.target.value })} spellCheck={false} />
+          <input className="input sm mono grow" value={value.path} placeholder={t('C:\\klasör\\yolu')} onChange={(e) => onChange({ kind: 'local', path: e.target.value })} spellCheck={false} />
           <Button
             size="sm"
             iconOnly
             icon={<FolderOpen size={14} />}
             disabled={!isElectron}
-            tip="Klasör seç"
+            tip={t('Klasör seç')}
             onClick={async () => {
               const [p] = await api.pick({ folders: true, defaultPath: value.path || undefined });
               if (p) onChange({ kind: 'local', path: p });
@@ -565,7 +567,7 @@ function EndpointEditor({ value, onChange, side }: { value: Endpoint; onChange: 
       ) : (
         <>
           <select className="select" style={{ height: 27, fontSize: 12.5, flex: '1 1 150px', minWidth: 120 }} value={value.nodeId} onChange={(e) => onChange({ ...value, nodeId: e.target.value })}>
-            <option value="">Makine seçin…</option>
+            <option value="">{t('Makine seçin…')}</option>
             {nodes
               .filter((n) => n.id !== localId)
               .map((n) => (
@@ -575,8 +577,8 @@ function EndpointEditor({ value, onChange, side }: { value: Endpoint; onChange: 
                 </option>
               ))}
           </select>
-          <input className="input sm mono" style={{ flex: '1 1 110px', minWidth: 90 }} value={value.subPath} placeholder="alt klasör" onChange={(e) => onChange({ ...value, subPath: e.target.value })} spellCheck={false} />
-          <Button size="sm" iconOnly icon={<FolderOpen size={14} />} tip="Uzak klasöre göz at" disabled={!value.nodeId} onClick={() => setBrowsing(true)} />
+          <input className="input sm mono" style={{ flex: '1 1 110px', minWidth: 90 }} value={value.subPath} placeholder={t('alt klasör')} onChange={(e) => onChange({ ...value, subPath: e.target.value })} spellCheck={false} />
+          <Button size="sm" iconOnly icon={<FolderOpen size={14} />} tip={t('Uzak klasöre göz at')} disabled={!value.nodeId} onClick={() => setBrowsing(true)} />
           {browsing && <RemoteBrowser endpoint={{ kind: 'node', nodeId: value.nodeId, subPath: '' }} start={value.subPath} onPick={(p) => onChange({ ...value, subPath: p })} onClose={() => setBrowsing(false)} />}
         </>
       )}
@@ -600,7 +602,7 @@ export function RemoteBrowser({ endpoint, start, onPick, onClose }: { endpoint: 
   const parts = rel ? rel.split('/') : [];
   return (
     <Modal
-      title="Uzak klasör seçin"
+      title={t('Uzak klasör seçin')}
       size="medium"
       icon={
         <div className="icon-tile accent">
@@ -611,7 +613,7 @@ export function RemoteBrowser({ endpoint, start, onPick, onClose }: { endpoint: 
       footer={
         <>
           <span className="mono faint ellipsis grow">/{rel}</span>
-          <Button onClick={onClose}>Vazgeç</Button>
+          <Button onClick={onClose}>{t('Vazgeç')}</Button>
           <Button
             variant="primary"
             onClick={() => {
@@ -619,14 +621,14 @@ export function RemoteBrowser({ endpoint, start, onPick, onClose }: { endpoint: 
               onClose();
             }}
           >
-            Bu klasörü seç
+            {t('Bu klasörü seç')}
           </Button>
         </>
       }
     >
       <div className="row" style={{ gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
         <button className="chip" onClick={() => setRel('')}>
-          kök
+          {t('kök')}
         </button>
         {parts.map((p, i) => (
           <span key={i} className="row" style={{ gap: 4 }}>
@@ -663,7 +665,7 @@ export function RemoteBrowser({ endpoint, start, onPick, onClose }: { endpoint: 
             </span>
           </div>
         ))}
-        {entries && !entries.length && <div className="faint" style={{ padding: 14 }}>Boş klasör</div>}
+        {entries && !entries.length && <div className="faint" style={{ padding: 14 }}>{t('Boş klasör')}</div>}
       </div>
     </Modal>
   );
@@ -734,17 +736,17 @@ function ResultView({
                   return x;
                 })
               }
-              data-tip={hidden.has(c) ? 'Göster' : 'Gizle'}
+              data-tip={hidden.has(c) ? t('Göster') : t('Gizle')}
             >
               <span className={cls('sign', c)}>{CAT[c].sign}</span>
-              {CAT[c].label}
+              {t(CAT[c].label)}
               <b className="tabular">{num(n)}</b>
             </button>
           );
         })}
         <span className="spacer" />
         <span className="faint" style={{ fontSize: 12 }}>
-          {variant} • {(result.durationMs / 1000).toFixed(1)} sn
+          {variant} • {t('{s} sn', { s: (result.durationMs / 1000).toFixed(1) })}
         </span>
       </div>
       {errors.map((p) => (
@@ -759,32 +761,32 @@ function ResultView({
         </div>
       ))}
       <div className="row" style={{ padding: '0 12px 8px', gap: 6 }}>
-        <SearchInput value={q} onChange={setQ} placeholder="Yolda ara" style={{ width: 220 }} />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Yolda ara')} style={{ width: 220 }} />
         <span className="faint" style={{ fontSize: 12 }}>
-          Görünenlere uygula:
+          {t('Görünenlere uygula:')}
         </span>
         {(['copyRight', 'copyLeft', 'none'] as SyncAction[]).map((a) => (
-          <Button key={a} size="sm" icon={<ActionIcon a={a} />} onClick={() => applyVisible(a)} tip={ACTION[a].label}>
+          <Button key={a} size="sm" icon={<ActionIcon a={a} />} onClick={() => applyVisible(a)} tip={t(ACTION[a].label)}>
             {''}
           </Button>
         ))}
         {overridden > 0 && (
           <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={resetOverrides}>
-            {overridden} değişikliği geri al
+            {t('{n} değişikliği geri al', { n: overridden })}
           </Button>
         )}
       </div>
       <div className="table-head sync-cols">
-        <span>Göreli yol</span>
-        <span>Sol</span>
-        <span style={{ textAlign: 'center' }}>Durum</span>
-        <span style={{ textAlign: 'center' }}>İşlem</span>
-        <span>Sağ</span>
+        <span>{t('Göreli yol')}</span>
+        <span>{t('Sol')}</span>
+        <span style={{ textAlign: 'center' }}>{t('Durum')}</span>
+        <span style={{ textAlign: 'center' }}>{t('İşlem')}</span>
+        <span>{t('Sağ')}</span>
       </div>
       <div ref={parent} className="pane-scroll" style={{ flex: 1 }}>
         {rows.length === 0 ? (
-          <Empty icon={<Equal size={20} />} title={all.length ? 'Gösterilecek fark yok' : 'Klasörler boş'}>
-            {all.length ? 'İki taraf seçili filtrelere göre aynı.' : undefined}
+          <Empty icon={<Equal size={20} />} title={all.length ? t('Gösterilecek fark yok') : t('Klasörler boş')}>
+            {all.length ? t('İki taraf seçili filtrelere göre aynı.') : undefined}
           </Empty>
         ) : (
           <div style={{ height: v.getTotalSize(), position: 'relative' }}>
@@ -807,18 +809,18 @@ function ResultView({
                     {dir && <span className="dir">{'\u200e' + dir + '\u200e'}</span>}
                     <span className="name">{name}</span>
                   </span>
-                  <span className="faint tabular side">{it.left ? (it.left.isDir ? 'klasör' : `${bytes(it.left.size)} • ${shortDateTime(it.left.mtimeMs)}`) : ''}</span>
+                  <span className="faint tabular side">{it.left ? (it.left.isDir ? t('klasör') : `${bytes(it.left.size)} • ${shortDateTime(it.left.mtimeMs)}`) : ''}</span>
                   <span style={{ textAlign: 'center' }}>
-                    <span className={cls('sign', it.category)} data-tip={it.conflict ?? CAT[it.category].label} style={{ display: 'inline-grid' }}>
+                    <span className={cls('sign', it.category)} data-tip={it.conflict ?? t(CAT[it.category].label)} style={{ display: 'inline-grid' }}>
                       {CAT[it.category].sign}
                     </span>
                   </span>
                   <span style={{ textAlign: 'center' }}>
-                    <button className={cls('action-btn', a, changed && 'changed')} onClick={(e) => setMenu({ row: r, el: e.currentTarget })} data-tip={ACTION[a].label}>
+                    <button className={cls('action-btn', a, changed && 'changed')} onClick={(e) => setMenu({ row: r, el: e.currentTarget })} data-tip={t(ACTION[a].label)}>
                       <ActionIcon a={a} />
                     </button>
                   </span>
-                  <span className="faint tabular side">{it.right ? (it.right.isDir ? 'klasör' : `${bytes(it.right.size)} • ${shortDateTime(it.right.mtimeMs)}`) : ''}</span>
+                  <span className="faint tabular side">{it.right ? (it.right.isDir ? t('klasör') : `${bytes(it.right.size)} • ${shortDateTime(it.right.mtimeMs)}`) : ''}</span>
                 </div>
               );
             })}
@@ -837,10 +839,10 @@ function ResultView({
             <Trash2 size={13} color="var(--red)" /> <b className="tabular">{num(stats.deleteLeft + stats.deleteRight)}</b>
           </span>
           <span className="faint">{bytes(stats.bytes)}</span>
-          {result.stats.byCategory.conflict > 0 && <span className="badge amber">{result.stats.byCategory.conflict} çakışma</span>}
+          {result.stats.byCategory.conflict > 0 && <span className="badge amber">{t('{n} çakışma', { n: result.stats.byCategory.conflict })}</span>}
         </div>
         <Button size="lg" variant="primary" icon={<Play size={15} />} disabled={!work} onClick={onRun}>
-          Senkronize et
+          {t('Senkronize et')}
         </Button>
       </div>
       {menu && (
@@ -848,8 +850,8 @@ function ResultView({
           <MenuList
             onDone={() => setMenu(null)}
             items={[
-              ...options(menu.row.it).map((a) => ({ label: ACTION[a].label, icon: <ActionIcon a={a} />, onClick: () => setOverride(menu.row.pairId, [menu.row.it.key], a), hint: a === menu.row.it.defaultAction ? 'öneri' : undefined })),
-              ...(menu.row.it.left && menu.row.it.right && !menu.row.it.isDir ? [{ sep: true }, { label: 'Farkı göster', icon: <Copy size={14} />, onClick: () => setDiffRow(menu.row) }] : []),
+              ...options(menu.row.it).map((a) => ({ label: t(ACTION[a].label), icon: <ActionIcon a={a} />, onClick: () => setOverride(menu.row.pairId, [menu.row.it.key], a), hint: a === menu.row.it.defaultAction ? t('öneri') : undefined })),
+              ...(menu.row.it.left && menu.row.it.right && !menu.row.it.isDir ? [{ sep: true }, { label: t('Farkı göster'), icon: <Copy size={14} />, onClick: () => setDiffRow(menu.row) }] : []),
             ]}
           />
         </Popover>
@@ -870,7 +872,7 @@ function SyncDiffModal({ compareId, row, onClose }: { compareId: string; row: Ro
   return (
     <Modal size="wide" title={<span className="mono" style={{ fontSize: 13 }}>{row.it.rel}</span>} onClose={onClose}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <DiffView diff={state.diff} loading={state.loading} error={state.error} title={<span className="muted">Sağ (eski) → sol</span>} />
+        <DiffView diff={state.diff} loading={state.loading} error={state.error} title={<span className="muted">{t('Sağ (eski) → sol')}</span>} />
       </div>
     </Modal>
   );
@@ -889,50 +891,50 @@ function ScheduleEditor({ job, onChange }: { job: SyncJob; onChange: (s: SyncSch
       <div className="row" style={{ gap: 10 }}>
         <Switch on={!!s?.enabled} onChange={enable} />
         <CalendarClock size={15} className="faint" />
-        <b style={{ fontSize: 13 }}>Zamanla</b>
+        <b style={{ fontSize: 13 }}>{t('Zamanla')}</b>
         <span className="faint" style={{ fontSize: 12 }}>
-          {s?.enabled ? describeSchedule(s) : 'Bu iş yalnızca elle çalışır'}
-          {s?.enabled && state?.nextAt ? ` • sonraki ${new Date(state.nextAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}` : ''}
+          {s?.enabled ? describeSchedule(s) : t('Bu iş yalnızca elle çalışır')}
+          {s?.enabled && state?.nextAt ? ` • ${t('sonraki {time}', { time: new Date(state.nextAt).toLocaleString(locale(), { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) })}` : ''}
           {s?.enabled && state && !state.activeHere ? ` • ${state.reason}` : ''}
         </span>
       </div>
       {s?.enabled && (
         <div className="row" style={{ gap: 14, flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 10 }}>
-          <Field label="Ne zaman">
+          <Field label={t('Ne zaman')}>
             <Segmented
               value={s.mode}
               onChange={(mode) => onChange({ ...s, mode })}
               options={[
-                { value: 'interval', label: 'Aralıkla' },
-                { value: 'times', label: 'Belirli saatlerde' },
+                { value: 'interval', label: t('Aralıkla') },
+                { value: 'times', label: t('Belirli saatlerde') },
               ]}
             />
           </Field>
           {s.mode === 'interval' ? (
-            <Field label="Her (dakika)">
+            <Field label={t('Her (dakika)')}>
               <input className="input" type="number" min={1} value={s.everyMinutes} onChange={(e) => onChange({ ...s, everyMinutes: Math.max(1, Number(e.target.value) || 1) })} style={{ width: 100 }} />
             </Field>
           ) : (
-            <Field label="Saatler (SS:dd)" style={{ minWidth: 240 }}>
-              <TagInput value={s.times} onChange={(times) => onChange({ ...s, times: times.filter((t) => /^\d{1,2}:\d{2}$/.test(t)) })} placeholder="09:00" />
+            <Field label={t('Saatler (SS:dd)')} style={{ minWidth: 240 }}>
+              <TagInput value={s.times} onChange={(times) => onChange({ ...s, times: times.filter((x) => /^\d{1,2}:\d{2}$/.test(x)) })} placeholder="09:00" />
             </Field>
           )}
-          <Field label="Çalışacağı makine" help="Yapılandırma ortak; iş yalnızca bu makinede çalışır">
+          <Field label={t('Çalışacağı makine')} help={t('Yapılandırma ortak; iş yalnızca bu makinede çalışır')}>
             <select className="select" value={s.machineId ?? ''} onChange={(e) => onChange({ ...s, machineId: e.target.value || undefined })} style={{ width: 270 }}>
-              <option value="">Her makinede (önerilmez)</option>
+              <option value="">{t('Her makinede (önerilmez)')}</option>
               {nodes.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name}
-                  {n.id === localId ? ' (bu makine)' : ''}
+                  {n.id === localId ? ' ' + t('(bu makine)') : ''}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Bildirim">
+          <Field label={t('Bildirim')}>
             <select className="select" value={s.notify} onChange={(e) => onChange({ ...s, notify: e.target.value as SyncSchedule['notify'] })} style={{ width: 170 }}>
-              <option value="errors">Yalnızca hatada</option>
-              <option value="changes">Değişiklik olunca</option>
-              <option value="always">Her çalışmada</option>
+              <option value="errors">{t('Yalnızca hatada')}</option>
+              <option value="changes">{t('Değişiklik olunca')}</option>
+              <option value="always">{t('Her çalışmada')}</option>
             </select>
           </Field>
         </div>

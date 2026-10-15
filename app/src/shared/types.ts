@@ -151,18 +151,25 @@ export interface AppConfig {
   profiles: Profile[];
   syncJobs: SyncJob[];
   update?: UpdateConfig;
+  /** Machines in the Explorer menu: auto (while they fit), always, never. Shared with the PowerShell tool. */
+  menuShowNodes?: 'auto' | 'always' | 'never';
+  /** Notepad++ shortcuts by menu entry id, e.g. { "wizard:last": "Ctrl+Alt+W" }. Shared with the PowerShell tool. */
+  notepadPlusPlusShortcuts?: Record<string, string>;
   /** Per platform template for the SMB transport root. Placeholders: {address} {networkRoot} {share} {rest} {id} */
   smbPathTemplate?: Partial<Record<'win32' | 'darwin' | 'linux', string>>;
 }
 
 export type ThemePref = 'system' | 'light' | 'dark';
-export type Lang = 'tr' | 'en';
+export type { Lang, LangPref } from './i18n/types';
+import type { Lang, LangPref } from './i18n/types';
+import type { IntegrationStatus } from './api';
 
 export interface LocalSettings {
   configPath?: string;
   theme: ThemePref;
   accent: string;
-  lang: Lang;
+  /** UI language; "system" follows the computer's display language. */
+  language: LangPref;
   /** Pin this machine to a node id (overrides auto detection). */
   localNodeId?: string;
   recentRepos: string[];
@@ -183,6 +190,10 @@ export interface LocalSettings {
   automationPaused: boolean;
   closeToTray: boolean;
   launchAtLogin: boolean;
+  /** Explorer right-click menu (Windows); on in the installed app unless turned off. */
+  explorerMenu?: boolean;
+  /** Notepad++ tab menu and Run commands (Windows, when Notepad++ is installed); on in the installed app unless turned off. */
+  notepadPlusPlus?: boolean;
 }
 
 export interface WatchConfig {
@@ -261,6 +272,17 @@ export interface LocalIdentity {
   addresses: string[];
 }
 
+/** What a launch from Explorer, Notepad++ or the command line asks for. */
+export interface OpenRequest {
+  paths: string[];
+  /** --to: node ids, group:<name>, profile:<name or id>, all, or last (the last send's targets and options). */
+  targets?: string[];
+  /** --yes: send at once without the review (the one-click menu entries). */
+  send?: boolean;
+  /** --restore: show the backups of these items. */
+  restore?: boolean;
+}
+
 export interface Bootstrap {
   appVersion: string;
   platform: Platform;
@@ -276,6 +298,8 @@ export interface Bootstrap {
   initialTargets: string[];
   userDataPath: string;
   isElectron: boolean;
+  /** The computer's language, used when settings.language is "system". */
+  systemLang: Lang;
   gitAvailable: boolean;
   gitVersion?: string;
 }
@@ -437,7 +461,8 @@ export type AppEvent =
   | { type: 'run-log'; runId: string; lines: RunLogLine[] }
   | { type: 'run-done'; run: RunSummary }
   | { type: 'task-progress'; taskId: string; message: string; done?: number; total?: number }
-  | { type: 'open-paths'; paths: string[]; targets?: string[]; review?: boolean }
+  | { type: 'open'; request: OpenRequest }
+  | { type: 'integration'; status: IntegrationStatus }
   | { type: 'config-changed'; config: AppConfig }
   | { type: 'probe'; results: ProbeResult[] }
   | { type: 'update'; state: UpdateState }

@@ -7,12 +7,13 @@ import { api } from '../lib/api';
 import { Button, Empty, SearchInput, Segmented } from '../components/ui';
 import { StatusIcon } from '../components/RunPanel';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
+import { locale, t, tk } from '@shared/i18n';
 
 const ORIGIN: Record<RunSummary['origin'], { label: string; icon: typeof Send }> = {
-  send: { label: 'Gönder', icon: Send },
+  send: { label: tk('Gönder'), icon: Send },
   git: { label: 'Git', icon: GitBranch },
-  sync: { label: 'Senkron', icon: ArrowLeftRight },
-  restore: { label: 'Geri alma', icon: ArchiveRestore },
+  sync: { label: tk('Senkron'), icon: ArrowLeftRight },
+  restore: { label: tk('Geri alma'), icon: ArchiveRestore },
 };
 
 export function HistoryPage() {
@@ -27,28 +28,28 @@ export function HistoryPage() {
   useEffect(load, [version]);
 
   const ql = q.trim().toLowerCase();
-  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && (!ql || `${r.label} ${r.targets.map((t) => t.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
+  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
   const current = list.find((r) => r.id === active) ?? list[0];
 
   return (
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Geçmiş</h1>
-          <div className="sub">Her çalıştırmanın hedef bazında sonucu, hataları ve günlüğü. Son 300 çalıştırma saklanır.</div>
+          <h1>{t('Geçmiş')}</h1>
+          <div className="sub">{t('Her çalıştırmanın hedef bazında sonucu, hataları ve günlüğü. Son 300 çalıştırma saklanır.')}</div>
         </div>
         {runs && runs.length > 0 && (
           <Button
             variant="ghost"
             icon={<Eraser size={14} />}
             onClick={async () => {
-              if (!confirm('Bütün geçmiş silinsin mi?')) return;
+              if (!confirm(t('Bütün geçmiş silinsin mi?'))) return;
               await api.clearRuns();
               load();
-              toast('ok', 'Geçmiş temizlendi');
+              toast('ok', t('Geçmiş temizlendi'));
             }}
           >
-            Temizle
+            {t('Temizle')}
           </Button>
         )}
       </div>
@@ -56,18 +57,18 @@ export function HistoryPage() {
         <div className="history-layout">
           <div className="card history-list">
             <div className="pane-head" style={{ flexDirection: 'column', alignItems: 'stretch', height: 'auto', padding: 10, gap: 8 }}>
-              <SearchInput value={q} onChange={setQ} placeholder="Ara: hedef, kaynak, etiket" />
+              <SearchInput value={q} onChange={setQ} placeholder={t('Ara: hedef, kaynak, etiket')} />
               <Segmented
                 size="sm"
                 full
                 value={origin}
                 onChange={setOrigin}
                 options={[
-                  { value: 'all', label: 'Tümü' },
-                  { value: 'send', label: 'Gönder' },
+                  { value: 'all', label: t('Tümü') },
+                  { value: 'send', label: t('Gönder') },
                   { value: 'git', label: 'Git' },
-                  { value: 'sync', label: 'Senkron' },
-                  { value: 'restore', label: 'Geri al' },
+                  { value: 'sync', label: t('Senkron') },
+                  { value: 'restore', label: t('Geri al') },
                 ]}
               />
             </div>
@@ -77,8 +78,8 @@ export function HistoryPage() {
                   <div className="spinner" />
                 </div>
               ) : !list.length ? (
-                <Empty icon={<History size={20} />} title="Kayıt yok">
-                  Gönderimler burada listelenir.
+                <Empty icon={<History size={20} />} title={t('Kayıt yok')}>
+                  {t('Gönderimler burada listelenir.')}
                 </Empty>
               ) : (
                 list.map((r) => {
@@ -91,17 +92,17 @@ export function HistoryPage() {
                           <span className="ellipsis" style={{ fontWeight: 580 }}>
                             {r.label}
                           </span>
-                          {r.dryRun && <span className="badge amber">deneme</span>}
+                          {r.dryRun && <span className="badge amber">{t('deneme')}</span>}
                         </div>
                         <div className="row faint" style={{ fontSize: 11.5, gap: 6 }}>
                           <O.icon size={11} />
                           <span>{ago(r.startedAt)}</span>
                           <span>•</span>
-                          <span>{r.targets.length} hedef</span>
+                          <span>{t('{n} hedef', { n: r.targets.length })}</span>
                           <span>•</span>
                           <span className="tabular">
                             {num(r.opsOk)}
-                            {r.opsFailed > 0 && <span style={{ color: 'var(--red)' }}> / {num(r.opsFailed)} hata</span>}
+                            {r.opsFailed > 0 && <span style={{ color: 'var(--red)' }}> / {t('{n} hata', { n: num(r.opsFailed) })}</span>}
                           </span>
                         </div>
                       </div>
@@ -129,10 +130,10 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
   }, [summary.id]);
 
   const errors = useMemo(() => (detail?.results ?? []).filter((r) => !r.ok), [detail]);
-  const titleOf = (key: string) => summary.targets.find((t) => t.key === key)?.title ?? key;
+  const titleOf = (key: string) => summary.targets.find((x) => x.key === key)?.title ?? key;
   const list = tab === 'errors' ? errors : [];
   const v = useVirtualizer({ count: tab === 'log' ? detail?.log.length ?? 0 : list.length, getScrollElement: () => parent.current, estimateSize: () => (tab === 'log' ? 22 : 40), overscan: 20 });
-  const failedTargets = summary.targets.filter((t) => t.status === 'failed' || t.status === 'partial').map((t) => t.key);
+  const failedTargets = summary.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => x.key);
   const O = ORIGIN[summary.origin];
 
   const resend = async (onlyFailed: boolean) => {
@@ -140,7 +141,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
     st.setTargets(onlyFailed ? failedTargets : summary.targetIds);
     st.setPage('send');
     await st.addSendPaths(summary.sources);
-    toast('info', onlyFailed ? `${failedTargets.length} hatalı hedef seçildi` : 'Kaynaklar ve hedefler yüklendi', 'İnceleyip gönderin.');
+    toast('info', onlyFailed ? t('{n} hatalı hedef seçildi', { n: failedTargets.length }) : t('Kaynaklar ve hedefler yüklendi'), t('İnceleyip gönderin.'));
   };
 
   return (
@@ -155,11 +156,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
               {summary.label}
             </h2>
             <span className="badge">
-              <O.icon size={11} /> {O.label}
+              <O.icon size={11} /> {t(O.label)}
             </span>
             {summary.dryRun && (
               <span className="badge amber">
-                <FlaskConical size={11} /> deneme
+                <FlaskConical size={11} /> {t('deneme')}
               </span>
             )}
           </div>
@@ -171,11 +172,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           <>
             {failedTargets.length > 0 && (
               <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => void resend(true)}>
-                Hatalılara yeniden gönder
+                {t('Hatalılara yeniden gönder')}
               </Button>
             )}
             <Button size="sm" icon={<Send size={13} />} onClick={() => void resend(false)}>
-              Yeniden gönder
+              {t('Yeniden gönder')}
             </Button>
           </>
         )}
@@ -186,7 +187,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
             const f = await api.exportRunCsv(summary.id);
             if (f) {
               await api.openPath(f).catch(() => undefined);
-              toast('ok', 'CSV rapor oluşturuldu', f);
+              toast('ok', t('CSV rapor oluşturuldu'), f);
             }
           }}
         >
@@ -197,7 +198,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           variant="ghost"
           iconOnly
           icon={<Trash2 size={14} />}
-          tip="Kaydı sil"
+          tip={t('Kaydı sil')}
           onClick={async () => {
             await api.deleteRun(summary.id);
             onDeleted();
@@ -206,23 +207,23 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
       </div>
       <div className="stat-grid" style={{ padding: 14 }}>
         <div className="stat">
-          <div className="k">Başarılı işlem</div>
+          <div className="k">{t('Başarılı işlem')}</div>
           <div className="v" style={{ color: 'var(--green)' }}>
             {num(summary.opsOk)}
           </div>
         </div>
         <div className="stat">
-          <div className="k">Hatalı işlem</div>
+          <div className="k">{t('Hatalı işlem')}</div>
           <div className="v" style={{ color: summary.opsFailed ? 'var(--red)' : undefined }}>
             {num(summary.opsFailed)}
           </div>
         </div>
         <div className="stat">
-          <div className="k">Hedef</div>
+          <div className="k">{t('Hedef')}</div>
           <div className="v">{summary.targets.length}</div>
         </div>
         <div className="stat">
-          <div className="k">Aktarılan</div>
+          <div className="k">{t('Aktarılan')}</div>
           <div className="v">{bytes(summary.bytes)}</div>
         </div>
       </div>
@@ -231,43 +232,51 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'targets', label: 'Hedefler' },
-            { value: 'errors', label: `Hatalar ${errors.length ? `(${errors.length})` : ''}` },
-            { value: 'log', label: 'Günlük' },
+            { value: 'targets', label: t('Hedefler') },
+            { value: 'errors', label: errors.length ? t('Hatalar ({n})', { n: errors.length }) : t('Hatalar') },
+            { value: 'log', label: t('Günlük') },
           ]}
         />
         <span className="spacer" />
         {summary.sources.length > 0 && (
           <span className="faint ellipsis mono" style={{ fontSize: 11.5, maxWidth: 420 }} title={summary.sources.join('\n')}>
-            {summary.sources.length === 1 ? summary.sources[0] : `${summary.sources.length} kaynak: ${summary.sources.slice(0, 2).map((s) => splitPath(s).name).join(', ')}…`}
+            {summary.sources.length === 1
+              ? summary.sources[0]
+              : t('{n} kaynak: {names}…', {
+                  n: summary.sources.length,
+                  names: summary.sources
+                    .slice(0, 2)
+                    .map((s) => splitPath(s).name)
+                    .join(', '),
+                })}
           </span>
         )}
       </div>
       <div ref={parent} className="pane-scroll" style={{ borderTop: '1px solid var(--border)' }}>
         {tab === 'targets' &&
-          summary.targets.map((t) => (
-            <div key={t.key} className="list-row" style={{ height: 'auto', minHeight: 46, padding: '8px 14px' }}>
-              <StatusIcon status={t.status} />
+          summary.targets.map((tg) => (
+            <div key={tg.key} className="list-row" style={{ height: 'auto', minHeight: 46, padding: '8px 14px' }}>
+              <StatusIcon status={tg.status} />
               <div className="grow" style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 580 }}>{t.title}</div>
+                <div style={{ fontWeight: 580 }}>{tg.title}</div>
                 <div className="faint mono ellipsis selectable" style={{ fontSize: 11.5 }}>
-                  {t.root}
+                  {tg.root}
                 </div>
-                {t.error && <div style={{ color: 'var(--red)', fontSize: 12 }}>{t.error}</div>}
-                {t.backupPath && <div className="faint" style={{ fontSize: 11.5 }}>yedek: {t.backupPath}</div>}
+                {tg.error && <div style={{ color: 'var(--red)', fontSize: 12 }}>{tg.error}</div>}
+                {tg.backupPath && <div className="faint" style={{ fontSize: 11.5 }}>{t('yedek: {path}', { path: tg.backupPath })}</div>}
               </div>
               <span className="tabular faint nowrap" style={{ fontSize: 12 }}>
-                {t.done - t.failed}/{t.total}
-                {t.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t.failed} hata</span>}
+                {tg.done - tg.failed}/{tg.total}
+                {tg.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: tg.failed })}</span>}
               </span>
               <span className="faint tabular nowrap" style={{ fontSize: 12, width: 70, textAlign: 'right' }}>
-                {t.finishedAt && t.startedAt ? duration(t.finishedAt - t.startedAt) : ''}
+                {tg.finishedAt && tg.startedAt ? duration(tg.finishedAt - tg.startedAt) : ''}
               </span>
             </div>
           ))}
         {tab === 'errors' &&
           (errors.length === 0 ? (
-            <Empty icon={<CheckCircle2 size={20} color="var(--green)" />} title="Hata yok" />
+            <Empty icon={<CheckCircle2 size={20} color="var(--green)" />} title={t('Hata yok')} />
           ) : (
             <div style={{ height: v.getTotalSize(), position: 'relative' }}>
               {v.getVirtualItems().map((vi) => {
@@ -295,7 +304,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
               const l = detail.log[vi.index];
               return (
                 <div key={vi.key} className={cls('log-line', l.level)} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`, height: vi.size, padding: '0 14px' }}>
-                  <span className="lt">{new Date(l.t).toLocaleTimeString('tr-TR')}</span>
+                  <span className="lt">{new Date(l.t).toLocaleTimeString(locale())}</span>
                   {l.key && <span className="lk">{titleOf(l.key)}</span>}
                   <span className="lm ellipsis">{l.message}</span>
                 </div>

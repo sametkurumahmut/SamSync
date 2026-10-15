@@ -30,8 +30,19 @@ import { DiffView } from '../components/DiffView';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { OptionsCard } from './SendPage';
 import { ago, baseName, cls, dateTime, num, splitPath } from '../lib/format';
+import { t, tk } from '@shared/i18n';
+import { tx } from '../lib/i18n';
 
-const KIND_LABEL: Record<string, string> = { A: 'eklendi', M: 'değişti', D: 'silindi', R: 'taşındı', C: 'kopyalandı', T: 'tür değişti', U: 'çakışma', '?': 'izlenmiyor' };
+const KIND_LABEL: Record<string, string> = {
+  A: tk('eklendi'),
+  M: tk('değişti'),
+  D: tk('silindi'),
+  R: tk('taşındı'),
+  C: tk('kopyalandı'),
+  T: tk('tür değişti'),
+  U: tk('çakışma'),
+  '?': tk('izlenmiyor'),
+};
 
 export function GitPage() {
   const g = useGit();
@@ -59,17 +70,17 @@ export function GitPage() {
   if (!gitAvailable)
     return (
       <div className="page">
-        <Empty icon={<GitBranch size={22} />} title="Git bulunamadı">
-          Bu özellik için sistemde <span className="mono">git</span> komutunun kurulu olması gerekiyor.
+        <Empty icon={<GitBranch size={22} />} title={t('Git bulunamadı')}>
+          {tx('Bu özellik için sistemde {git} komutunun kurulu olması gerekiyor.', { git: <span className="mono">git</span> })}
         </Empty>
       </div>
     );
 
   const addRepo = async () => {
-    const [p] = await api.pick({ folders: true, title: 'Git deposu seçin' });
+    const [p] = await api.pick({ folders: true, title: t('Git deposu seçin') });
     if (!p) return;
     const info = await api.gitAddRepo(p);
-    if (!info) return toast('error', 'Git deposu değil', p);
+    if (!info) return toast('error', t('Git deposu değil'), p);
     await g.loadRepos();
     await g.selectRepo(info.root);
   };
@@ -89,8 +100,8 @@ export function GitPage() {
       onClick: () => void g.selectRepo(r.root),
     })),
     { sep: true },
-    { label: 'Depo ekle…', icon: <Plus size={15} />, onClick: () => void addRepo() },
-    ...(g.repo ? [{ label: 'Listeden kaldır', icon: <Trash2 size={15} />, danger: true, onClick: () => void api.gitRemoveRepo(g.repo!).then(() => g.loadRepos()) }] : []),
+    { label: t('Depo ekle…'), icon: <Plus size={15} />, onClick: () => void addRepo() },
+    ...(g.repo ? [{ label: t('Listeden kaldır'), icon: <Trash2 size={15} />, danger: true, onClick: () => void api.gitRemoveRepo(g.repo!).then(() => g.loadRepos()) }] : []),
   ];
 
   const info = g.info;
@@ -99,18 +110,18 @@ export function GitPage() {
       <div className="page-head">
         <div className="grow">
           <h1>Git</h1>
-          <div className="sub">Son commit’leri, seçtiğiniz commit’leri ya da diskteki yerel değişiklikleri makinelere gönderin.</div>
+          <div className="sub">{t('Son commit’leri, seçtiğiniz commit’leri ya da diskteki yerel değişiklikleri makinelere gönderin.')}</div>
         </div>
       </div>
       <div className="page-body fill">
         <div className="git-toolbar card">
           <MenuButton items={repoItems} width={380} buttonProps={{ size: 'sm' }}>
             <FolderGit2 size={15} />
-            <b>{g.repo ? baseName(g.repo) : 'Depo seçin'}</b>
+            <b>{g.repo ? baseName(g.repo) : t('Depo seçin')}</b>
             <ChevronDown size={13} />
           </MenuButton>
           {info && (
-            <span className="chip static" data-tip={info.upstream ? `Uzak: ${info.upstream}` : 'Uzak dal yok'} data-tip-pos="bottom">
+            <span className="chip static" data-tip={info.upstream ? t('Uzak: {name}', { name: info.upstream }) : t('Uzak dal yok')} data-tip-pos="bottom">
               <GitBranch size={13} /> {info.branch || '—'}
               {!!info.ahead && (
                 <span className="row" style={{ gap: 1, color: 'var(--accent)' }}>
@@ -134,17 +145,17 @@ export function GitPage() {
             value={g.mode}
             onChange={g.setMode}
             options={[
-              { value: 'worktree', label: `Yerel değişiklikler${g.wtChanges.length ? ` (${g.wtChanges.length})` : ''}`, icon: <FileDiff size={14} /> },
-              { value: 'commits', label: 'Commit’ler', icon: <GitCommit size={14} /> },
+              { value: 'worktree', label: g.wtChanges.length ? t('Yerel değişiklikler ({n})', { n: g.wtChanges.length }) : t('Yerel değişiklikler'), icon: <FileDiff size={14} /> },
+              { value: 'commits', label: t('Commit’ler'), icon: <GitCommit size={14} /> },
             ]}
           />
-          <Button size="sm" iconOnly icon={<RefreshCw size={14} className={g.wtLoading || g.logLoading ? 'spin' : undefined} />} tip="Yenile" onClick={() => void g.refresh()} disabled={!g.repo} />
+          <Button size="sm" iconOnly icon={<RefreshCw size={14} className={g.wtLoading || g.logLoading ? 'spin' : undefined} />} tip={t('Yenile')} onClick={() => void g.refresh()} disabled={!g.repo} />
         </div>
 
         {!g.repo ? (
           <div className="card" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
-            <Empty icon={<FolderGit2 size={22} />} title={g.loadingRepos ? 'Depolar aranıyor…' : 'Git deposu bulunamadı'} action={<Button icon={<Plus size={15} />} onClick={() => void addRepo()}>Depo ekle</Button>}>
-              Yerel kökler içinde ya da üstünde bir git deposu bulunamadı. Bir depo klasörü seçin.
+            <Empty icon={<FolderGit2 size={22} />} title={g.loadingRepos ? t('Depolar aranıyor…') : t('Git deposu bulunamadı')} action={<Button icon={<Plus size={15} />} onClick={() => void addRepo()}>{t('Depo ekle')}</Button>}>
+              {t('Yerel kökler içinde ya da üstünde bir git deposu bulunamadı. Bir depo klasörü seçin.')}
             </Empty>
           </div>
         ) : g.mode === 'worktree' ? (
@@ -194,17 +205,17 @@ function ChangeList({
       <div className="pane-head">
         <Checkbox checked={rows.length > 0 && selCount === rows.length} mixed={selCount > 0 && selCount < rows.length} onChange={setAll} disabled={!rows.length} />
         <span className="tabular">
-          <b>{selected.size}</b> / {changes.length} dosya
+          {tx('{sel} / {n} dosya', { sel: <b>{selected.size}</b> }, { n: changes.length })}
         </span>
         <span className="spacer" />
-        <SearchInput value={q} onChange={setQ} placeholder="Süz" style={{ width: 150 }} />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Süz')} style={{ width: 150 }} />
       </div>
       {loading && !changes.length ? (
         <div className="empty">
           <div className="spinner" />
         </div>
       ) : !rows.length ? (
-        <Empty icon={<CheckCheck size={20} />} title={changes.length ? 'Eşleşen dosya yok' : 'Değişiklik yok'}>
+        <Empty icon={<CheckCheck size={20} />} title={changes.length ? t('Eşleşen dosya yok') : t('Değişiklik yok')}>
           {changes.length ? undefined : emptyText}
         </Empty>
       ) : (
@@ -229,7 +240,7 @@ function ChangeList({
                       onSelected(n);
                     }}
                   />
-                  <span className={cls('sign', c.kind === '?' ? 'A' : c.kind)} data-tip={KIND_LABEL[c.kind]}>
+                  <span className={cls('sign', c.kind === '?' ? 'A' : c.kind)} data-tip={KIND_LABEL[c.kind] ? t(KIND_LABEL[c.kind]) : undefined}>
                     {c.kind === '?' ? 'U' : c.kind}
                   </span>
                   <span className="path grow" title={c.oldPath ? `${c.oldPath} → ${c.path}` : c.path}>
@@ -238,7 +249,7 @@ function ChangeList({
                   </span>
                   {c.binary ? (
                     <span className="faint" style={{ fontSize: 11 }}>
-                      ikili
+                      {t('ikili')}
                     </span>
                   ) : (
                     (c.additions != null || c.deletions != null) && (
@@ -248,8 +259,8 @@ function ChangeList({
                       </span>
                     )
                   )}
-                  {c.staged && !c.unstaged && <span className="badge green" data-tip="Hazırlanmış (staged)">S</span>}
-                  {c.untracked && <span className="badge" data-tip="Git tarafından izlenmiyor">yeni</span>}
+                  {c.staged && !c.unstaged && <span className="badge green" data-tip={t('Hazırlanmış (staged)')}>S</span>}
+                  {c.untracked && <span className="badge" data-tip={t('Git tarafından izlenmiyor')}>{t('yeni')}</span>}
                 </div>
               );
             })}
@@ -302,7 +313,7 @@ function DiffPane({ mode, changes }: { mode: 'worktree' | 'commits'; changes: Gi
               </span>
             </span>
           ) : (
-            <span className="faint">Fark</span>
+            <span className="faint">{t('Fark')}</span>
           )
         }
       />
@@ -314,7 +325,7 @@ function WorktreeView() {
   const g = useGit();
   return (
     <div className="git-grid two">
-      <ChangeList changes={g.wtChanges} selected={g.wtSelected} onSelected={g.setWtSelected} loading={g.wtLoading} emptyText="Çalışma kopyası temiz: commit edilmemiş değişiklik yok." />
+      <ChangeList changes={g.wtChanges} selected={g.wtSelected} onSelected={g.setWtSelected} loading={g.wtLoading} emptyText={t('Çalışma kopyası temiz: commit edilmemiş değişiklik yok.')} />
       <DiffPane mode="worktree" changes={g.wtChanges} />
     </div>
   );
@@ -330,7 +341,7 @@ function CommitsView() {
         selected={g.ccSelected}
         onSelected={g.setCcSelected}
         loading={g.ccLoading}
-        emptyText={g.selectedShas.length ? 'Seçili commit’ler dosya değiştirmiyor.' : 'Soldan bir ya da birkaç commit seçin.'}
+        emptyText={g.selectedShas.length ? t('Seçili commit’ler dosya değiştirmiyor.') : t('Soldan bir ya da birkaç commit seçin.')}
       />
       <DiffPane mode="commits" changes={g.commitChanges} />
     </div>
@@ -386,28 +397,28 @@ function CommitList() {
       <div className="pane-head" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, height: 'auto', paddingTop: 10, paddingBottom: 10 }}>
         <div className="input-wrap">
           <Search size={14} />
-          <input className="input sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mesaj ya da SHA ara" spellCheck={false} />
+          <input className="input sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Mesaj ya da SHA ara')} spellCheck={false} />
         </div>
         <div className="row" style={{ gap: 5, flexWrap: 'wrap' }}>
           <button className="chip" onClick={() => g.commits[0] && void g.selectCommits([g.commits[0].sha])}>
-            Son commit
+            {t('Son commit')}
           </button>
           <button className="chip" onClick={() => void g.selectCommits(g.commits.slice(0, 3).map((c) => c.sha))}>
-            Son 3
+            {t('Son 3')}
           </button>
           {unpushed.length > 0 && (
-            <button className="chip" onClick={() => void g.selectCommits(unpushed)} data-tip="Henüz uzak dala gönderilmemiş commit’ler">
-              <CloudUpload size={12} /> Push edilmemiş {unpushed.length}
+            <button className="chip" onClick={() => void g.selectCommits(unpushed)} data-tip={t('Henüz uzak dala gönderilmemiş commit’ler')}>
+              <CloudUpload size={12} /> {t('Push edilmemiş {n}', { n: unpushed.length })}
             </button>
           )}
           {g.selectedShas.length > 0 && (
             <button className="chip" onClick={() => void g.selectCommits([])}>
-              <X size={12} /> {g.selectedShas.length} seçili
+              <X size={12} /> {t('{n} seçili', { n: g.selectedShas.length })}
             </button>
           )}
           <span className="spacer" />
           <label className="check-label faint" style={{ fontSize: 12 }}>
-            <Checkbox checked={g.allBranches} onChange={g.setAllBranches} /> Tüm dallar
+            <Checkbox checked={g.allBranches} onChange={g.setAllBranches} /> {t('Tüm dallar')}
           </label>
         </div>
       </div>
@@ -417,7 +428,7 @@ function CommitList() {
             if (vi.index >= g.commits.length)
               return (
                 <div key="more" className="row faint" style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`, height: vi.size, justifyContent: 'center' }}>
-                  <div className="spinner" /> Yükleniyor…
+                  <div className="spinner" /> {t('Yükleniyor…')}
                 </div>
               );
             const c = g.commits[vi.index];
@@ -442,7 +453,7 @@ function CommitList() {
                     <span className="ellipsis">{c.author}</span>
                     <span className="nowrap">• {ago(c.date)}</span>
                     {g.unpushed.has(c.sha) && (
-                      <span className="badge blue" style={{ height: 16, fontSize: 10.5 }} data-tip="Push edilmemiş">
+                      <span className="badge blue" style={{ height: 16, fontSize: 10.5 }} data-tip={t('Push edilmemiş')}>
                         <ArrowUp size={10} />
                       </span>
                     )}
@@ -460,7 +471,7 @@ function CommitList() {
             );
           })}
         </div>
-        {!g.commits.length && !g.logLoading && <Empty icon={<GitCommit size={20} />} title="Commit bulunamadı" />}
+        {!g.commits.length && !g.logLoading && <Empty icon={<GitCommit size={20} />} title={t('Commit bulunamadı')} />}
       </div>
     </div>
   );
@@ -513,10 +524,14 @@ function GitActionBar() {
       const head = newest();
       const sources = await api.gitSources({ repo: g.repo, changes, contentFrom: isWt ? 'worktree' : g.contentFrom, rev: head?.sha });
       const repoName = baseName(g.repo);
-      const label = isWt ? `${repoName}: yerel değişiklikler` : g.selectedShas.length === 1 ? `${repoName}: ${head?.short} ${head?.subject ?? ''}`.slice(0, 80) : `${repoName}: ${g.selectedShas.length} commit`;
+      const label = isWt
+        ? t('{repo}: yerel değişiklikler', { repo: repoName })
+        : g.selectedShas.length === 1
+          ? `${repoName}: ${head?.short} ${head?.subject ?? ''}`.slice(0, 80)
+          : t('{repo}: {n} commit', { repo: repoName, n: g.selectedShas.length });
       await startPlan({ sources, origin: 'git', label });
     } catch (e) {
-      toast('error', 'Hazırlanamadı', (e as Error).message);
+      toast('error', t('Hazırlanamadı'), (e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -526,8 +541,8 @@ function GitActionBar() {
     <div className="action-bar">
       <div className="row grow" style={{ gap: 10 }}>
         <span className="tabular nowrap">
-          <b>{num(changes.length)}</b> dosya
-          {deletions > 0 && options.propagateDeletes && <span className="faint"> ({deletions} silme)</span>}
+          {tx('{files} dosya', { files: <b>{num(changes.length)}</b> }, { n: changes.length })}
+          {deletions > 0 && options.propagateDeletes && <span className="faint"> ({t('{n} silme', { n: deletions })})</span>}
         </span>
         {!isWt && (
           <Segmented
@@ -535,14 +550,14 @@ function GitActionBar() {
             value={g.contentFrom}
             onChange={g.setContentFrom}
             options={[
-              { value: 'worktree', label: 'Diskteki hâli', tip: 'Dosyaları şu an diskte oldukları gibi gönderir' },
-              { value: 'commit', label: 'Commit’teki hâli', tip: 'Dosyaları seçilen en yeni commit’teki içerikleriyle gönderir\n(sonradan yapılan yerel değişiklikler gitmez)' },
+              { value: 'worktree', label: t('Diskteki hâli'), tip: t('Dosyaları şu an diskte oldukları gibi gönderir') },
+              { value: 'commit', label: t('Commit’teki hâli'), tip: t('Dosyaları seçilen en yeni commit’teki içerikleriyle gönderir\n(sonradan yapılan yerel değişiklikler gitmez)') },
             ]}
           />
         )}
         {outside > 0 && (
-          <span className="badge amber" data-tip={'Bu dosyalar hiçbir yerel kökün altında değil;\nhedefte sürücü harfiyle tam yolu korunarak yazılır.'}>
-            <AlertTriangle size={11} /> {outside} kök dışı
+          <span className="badge amber" data-tip={t('Bu dosyalar hiçbir yerel kökün altında değil;\nhedefte sürücü harfiyle tam yolu korunarak yazılır.')}>
+            <AlertTriangle size={11} /> {t('{n} kök dışı', { n: outside })}
           </span>
         )}
       </div>
@@ -551,11 +566,11 @@ function GitActionBar() {
         <TargetSummary value={targets} />
         <ChevronDown size={14} />
       </button>
-      <button ref={optRef} className="btn lg icon" data-tip="Seçenekler" onClick={() => setOptOpen((o) => !o)}>
+      <button ref={optRef} className="btn lg icon" data-tip={t('Seçenekler')} onClick={() => setOptOpen((o) => !o)}>
         <SlidersHorizontal size={15} />
       </button>
       <Button size="lg" variant="primary" icon={<Send size={15} />} disabled={!changes.length || !targets.length} loading={busy} onClick={() => void send()}>
-        İncele ve gönder
+        {t('İncele ve gönder')}
       </Button>
       {tpOpen && (
         <Popover anchor={tpRef.current} onClose={() => setTpOpen(false)} align="end" width={400} placement="top">

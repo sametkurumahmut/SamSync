@@ -1,11 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose } from 'lucide-react';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages } from 'lucide-react';
 import type { CopySettings, UpdateConfig, UpdateSource } from '@shared/types';
-import type { ExplorerMenuStatus } from '@shared/api';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls } from '../lib/format';
+import { t, tk } from '@shared/i18n';
+import { menuEntries } from '@shared/menu';
+import { tx } from '../lib/i18n';
+
+const LANG_NAMES = { tr: 'Türkçe', en: 'English' } as const; // i18n-ignore: each language by its own name
 
 const ACCENTS = ['#2f7cf6', '#0ea5e9', '#14b8a6', '#22c55e', '#8b5cf6', '#ec4899', '#f97316', '#e11d48'];
 
@@ -35,25 +39,37 @@ export function SettingsPage() {
   const update = useApp((st) => st.update);
   const [copy, setCopy] = useState<CopySettings>(boot.config.copy);
   const [upd, setUpd] = useState<UpdateConfig>(boot.config.update ?? { source: 'github' });
-  const [menu, setMenu] = useState<ExplorerMenuStatus | null>(null);
+  const integration = useApp((st) => st.integration);
+  const [integrationBusy, setIntegrationBusy] = useState(false);
   const copyDirty = JSON.stringify(copy) !== JSON.stringify(boot.config.copy);
   const updDirty = JSON.stringify(upd) !== JSON.stringify(boot.config.update ?? { source: 'github' });
 
   useEffect(() => setCopy(boot.config.copy), [boot.config.copy]);
   useEffect(() => {
-    void api.explorerMenuStatus().then(setMenu);
+    void api.integrationStatus().then((st) => useApp.setState({ integration: st }));
   }, []);
+  const setIntegration = async (patch: { explorerMenu?: boolean; notepadPlusPlus?: boolean }) => {
+    setIntegrationBusy(true);
+    try {
+      const st = await api.integrationSet(patch);
+      useApp.setState({ integration: st, boot: { ...useApp.getState().boot!, settings: { ...useApp.getState().boot!.settings, ...patch } } });
+    } catch (e) {
+      toast('error', t('Menü yazılamadı'), (e as Error).message);
+    } finally {
+      setIntegrationBusy(false);
+    }
+  };
 
   const useFile = async () => {
-    const [p] = await api.pick({ files: true, title: 'config.json seçin', filters: [{ name: 'JSON', extensions: ['json'] }] });
+    const [p] = await api.pick({ files: true, title: t('config.json seçin'), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!p) return;
     const b = await api.useConfigFile(p);
     setBoot(b);
-    if (b.configError) toast('error', 'Dosya okunamadı', b.configError);
-    else toast('ok', 'Yapılandırma dosyası değişti', `${b.config.nodes.length} makine yüklendi`);
+    if (b.configError) toast('error', t('Dosya okunamadı'), b.configError);
+    else toast('ok', t('Yapılandırma dosyası değişti'), t('{n} makine yüklendi', { n: b.config.nodes.length }));
   };
   const importFile = async () => {
-    const [p] = await api.pick({ files: true, title: 'İçe aktarılacak config.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+    const [p] = await api.pick({ files: true, title: t('İçe aktarılacak config.json'), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!p) return;
     try {
       const incoming = await api.readConfigFile(p);
@@ -64,9 +80,11 @@ export function SettingsPage() {
         next.copy = incoming.copy;
         next.profiles = incoming.profiles;
       }
-      if (await saveConfig(next)) toast('ok', 'İçe aktarıldı', `${added.length} yeni makine eklendi${incoming.nodes.length - added.length ? `, ${incoming.nodes.length - added.length} zaten vardı` : ''}`);
+      const existed = incoming.nodes.length - added.length;
+      if (await saveConfig(next))
+        toast('ok', t('İçe aktarıldı'), existed ? t('{n} yeni makine eklendi, {m} zaten vardı', { n: added.length, m: existed }) : t('{n} yeni makine eklendi', { n: added.length }));
     } catch (e) {
-      toast('error', 'İçe aktarılamadı', (e as Error).message);
+      toast('error', t('İçe aktarılamadı'), (e as Error).message);
     }
   };
 
@@ -78,25 +96,36 @@ export function SettingsPage() {
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Ayarlar</h1>
-          <div className="sub">Görünüm bu bilgisayara, kopyalama ve güncelleme ayarları paylaşılan yapılandırmaya yazılır.</div>
+          <h1>{t('Ayarlar')}</h1>
+          <div className="sub">{t('Görünüm bu bilgisayara, kopyalama ve güncelleme ayarları paylaşılan yapılandırmaya yazılır.')}</div>
         </div>
       </div>
       <div className="page-body">
         <div className="settings-grid">
-          <Section id="look" icon={<Palette size={15} />} title="Görünüm">
-            <Field label="Tema">
+          <Section id="look" icon={<Palette size={15} />} title={t('Görünüm')}>
+            <Field label={t('Dil')}>
+              <Segmented
+                value={s.language}
+                onChange={(language) => void saveSettings({ language })}
+                options={[
+                  { value: 'system', label: t('Sistemle eşle'), icon: <Languages size={14} />, tip: t('Bilgisayarın dili: {lang}', { lang: LANG_NAMES[boot.systemLang] }) },
+                  { value: 'tr', label: LANG_NAMES.tr },
+                  { value: 'en', label: LANG_NAMES.en },
+                ]}
+              />
+            </Field>
+            <Field label={t('Tema')} style={{ marginTop: 14 }}>
               <Segmented
                 value={s.theme}
                 onChange={(theme) => void saveSettings({ theme })}
                 options={[
-                  { value: 'dark', label: 'Koyu', icon: <Moon size={14} /> },
-                  { value: 'light', label: 'Açık', icon: <Sun size={14} /> },
-                  { value: 'system', label: 'Sistemle eşle', icon: <Monitor size={14} />, tip: 'Bilgisayarın açık/koyu tema ayarını izler' },
+                  { value: 'dark', label: t('Koyu'), icon: <Moon size={14} /> },
+                  { value: 'light', label: t('Açık'), icon: <Sun size={14} /> },
+                  { value: 'system', label: t('Sistemle eşle'), icon: <Monitor size={14} />, tip: t('Bilgisayarın açık/koyu tema ayarını izler') },
                 ]}
               />
             </Field>
-            <Field label="Vurgu rengi" style={{ marginTop: 14 }}>
+            <Field label={t('Vurgu rengi')} style={{ marginTop: 14 }}>
               <div className="row" style={{ gap: 8 }}>
                 {ACCENTS.map((c) => (
                   <button key={c} className={cls('swatch', s.accent === c && 'on')} style={{ background: c }} onClick={() => void saveSettings({ accent: c })} />
@@ -104,31 +133,31 @@ export function SettingsPage() {
                 <input type="color" className="swatch-input" value={s.accent} onChange={(e) => void saveSettings({ accent: e.target.value })} />
               </div>
             </Field>
-            <Field label="Yoğunluk" style={{ marginTop: 14 }}>
+            <Field label={t('Yoğunluk')} style={{ marginTop: 14 }}>
               <Segmented
                 value={s.density}
                 onChange={(density) => void saveSettings({ density })}
                 options={[
-                  { value: 'comfortable', label: 'Rahat' },
-                  { value: 'compact', label: 'Sıkı' },
+                  { value: 'comfortable', label: t('Rahat') },
+                  { value: 'compact', label: t('Sıkı') },
                 ]}
               />
             </Field>
             <div className="divider" />
-            <ToggleRow title="Başarılı gönderimden sonra paneli kapat" on={s.closeRunPanelOnSuccess} onChange={(v) => void saveSettings({ closeRunPanelOnSuccess: v })} />
+            <ToggleRow title={t('Başarılı gönderimden sonra paneli kapat')} on={s.closeRunPanelOnSuccess} onChange={(v) => void saveSettings({ closeRunPanelOnSuccess: v })} />
           </Section>
 
-          <Section id="background" icon={<PanelBottomClose size={15} />} title="Arka plan ve başlangıç" desc="Otomasyonun pencere kapalıyken de sürmesi için">
+          <Section id="background" icon={<PanelBottomClose size={15} />} title={t('Arka plan ve başlangıç')} desc={t('Otomasyonun pencere kapalıyken de sürmesi için')}>
             <ToggleRow
-              title="Kapatınca sistem tepsisinde çalışmaya devam et"
-              desc="Pencere gizlenir; izleme ve zamanlanmış işler sürer. Tepsideki simgeden açılır ya da kapatılır."
+              title={t('Kapatınca sistem tepsisinde çalışmaya devam et')}
+              desc={t('Pencere gizlenir; izleme ve zamanlanmış işler sürer. Tepsideki simgeden açılır ya da kapatılır.')}
               on={s.closeToTray}
               disabled={!boot.isElectron}
               onChange={(v) => void saveSettings({ closeToTray: v })}
             />
             <ToggleRow
-              title={boot.platform === 'darwin' ? 'Oturum açılınca başlat' : 'Windows açılışında başlat'}
-              desc={boot.platform === 'linux' ? 'Linux’ta masaüstü ortamınızın başlangıç uygulamalarına ekleyin.' : 'Tepside gizli başlar (yukarıdaki seçenek açıksa). Yalnızca kurulu sürümde etkilidir.'}
+              title={boot.platform === 'darwin' ? t('Oturum açılınca başlat') : t('Windows açılışında başlat')}
+              desc={boot.platform === 'linux' ? t('Linux’ta masaüstü ortamınızın başlangıç uygulamalarına ekleyin.') : t('Tepside gizli başlar (yukarıdaki seçenek açıksa). Yalnızca kurulu sürümde etkilidir.')}
               on={s.launchAtLogin}
               disabled={!boot.isElectron || boot.platform === 'linux'}
               onChange={(v) => void saveSettings({ launchAtLogin: v })}
@@ -138,37 +167,39 @@ export function SettingsPage() {
           <Section
             id="copy"
             icon={<CopyIcon size={15} />}
-            title="Kopyalama"
-            desc="Bütün makinelerde geçerli varsayılanlar"
+            title={t('Kopyalama')}
+            desc={t('Bütün makinelerde geçerli varsayılanlar')}
             action={
               copyDirty && (
                 <div className="row">
                   <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={() => setCopy(boot.config.copy)}>
-                    Geri al
+                    {t('Geri al')}
                   </Button>
-                  <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={async () => (await saveConfig({ ...boot.config, copy })) && toast('ok', 'Kopyalama ayarları kaydedildi')}>
-                    Kaydet
+                  <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={async () => (await saveConfig({ ...boot.config, copy })) && toast('ok', t('Kopyalama ayarları kaydedildi'))}>
+                    {t('Kaydet')}
                   </Button>
                 </div>
               )
             }
           >
             <div className="form-grid three">
-              <Field label="Yeniden deneme">{num('retryCount', 0, 100)}</Field>
-              <Field label="Denemeler arası (sn)">{num('waitSeconds', 0, 60)}</Field>
-              <Field label="Saklanacak yedek" help="0 = sınırsız">
+              <Field label={t('Yeniden deneme')}>{num('retryCount', 0, 100)}</Field>
+              <Field label={t('Denemeler arası (sn)')}>{num('waitSeconds', 0, 60)}</Field>
+              <Field label={t('Saklanacak yedek')} help={t('0 = sınırsız')}>
                 {num('backupKeep', 0, 1000)}
               </Field>
-              <Field label="Eşzamanlı hedef">{num('parallelTargets', 1, 16)}</Field>
-              <Field label="Hedef başına dosya" help="Eşzamanlı">{num('parallelFiles', 1, 32)}</Field>
-              <Field label="Zaman toleransı (sn)" help="FAT/ağ sürücüleri için">
+              <Field label={t('Eşzamanlı hedef')}>{num('parallelTargets', 1, 16)}</Field>
+              <Field label={t('Hedef başına dosya')} help={t('Eşzamanlı')}>
+                {num('parallelFiles', 1, 32)}
+              </Field>
+              <Field label={t('Zaman toleransı (sn)')} help={t('FAT/ağ sürücüleri için')}>
                 {num('timeToleranceSec', 0, 3600)}
               </Field>
-              <Field label="Bant genişliği (MB/sn)" help="Hedef başına; 0 = sınırsız">
+              <Field label={t('Bant genişliği (MB/sn)')} help={t('Hedef başına; 0 = sınırsız')}>
                 {num('bandwidthMBps', 0, 10000)}
               </Field>
             </div>
-            <Field label="Yedek klasörü" help="Hedef kökünün altında; yedek alınan dosyaların eski hâlleri burada tarih klasörlerinde durur. Değiştirirseniz eski addaki yedekler listelenmez." style={{ marginTop: 12 }}>
+            <Field label={t('Yedek klasörü')} help={t('Hedef kökünün altında; yedek alınan dosyaların eski hâlleri burada tarih klasörlerinde durur. Değiştirirseniz eski addaki yedekler listelenmez.')} style={{ marginTop: 12 }}>
               <input
                 className="input mono"
                 value={copy.backupFolderName}
@@ -177,23 +208,27 @@ export function SettingsPage() {
               />
             </Field>
             <div style={{ marginTop: 6 }}>
-              <ToggleRow title="Yazdıktan sonra doğrula" desc="İçerik özetini karşılaştırır (daha yavaş)" on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
-              <ToggleRow title="1 saatlik yaz saati farkını yok say" desc="Saat dilimi kaymış dosyaları aynı sayar" on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />
+              <ToggleRow title={t('Yazdıktan sonra doğrula')} desc={t('İçerik özetini karşılaştırır (daha yavaş)')} on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
+              <ToggleRow title={t('1 saatlik yaz saati farkını yok say')} desc={t('Saat dilimi kaymış dosyaları aynı sayar')} on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />
             </div>
             <div className="form-grid" style={{ marginTop: 8 }}>
-              <Field label="Varsayılan hariç dosyalar">
+              <Field label={t('Varsayılan hariç dosyalar')}>
                 <TagInput value={copy.excludeFiles} onChange={(v) => setCopy({ ...copy, excludeFiles: v })} placeholder="*.pdb" />
               </Field>
-              <Field label="Varsayılan hariç klasörler">
+              <Field label={t('Varsayılan hariç klasörler')}>
                 <TagInput value={copy.excludeDirs} onChange={(v) => setCopy({ ...copy, excludeDirs: v })} placeholder=".git" />
               </Field>
             </div>
-            <Field label="Kopyalama sonrası komut" help="{address} {targetId} {targetName} {networkRoot} {destination} — her başarılı hedeften sonra bir kez çalışır" style={{ marginTop: 12 }}>
+            <Field
+              label={t('Kopyalama sonrası komut')}
+              help={t('{vars} — her başarılı hedeften sonra bir kez çalışır', { vars: '{address} {targetId} {targetName} {networkRoot} {destination} {source}' })}
+              style={{ marginTop: 12 }}
+            >
               <input className="input mono" value={copy.postCommand ?? ''} onChange={(e) => setCopy({ ...copy, postCommand: e.target.value })} placeholder={'schtasks /run /s {address} /tn "Sim Yeniden Baslat"'} />
             </Field>
           </Section>
 
-          <Section id="config" icon={<FileJson size={15} />} title="Yapılandırma dosyası" desc="Makineler, gruplar, profiller ve senkron işleri">
+          <Section id="config" icon={<FileJson size={15} />} title={t('Yapılandırma dosyası')} desc={t('Makineler, gruplar, profiller ve senkron işleri')}>
             <div className="mono selectable" style={{ fontSize: 12, wordBreak: 'break-all', padding: '8px 10px', borderRadius: 8, background: 'var(--bg-inset)', border: '1px solid var(--border)' }}>
               {boot.configPath}
             </div>
@@ -203,55 +238,113 @@ export function SettingsPage() {
               </div>
             )}
             <p className="muted" style={{ fontSize: 12.5 }}>
-              Ağ paylaşımındaki ortak bir <span className="mono">config.json</span> seçilirse bütün makineler aynı listeyi kullanır. Eski PowerShell aracının dosyası doğrudan okunur; kaydederken onun alanları korunur.
+              {tx('Ağ paylaşımındaki ortak bir {file} seçilirse bütün makineler aynı listeyi kullanır.', { file: <span className="mono">config.json</span> })}{' '}
+              {t('Eski PowerShell aracının dosyası doğrudan okunur; kaydederken onun alanları korunur.')}
             </p>
             <div className="row" style={{ flexWrap: 'wrap' }}>
               <Button icon={<FolderOpen size={14} />} onClick={() => void useFile()} disabled={!boot.isElectron}>
-                Başka dosya kullan…
+                {t('Başka dosya kullan…')}
               </Button>
               <Button icon={<Upload size={14} />} onClick={() => void importFile()} disabled={!boot.isElectron}>
-                Makineleri içe aktar…
+                {t('Makineleri içe aktar…')}
               </Button>
               {boot.settings.configPath && (
                 <Button variant="ghost" icon={<RotateCcw size={14} />} onClick={async () => setBoot(await api.useConfigFile(null))}>
-                  Varsayılana dön
+                  {t('Varsayılana dön')}
                 </Button>
               )}
-              <Button variant="ghost" icon={<ExternalLink size={14} />} onClick={() => void api.openPath(boot.configPath).catch((e) => toast('error', 'Açılamadı', (e as Error).message))}>
-                Aç
+              <Button variant="ghost" icon={<ExternalLink size={14} />} onClick={() => void api.openPath(boot.configPath).catch((e) => toast('error', t('Açılamadı'), (e as Error).message))}>
+                {t('Aç')}
               </Button>
             </div>
           </Section>
 
-          <Section id="integration" icon={<MousePointerClick size={15} />} title="Sağ tık menüsü" desc="Explorer’da dosya ve klasörler için “SamSync ile gönder”">
-            {!menu ? (
-              <div className="spinner" />
-            ) : !menu.supported ? (
-              <p className="muted">Bu özellik yalnızca Windows’ta kullanılabilir. macOS ve Linux’ta dosyaları pencereye sürükleyin ya da uygulamayı dosya yollarıyla başlatın.</p>
+          <Section id="integration" icon={<MousePointerClick size={15} />} title={t('Sağ tık menüleri')} desc={t('Explorer ve Notepad++ içinden tek tıkla gönderim')}>
+            {!integration ? (
+              boot.isElectron ? <div className="spinner" /> : <p className="muted">{t('Bu özellik yalnızca masaüstü uygulamasında kullanılabilir.')}</p>
+            ) : !integration.supported ? (
+              <p className="muted">{t('Bu özellik yalnızca Windows’ta kullanılabilir. macOS ve Linux’ta dosyaları pencereye sürükleyin ya da uygulamayı dosya yollarıyla başlatın.')}</p>
             ) : (
               <>
-                <div className="row">
-                  {menu.installed ? <CheckCircle2 size={16} color="var(--green)" /> : <Info size={16} className="faint" />}
-                  <span className="grow">{menu.installed ? 'Kurulu' : 'Kurulu değil'}</span>
-                  <Button
-                    variant={menu.installed ? 'default' : 'primary'}
-                    onClick={async () => {
-                      const r = await api.explorerMenuInstall(!menu.installed);
-                      setMenu(r);
-                      toast('ok', r.installed ? 'Sağ tık menüsü eklendi' : 'Sağ tık menüsü kaldırıldı');
-                    }}
-                  >
-                    {menu.installed ? 'Kaldır' : 'Ekle'}
-                  </Button>
-                </div>
-                {menu.command && (
-                  <div className="mono faint selectable" style={{ fontSize: 11.5, marginTop: 8, wordBreak: 'break-all' }}>
-                    {menu.command}
+                <ToggleRow
+                  icon={integration.explorer.installed ? <CheckCircle2 size={16} color="var(--green)" /> : <Info size={16} className="faint" />}
+                  title={t('Explorer menüsü')}
+                  desc={t('Dosya ve klasörlere sağ tıklayınca “SamSync”: tümüne, son ayarla, profile, gruba ya da makineye tek tıkla gönder; incele ve gönder; yedekten geri al.')}
+                  on={integration.explorer.enabled}
+                  onChange={(v) => !integrationBusy && void setIntegration({ explorerMenu: v })}
+                />
+                {integration.explorer.error && (
+                  <div className="alert error" style={{ marginTop: 8 }}>
+                    <AlertTriangle size={15} /> {integration.explorer.error}
                   </div>
                 )}
-                <p className="faint" style={{ fontSize: 12, marginTop: 10 }}>
-                  100 öğeye kadar seçim desteklenir; Explorer her öğe için uygulamayı bir kez başlatır, hepsi tek pencerede toplanır. Windows 11’de “Daha fazla seçenek göster” altında görünür.
-                </p>
+                {integration.explorer.enabled && (
+                  <div style={{ margin: '8px 0 0 30px' }}>
+                    <Field label={t('Makineler menüde')}>
+                      <Segmented
+                        value={boot.config.menuShowNodes ?? 'auto'}
+                        onChange={(menuShowNodes) => void saveConfig({ ...boot.config, menuShowNodes })}
+                        options={SHOW_NODES.map((o) => ({ value: o.value, label: t(o.label), tip: t(o.tip) }))}
+                      />
+                    </Field>
+                    <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+                      {integration.explorer.expanded.length > 0 && <div>{t('Alt menüsüyle: {groups}', { groups: integration.explorer.expanded.join(', ') })}</div>}
+                      {integration.explorer.collapsed.length > 0 && <div>{t('Tek girdi (bütün gruba gönderir): {groups}', { groups: integration.explorer.collapsed.join(', ') })}</div>}
+                      {integration.explorer.overBudget && <div style={{ color: 'var(--amber)' }}>{t('Menüde 16 girdiden fazlası var; Windows bazılarını göstermeyebilir')}</div>}
+                    </div>
+                    {integration.explorer.command && (
+                      <div className="mono faint selectable" style={{ fontSize: 11.5, marginTop: 6, wordBreak: 'break-all' }}>
+                        {integration.explorer.command}
+                      </div>
+                    )}
+                    <p className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+                      {t('100 öğeye kadar seçim desteklenir; Explorer her öğe için uygulamayı bir kez başlatır, hepsi tek gönderimde toplanır. Windows 11’de “Daha fazla seçenek göster” altında görünür.')}
+                    </p>
+                  </div>
+                )}
+                <div className="divider" />
+                <ToggleRow
+                  icon={integration.notepadPlusPlus.installs.some((i) => i.installed) ? <CheckCircle2 size={16} color="var(--green)" /> : <Info size={16} className="faint" />}
+                  title="Notepad++"
+                  desc={t('Sekmeye sağ tıklayınca “SamSync” klasörü, Çalıştır menüsünde aynı komutlar ve kısayollar (Ctrl+Alt+W: son ayarla gönder).')}
+                  on={integration.notepadPlusPlus.enabled}
+                  onChange={(v) => !integrationBusy && void setIntegration({ notepadPlusPlus: v })}
+                />
+                <div style={{ margin: '8px 0 0 30px' }}>
+                  {integration.notepadPlusPlus.error && (
+                    <div className="alert error">
+                      <AlertTriangle size={15} /> {integration.notepadPlusPlus.error}
+                    </div>
+                  )}
+                  {!integration.notepadPlusPlus.installs.length && <div className="faint" style={{ fontSize: 12 }}>{t('Bu bilgisayarda Notepad++ bulunamadı.')}</div>}
+                  {integration.notepadPlusPlus.installs.map((i) => (
+                    <div key={i.configDir} style={{ fontSize: 12, marginBottom: 8 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        {i.installed ? <CheckCircle2 size={13} color="var(--green)" /> : <Info size={13} className="faint" />}
+                        <span>{i.installed ? t('Kurulu') : t('Kurulu değil')}</span>
+                        <span className="faint">
+                          {i.version ? `Notepad++ ${i.version}` : 'Notepad++'}
+                          {i.portable ? ` • ${t('taşınabilir')}` : ''}
+                          {i.running ? ` • ${t('açık')}` : ''}
+                        </span>
+                      </div>
+                      <div className="mono faint selectable" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>
+                        {i.configDir}
+                      </div>
+                      {i.warnings.map((w) => (
+                        <div key={w} style={{ color: 'var(--amber)', fontSize: 12 }}>
+                          {w}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {integration.notepadPlusPlus.waitingForExit && (
+                    <div className="alert info" style={{ marginBottom: 8 }}>
+                      <Info size={15} /> {t('Notepad++ açıkken değişti; kapanırken kendi ayarlarını geri yazar. Notepad++ kapanınca SamSync menüyü ve kısayolları yeniden yazar.')}
+                    </div>
+                  )}
+                  {integration.notepadPlusPlus.enabled && <NppShortcuts />}
+                </div>
               </>
             )}
           </Section>
@@ -259,35 +352,35 @@ export function SettingsPage() {
           <Section
             id="updates"
             icon={<Download size={15} />}
-            title="Güncellemeler"
-            desc={`Sürüm ${boot.appVersion}`}
+            title={t('Güncellemeler')}
+            desc={t('Sürüm {version}', { version: boot.appVersion })}
             action={
               updDirty && (
-                <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={async () => (await saveConfig({ ...boot.config, update: upd })) && toast('ok', 'Güncelleme kaynağı kaydedildi')}>
-                  Kaydet
+                <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={async () => (await saveConfig({ ...boot.config, update: upd })) && toast('ok', t('Güncelleme kaynağı kaydedildi'))}>
+                  {t('Kaydet')}
                 </Button>
               )
             }
           >
-            <Field label="Kaynak">
+            <Field label={t('Kaynak')}>
               <Segmented
                 value={upd.source}
                 onChange={(source: UpdateSource) => setUpd({ ...upd, source })}
                 options={[
                   { value: 'github', label: 'GitHub', icon: <Cloud size={14} /> },
-                  { value: 'url', label: 'Web adresi', icon: <Globe size={14} /> },
-                  { value: 'folder', label: 'Ağ klasörü', icon: <FolderSync size={14} /> },
-                  { value: 'off', label: 'Kapalı', icon: <Power size={14} /> },
+                  { value: 'url', label: t('Web adresi'), icon: <Globe size={14} /> },
+                  { value: 'folder', label: t('Ağ klasörü'), icon: <FolderSync size={14} /> },
+                  { value: 'off', label: t('Kapalı'), icon: <Power size={14} /> },
                 ]}
               />
             </Field>
             {upd.source === 'url' && (
-              <Field label="Adres" help="latest.yml ve kurulum dosyalarının bulunduğu klasörün adresi" style={{ marginTop: 12 }}>
+              <Field label={t('Adres')} help={t('latest.yml ve kurulum dosyalarının bulunduğu klasörün adresi')} style={{ marginTop: 12 }}>
                 <input className="input mono" value={upd.url ?? ''} onChange={(e) => setUpd({ ...upd, url: e.target.value })} placeholder="https://sunucu/samsync/" />
               </Field>
             )}
             {upd.source === 'folder' && (
-              <Field label="Klasör" help="İnternete çıkmayan makineler için: latest.yml + SamSync-Setup-x.y.z.exe" style={{ marginTop: 12 }}>
+              <Field label={t('Klasör')} help={t('İnternete çıkmayan makineler için: latest.yml + SamSync-Setup-x.y.z.exe')} style={{ marginTop: 12 }}>
                 <div className="row">
                   <input className="input mono" value={upd.folder ?? ''} onChange={(e) => setUpd({ ...upd, folder: e.target.value })} placeholder="\\dosya-sunucusu\Dagitim\SamSync" />
                   <Button
@@ -303,36 +396,36 @@ export function SettingsPage() {
               </Field>
             )}
             <div style={{ marginTop: 6 }}>
-              <ToggleRow title="Açılışta ve 6 saatte bir denetle" on={s.updateAutoCheck} onChange={(v) => void saveSettings({ updateAutoCheck: v })} />
-              <ToggleRow title="Yeni sürümü arka planda indir" on={s.updateAutoDownload} onChange={(v) => void saveSettings({ updateAutoDownload: v })} />
+              <ToggleRow title={t('Açılışta ve 6 saatte bir denetle')} on={s.updateAutoCheck} onChange={(v) => void saveSettings({ updateAutoCheck: v })} />
+              <ToggleRow title={t('Yeni sürümü arka planda indir')} on={s.updateAutoDownload} onChange={(v) => void saveSettings({ updateAutoDownload: v })} />
             </div>
             <UpdateStatus />
           </Section>
 
-          <Section id="about" icon={<Info size={15} />} title="Hakkında">
+          <Section id="about" icon={<Info size={15} />} title={t('Hakkında')}>
             <div className="about-grid">
-              <span className="faint">Sürüm</span>
+              <span className="faint">{t('Sürüm')}</span>
               <span>{boot.appVersion}</span>
-              <span className="faint">Platform</span>
+              <span className="faint">{t('Platform')}</span>
               <span>
                 {boot.platform} • {boot.hostname}
               </span>
               <span className="faint">Git</span>
-              <span>{boot.gitVersion ?? 'bulunamadı'}</span>
-              <span className="faint">Veri klasörü</span>
+              <span>{boot.gitVersion ?? t('bulunamadı')}</span>
+              <span className="faint">{t('Veri klasörü')}</span>
               <span className="mono selectable" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>
                 {boot.userDataPath}
               </span>
             </div>
             <div className="row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
               <Button size="sm" icon={<FileText size={13} />} onClick={() => void api.openLog()}>
-                Günlüğü aç
+                {t('Günlüğü aç')}
               </Button>
               <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => void api.openPath(boot.userDataPath)}>
-                Veri klasörü
+                {t('Veri klasörü')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => void api.windowControl('devtools')}>
-                Geliştirici araçları
+                {t('Geliştirici araçları')}
               </Button>
             </div>
           </Section>
@@ -364,17 +457,17 @@ function UpdateStatus() {
         )}
         <div className="grow" style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 580 }}>
-            {p === 'idle' && 'Henüz denetlenmedi'}
-            {p === 'checking' && 'Denetleniyor…'}
-            {p === 'none' && 'Güncel sürümü kullanıyorsunuz'}
-            {p === 'available' && `Yeni sürüm: ${update.version}`}
-            {p === 'downloading' && `İndiriliyor… %${Math.round(update.percent ?? 0)}`}
-            {p === 'ready' && `${update.version} kurulmaya hazır`}
-            {p === 'error' && 'Güncelleme hatası'}
-            {p === 'unsupported' && 'Bu kurulumda güncelleme yok'}
+            {p === 'idle' && t('Henüz denetlenmedi')}
+            {p === 'checking' && t('Denetleniyor…')}
+            {p === 'none' && t('Güncel sürümü kullanıyorsunuz')}
+            {p === 'available' && t('Yeni sürüm: {version}', { version: update.version ?? '' })}
+            {p === 'downloading' && t('İndiriliyor… %{n}', { n: Math.round(update.percent ?? 0) })}
+            {p === 'ready' && t('{version} kurulmaya hazır', { version: update.version ?? '' })}
+            {p === 'error' && t('Güncelleme hatası')}
+            {p === 'unsupported' && t('Bu kurulumda güncelleme yok')}
           </div>
           <div className="faint ellipsis selectable" style={{ fontSize: 12 }}>
-            {update.error ?? update.detail ?? (update.checkedAt ? `Son denetim ${ago(update.checkedAt)}` : '')}
+            {update.error ?? update.detail ?? (update.checkedAt ? t('Son denetim {time}', { time: ago(update.checkedAt) }) : '')}
           </div>
         </div>
         {(p === 'idle' || p === 'none' || p === 'error') && (
@@ -388,17 +481,17 @@ function UpdateStatus() {
               setBusy(false);
             }}
           >
-            Şimdi denetle
+            {t('Şimdi denetle')}
           </Button>
         )}
         {p === 'available' && (
           <Button size="sm" variant="primary" icon={<Download size={13} />} onClick={async () => useApp.setState({ update: await api.updateDownload() })}>
-            İndir
+            {t('İndir')}
           </Button>
         )}
         {p === 'ready' && (
           <Button size="sm" variant="primary" onClick={() => void api.updateInstall()}>
-            Yeniden başlat ve kur
+            {t('Yeniden başlat ve kur')}
           </Button>
         )}
       </div>
@@ -421,5 +514,53 @@ export function SwitchRow({ label, on, onChange }: { label: string; on: boolean;
     <label className="check-label">
       <Switch on={on} onChange={onChange} /> {label}
     </label>
+  );
+}
+
+const SHOW_NODES = [
+  { value: 'auto', label: tk('Sığdıkça'), tip: tk('Windows menüsünde 16 girdiye kadar: önce bu makinenin grubu, sonra sığarsa diğer gruplar alt menüyle') },
+  { value: 'always', label: tk('Her zaman'), tip: tk('Bütün grupları alt menüsüyle göster') },
+  { value: 'never', label: tk('Yalnızca gruplar'), tip: tk('Gruplar tek girdi olarak bütün gruba gönderir; tek tek makineler yok') },
+] as const;
+
+/** notepadPlusPlusShortcuts in the shared config: menu entry id -> "Ctrl+Alt+W". */
+function NppShortcuts() {
+  const boot = useApp((s) => s.boot!);
+  const saveConfig = useApp((s) => s.saveConfig);
+  const entries = menuEntries(boot.config, boot.identity.node?.id);
+  const saved = boot.config.notepadPlusPlusShortcuts ?? { 'wizard:last': 'Ctrl+Alt+W' };
+  const [rows, setRows] = useState<{ id: string; keys: string }[]>(() => Object.entries(saved).map(([id, keys]) => ({ id, keys })));
+  const dirty = JSON.stringify(Object.fromEntries(rows.filter((r) => r.id).map((r) => [r.id, r.keys.trim()]))) !== JSON.stringify(saved);
+  return (
+    <Field label={t('Notepad++ kısayolları')} style={{ marginTop: 6 }}>
+      {rows.map((r, i) => (
+        <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
+          <select className="select grow" value={r.id} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))}>
+            {!entries.some((e) => e.id === r.id) && <option value={r.id}>{r.id}</option>}
+            {entries.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+          <input className="input mono" style={{ width: 150 }} value={r.keys} placeholder="Ctrl+Alt+W" spellCheck={false} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, keys: e.target.value } : x)))} />
+          <Button iconOnly size="sm" variant="ghost" icon={<RotateCcw size={13} />} tip={t('Kaldır')} onClick={() => setRows(rows.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      <div className="row" style={{ gap: 6 }}>
+        <Button size="sm" onClick={() => setRows([...rows, { id: 'wizard:last', keys: '' }])}>
+          {t('Kısayol ekle')}
+        </Button>
+        <span className="spacer" />
+        {dirty && (
+          <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={() => void saveConfig({ ...boot.config, notepadPlusPlusShortcuts: Object.fromEntries(rows.filter((r) => r.id && r.keys.trim()).map((r) => [r.id, r.keys.trim()])) })}>
+            {t('Kaydet')}
+          </Button>
+        )}
+      </div>
+      <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+        {t('Ctrl, Alt, Shift ile bir tuş: harf, rakam, F1–F24, Insert, Delete, Home, End, PageUp, PageDown, yön tuşları. Paylaşılan yapılandırmaya yazılır, bütün makinelerde geçerlidir.')}
+      </div>
+    </Field>
   );
 }

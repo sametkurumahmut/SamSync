@@ -6,8 +6,9 @@ import type { CoreContext } from './context';
 import type { Transport } from './transport';
 import { blobStream } from './git';
 import { hashStream } from './compare';
-import { relBase, relDepth, relJoin, relParent } from './paths';
+import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
+import { t } from '../shared/i18n';
 
 export interface ExecOp {
   id: string;
@@ -48,6 +49,8 @@ export interface ExecSettings {
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
   bandwidthMBps?: number;
   sources: string[];
+  /** Last source item and its target relative path: {source} and {destination} of the post-copy command. */
+  postSource?: { path: string; rel: string };
   targetIds: string[];
   options?: Partial<SendOptions>;
 }
@@ -116,7 +119,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const line: RunLogLine = { t: Date.now(), level, message, key };
     logLines.push(line);
     pendingLog.push(line);
-    const comp = 'Kopyala';
+    const comp = t('Kopyala');
     const msg = key ? `[${key}] ${message}` : message;
     if (level === 'error') ctx.log.error(comp, msg);
     else if (level === 'warn') ctx.log.warn(comp, msg);
@@ -126,7 +129,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
 
   const done = (async (): Promise<RunDetail> => {
     ctx.emit({ type: 'run-start', run: summary() });
-    log('info', `${s.label} başladı: ${groups.length} hedef, ${summary().opsTotal} işlem${s.dryRun ? ' (deneme çalıştırması, hiçbir şey yazılmayacak)' : ''}`);
+    const startParams = { label: s.label, targets: groups.length, ops: summary().opsTotal };
+    log(
+      'info',
+      s.dryRun
+        ? t('{label} başladı: {targets} hedef, {ops} işlem (deneme çalıştırması, hiçbir şey yazılmayacak)', startParams)
+        : t('{label} başladı: {targets} hedef, {ops} işlem', startParams),
+    );
     await mapLimit(groups, Math.max(1, s.parallelGroups), (g, gi) => runGroup(g, states[gi]));
     emitProgress.flush();
     emitLog.flush();
@@ -138,7 +147,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const secs = ((sum.finishedAt - startedAt) / 1000).toFixed(1);
     log(
       sum.status === 'ok' ? 'ok' : sum.status === 'cancelled' ? 'warn' : 'error',
-      `Bitti: ${sum.opsOk} başarılı, ${sum.opsFailed} hatalı, ${formatBytes(sum.bytes)}, ${secs} sn`,
+      t('Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn', { ok: sum.opsOk, failed: sum.opsFailed, size: formatBytes(sum.bytes), s: secs }),
     );
     emitLog.flush();
     const detail: RunDetail = { ...sum, results, log: logLines };
@@ -155,14 +164,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     st.status = 'running';
     st.startedAt = Date.now();
     emitProgress();
-    let t: Transport;
+    let tgt: Transport;
     try {
-      t = await g.open();
+      tgt = await g.open();
     } catch (e) {
       st.status = 'failed';
       st.error = errMessage(e);
       st.finishedAt = Date.now();
-      log('error', `Hedefe bağlanılamadı: ${st.error}`, g.key);
+      log('error', t('Hedefe bağlanılamadı: {error}', { error: st.error }), g.key);
       for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
       st.failed = g.ops.length;
       emitProgress();
@@ -172,7 +181,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const endpoint = (key: string) => {
       if (!endpointCache.has(key)) {
         const opener = g.endpoints?.[key];
-        if (!opener) throw new Error(`Kaynak uç bulunamadı: ${key}`);
+        if (!opener) throw new Error(t('Kaynak uç bulunamadı: {key}', { key }));
         endpointCache.set(key, opener());
       }
       return endpointCache.get(key)!;
@@ -180,7 +189,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
 
     const backupBase = relJoin(s.backupFolderName, runStamp);
     let backedUpAny = false;
-    log('info', `→ ${g.rootLabel} (${g.ops.length} işlem${s.backup ? ', yedekli' : ''})`, g.key);
+    const groupParams = { root: g.rootLabel, n: g.ops.length };
+    log('info', s.backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
 
     const record = (op: ExecOp, ok: boolean, error?: string, backedUp?: boolean) => {
       results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp });
@@ -193,14 +203,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     const backupOrRemove = async (rel: string, isDir: boolean): Promise<boolean> => {
-      const cur = await t.stat(rel);
+      const cur = await tgt.stat(rel);
       if (!cur) return false;
       if (s.backup) {
-        await t.rename(rel, relJoin(backupBase, rel));
+        await tgt.rename(rel, relJoin(backupBase, rel));
         backedUpAny = true;
         return true;
       }
-      await t.remove(rel, cur.isDir || isDir);
+      await tgt.remove(rel, cur.isDir || isDir);
       return false;
     };
 
@@ -232,31 +242,31 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       try {
         const src = op.src!;
         const mtime = op.mtimeMs ?? (src.kind === 'git' ? Date.now() : undefined);
-        if (src.kind === 'fs' && t.copyFromLocal && !limiter) await t.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
-        else await t.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress });
-        const written = await t.stat(tmp);
-        if (!written) throw new Error('Yazılan geçici dosya bulunamadı');
-        if (written.size !== op.size) throw new Error(`Boyut tutmuyor: ${written.size} ≠ ${op.size}`);
+        if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
+        else await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress });
+        const written = await tgt.stat(tmp);
+        if (!written) throw new Error(t('Yazılan geçici dosya bulunamadı'));
+        if (written.size !== op.size) throw new Error(t('Boyut tutmuyor: {written} ≠ {expected}', { written: written.size, expected: op.size }));
         if (s.verify) {
-          const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await t.readStream(tmp))]);
-          if (a !== b) throw new Error('Doğrulama başarısız: içerik özeti tutmuyor');
+          const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(tmp))]);
+          if (a !== b) throw new Error(t('Doğrulama başarısız: içerik özeti tutmuyor'));
         }
         const backedUp = await backupOrRemoveForReplace(op);
-        await t.rename(tmp, op.rel);
+        await tgt.rename(tmp, op.rel);
         return backedUp;
       } catch (e) {
         st.bytesDone -= base;
-        await t.remove(tmp, false).catch(() => undefined);
+        await tgt.remove(tmp, false).catch(() => undefined);
         throw e;
       }
     };
 
     const backupOrRemoveForReplace = async (op: ExecOp): Promise<boolean> => {
-      const cur = await t.stat(op.rel);
+      const cur = await tgt.stat(op.rel);
       if (!cur) return false;
       if (cur.isDir || op.replaceType) return backupOrRemove(op.rel, cur.isDir);
       if (s.backup) {
-        await t.rename(op.rel, relJoin(backupBase, op.rel));
+        await tgt.rename(op.rel, relJoin(backupBase, op.rel));
         backedUpAny = true;
         return true;
       }
@@ -277,16 +287,16 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           let backedUp = false;
           if (op.kind === 'copy') backedUp = await doCopy(op);
           else if (op.kind === 'mkdir') {
-            const cur = await t.stat(op.rel);
+            const cur = await tgt.stat(op.rel);
             if (cur && !cur.isDir) backedUp = await backupOrRemove(op.rel, false);
-            await t.mkdirp(op.rel);
+            await tgt.mkdirp(op.rel);
           } else backedUp = await backupOrRemove(op.rel, op.isDir);
           record(op, true, undefined, backedUp);
           return;
         } catch (e) {
           lastErr = e;
           if (attempt < s.retryCount && !cancel.cancelled) {
-            log('warn', `${op.rel}: ${errMessage(e)} — yeniden denenecek (${attempt + 1}/${s.retryCount})`, g.key);
+            log('warn', t('{path}: {error} — yeniden denenecek ({attempt}/{max})', { path: op.rel, error: errMessage(e), attempt: attempt + 1, max: s.retryCount }), g.key);
             await sleep(s.waitSeconds * 1000);
           }
         }
@@ -311,18 +321,27 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
 
       if (cancel.cancelled) {
         st.status = 'cancelled';
-        log('warn', 'İptal edildi', g.key);
+        log('warn', t('İptal edildi'), g.key);
       } else {
         st.status = st.failed === 0 ? 'ok' : st.failed === g.ops.length ? 'failed' : 'partial';
         if (backedUpAny) {
           st.backupPath = relJoin(s.backupFolderName, runStamp);
-          log('info', `Eski hâller yedeklendi: ${st.backupPath}`, g.key);
-          await pruneBackups(t, s.backupFolderName, s.backupKeep, (m) => log('info', m, g.key));
+          log('info', t('Eski hâller yedeklendi: {path}', { path: st.backupPath }), g.key);
+          await pruneBackups(tgt, s.backupFolderName, s.backupKeep, (m) => log('info', m, g.key));
         }
         const ok = g.ops.length - st.failed;
-        log(st.status === 'ok' ? 'ok' : 'error', `${st.status === 'ok' ? 'Başarılı' : 'Hatalı'}: ${ok}/${g.ops.length} işlem${s.dryRun ? ' (deneme)' : ''}`, g.key);
+        const doneParams = { ok, n: g.ops.length };
+        const doneMsg =
+          st.status === 'ok'
+            ? s.dryRun
+              ? t('Başarılı: {ok}/{n} işlem (deneme)', doneParams)
+              : t('Başarılı: {ok}/{n} işlem', doneParams)
+            : s.dryRun
+              ? t('Hatalı: {ok}/{n} işlem (deneme)', doneParams)
+              : t('Hatalı: {ok}/{n} işlem', doneParams);
+        log(st.status === 'ok' ? 'ok' : 'error', doneMsg, g.key);
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
-          await runPostCommand(s.postCommand, s.postCommandTimeoutSeconds, g, t, (lvl, m) => log(lvl, m, g.key));
+          await runPostCommand(s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
         }
       }
     } catch (e) {
@@ -333,7 +352,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       st.current = undefined;
       st.finishedAt = Date.now();
       emitProgress();
-      await t.close().catch(() => undefined);
+      await tgt.close().catch(() => undefined);
       for (const p of endpointCache.values()) await p.then((x) => x.close()).catch(() => undefined);
     }
   }
@@ -342,22 +361,22 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
 }
 
 function opLabel(op: ExecOp): string {
-  return op.kind === 'copy' ? 'Kopyalama' : op.kind === 'mkdir' ? 'Klasör' : 'Silme';
+  return op.kind === 'copy' ? t('Kopyalama') : op.kind === 'mkdir' ? t('Klasör') : t('Silme');
 }
 
 /** Keeps the newest `keep` yyyyMMdd-HHmmss folders under the backup folder; hand made folders are left alone. */
-export async function pruneBackups(t: Transport, folder: string, keep: number, log?: (m: string) => void): Promise<string[]> {
+export async function pruneBackups(tgt: Transport, folder: string, keep: number, log?: (m: string) => void): Promise<string[]> {
   if (keep <= 0) return [];
-  const list = (await t.list(folder)).filter((e) => e.isDir && parseStamp(relBase(e.rel)) != null);
+  const list = (await tgt.list(folder)).filter((e) => e.isDir && parseStamp(relBase(e.rel)) != null);
   list.sort((a, b) => relBase(b.rel).localeCompare(relBase(a.rel)));
   const removed: string[] = [];
   for (const old of list.slice(keep)) {
     try {
-      await t.remove(old.rel, true);
+      await tgt.remove(old.rel, true);
       removed.push(old.rel);
-      log?.(`Eski yedek silindi: ${old.rel}`);
+      log?.(t('Eski yedek silindi: {path}', { path: old.rel }));
     } catch (e) {
-      log?.(`Eski yedek silinemedi: ${old.rel} (${errMessage(e)})`);
+      log?.(t('Eski yedek silinemedi: {path} ({error})', { path: old.rel, error: errMessage(e) }));
     }
   }
   return removed;
@@ -367,7 +386,8 @@ async function runPostCommand(
   template: string,
   timeoutSec: number,
   g: ExecGroup,
-  t: Transport,
+  tgt: Transport,
+  source: ExecSettings['postSource'],
   log: (lvl: RunLogLine['level'], m: string) => void,
 ): Promise<void> {
   const n = g.node!;
@@ -376,9 +396,9 @@ async function runPostCommand(
     .replace(/\{targetId\}/g, n.id)
     .replace(/\{targetName\}/g, n.name)
     .replace(/\{networkRoot\}/g, n.networkRoot)
-    .replace(/\{destination\}/g, t.root)
-    .replace(/\{source\}/g, '');
-  log('info', `Sonrası komut: ${cmd}`);
+    .replace(/\{destination\}/g, source ? joinRoot(tgt.root, source.rel) : tgt.root)
+    .replace(/\{source\}/g, source?.path ?? '');
+  log('info', t('Sonrası komut: {cmd}', { cmd }));
   await new Promise<void>((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin ? spawn('cmd.exe', ['/d', '/s', '/c', cmd], { windowsHide: true, windowsVerbatimArguments: true }) : spawn('sh', ['-c', cmd]);
@@ -387,17 +407,18 @@ async function runPostCommand(
     child.stderr?.on('data', (d) => (out += d.toString()));
     const timer = setTimeout(() => {
       child.kill();
-      log('error', `Sonrası komut ${timeoutSec} sn içinde bitmedi, durduruldu`);
+      log('error', t('Sonrası komut {s} sn içinde bitmedi, durduruldu', { s: timeoutSec }));
     }, timeoutSec * 1000);
     child.on('error', (e) => {
       clearTimeout(timer);
-      log('error', `Sonrası komut çalıştırılamadı: ${e.message}`);
+      log('error', t('Sonrası komut çalıştırılamadı: {error}', { error: e.message }));
       resolve();
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       const tail = out.trim().split(/\r?\n/).slice(-5).join(' | ');
-      log(code === 0 ? 'ok' : 'error', `Sonrası komut bitti (kod ${code})${tail ? ': ' + tail : ''}`);
+      const codeText = String(code);
+      log(code === 0 ? 'ok' : 'error', tail ? t('Sonrası komut bitti (kod {code}): {output}', { code: codeText, output: tail }) : t('Sonrası komut bitti (kod {code})', { code: codeText }));
       resolve();
     });
   });

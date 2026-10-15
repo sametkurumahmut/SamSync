@@ -2,6 +2,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { RunDetail, RunSummary } from '../shared/types';
 import { stamp } from './util';
+import { locale, t } from '../shared/i18n';
 
 const MAX_RUNS = 300;
 
@@ -73,19 +74,26 @@ export class History {
       const s = v == null ? '' : String(v);
       return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const titles = new Map(run.targets.map((t) => [t.key, t]));
-    const rows = [['Zaman', 'Hedef', 'Hedef kökü', 'İşlem', 'Göreli yol', 'Sonuç', 'Yedeklendi', 'Hata'].join(';')];
+    const titles = new Map(run.targets.map((x) => [x.key, x]));
+    const rows = [[t('Zaman'), t('Hedef'), t('Hedef kökü'), t('İşlem'), t('Göreli yol'), t('Sonuç'), t('Yedeklendi'), t('Hata')].join(';')];
     for (const r of run.results) {
-      const t = titles.get(r.key);
+      const tgt = titles.get(r.key);
       rows.push(
-        [new Date(run.startedAt).toLocaleString('tr-TR'), t?.title ?? r.key, t?.root ?? '', r.kind, r.rel, r.ok ? 'başarılı' : 'hatalı', r.backedUp ? 'evet' : '', r.error ?? '']
+        [new Date(run.startedAt).toLocaleString(locale()), tgt?.title ?? r.key, tgt?.root ?? '', r.kind, r.rel, r.ok ? t('başarılı') : t('hatalı'), r.backedUp ? t('evet') : '', r.error ?? '']
           .map(esc)
           .join(';'),
       );
     }
     await fsp.mkdir(outDir, { recursive: true });
-    const file = path.join(outDir, `rapor-${stamp(new Date(run.startedAt))}.csv`);
+    // the run id keeps two runs that start in the same second apart
+    const file = path.join(outDir, `rapor-${stamp(new Date(run.startedAt))}-${run.id.slice(-6)}.csv`);
     await fsp.writeFile(file, '﻿' + rows.join('\r\n') + '\r\n', 'utf8');
     return file;
   }
+}
+
+/** Keeps the newest reports (their names sort by time). */
+export async function pruneReports(dir: string, keep = MAX_RUNS): Promise<void> {
+  const names = (await fsp.readdir(dir).catch(() => [] as string[])).filter((n) => /^rapor-.*\.csv$/.test(n)).sort().reverse();
+  for (const n of names.slice(keep)) await fsp.rm(path.join(dir, n), { force: true }).catch(() => undefined);
 }

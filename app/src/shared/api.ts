@@ -36,10 +36,37 @@ export interface PickOptions {
   filters?: { name: string; extensions: string[] }[];
 }
 
-export interface ExplorerMenuStatus {
-  supported: boolean;
+export interface NotepadPlusPlusInstallStatus {
+  exe: string;
+  version?: string;
+  configDir: string;
+  portable: boolean;
+  running: boolean;
   installed: boolean;
-  command?: string;
+  warnings: string[];
+}
+
+/** Explorer menu and Notepad++ integration (Windows only). */
+export interface IntegrationStatus {
+  supported: boolean;
+  explorer: {
+    enabled: boolean;
+    installed: boolean;
+    /** Program the menu starts. */
+    command?: string;
+    /** Groups shown as submenus with their machines / as one entry. */
+    expanded: string[];
+    collapsed: string[];
+    overBudget: boolean;
+    error?: string;
+  };
+  notepadPlusPlus: {
+    enabled: boolean;
+    installs: NotepadPlusPlusInstallStatus[];
+    /** Notepad++ was open while its files changed; they are written again once it closes. */
+    waitingForExit: boolean;
+    error?: string;
+  };
 }
 
 export interface BrowseEntry {
@@ -65,7 +92,7 @@ export interface Api {
   planSend(req: SendRequest, taskId: string): Promise<SendPlan>;
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
-  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean }): Promise<string>;
+  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean }): Promise<string>;
   cancelRun(runId: string): Promise<void>;
   compareWithTarget(src: SourceSpec, targetId: string, rel: string): Promise<DiffResult>;
 
@@ -103,8 +130,8 @@ export interface Api {
   openLog(): Promise<void>;
   statFile(p: string): Promise<FileMeta | null>;
 
-  explorerMenuStatus(): Promise<ExplorerMenuStatus>;
-  explorerMenuInstall(install: boolean): Promise<ExplorerMenuStatus>;
+  integrationStatus(): Promise<IntegrationStatus | null>;
+  integrationSet(patch: Pick<LocalSettings, 'explorerMenu' | 'notepadPlusPlus'>): Promise<IntegrationStatus | null>;
 
   updateState(): Promise<UpdateState>;
   updateCheck(): Promise<UpdateState>;
@@ -170,8 +197,8 @@ export const API_METHODS = {
   openExternal: true,
   openLog: true,
   statFile: true,
-  explorerMenuStatus: true,
-  explorerMenuInstall: true,
+  integrationStatus: true,
+  integrationSet: true,
   updateState: true,
   updateCheck: true,
   updateDownload: true,

@@ -14,8 +14,11 @@ import type {
   SourceInfo,
   UpdateState,
   AutomationState,
+  OpenRequest,
 } from '@shared/types';
+import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
+import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 
 export type Page = 'send' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
 export const PAGES: Page[] = ['send', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
@@ -66,6 +69,12 @@ interface State {
   automation: AutomationState | null;
   toasts: Toast[];
   palette: boolean;
+  /** UI language in effect; App re-mounts when it changes so every t() runs again. */
+  lang: Lang;
+  /** Explorer menu and Notepad++ integration (Windows). */
+  integration: IntegrationStatus | null;
+  /** "Restore from backup" from the Explorer or Notepad++ menu: the Backups page takes these items. */
+  restoreRequest: { paths: string[]; seq: number } | null;
 
   sendPaths: string[];
   sendInfos: SourceInfo[];
@@ -110,6 +119,10 @@ let toastSeq = 1;
 let lastProbe = 0;
 let optionsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 const media = window.matchMedia('(prefers-color-scheme: dark)');
+// until the settings arrive, guess from the browser so the first screen is already in the right language
+const firstLang = systemLang([...navigator.languages]);
+setLang(firstLang);
+document.documentElement.lang = firstLang;
 
 export const useApp = create<State>((set, get) => ({
   boot: null,
@@ -122,6 +135,9 @@ export const useApp = create<State>((set, get) => ({
   automation: null,
   toasts: [],
   palette: false,
+  lang: firstLang,
+  integration: null,
+  restoreRequest: null,
   sendPaths: [],
   sendInfos: [],
   targets: [],
@@ -142,24 +158,13 @@ export const useApp = create<State>((set, get) => ({
     try {
       const boot = await api.bootstrap();
       const s = boot.settings;
-      const options: SendOptions = {
-        ...DEFAULT_OPTIONS,
-        excludeFiles: boot.config.copy.excludeFiles,
-        excludeDirs: boot.config.copy.excludeDirs,
-        parallelTargets: boot.config.copy.parallelTargets,
-        verify: boot.config.copy.verify,
-        ...(s.sendDefaults ?? {}),
-        ...(s.lastOptions ?? {}),
-        dryRun: false,
-      };
+      const options: SendOptions = { ...baseOptions(boot), ...(s.lastOptions ?? {}), dryRun: false };
       const known = new Set(boot.config.nodes.map((n) => n.id));
-      set({ boot, options, targets: s.lastTargets.filter((t) => known.has(t)) });
+      set({ boot, options, targets: s.lastTargets.filter((id) => known.has(id)) });
       get().applyTheme();
-      if (boot.initialPaths.length) {
-        set({ page: 'send' });
-        await get().addSendPaths(boot.initialPaths);
-        if (boot.initialTargets.length) await reviewWithTargets(boot.initialTargets);
-      }
+      // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
+      if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
+      for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
       setInterval(() => {
@@ -191,7 +196,7 @@ export const useApp = create<State>((set, get) => ({
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 9000 : 4500);
   },
   dismissToast(id) {
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
   },
 
   applyTheme() {
@@ -221,7 +226,7 @@ export const useApp = create<State>((set, get) => ({
         return { probes };
       });
     } catch (e) {
-      get().toast('error', 'Erişim yoklaması başarısız', (e as Error).message);
+      get().toast('error', t('Erişim yoklaması başarısız'), (e as Error).message);
     } finally {
       set({ probing: false });
     }
@@ -265,23 +270,23 @@ export const useApp = create<State>((set, get) => ({
       options: { ...st.options, ...(req.options ?? {}) },
     };
     if (!full.targetIds.length) {
-      st.toast('warn', 'Hedef seçilmedi', 'Göndermek için en az bir makine seçin.');
+      st.toast('warn', t('Hedef seçilmedi'), t('Göndermek için en az bir makine seçin.'));
       return;
     }
     if (!full.sources.length) {
-      st.toast('warn', 'Kaynak yok', 'Gönderilecek dosya veya klasör seçin.');
+      st.toast('warn', t('Kaynak yok'), t('Gönderilecek dosya veya klasör seçin.'));
       return;
     }
-    set({ planning: { taskId, message: 'Hazırlanıyor…' } });
+    set({ planning: { taskId, message: t('Hazırlanıyor…') } });
     try {
       const plan = await api.planSend(full, taskId);
       if (get().planning?.taskId !== taskId) return; // cancelled
       const selected: Record<string, Set<string>> = {};
-      for (const t of plan.targets) selected[t.targetId] = new Set(t.ops.filter((o) => o.selected).map((o) => o.id));
+      for (const tp of plan.targets) selected[tp.targetId] = new Set(tp.ops.filter((o) => o.selected).map((o) => o.id));
       set({ review: { plan, selected }, planning: null });
     } catch (e) {
       set({ planning: null });
-      if (!/İptal/.test((e as Error).message)) st.toast('error', 'İnceleme başarısız', (e as Error).message);
+      if (!(e as Error).message.includes(t('İptal edildi'))) st.toast('error', t('İnceleme başarısız'), (e as Error).message);
     }
   },
   cancelPlan() {
@@ -302,12 +307,16 @@ export const useApp = create<State>((set, get) => ({
     if (!r) return;
     const selected: Record<string, string[]> = {};
     for (const [k, v] of Object.entries(r.selected)) selected[k] = [...v];
+    // mirror deletes on the targets: ask once more, with the total, before anything is written
+    const deletes = r.plan.targets.reduce((n, tp) => n + tp.ops.filter((o) => o.kind === 'delete' && r.selected[tp.targetId]?.has(o.id)).length, 0);
+    const dry = dryRun ?? r.plan.request.options.dryRun;
+    if (r.plan.request.options.mode === 'mirror' && deletes && !dry && !confirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }))) return;
     try {
       const runId = await api.executePlan(r.plan.id, selected, dryRun != null ? { dryRun } : undefined);
       set({ review: null });
       get().watchRun(runId);
     } catch (e) {
-      get().toast('error', 'Gönderim başlatılamadı', (e as Error).message);
+      get().toast('error', t('Gönderim başlatılamadı'), (e as Error).message);
     }
   },
   watchRun(runId) {
@@ -321,7 +330,7 @@ export const useApp = create<State>((set, get) => ({
       set({ boot: { ...boot, config: r.config, identity: r.identity, configError: undefined } });
       return true;
     } catch (e) {
-      get().toast('error', 'Yapılandırma kaydedilemedi', (e as Error).message);
+      get().toast('error', t('Yapılandırma kaydedilemedi'), (e as Error).message);
       return false;
     }
   },
@@ -340,6 +349,15 @@ export const useApp = create<State>((set, get) => ({
     get().applyTheme();
   },
 }));
+
+useApp.subscribe((s) => {
+  if (!s.boot) return;
+  const lang = resolveLang(s.boot.settings.language, s.boot.systemLang);
+  if (lang === s.lang) return;
+  setLang(lang);
+  document.documentElement.lang = lang;
+  useApp.setState({ lang });
+});
 
 const MAX_LOG = 4000;
 
@@ -374,20 +392,21 @@ function handleEvent(e: AppEvent) {
       });
       const r = e.run;
       if (r.status === 'ok') {
-        st.toast('ok', r.dryRun ? 'Deneme tamamlandı' : 'Gönderim tamamlandı', `${r.opsOk} işlem • ${r.targets.length} hedef`);
+        st.toast('ok', r.dryRun ? t('Deneme tamamlandı') : t('Gönderim tamamlandı'), `${t('{n} işlem', { n: r.opsOk })} • ${t('{n} hedef', { n: r.targets.length })}`);
         if (st.boot?.settings.closeRunPanelOnSuccess && st.activeRunId === r.id) useApp.setState({ runPanel: false });
-      } else if (r.status === 'cancelled') st.toast('warn', 'İptal edildi', `${r.opsOk} işlem tamamlanmıştı`);
-      else st.toast('error', r.status === 'partial' ? 'Kısmen başarılı' : 'Gönderim başarısız', `${r.opsOk} başarılı, ${r.opsFailed} hatalı`);
+      } else if (r.status === 'cancelled') st.toast('warn', t('İptal edildi'), t('{n} işlem tamamlanmıştı', { n: r.opsOk }));
+      else st.toast('error', r.status === 'partial' ? t('Kısmen başarılı') : t('Gönderim başarısız'), t('{ok} başarılı, {failed} hatalı', { ok: r.opsOk, failed: r.opsFailed }));
       break;
     }
     case 'task-progress':
       useApp.setState((s) => (s.planning?.taskId === e.taskId ? { planning: { ...s.planning, message: e.message, done: e.done, total: e.total } } : {}));
       break;
-    case 'open-paths':
-      st.setPage('send');
-      // a launch with --to is its own send; it does not mix with what was already on the list
-      if (e.targets) st.clearSendPaths();
-      void st.addSendPaths(e.paths).then(() => e.targets && reviewWithTargets(e.targets));
+    case 'open':
+      if (st.boot) void handleOpen(e.request);
+      else pendingOpen.push(e.request);
+      break;
+    case 'integration':
+      useApp.setState({ integration: e.status });
       break;
     case 'config-changed': {
       const boot = st.boot;
@@ -410,28 +429,127 @@ function handleEvent(e: AppEvent) {
   }
 }
 
-/** Command line --to: resolve group:/profile:/all into node ids, select them and open the review. */
-async function reviewWithTargets(raw: string[]) {
+/** Launches that arrive before the bootstrap; handled right after it. */
+const pendingOpen: OpenRequest[] = [];
+
+/** Send options before the user changes anything: config defaults plus the defaults from Settings. */
+function baseOptions(boot: Bootstrap): SendOptions {
+  return {
+    ...DEFAULT_OPTIONS,
+    excludeFiles: boot.config.copy.excludeFiles,
+    excludeDirs: boot.config.copy.excludeDirs,
+    parallelTargets: boot.config.copy.parallelTargets,
+    verify: boot.config.copy.verify,
+    ...(boot.settings.sendDefaults ?? {}),
+    dryRun: false,
+  };
+}
+
+interface ResolvedTargets {
+  targets: string[];
+  /** Options saved with a profile or with the last send. */
+  options?: Partial<SendOptions>;
+  label?: string;
+}
+
+/** --to tokens: node ids, group:<name>, profile:<name or id>, all, last. Only enabled machines other than this one. */
+function resolveTargets(raw: string[]): ResolvedTargets | null {
   const st = useApp.getState();
-  const cfg = st.boot?.config;
-  if (!cfg) return;
-  const local = st.boot?.identity.node?.id;
+  const boot = st.boot;
+  if (!boot) return null;
+  const cfg = boot.config;
   const ids = new Set<string>();
+  let options: Partial<SendOptions> | undefined;
+  let label: string | undefined;
   for (const r of raw) {
     const k = r.toLowerCase();
     if (k === 'all') cfg.nodes.forEach((n) => ids.add(n.id));
-    else if (k.startsWith('group:')) cfg.nodes.filter((n) => n.group?.toLowerCase() === k.slice(6)).forEach((n) => ids.add(n.id));
-    else if (k.startsWith('profile:')) cfg.profiles.find((p) => p.name.toLowerCase() === k.slice(8) || p.id.toLowerCase() === k.slice(8))?.targetIds.forEach((t) => ids.add(t));
-    else {
+    else if (k === 'last') {
+      boot.settings.lastTargets.forEach((id) => ids.add(id));
+      options = { ...options, ...(boot.settings.lastOptions ?? {}) };
+      label = t('Son ayar');
+    } else if (k.startsWith('group:')) cfg.nodes.filter((n) => n.group?.toLowerCase() === k.slice(6)).forEach((n) => ids.add(n.id));
+    else if (k.startsWith('profile:')) {
+      const p = cfg.profiles.find((x) => x.name.toLowerCase() === k.slice(8) || x.id.toLowerCase() === k.slice(8));
+      p?.targetIds.forEach((id) => ids.add(id));
+      if (p) {
+        options = { ...options, ...(p.options ?? {}) };
+        label = t('Profil: {name}', { name: p.name });
+      }
+    } else {
       const n = cfg.nodes.find((x) => x.id.toLowerCase() === k);
       if (n) ids.add(n.id);
     }
   }
+  const local = boot.identity.node?.id;
   const targets = cfg.nodes.filter((n) => ids.has(n.id) && n.enabled && n.id !== local).map((n) => n.id);
-  if (!targets.length) return st.toast('warn', 'Komut satırındaki hedefler bulunamadı', raw.join(', '));
-  st.setTargets(targets);
-  const paths = useApp.getState().sendPaths;
-  await st.startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: targets });
+  if (!targets.length) {
+    if (raw.some((r) => r.toLowerCase() === 'last')) st.toast('warn', t('Son gönderim ayarı yok'), t('Önce bir kez “İncele ve gönder” ile gönderin; sonra aynı hedefler ve seçenekler tek tıkla kullanılır.'));
+    else st.toast('warn', t('Komut satırındaki hedefler bulunamadı'), raw.join(', '));
+    return null;
+  }
+  return { targets, options, label };
+}
+
+/** Opens what Explorer, Notepad++ or the command line asked for. */
+async function handleOpen(r: OpenRequest) {
+  const st = useApp.getState();
+  if (r.restore) {
+    st.setPage('backups');
+    useApp.setState((s) => ({ restoreRequest: { paths: r.paths, seq: (s.restoreRequest?.seq ?? 0) + 1 } }));
+    return;
+  }
+  if (!r.targets?.length) {
+    st.setPage('send');
+    await st.addSendPaths(r.paths);
+    return;
+  }
+  const to = resolveTargets(r.targets);
+  if (!to || !r.paths.length) return;
+  if (r.send) return sendNow(r.paths, to);
+  st.setPage('send');
+  // a launch with --to is its own send; it does not mix with what was already on the list
+  st.clearSendPaths();
+  await st.addSendPaths(r.paths);
+  st.setTargets(to.targets);
+  if (to.options) st.setOptions(to.options);
+  await st.startPlan({ sources: r.paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: to.targets, label: to.label });
+}
+
+/**
+ * The one-click menu entries: plan and send at once, like the old tool's menu did. The Send page list is left
+ * alone. A plan that would delete on a target (mirror from a profile or the last settings) opens the review.
+ */
+async function sendNow(paths: string[], to: ResolvedTargets) {
+  const st = useApp.getState();
+  const boot = st.boot!;
+  const options: SendOptions = { ...baseOptions(boot), ...(to.options ?? {}), dryRun: false };
+  const taskId = newTaskId();
+  useApp.setState({ planning: { taskId, message: t('Hazırlanıyor…') } });
+  try {
+    const plan = await api.planSend({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: to.targets, options, label: to.label }, taskId);
+    if (useApp.getState().planning?.taskId !== taskId) return; // cancelled
+    useApp.setState({ planning: null });
+    const selected: Record<string, string[]> = {};
+    let deletes = 0;
+    for (const tp of plan.targets) {
+      const ops = tp.ops.filter((o) => o.selected);
+      selected[tp.targetId] = ops.map((o) => o.id);
+      deletes += ops.filter((o) => o.kind === 'delete').length;
+    }
+    if (deletes) {
+      const sel: Record<string, Set<string>> = {};
+      for (const [k, v] of Object.entries(selected)) sel[k] = new Set(v);
+      useApp.setState({ review: { plan, selected: sel } });
+      st.toast('warn', t('Gönderim hedefte silme yapacak'), t('{n} öğe silinecek; göndermeden önce gözden geçirin.', { n: deletes }));
+      return;
+    }
+    const runId = await api.executePlan(plan.id, selected, { remember: false });
+    st.watchRun(runId);
+  } catch (e) {
+    useApp.setState({ planning: null });
+    if (!(e as Error).message.includes(t('İptal edildi'))) st.toast('error', t('Gönderim başlatılamadı'), (e as Error).message);
+  }
 }
 
 /** Selectors */

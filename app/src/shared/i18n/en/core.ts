@@ -1,0 +1,225 @@
+// The core (plans, runs, sync, git, probes, config, history CSV, root.log) and the tray and updater.
+import { pl, type Dict, type Params } from '../types';
+
+/** True when a count param is exactly 1, for entries with more than one count. */
+const one = (v: string | number | undefined) => Number(String(v).replace(/[^\d.-]/g, '')) === 1;
+/** "{key} one" or "{key} other" by the count in p[key]. */
+const n = (p: Params, key: string, single: string, plural: string) => (one(p[key]) ? single : plural);
+
+const d: Dict = {
+  // Log components (root.log)
+  Uygulama: 'App',
+  Config: 'Config',
+  Plan: 'Plan',
+  Geçmiş: 'History',
+  Senkron: 'Sync',
+  Kopyala: 'Copy',
+  İzleme: 'Watch',
+  Zamanlama: 'Schedule',
+
+  // Service
+  'SamSync {version} başladı ({host}, {platform}); config: {config}; node: {node} ({reason})':
+    'SamSync {version} started ({host}, {platform}); config: {config}; node: {node} ({reason})',
+  'Yapılandırma okunamadı: {path}': 'Could not read the configuration: {path}',
+  'Yapılandırma kaydedildi ({n} node)': pl('Configuration saved ({n} node)', 'Configuration saved ({n} nodes)'),
+  '{n} kaynak → {targets} ({mode}, {compare})': pl('{n} source → {targets} ({mode}, {compare})', '{n} sources → {targets} ({mode}, {compare})'),
+  Kaydedilemedi: 'Could not save',
+  'Sonrası işlem': 'Post-run step',
+  '{ok} başarılı, {failed} hatalı • {n} hedef': pl('{ok} succeeded, {failed} failed • {n} target', '{ok} succeeded, {failed} failed • {n} targets'),
+  'Çalıştırma hatası': 'Run error',
+  'Seçili işlem yok.': 'No operation selected.',
+  'Git gönderimi': 'Git send',
+  Gönderim: 'Send',
+  'Plan bulunamadı ya da eskidi; yeniden inceleyin.': 'The plan was not found or is out of date; review again.',
+  hedef: 'target',
+  kaynak: 'source',
+  'Hedefte yok: dosyanın tamamı eklenecek': 'Not on the target: the whole file will be added',
+  'Karşılaştırma sonucu bulunamadı; yeniden karşılaştırın.': 'Comparison result not found; compare again.',
+  'Yapılacak işlem yok.': 'Nothing to do.',
+  'Senkron: {name}': 'Sync: {name}',
+  'İzlenecek dosya ya da klasör yok.': 'No file or folder to watch.',
+  'Hedef seçilmedi.': 'No target selected.',
+  '{name}: {n} yol → {targets}': pl('{name}: {n} path → {targets}', '{name}: {n} paths → {targets}'),
+  'İş bulunamadı': 'Job not found',
+  'Öğe bulunamadı': 'Item not found',
+  sağ: 'right',
+  sol: 'left',
+  'Geri alınacak yedek bulunamadı.': 'No backup found to restore.',
+  'Geri alma: {path}': 'Restore: {path}',
+  'Yalnızca http(s) bağlantıları açılabilir': 'Only http(s) links can be opened',
+  'Güncelleme yalnızca kurulu masaüstü uygulamasında çalışır.': 'Updates only work in the installed desktop app.',
+
+  // Automation (watches and schedules)
+  'Otomatik: {name}': 'Auto: {name}',
+  '{n} değişiklik, hedefler zaten güncel': pl('{n} change, targets already up to date', '{n} changes, targets already up to date'),
+  '{n} işlem • {targets} hedef • {failed} hata': (p) =>
+    `${n(p, 'n', '{n} operation', '{n} operations')} • ${n(p, 'targets', '{targets} target', '{targets} targets')} • ${n(p, 'failed', '{failed} error', '{failed} errors')}`,
+  '{n} işlem • {targets} hedef': (p) => `${n(p, 'n', '{n} operation', '{n} operations')} • ${n(p, 'targets', '{targets} target', '{targets} targets')}`,
+  'Otomatik gönderim: {n} hatalı işlem': pl('Auto send: {n} failed operation', 'Auto send: {n} failed operations'),
+  '{name}: gönderim başarısız': '{name}: send failed',
+  'Yalnızca {machine} makinesinde çalışır': 'Runs only on {machine}',
+  'Zamanlanmış: {name}': 'Scheduled: {name}',
+  'Yalnızca çakışmalar var': 'Only conflicts',
+  'Değişiklik yok': 'No changes',
+  '{n} işlem • {failed} hata': (p) => `${n(p, 'n', '{n} operation', '{n} operations')} • ${n(p, 'failed', '{failed} error', '{failed} errors')}`,
+  '{n} işlem': pl('{n} operation', '{n} operations'),
+  '{ok} başarılı, {failed} hatalı': '{ok} succeeded, {failed} failed',
+  '{name} çalışmadı': '{name} did not run',
+
+  // Configuration
+  'Yapılandırma bir JSON nesnesi olmalı.': 'The configuration must be a JSON object.',
+  "Node #{n}: id yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '{id}'":
+    "Node #{n}: the id may only contain letters, digits, dots, underscores and hyphens: '{id}'",
+  'Node id değerleri benzersiz olmalı (büyük/küçük harf duyarsız): {id}': 'Node ids must be unique (case-insensitive): {id}',
+  '{id}: address (IP veya bilgisayar adı) gerekli.': '{id}: address (IP or computer name) is required.',
+  '{id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).': '{id}: networkRoot is required (example: Sim\\ActiveRelease).',
+  '{id}: path transport için hedef klasör (path) gerekli.': '{id}: the path transport needs a target folder (path).',
+  '{id}: sftp için kullanıcı adı gerekli.': '{id}: sftp needs a user name.',
+  '{file} geçerli JSON değil: {error}': '{file} is not valid JSON: {error}',
+
+  // Identity (which node is this machine)
+  'Ayarlarda sabitlendi: {id}': 'Pinned in Settings: {id}',
+  '{rule}; yerel kökü bu makinede olan tek node': '{rule}; the only node whose local root is on this machine',
+  '{rule} birden çok node ile eşleşti: {ids}': '{rule} matched several nodes: {ids}',
+  'IP adresi eşleşti ({address})': 'IP address matched ({address})',
+  'Bilgisayar adı eşleşti ({host})': 'Computer name matched ({host})',
+  'Bu makine ({host}) yapılandırmadaki hiçbir node ile eşleşmedi.': 'This machine ({host}) matched no node in the configuration.',
+
+  // Send plan
+  'Kaynak bulunamadı: {path} ({error})': 'Source not found: {path} ({error})',
+  '{path} yerel kökün kendisi: kökün tamamı gönderilecek.': '{path} is the local root itself: the whole root will be sent.',
+  'Kaynak taranıyor: {path}': 'Scanning source: {path}',
+  'Okunamadı: {path} ({error})': 'Could not read: {path} ({error})',
+  '{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.': '{path} is not under any local root; it will be sent with its full path ({rel}).',
+  'Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.': 'A folder with the same name is on the target; it will be removed and the file written.',
+  'Hedefte aynı adda dosya var; dosya kaldırılıp klasör oluşturulacak.': 'A file with the same name is on the target; it will be removed and the folder created.',
+  'Hedefte aynı adda dosya var.': 'A file with the same name is on the target.',
+  'Hedefte aynı adda klasör var.': 'A folder with the same name is on the target.',
+  'Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).': 'This machine itself was left out of the targets (source and target would be the same).',
+  'Gönderilecek etkin hedef yok.': 'No enabled target to send to.',
+  'Hedefler inceleniyor': 'Reviewing targets',
+  '{name} incelendi': '{name} reviewed',
+  '{name}: hedefte {free} boş alan var, {size} yazılacak.': '{name}: the target has {free} free, {size} will be written.',
+  'Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.': pl(
+    'Mirror mode: {n} extra item in total will be deleted on the targets.',
+    'Mirror mode: {n} extra items in total will be deleted on the targets.',
+  ),
+
+  // Run (executor) log
+  '{label} başladı: {targets} hedef, {ops} işlem (deneme çalıştırması, hiçbir şey yazılmayacak)': (p) =>
+    `{label} started: ${n(p, 'targets', '{targets} target', '{targets} targets')}, ${n(p, 'ops', '{ops} operation', '{ops} operations')} (dry run, nothing will be written)`,
+  '{label} başladı: {targets} hedef, {ops} işlem': (p) =>
+    `{label} started: ${n(p, 'targets', '{targets} target', '{targets} targets')}, ${n(p, 'ops', '{ops} operation', '{ops} operations')}`,
+  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn': 'Done: {ok} succeeded, {failed} failed, {size}, {s} s',
+  'Hedefe bağlanılamadı: {error}': 'Could not connect to the target: {error}',
+  'Kaynak uç bulunamadı: {key}': 'Source endpoint not found: {key}',
+  '→ {root} ({n} işlem, yedekli)': pl('→ {root} ({n} operation, with backup)', '→ {root} ({n} operations, with backup)'),
+  '→ {root} ({n} işlem)': pl('→ {root} ({n} operation)', '→ {root} ({n} operations)'),
+  'Yazılan geçici dosya bulunamadı': 'The written temporary file was not found',
+  'Boyut tutmuyor: {written} ≠ {expected}': 'Size mismatch: {written} ≠ {expected}',
+  'Doğrulama başarısız: içerik özeti tutmuyor': 'Verification failed: the content hash does not match',
+  '{path}: {error} — yeniden denenecek ({attempt}/{max})': '{path}: {error} — will retry ({attempt}/{max})',
+  'İptal edildi': 'Cancelled',
+  'Eski hâller yedeklendi: {path}': 'Previous versions backed up: {path}',
+  'Başarılı: {ok}/{n} işlem (deneme)': pl('Succeeded: {ok}/{n} operation (dry run)', 'Succeeded: {ok}/{n} operations (dry run)'),
+  'Başarılı: {ok}/{n} işlem': pl('Succeeded: {ok}/{n} operation', 'Succeeded: {ok}/{n} operations'),
+  'Hatalı: {ok}/{n} işlem (deneme)': pl('Failed: {ok}/{n} operation succeeded (dry run)', 'Failed: {ok}/{n} operations succeeded (dry run)'),
+  'Hatalı: {ok}/{n} işlem': pl('Failed: {ok}/{n} operation succeeded', 'Failed: {ok}/{n} operations succeeded'),
+  Kopyalama: 'Copy',
+  Klasör: 'Folder',
+  Silme: 'Delete',
+  'Eski yedek silindi: {path}': 'Old backup deleted: {path}',
+  'Eski yedek silinemedi: {path} ({error})': 'Could not delete the old backup: {path} ({error})',
+  'Sonrası komut: {cmd}': 'Post command: {cmd}',
+  'Sonrası komut {s} sn içinde bitmedi, durduruldu': 'Post command did not finish within {s} s, stopped',
+  'Sonrası komut çalıştırılamadı: {error}': 'Could not run the post command: {error}',
+  'Sonrası komut bitti (kod {code}): {output}': 'Post command finished (code {code}): {output}',
+  'Sonrası komut bitti (kod {code})': 'Post command finished (code {code})',
+
+  // Git
+  'HEAD (ayrık)': 'HEAD (detached)',
+  'git cat-file {object} başarısız (kod {code}): {error}': 'git cat-file {object} failed (code {code}): {error}',
+  'Dosya okunamadı': 'Could not read the file',
+  '(yok)': '(none)',
+  'çalışma kopyası': 'working copy',
+  'Commit seçilmedi': 'No commit selected',
+  '(boş)': '(empty)',
+  'Fark çok büyük (4 MB üstü)': 'Diff too large (over 4 MB)',
+  'İkili dosya: satır farkı gösterilemez': 'Binary file: no line diff can be shown',
+
+  // Text diff
+  'Dosya satır farkı için çok büyük (4 MB üstü)': 'File too large for a line diff (over 4 MB)',
+  'İkili dosyalar aynı': 'The binary files are identical',
+  'Yalnızca satır sonları (CRLF/LF) farklı': 'Only the line endings (CRLF/LF) differ',
+  'Fark hesaplanamayacak kadar karmaşık': 'Too complex to compute a diff',
+
+  // History CSV report
+  Zaman: 'Time',
+  Hedef: 'Target',
+  'Hedef kökü': 'Target root',
+  İşlem: 'Operation',
+  'Göreli yol': 'Relative path',
+  Sonuç: 'Result',
+  Yedeklendi: 'Backed up',
+  Hata: 'Error',
+  başarılı: 'succeeded',
+  hatalı: 'failed',
+  evet: 'yes',
+
+  // Reachability probes
+  '{ms} ms içinde yanıt yok': 'No response within {ms} ms',
+  'SSH {host}:{port} yanıt verdi ({ms} ms)': 'SSH {host}:{port} responded ({ms} ms)',
+  'SSH yanıt vermedi: {error}': 'SSH did not respond: {error}',
+  'Klasör erişilebilir': 'Folder reachable',
+  'Yol bir klasör değil': 'The path is not a folder',
+  'Klasöre erişilemedi: {error}': 'Could not reach the folder: {error}',
+  'SMB (445) yanıt vermedi: {error}': 'SMB (445) did not respond: {error}',
+  'SMB yanıt verdi ({ms} ms), bağlama noktası erişilebilir': 'SMB responded ({ms} ms), mount point reachable',
+  'SMB yanıt verdi ama {path} bağlı değil': 'SMB responded but {path} is not mounted',
+  'SMB (445) yanıt verdi ({ms} ms)': 'SMB (445) responded ({ms} ms)',
+
+  // Folder sync
+  'Bir tarafta klasör, öbür tarafta dosya': 'A folder on one side, a file on the other',
+  'Sağda silinmiş ama solda değiştirilmiş': 'Deleted on the right but changed on the left',
+  'Solda silinmiş ama sağda değiştirilmiş': 'Deleted on the left but changed on the right',
+  'İki tarafta da değiştirilmiş': 'Changed on both sides',
+  'Tarihler aynı, içerik farklı': 'Same dates, different content',
+  'Sol klasör bulunamadı: {path}': 'Left folder not found: {path}',
+  'sol {path}: {error}': 'left {path}: {error}',
+  'sağ {path}: {error}': 'right {path}: {error}',
+  '{left} ⇄ {right}: {n} öğe': pl('{left} ⇄ {right}: {n} item', '{left} ⇄ {right}: {n} items'),
+  '{name} (sağ)': '{name} (right)',
+  '{name} (sol)': '{name} (left)',
+
+  // Backups, transports, timeouts
+  'Hedef bulunamadı': 'Target not found',
+  'Hedef bulunamadı: {id}': 'Target not found: {id}',
+  '{id}: SFTP ayarları eksik.': '{id}: SFTP settings are missing.',
+  'Bulunamadı: {path}': 'Not found: {path}',
+  'Klasör oluşturulamadı, aynı adda dosya var: {path}': 'Could not create the folder, a file with the same name exists: {path}',
+  'Zaman aşımı': 'Timed out',
+
+  // Tray
+  '{watches} izleme • {schedules} zamanlanmış iş': (p) =>
+    `${n(p, 'watches', '{watches} watch', '{watches} watches')} • ${n(p, 'schedules', '{schedules} scheduled job', '{schedules} scheduled jobs')}`,
+  'otomasyon duraklatıldı': 'automation paused',
+  'gönderiliyor…': 'sending…',
+  'SamSync’i aç': 'Open SamSync',
+  'Otomasyonu sürdür': 'Resume automation',
+  'Otomasyonu duraklat': 'Pause automation',
+  Çıkış: 'Quit',
+
+  // Updater
+  'Geliştirme modunda güncelleme denetlenmez.': 'Updates are not checked in development mode.',
+  'Taşınabilir (portable) sürüm kendini güncelleyemez; kurulum sürümünü kullanın.': 'The portable version cannot update itself; use the installer version.',
+  'Güncellemeler kapalı.': 'Updates are turned off.',
+  'Klasörden güncelleme yalnızca Windows kurulumunda desteklenir.': 'Updating from a folder is only supported in the Windows installation.',
+  'Güncelleme klasörü ayarlanmamış.': 'No update folder is set.',
+  'Güncelleme adresi ayarlanmamış.': 'No update address is set.',
+  'Linux’ta otomatik güncelleme yalnızca AppImage paketinde çalışır.': 'On Linux, automatic updates only work in the AppImage package.',
+  'Bu pakette GitHub güncelleme adresi yok.': 'This package has no GitHub update address.',
+  'latest.yml içinde version/path yok': 'latest.yml has no version/path',
+  'Kurulum dosyasının özeti latest.yml ile tutmuyor': 'The installer hash does not match latest.yml',
+};
+
+export default d;

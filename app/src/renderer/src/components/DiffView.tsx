@@ -4,6 +4,7 @@ import { Columns2, Rows3, FileWarning, CheckCircle2, Copy } from 'lucide-react';
 import type { DiffLine, DiffResult } from '@shared/types';
 import { Button, Segmented } from './ui';
 import { bytes, cls, dateTime } from '../lib/format';
+import { t } from '@shared/i18n';
 
 type SplitRow = { kind: 'hunk'; text: string } | { kind: 'pair'; l?: DiffLine; r?: DiffLine };
 
@@ -61,53 +62,53 @@ export function DiffView({ diff, loading, error, title, emptyHint }: { diff: Dif
           value={mode}
           onChange={setModeP}
           options={[
-            { value: 'unified', label: '', icon: <Rows3 size={13} />, tip: 'Tek sütun' },
-            { value: 'split', label: '', icon: <Columns2 size={13} />, tip: 'Yan yana' },
+            { value: 'unified', label: '', icon: <Rows3 size={13} />, tip: t('Tek sütun') },
+            { value: 'split', label: '', icon: <Columns2 size={13} />, tip: t('Yan yana') },
           ]}
         />
-        <Button size="sm" variant="ghost" iconOnly icon={<Copy size={13} />} tip="Farkı panoya kopyala" onClick={copy} disabled={!lines.length} />
+        <Button size="sm" variant="ghost" iconOnly icon={<Copy size={13} />} tip={t('Farkı panoya kopyala')} onClick={copy} disabled={!lines.length} />
       </div>
       {(diff?.leftInfo || diff?.rightInfo) && (
         <div className="diff-meta">
           <div>
-            <span className="badge red">{diff.leftLabel ?? 'sol'}</span>
+            <span className="badge red">{diff.leftLabel ?? t('sol')}</span>
             {diff.leftInfo?.exists ? (
               <span className="faint">
                 {bytes(diff.leftInfo.size)} • {dateTime(diff.leftInfo.mtimeMs)}
               </span>
             ) : (
-              <span className="faint">yok</span>
+              <span className="faint">{t('yok')}</span>
             )}
           </div>
           <div>
-            <span className="badge green">{diff.rightLabel ?? 'sağ'}</span>
+            <span className="badge green">{diff.rightLabel ?? t('sağ')}</span>
             {diff.rightInfo?.exists ? (
               <span className="faint">
                 {bytes(diff.rightInfo.size)} • {dateTime(diff.rightInfo.mtimeMs)}
               </span>
             ) : (
-              <span className="faint">yok</span>
+              <span className="faint">{t('yok')}</span>
             )}
           </div>
         </div>
       )}
       {loading ? (
         <div className="diff-msg">
-          <div className="spinner" /> Fark hesaplanıyor…
+          <div className="spinner" /> {t('Fark hesaplanıyor…')}
         </div>
       ) : error ? (
         <div className="diff-msg error">
           <FileWarning size={18} /> {error}
         </div>
       ) : !diff ? (
-        <div className="diff-msg faint">{emptyHint ?? 'Farkını görmek için bir dosya seçin'}</div>
+        <div className="diff-msg faint">{emptyHint ?? t('Farkını görmek için bir dosya seçin')}</div>
       ) : !diff.ok ? (
         <div className="diff-msg">
           <FileWarning size={18} /> {diff.reason}
         </div>
       ) : diff.identical || !lines.length ? (
         <div className="diff-msg">
-          <CheckCircle2 size={18} color="var(--green)" /> {diff.reason ?? 'İçerik aynı'}
+          <CheckCircle2 size={18} color="var(--green)" /> {diff.reason ?? t('İçerik aynı')}
         </div>
       ) : (
         <div ref={parent} className="diff-scroll selectable">

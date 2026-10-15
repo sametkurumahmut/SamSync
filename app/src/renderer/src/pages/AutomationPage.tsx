@@ -31,14 +31,16 @@ import { api } from '../lib/api';
 import { Button, Empty, Field, Modal, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { ago, baseName, cls, num } from '../lib/format';
+import { t, locale } from '@shared/i18n';
+import { tx } from '../lib/i18n';
 
 function StatusPill({ status }: { status: WatchState['status'] }) {
   const map: Record<WatchState['status'], { label: string; cls: string; icon: React.ReactNode }> = {
-    watching: { label: 'İzleniyor', cls: 'green', icon: <Eye size={11} /> },
-    pending: { label: 'Bekliyor', cls: 'amber', icon: <Clock size={11} /> },
-    sending: { label: 'Gönderiliyor', cls: 'blue', icon: <Loader2 size={11} className="spin" /> },
-    paused: { label: 'Duraklatıldı', cls: '', icon: <Pause size={11} /> },
-    error: { label: 'Hata', cls: 'red', icon: <AlertTriangle size={11} /> },
+    watching: { label: t('İzleniyor'), cls: 'green', icon: <Eye size={11} /> },
+    pending: { label: t('Bekliyor'), cls: 'amber', icon: <Clock size={11} /> },
+    sending: { label: t('Gönderiliyor'), cls: 'blue', icon: <Loader2 size={11} className="spin" /> },
+    paused: { label: t('Duraklatıldı'), cls: '', icon: <Pause size={11} /> },
+    error: { label: t('Hata'), cls: 'red', icon: <AlertTriangle size={11} /> },
   };
   const m = map[status];
   return (
@@ -57,20 +59,21 @@ function LastIcon({ s }: { s?: string }) {
 }
 
 export function describeSchedule(s?: SyncSchedule): string {
-  if (!s) return 'Zamanlanmamış';
-  if (s.mode === 'interval') return s.everyMinutes % 60 === 0 && s.everyMinutes >= 60 ? `Her ${s.everyMinutes / 60} saatte bir` : `Her ${s.everyMinutes} dakikada bir`;
-  return s.times.length ? `Her gün ${s.times.join(', ')}` : 'Saat seçilmedi';
+  if (!s) return t('Zamanlanmamış');
+  if (s.mode === 'interval') return s.everyMinutes % 60 === 0 && s.everyMinutes >= 60 ? t('Her {n} saatte bir', { n: s.everyMinutes / 60 }) : t('Her {n} dakikada bir', { n: s.everyMinutes });
+  return s.times.length ? t('Her gün {times}', { times: s.times.join(', ') }) : t('Saat seçilmedi');
 }
 
-function untilText(t?: number): string {
-  if (!t) return '–';
-  const d = t - Date.now();
-  if (d <= 0) return 'şimdi';
-  if (d < 60_000) return `${Math.ceil(d / 1000)} sn sonra`;
-  if (d < 3_600_000) return `${Math.round(d / 60_000)} dk sonra`;
-  const at = new Date(t);
+function untilText(at0?: number): string {
+  if (!at0) return '–';
+  const d = at0 - Date.now();
+  if (d <= 0) return t('şimdi');
+  if (d < 60_000) return t('{n} sn sonra', { n: Math.ceil(d / 1000) });
+  if (d < 3_600_000) return t('{n} dk sonra', { n: Math.round(d / 60_000) });
+  const at = new Date(at0);
   const today = at.toDateString() === new Date().toDateString();
-  return `${today ? 'bugün' : 'yarın'} ${at.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+  const time = at.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  return today ? t('bugün {time}', { time }) : t('yarın {time}', { time });
 }
 
 export function AutomationPage() {
@@ -111,12 +114,12 @@ export function AutomationPage() {
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Otomasyon</h1>
-          <div className="sub">Klasörleri izleyip değişiklikleri kendiliğinden gönderin; senkron işlerini belirli aralıklarla ya da saatlerde çalıştırın.</div>
+          <h1>{t('Otomasyon')}</h1>
+          <div className="sub">{t('Klasörleri izleyip değişiklikleri kendiliğinden gönderin; senkron işlerini belirli aralıklarla ya da saatlerde çalıştırın.')}</div>
         </div>
         {anything && (
           <Button size="lg" variant={automation.paused ? 'primary' : 'default'} icon={automation.paused ? <Play size={15} /> : <Pause size={15} />} onClick={() => void pause(!automation.paused)}>
-            {automation.paused ? 'Otomasyonu sürdür' : 'Hepsini duraklat'}
+            {automation.paused ? t('Otomasyonu sürdür') : t('Hepsini duraklat')}
           </Button>
         )}
       </div>
@@ -125,16 +128,16 @@ export function AutomationPage() {
           <div className="alert info" style={{ marginBottom: 14 }}>
             <PanelBottomClose size={16} />
             <div className="grow">
-              Otomasyon yalnızca uygulama açıkken çalışır. Pencere kapanınca da sürmesi için uygulamayı sistem tepsisinde tutun.
+              {t('Otomasyon yalnızca uygulama açıkken çalışır. Pencere kapanınca da sürmesi için uygulamayı sistem tepsisinde tutun.')}
             </div>
             <Button size="sm" onClick={() => void saveSettings({ closeToTray: true })}>
-              Tepside çalışmaya devam et
+              {t('Tepside çalışmaya devam et')}
             </Button>
           </div>
         )}
         {automation.paused && anything && (
           <div className="alert warn" style={{ marginBottom: 14 }}>
-            <Pause size={16} /> Otomasyon duraklatıldı: izlemeler değişiklik toplamıyor, zamanlanmış işler çalışmıyor.
+            <Pause size={16} /> {t('Otomasyon duraklatıldı: izlemeler değişiklik toplamıyor, zamanlanmış işler çalışmıyor.')}
           </div>
         )}
 
@@ -143,19 +146,19 @@ export function AutomationPage() {
             <Eye size={15} />
           </div>
           <div className="grow">
-            <h2>Canlı izleme</h2>
+            <h2>{t('Canlı izleme')}</h2>
             <div className="faint" style={{ fontSize: 12.5 }}>
-              Dosya kaydedildiğinde birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere gönderir. Erişilemeyen makinelere dakikada bir yeniden dener.
+              {t('Dosya kaydedildiğinde birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere gönderir. Erişilemeyen makinelere dakikada bir yeniden dener.')}
             </div>
           </div>
           <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>
-            Yeni izleme
+            {t('Yeni izleme')}
           </Button>
         </div>
         {automation.watches.length === 0 ? (
           <div className="card">
-            <Empty icon={<Eye size={22} />} title="İzleme yok" action={<Button icon={<Plus size={15} />} onClick={() => setEditing('new')}>İzleme ekle</Button>}>
-              Gönder sayfasında kaynakları ve hedefleri seçip <b>İzle</b>’ye basabilir ya da buradan ekleyebilirsiniz.
+            <Empty icon={<Eye size={22} />} title={t('İzleme yok')} action={<Button icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İzleme ekle')}</Button>}>
+              {tx('Gönder sayfasında kaynakları ve hedefleri seçip {watch}’ye basabilir ya da buradan ekleyebilirsiniz.', { watch: <b>{t('İzle')}</b> })}
             </Empty>
           </div>
         ) : (
@@ -177,7 +180,7 @@ export function AutomationPage() {
                         <Folder size={12} className="faint" /> <span className="ellipsis">{p}</span>
                       </div>
                     ))}
-                    {w.paths.length > 4 && <div className="faint" style={{ fontSize: 11.5 }}>… ve {w.paths.length - 4} yol daha</div>}
+                    {w.paths.length > 4 && <div className="faint" style={{ fontSize: 11.5 }}>{t('… ve {n} yol daha', { n: w.paths.length - 4 })}</div>}
                   </div>
                   <div className="row muted" style={{ fontSize: 12.5, gap: 6 }}>
                     <ArrowRight size={13} /> <TargetSummary value={w.targetIds} />
@@ -189,28 +192,28 @@ export function AutomationPage() {
                   )}
                   {w.deferredTargets.length > 0 && (
                     <div className="alert warn" style={{ fontSize: 12 }}>
-                      <WifiOff size={14} /> {w.deferredTargets.length} hedef erişilemedi; değişiklikler dakikada bir yeniden denenecek.
+                      <WifiOff size={14} /> {t('{n} hedef erişilemedi; değişiklikler dakikada bir yeniden denenecek.', { n: w.deferredTargets.length })}
                     </div>
                   )}
                   <div className="auto-foot">
                     <LastIcon s={w.lastStatus} />
                     <span className="grow ellipsis faint" style={{ fontSize: 12 }}>
-                      {w.lastRunAt ? `${ago(w.lastRunAt)} • ${w.lastSummary ?? ''}` : w.pendingFiles ? `${w.pendingFiles} değişiklik bekliyor` : 'Henüz değişiklik olmadı'}
+                      {w.lastRunAt ? `${ago(w.lastRunAt)} • ${w.lastSummary ?? ''}` : w.pendingFiles ? t('{n} değişiklik bekliyor', { n: w.pendingFiles }) : t('Henüz değişiklik olmadı')}
                     </span>
-                    {w.runs > 0 && <span className="badge">{num(w.sentFiles)} işlem</span>}
-                    <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip="Geçmiş" onClick={() => setPage('history')} />
-                    <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip="Düzenle" onClick={() => cfg && setEditing(cfg)} />
+                    {w.runs > 0 && <span className="badge">{t('{n} işlem', { n: num(w.sentFiles) })}</span>}
+                    <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip={t('Geçmiş')} onClick={() => setPage('history')} />
+                    <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => cfg && setEditing(cfg)} />
                     <Button
                       size="sm"
                       variant="ghost"
                       iconOnly
                       icon={<Trash2 size={13} />}
-                      tip="Kaldır"
+                      tip={t('Kaldır')}
                       onClick={async () => {
-                        if (!confirm(`“${w.name}” izlemesi kaldırılsın mı?`)) return;
+                        if (!confirm(t('“{name}” izlemesi kaldırılsın mı?', { name: w.name }))) return;
                         useApp.setState({ automation: await api.watchRemove(w.id) });
                         await saveSettings({});
-                        toast('ok', 'İzleme kaldırıldı');
+                        toast('ok', t('İzleme kaldırıldı'));
                       }}
                     />
                   </div>
@@ -225,19 +228,19 @@ export function AutomationPage() {
             <CalendarClock size={15} />
           </div>
           <div className="grow">
-            <h2>Zamanlanmış senkron</h2>
+            <h2>{t('Zamanlanmış senkron')}</h2>
             <div className="faint" style={{ fontSize: 12.5 }}>
-              Senkron işleri seçtiğiniz aralıkta ya da saatlerde karşılaştırılıp önerilen işlemlerle eşitlenir; çakışmalara dokunulmaz.
+              {t('Senkron işleri seçtiğiniz aralıkta ya da saatlerde karşılaştırılıp önerilen işlemlerle eşitlenir; çakışmalara dokunulmaz.')}
             </div>
           </div>
           <Button icon={<Plus size={15} />} onClick={() => setPage('sync')}>
-            Senkron işine zamanlama ekle
+            {t('Senkron işine zamanlama ekle')}
           </Button>
         </div>
         {scheduled.length === 0 ? (
           <div className="card">
-            <Empty icon={<CalendarClock size={22} />} title="Zamanlanmış iş yok" action={<Button onClick={() => setPage('sync')}>Senkron sayfasına git</Button>}>
-              {jobs.length ? `${jobs.length} senkron işinizden birini açıp “Zamanla”yı etkinleştirin.` : 'Önce Senkron sayfasında bir iş oluşturun.'}
+            <Empty icon={<CalendarClock size={22} />} title={t('Zamanlanmış iş yok')} action={<Button onClick={() => setPage('sync')}>{t('Senkron sayfasına git')}</Button>}>
+              {jobs.length ? t('{n} senkron işinizden birini açıp “Zamanla”yı etkinleştirin.', { n: jobs.length }) : t('Önce Senkron sayfasında bir iş oluşturun.')}
             </Empty>
           </div>
         ) : (
@@ -254,25 +257,25 @@ export function AutomationPage() {
                     </div>
                     <div className="faint" style={{ fontSize: 12 }}>
                       {describeSchedule(job?.schedule)}
-                      {job?.schedule?.machineId ? ` • ${job.schedule.machineId} makinesinde` : ''}
+                      {job?.schedule?.machineId ? ` • ${t('{machine} makinesinde', { machine: job.schedule.machineId })}` : ''}
                     </div>
                   </div>
                   <div className="col" style={{ gap: 2, alignItems: 'flex-end', minWidth: 170 }}>
-                    <span style={{ fontSize: 12.5 }}>{s.running ? 'Çalışıyor…' : s.enabled && s.activeHere ? `Sonraki: ${untilText(s.nextAt)}` : 'Kapalı'}</span>
+                    <span style={{ fontSize: 12.5 }}>{s.running ? t('Çalışıyor…') : s.enabled && s.activeHere ? t('Sonraki: {time}', { time: untilText(s.nextAt) }) : t('Kapalı')}</span>
                     <span className="row faint" style={{ fontSize: 11.5, gap: 5 }}>
                       <LastIcon s={s.lastStatus} />
-                      {s.lastAt ? `${ago(s.lastAt)}${s.lastSummary ? ` • ${s.lastSummary}` : ''}` : 'hiç çalışmadı'}
+                      {s.lastAt ? `${ago(s.lastAt)}${s.lastSummary ? ` • ${s.lastSummary}` : ''}` : t('hiç çalışmadı')}
                     </span>
                   </div>
                   <Button size="sm" icon={<Play size={13} />} disabled={s.running || !s.activeHere} onClick={() => void api.scheduleRunNow(s.jobId)}>
-                    Şimdi çalıştır
+                    {t('Şimdi çalıştır')}
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     iconOnly
                     icon={<Pencil size={13} />}
-                    tip="İşi aç"
+                    tip={t('İşi aç')}
                     onClick={() => {
                       localStorage.setItem('samsync.sync.job', s.jobId);
                       setPage('sync');
@@ -285,7 +288,7 @@ export function AutomationPage() {
         )}
         {unscheduled.length > 0 && scheduled.length > 0 && (
           <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
-            Zamanlanmamış {unscheduled.length} iş daha var: {unscheduled.map((j) => j.name).join(', ')}
+            {t('Zamanlanmamış {n} iş daha var: {names}', { n: unscheduled.length, names: unscheduled.map((j) => j.name).join(', ') })}
           </div>
         )}
       </div>
@@ -299,7 +302,7 @@ export function useStartWatchFromSend() {
   const st = useApp();
   return async () => {
     if (!st.sendPaths.length || !st.targets.length) {
-      st.toast('warn', 'Kaynak ve hedef seçin', 'İzlemek için en az bir dosya/klasör ve bir hedef gerekli.');
+      st.toast('warn', t('Kaynak ve hedef seçin'), t('İzlemek için en az bir dosya/klasör ve bir hedef gerekli.'));
       return;
     }
     const name = st.sendPaths.length === 1 ? baseName(st.sendPaths[0]) : `${baseName(st.sendPaths[0])} +${st.sendPaths.length - 1}`;
@@ -307,7 +310,7 @@ export function useStartWatchFromSend() {
     const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false }, quietMs: 2000, enabled: true });
     useApp.setState({ automation: a });
     await st.saveSettings({});
-    st.toast('ok', 'İzleme başladı', `${name} → ${st.targets.length} hedef. Değişiklikler kendiliğinden gönderilecek.`, { label: 'Otomasyonu aç', run: () => st.setPage('automation') });
+    st.toast('ok', t('İzleme başladı'), t('{name} → {n} hedef. Değişiklikler kendiliğinden gönderilecek.', { name, n: st.targets.length }), { label: t('Otomasyonu aç'), run: () => st.setPage('automation') });
   };
 }
 
@@ -326,14 +329,14 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const save = async () => {
     setSaving(true);
     try {
-      const cfg = { name: name.trim() || baseName(paths[0] ?? 'İzleme'), paths, targetIds: targets, options: opts, quietMs: Math.max(500, Math.round(quiet * 1000)), enabled: initial?.enabled ?? true };
+      const cfg = { name: name.trim() || baseName(paths[0] ?? t('İzleme')), paths, targetIds: targets, options: opts, quietMs: Math.max(500, Math.round(quiet * 1000)), enabled: initial?.enabled ?? true };
       const a = initial ? await api.watchUpdate(initial.id, cfg) : await api.watchAdd(cfg);
       useApp.setState({ automation: a });
       await st.saveSettings({});
-      st.toast('ok', initial ? 'İzleme güncellendi' : 'İzleme başladı', cfg.name);
+      st.toast('ok', initial ? t('İzleme güncellendi') : t('İzleme başladı'), cfg.name);
       onClose();
     } catch (e) {
-      st.toast('error', 'Kaydedilemedi', (e as Error).message);
+      st.toast('error', t('Kaydedilemedi'), (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -342,7 +345,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   return (
     <Modal
       size="medium"
-      title={initial ? 'İzlemeyi düzenle' : 'Yeni izleme'}
+      title={initial ? t('İzlemeyi düzenle') : t('Yeni izleme')}
       icon={
         <div className="icon-tile accent">
           <Zap size={16} />
@@ -352,21 +355,21 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
       footer={
         <>
           <span className="faint" style={{ fontSize: 12 }}>
-            {paths.length} yol → {targets.length} hedef
+            {t('{n} yol', { n: paths.length })} → {t('{n} hedef', { n: targets.length })}
           </span>
           <span className="spacer" />
-          <Button onClick={onClose}>Vazgeç</Button>
+          <Button onClick={onClose}>{t('Vazgeç')}</Button>
           <Button variant="primary" loading={saving} disabled={!paths.length || !targets.length} onClick={() => void save()}>
-            {initial ? 'Kaydet' : 'İzlemeyi başlat'}
+            {initial ? t('Kaydet') : t('İzlemeyi başlat')}
           </Button>
         </>
       }
     >
-      <Field label="Ad">
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={paths[0] ? baseName(paths[0]) : 'ör. Senaryolar'} autoFocus />
+      <Field label={t('Ad')}>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={paths[0] ? baseName(paths[0]) : t('ör. Senaryolar')} autoFocus />
       </Field>
       <div className="section-title" style={{ marginTop: 16 }}>
-        İzlenecek dosya ve klasörler
+        {t('İzlenecek dosya ve klasörler')}
       </div>
       <div className="card flat" style={{ maxHeight: 170, overflow: 'auto' }}>
         {paths.map((p) => (
@@ -378,13 +381,13 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
             <Button size="sm" variant="ghost" iconOnly icon={<X size={13} />} onClick={() => setPaths(paths.filter((x) => x !== p))} />
           </div>
         ))}
-        {!paths.length && <div className="faint" style={{ padding: 12, fontSize: 12.5 }}>Henüz yol yok.</div>}
+        {!paths.length && <div className="faint" style={{ padding: 12, fontSize: 12.5 }}>{t('Henüz yol yok.')}</div>}
       </div>
       <div className="row" style={{ marginTop: 8 }}>
         <input
           className="input sm mono grow"
           value={manual}
-          placeholder="Yol yapıştırıp Enter’a basın"
+          placeholder={t('Yol yapıştırıp Enter’a basın')}
           onChange={(e) => setManual(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && manual.trim()) {
@@ -394,50 +397,50 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
           }}
         />
         <Button size="sm" icon={<FolderOpen size={13} />} disabled={!isElectron} onClick={async () => setPaths([...new Set([...paths, ...(await api.pick({ folders: true, multi: true }))])])}>
-          Klasör
+          {t('Klasör')}
         </Button>
         <Button size="sm" icon={<FilePlus size={13} />} disabled={!isElectron} onClick={async () => setPaths([...new Set([...paths, ...(await api.pick({ files: true, multi: true }))])])}>
-          Dosya
+          {t('Dosya')}
         </Button>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>
-        Hedefler
+        {t('Hedefler')}
       </div>
       <div className="card flat" style={{ display: 'flex', flexDirection: 'column' }}>
         <TargetPicker value={targets} onChange={setTargets} maxHeight={240} />
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>
-        Davranış
+        {t('Davranış')}
       </div>
       <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <Field label="Kip">
+        <Field label={t('Kip')}>
           <Segmented
             value={opts.mode === 'mirror' ? 'overwrite' : opts.mode}
             onChange={(mode) => set({ mode })}
             options={[
-              { value: 'overwrite', label: 'Üzerine yaz' },
-              { value: 'update', label: 'Yalnızca yeni', tip: 'Hedefte daha yeni olan dosyaya dokunmaz' },
+              { value: 'overwrite', label: t('Üzerine yaz') },
+              { value: 'update', label: t('Yalnızca yeni'), tip: t('Hedefte daha yeni olan dosyaya dokunmaz') },
             ]}
           />
         </Field>
-        <Field label="Bekleme (sn)" help="Son değişiklikten sonra">
+        <Field label={t('Bekleme (sn)')} help={t('Son değişiklikten sonra')}>
           <input className="input" type="number" min={0.5} step={0.5} value={quiet} onChange={(e) => setQuiet(Number(e.target.value) || 2)} style={{ width: 90 }} />
         </Field>
       </div>
-      <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title="Yedek al" desc="Üzerine yazılan dosyanın eski hâli hedefte saklanır" on={opts.backup} onChange={(v) => set({ backup: v })} />
-      <ToggleRow icon={<Trash2 size={16} className="faint" />} title="Silinen dosyaları hedefte de sil" desc="Kapalıyken yalnızca yeni ve değişen dosyalar gider" on={opts.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />
+      <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan dosyanın eski hâli hedefte saklanır')} on={opts.backup} onChange={(v) => set({ backup: v })} />
+      <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinen dosyaları hedefte de sil')} desc={t('Kapalıyken yalnızca yeni ve değişen dosyalar gider')} on={opts.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />
       <div className="form-grid" style={{ marginTop: 8 }}>
-        <Field label="Hariç dosyalar">
+        <Field label={t('Hariç dosyalar')}>
           <TagInput value={opts.excludeFiles} onChange={(v) => set({ excludeFiles: v })} placeholder="*.tmp" />
         </Field>
-        <Field label="Hariç klasörler">
+        <Field label={t('Hariç klasörler')}>
           <TagInput value={opts.excludeDirs} onChange={(v) => set({ excludeDirs: v })} placeholder="Logs" />
         </Field>
       </div>
       <div className="faint" style={{ fontSize: 12, marginTop: 10 }}>
-        <File size={12} style={{ verticalAlign: -2 }} /> Geçici dosyalar (~$…, .tmp, .swp) ve .git klasörü her zaman yok sayılır.
+        <File size={12} style={{ verticalAlign: -2 }} /> {t('Geçici dosyalar (~$…, .tmp, .swp) ve .git klasörü her zaman yok sayılır.')}
       </div>
     </Modal>
   );

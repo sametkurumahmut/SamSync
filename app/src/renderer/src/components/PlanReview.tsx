@@ -7,34 +7,36 @@ import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
 import { api } from '../lib/api';
 import { bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
+import { tx } from '../lib/i18n';
+import { t, tk } from '@shared/i18n';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
 export function opStatus(op: PlanOp, selected: boolean): string {
   switch (op.category) {
     case 'new':
-      return op.isDir ? 'yeni klasör' : 'yeni';
+      return op.isDir ? t('yeni klasör') : t('yeni');
     case 'changed':
-      return op.replaceType ? 'tür değişecek' : 'güncellenecek';
+      return op.replaceType ? t('tür değişecek') : t('güncellenecek');
     case 'targetNewer':
-      return selected ? 'hedef daha yeni — üzerine yazılacak' : 'hedef daha yeni — atlanacak';
+      return selected ? t('hedef daha yeni — üzerine yazılacak') : t('hedef daha yeni — atlanacak');
     case 'extra':
-      return selected ? 'hedefte fazla — silinecek' : 'hedefte fazla';
+      return selected ? t('hedefte fazla — silinecek') : t('hedefte fazla');
     case 'deleted':
-      return selected ? 'silinecek' : 'silinmiş (atlanacak)';
+      return selected ? t('silinecek') : t('silinmiş (atlanacak)');
     default:
-      return 'aynı';
+      return t('aynı');
   }
 }
 
 type Filter = 'all' | 'new' | 'changed' | 'targetNewer' | 'remove';
 
 const FILTERS: { id: Filter; label: string; match: (o: PlanOp) => boolean }[] = [
-  { id: 'all', label: 'Tümü', match: () => true },
-  { id: 'new', label: 'Yeni', match: (o) => o.category === 'new' },
-  { id: 'changed', label: 'Değişen', match: (o) => o.category === 'changed' },
-  { id: 'targetNewer', label: 'Hedef daha yeni', match: (o) => o.category === 'targetNewer' },
-  { id: 'remove', label: 'Fazla / silinecek', match: (o) => o.category === 'extra' || o.category === 'deleted' },
+  { id: 'all', label: tk('Tümü'), match: () => true },
+  { id: 'new', label: tk('Yeni'), match: (o) => o.category === 'new' },
+  { id: 'changed', label: tk('Değişen'), match: (o) => o.category === 'changed' },
+  { id: 'targetNewer', label: tk('Hedef daha yeni'), match: (o) => o.category === 'targetNewer' },
+  { id: 'remove', label: tk('Fazla / silinecek'), match: (o) => o.category === 'extra' || o.category === 'deleted' },
 ];
 
 export function PlanningOverlay() {
@@ -51,7 +53,7 @@ export function PlanningOverlay() {
               <ClipboardList size={18} />
             </div>
             <div className="grow">
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Hedefler inceleniyor</div>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>{t('Hedefler inceleniyor')}</div>
               <div className="muted ellipsis" style={{ fontSize: 12.5 }}>
                 {planning.message}
               </div>
@@ -60,11 +62,11 @@ export function PlanningOverlay() {
           <Progress value={pct} indeterminate={!planning.total} />
           <div className="row" style={{ marginTop: 14 }}>
             <span className="faint" style={{ fontSize: 12 }}>
-              Hedeflere hiçbir şey yazılmaz.
+              {t('Hedeflere hiçbir şey yazılmaz.')}
             </span>
             <span className="spacer" />
             <Button size="sm" onClick={cancel}>
-              Vazgeç
+              {t('Vazgeç')}
             </Button>
           </div>
         </div>
@@ -87,18 +89,18 @@ export function PlanReview() {
   const targets = plan?.targets ?? [];
   useEffect(() => setActive(null), [plan?.id]);
   const current =
-    targets.find((t) => t.targetId === active) ?? targets.find((t) => t.reachable && t.ops.length) ?? targets.find((t) => t.reachable) ?? targets[0];
+    targets.find((tp) => tp.targetId === active) ?? targets.find((tp) => tp.reachable && tp.ops.length) ?? targets.find((tp) => tp.reachable) ?? targets[0];
 
   const totals = useMemo(() => {
     const r = { new: 0, changed: 0, targetNewer: 0, remove: 0, same: 0, ops: 0, bytes: 0, targets: 0, unreachable: 0 };
-    for (const t of targets) {
-      if (!t.reachable) {
+    for (const tp of targets) {
+      if (!tp.reachable) {
         r.unreachable++;
         continue;
       }
-      const sel = selected[t.targetId] ?? new Set();
+      const sel = selected[tp.targetId] ?? new Set();
       let any = false;
-      for (const o of t.ops) {
+      for (const o of tp.ops) {
         if (!sel.has(o.id)) continue;
         any = true;
         r.ops++;
@@ -108,7 +110,7 @@ export function PlanReview() {
         else if (o.category === 'targetNewer') r.targetNewer++;
         else if (o.category === 'extra' || o.category === 'deleted') r.remove++;
       }
-      r.same += t.counts.same;
+      r.same += tp.counts.same;
       if (any) r.targets++;
     }
     return r;
@@ -122,14 +124,14 @@ export function PlanReview() {
     const cur = selected[current.targetId];
     const chosen = new Set(current.ops.filter((o) => cur.has(o.id)).map((o) => `${o.kind}|${o.rel.toLowerCase()}`));
     const known = new Set(current.ops.map((o) => `${o.kind}|${o.rel.toLowerCase()}`));
-    for (const t of targets) {
-      if (t === current || !t.reachable) continue;
+    for (const tp of targets) {
+      if (tp === current || !tp.reachable) continue;
       const next = new Set<string>();
-      for (const o of t.ops) {
+      for (const o of tp.ops) {
         const k = `${o.kind}|${o.rel.toLowerCase()}`;
-        if (known.has(k) ? chosen.has(k) : (selected[t.targetId]?.has(o.id) ?? false)) next.add(o.id);
+        if (known.has(k) ? chosen.has(k) : (selected[tp.targetId]?.has(o.id) ?? false)) next.add(o.id);
       }
-      setSel(t.targetId, next);
+      setSel(tp.targetId, next);
     }
   };
 
@@ -139,10 +141,10 @@ export function PlanReview() {
       closeOnScrim={false}
       title={
         <span className="row" style={{ gap: 10 }}>
-          Gönderim planı
-          <span className="badge">{plan.request.label || (plan.request.origin === 'git' ? 'Git' : 'Gönder')}</span>
+          {t('Gönderim planı')}
+          <span className="badge">{plan.request.label || (plan.request.origin === 'git' ? 'Git' : t('Gönder'))}</span>
           <span className="faint" style={{ fontSize: 12.5, fontWeight: 500 }}>
-            {plan.sources.length} kaynak → {targets.length} hedef • {duration(plan.durationMs)} içinde incelendi
+            {t('{n} kaynak', { n: plan.sources.length })} → {t('{n} hedef', { n: targets.length })} • {t('{time} içinde incelendi', { time: duration(plan.durationMs) })}
           </span>
         </span>
       }
@@ -155,15 +157,15 @@ export function PlanReview() {
       footer={
         <>
           <span className="tabular">
-            <b>{num(totals.ops)}</b> işlem • <b>{bytes(totals.bytes)}</b> • <b>{totals.targets}</b> hedef
+            {tx('{ops} işlem • {size} • {n} hedef', { ops: <b>{num(totals.ops)}</b>, size: <b>{bytes(totals.bytes)}</b>, n: <b>{totals.targets}</b> }, { opsCount: totals.ops, count: totals.targets })}
           </span>
-          {totals.unreachable > 0 && <span className="badge red">{totals.unreachable} erişilemedi</span>}
+          {totals.unreachable > 0 && <span className="badge red">{t('{n} erişilemedi', { n: totals.unreachable })}</span>}
           <span className="spacer" />
           <label className="check-label" onClick={() => setDry(!dryRun)}>
             <Switch on={dryRun} onChange={(v) => setDry(v)} />
-            <FlaskConical size={14} /> Deneme (yazma)
+            <FlaskConical size={14} /> {t('Deneme (yazma)')}
           </label>
-          <Button onClick={close}>Vazgeç</Button>
+          <Button onClick={close}>{t('Vazgeç')}</Button>
           <Button
             variant="primary"
             size="lg"
@@ -177,60 +179,60 @@ export function PlanReview() {
               setDry(null);
             }}
           >
-            {dryRun ? 'Denemeyi başlat' : 'Gönder'}
+            {dryRun ? t('Denemeyi başlat') : t('Gönder')}
           </Button>
         </>
       }
     >
       <div className="plan">
         <div className="plan-stats">
-          <Stat label="Yeni" value={totals.new} cls="new" />
-          <Stat label="Güncellenecek" value={totals.changed} cls="changed" />
-          <Stat label="Hedef daha yeni" value={totals.targetNewer} cls="targetNewer" />
-          <Stat label="Silinecek" value={totals.remove} cls="deleted" />
-          <Stat label="Aynı (atlanır)" value={totals.same} cls="same" />
-          <Stat label="Yazılacak veri" value={bytes(totals.bytes)} cls="bytes" />
+          <Stat label={t('Yeni')} value={totals.new} cls="new" />
+          <Stat label={t('Güncellenecek')} value={totals.changed} cls="changed" />
+          <Stat label={t('Hedef daha yeni')} value={totals.targetNewer} cls="targetNewer" />
+          <Stat label={t('Silinecek')} value={totals.remove} cls="deleted" />
+          <Stat label={t('Aynı (atlanır)')} value={totals.same} cls="same" />
+          <Stat label={t('Yazılacak veri')} value={bytes(totals.bytes)} cls="bytes" />
         </div>
         {plan.warnings.length > 0 && (
           <div className="alert warn" style={{ marginBottom: 12 }}>
             <AlertTriangle size={16} />
             <div>
-              <b>Dikkat</b>
+              <b>{t('Dikkat')}</b>
               <ul>
                 {plan.warnings.slice(0, 6).map((w, i) => (
                   <li key={i} className="selectable">
                     {w}
                   </li>
                 ))}
-                {plan.warnings.length > 6 && <li>… ve {plan.warnings.length - 6} uyarı daha</li>}
+                {plan.warnings.length > 6 && <li>{t('… ve {n} uyarı daha', { n: plan.warnings.length - 6 })}</li>}
               </ul>
             </div>
           </div>
         )}
         <div className="plan-split">
           <div className="plan-targets">
-            {targets.map((t) => {
-              const sel = selected[t.targetId] ?? new Set();
+            {targets.map((tp) => {
+              const sel = selected[tp.targetId] ?? new Set();
               return (
-                <button key={t.targetId} className={cls('plan-target', current?.targetId === t.targetId && 'active', !t.reachable && 'down')} onClick={() => setActive(t.targetId)}>
+                <button key={tp.targetId} className={cls('plan-target', current?.targetId === tp.targetId && 'active', !tp.reachable && 'down')} onClick={() => setActive(tp.targetId)}>
                   <div className="row">
-                    <span className={cls('dot', t.reachable ? 'ok' : 'bad')} />
+                    <span className={cls('dot', tp.reachable ? 'ok' : 'bad')} />
                     <span className="ellipsis grow" style={{ fontWeight: 580 }}>
-                      {t.targetName}
+                      {tp.targetName}
                     </span>
-                    {t.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
+                    {tp.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
                   </div>
-                  {t.reachable ? (
+                  {tp.reachable ? (
                     <div className="row" style={{ gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                      {t.counts.new > 0 && <span className="badge green">+{t.counts.new}</span>}
-                      {t.counts.changed > 0 && <span className="badge blue">~{t.counts.changed}</span>}
-                      {t.counts.targetNewer > 0 && <span className="badge amber">!{t.counts.targetNewer}</span>}
-                      {t.counts.extra + t.counts.deleted > 0 && <span className="badge violet">−{t.counts.extra + t.counts.deleted}</span>}
-                      {t.ops.length === 0 && <span className="badge">güncel</span>}
+                      {tp.counts.new > 0 && <span className="badge green">+{tp.counts.new}</span>}
+                      {tp.counts.changed > 0 && <span className="badge blue">~{tp.counts.changed}</span>}
+                      {tp.counts.targetNewer > 0 && <span className="badge amber">!{tp.counts.targetNewer}</span>}
+                      {tp.counts.extra + tp.counts.deleted > 0 && <span className="badge violet">−{tp.counts.extra + tp.counts.deleted}</span>}
+                      {tp.ops.length === 0 && <span className="badge">{t('güncel')}</span>}
                     </div>
                   ) : (
                     <div className="faint ellipsis" style={{ fontSize: 11.5, marginTop: 4 }}>
-                      {t.error}
+                      {tp.error}
                     </div>
                   )}
                 </button>
@@ -283,7 +285,7 @@ function TargetOps({
           <div className="empty-icon">
             <WifiOff size={22} />
           </div>
-          <h3>{plan.targetName} erişilemedi</h3>
+          <h3>{t('{name} erişilemedi', { name: plan.targetName })}</h3>
           <p className="selectable">{plan.error}</p>
           <p className="faint mono" style={{ fontSize: 11.5 }}>
             {plan.root}
@@ -320,18 +322,18 @@ function TargetOps({
         <div className="col" style={{ gap: 2, minWidth: 0 }}>
           <div className="row" style={{ gap: 8 }}>
             <b style={{ fontSize: 14 }}>{plan.targetName}</b>
-            <span className="faint">{num(plan.ops.length)} değişiklik</span>
-            {plan.counts.same > 0 && <span className="badge">{num(plan.counts.same)} aynı</span>}
+            <span className="faint">{t('{n} değişiklik', { n: num(plan.ops.length) })}</span>
+            {plan.counts.same > 0 && <span className="badge">{t('{n} aynı', { n: num(plan.counts.same) })}</span>}
           </div>
           <div className="row faint mono" style={{ fontSize: 11.5 }}>
             <HardDrive size={12} /> <span className="ellipsis selectable">{plan.root}</span>
-            {plan.freeBytes != null && <span className="nowrap">• {bytes(plan.freeBytes)} boş</span>}
+            {plan.freeBytes != null && <span className="nowrap">• {t('{size} boş', { size: bytes(plan.freeBytes) })}</span>}
           </div>
         </div>
         <span className="spacer" />
         {onApplyAll && (
-          <Button size="sm" icon={<Copy size={13} />} onClick={onApplyAll} tip="Bu hedefte düşürdüğünüz/eklediğiniz öğeleri diğer hedeflerde de aynı yapar">
-            Seçimi tüm hedeflere uygula
+          <Button size="sm" icon={<Copy size={13} />} onClick={onApplyAll} tip={t('Bu hedefte düşürdüğünüz/eklediğiniz öğeleri diğer hedeflerde de aynı yapar')}>
+            {t('Seçimi tüm hedeflere uygula')}
           </Button>
         )}
       </div>
@@ -341,30 +343,30 @@ function TargetOps({
           if (x.id !== 'all' && !n) return null;
           return (
             <button key={x.id} className={cls('chip', filter === x.id && 'on')} onClick={() => setFilter(x.id)}>
-              {x.label} <span className="faint tabular">{num(n)}</span>
+              {t(x.label)} <span className="faint tabular">{num(n)}</span>
             </button>
           );
         })}
         <span className="spacer" />
-        <SearchInput value={q} onChange={setQ} placeholder="Yolda ara" style={{ width: 200 }} />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Yolda ara')} style={{ width: 200 }} />
       </div>
       {rows.length === 0 ? (
         <div className="empty" style={{ flex: 1 }}>
           <div className="empty-icon">
             <CheckCircle2 size={22} color="var(--green)" />
           </div>
-          <h3>{plan.ops.length ? 'Filtreye uyan öğe yok' : 'Bu hedef zaten güncel'}</h3>
-          {!plan.ops.length && <p>Kaynaktaki her şey hedefte aynı; gönderilecek bir şey yok.</p>}
+          <h3>{plan.ops.length ? t('Filtreye uyan öğe yok') : t('Bu hedef zaten güncel')}</h3>
+          {!plan.ops.length && <p>{t('Kaynaktaki her şey hedefte aynı; gönderilecek bir şey yok.')}</p>}
         </div>
       ) : (
         <>
           <div className="table-head">
             <Checkbox checked={visSel === rows.length} mixed={visSel > 0 && visSel < rows.length} onChange={setAll} />
             <span style={{ width: 20 }} />
-            <span className="grow">Göreli yol</span>
-            <span style={{ width: 210 }}>Durum</span>
-            <span style={{ width: 80, textAlign: 'right' }}>Boyut</span>
-            <span style={{ width: 170 }}>Kaynak → hedef tarihi</span>
+            <span className="grow">{t('Göreli yol')}</span>
+            <span style={{ width: 210 }}>{t('Durum')}</span>
+            <span style={{ width: 80, textAlign: 'right' }}>{t('Boyut')}</span>
+            <span style={{ width: 170 }}>{t('Kaynak → hedef tarihi')}</span>
             <span style={{ width: 28 }} />
           </div>
           <div ref={parent} className="plan-ops-scroll">
@@ -398,7 +400,7 @@ function TargetOps({
                       {canDiff && (
                         <button
                           className="btn ghost icon sm"
-                          data-tip="Kaynak ile hedefi karşılaştır"
+                          data-tip={t('Kaynak ile hedefi karşılaştır')}
                           onClick={(e) => {
                             e.stopPropagation();
                             setDiffOp(o);
@@ -424,7 +426,7 @@ export function CompareModal({ op, targetId, targetName, src, onClose }: { op: P
   const [state, setState] = useState<{ diff: DiffResult | null; loading: boolean; error?: string }>({ diff: null, loading: true });
   useEffect(() => {
     if (!src) {
-      setState({ diff: null, loading: false, error: 'Kaynak okunamıyor' });
+      setState({ diff: null, loading: false, error: t('Kaynak okunamıyor') });
       return;
     }
     api
@@ -438,7 +440,7 @@ export function CompareModal({ op, targetId, targetName, src, onClose }: { op: P
       size="wide"
       title={
         <span className="row" style={{ gap: 8 }}>
-          Karşılaştır <span className="faint mono" style={{ fontSize: 12, fontWeight: 500 }}>{op.rel}</span>
+          {t('Karşılaştır')} <span className="faint mono" style={{ fontSize: 12, fontWeight: 500 }}>{op.rel}</span>
         </span>
       }
       icon={
@@ -455,7 +457,7 @@ export function CompareModal({ op, targetId, targetName, src, onClose }: { op: P
           error={state.error}
           title={
             <span className="muted" style={{ fontSize: 12.5 }}>
-              <span className="badge red">hedef</span> {targetName} → <span className="badge green">kaynak</span> yazılacak içerik
+              {tx('{target} {name} → {source} yazılacak içerik', { target: <span className="badge red">{t('hedef')}</span>, source: <span className="badge green">{t('kaynak')}</span> }, { name: targetName })}
             </span>
           }
         />

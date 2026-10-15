@@ -5,6 +5,7 @@ import { PassThrough, type Readable } from 'node:stream';
 import type { DiffLine, DiffResult, GitChange, GitChangeKind, GitCommit, GitLogPage, GitRepoInfo, SourceSpec, GitDiffSpec } from '../shared/types';
 import { textDiff } from './textdiff';
 import { isUnder, normalizeAbs, toPosix } from './paths';
+import { t } from '../shared/i18n';
 
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
@@ -96,7 +97,7 @@ export async function status(root: string): Promise<StatusResult> {
       const [, key, ...rest] = line.split(' ');
       const val = rest.join(' ');
       if (key === 'branch.oid') info.head = val === '(initial)' ? '' : val;
-      else if (key === 'branch.head') info.branch = val === '(detached)' ? 'HEAD (ayrık)' : val;
+      else if (key === 'branch.head') info.branch = val === '(detached)' ? t('HEAD (ayrık)') : val;
       else if (key === 'branch.upstream') info.upstream = val;
       else if (key === 'branch.ab') {
         const m = /\+(\d+) -(\d+)/.exec(val);
@@ -389,7 +390,7 @@ export function blobStream(root: string, rev: string, p: string): Readable {
   child.on('error', (e) => out.destroy(e));
   child.on('close', (code) => {
     if (code === 0) out.end();
-    else out.destroy(new GitError(`git cat-file ${rev}:${p} başarısız (kod ${code}): ${stderr.trim()}`, stderr));
+    else out.destroy(new GitError(t('git cat-file {object} başarısız (kod {code}): {error}', { object: `${rev}:${p}`, code: String(code), error: stderr.trim() }), stderr));
   });
   out.on('close', () => {
     if (child.exitCode === null) child.kill();
@@ -460,27 +461,27 @@ export async function fileDiff(spec: GitDiffSpec): Promise<DiffResult> {
     if (!tracked || !head) {
       // untracked: everything is an addition
       const buf = await fsp.readFile(abs).catch(() => null);
-      if (!buf) return { ok: false, reason: 'Dosya okunamadı', lines: [], additions: 0, deletions: 0 };
-      return textDiff(Buffer.alloc(0), buf, { leftLabel: '(yok)', rightLabel: 'çalışma kopyası', context: 3 });
+      if (!buf) return { ok: false, reason: t('Dosya okunamadı'), lines: [], additions: 0, deletions: 0 };
+      return textDiff(Buffer.alloc(0), buf, { leftLabel: t('(yok)'), rightLabel: t('çalışma kopyası'), context: 3 });
     }
     args = ['diff', '--no-ext-diff', '-M', '-U4', 'HEAD', '--', ...pathspec];
     leftLabel = 'HEAD';
-    rightLabel = 'çalışma kopyası';
+    rightLabel = t('çalışma kopyası');
   } else {
     const shas = spec.shas ?? [];
-    if (!shas.length) return { ok: false, reason: 'Commit seçilmedi', lines: [], additions: 0, deletions: 0 };
+    if (!shas.length) return { ok: false, reason: t('Commit seçilmedi'), lines: [], additions: 0, deletions: 0 };
     const meta = await commitParents(root, shas);
     const ordered = orderOldestFirst(shas, meta);
     const from = meta.get(ordered[0])?.parent ?? EMPTY_TREE;
     const to = ordered[ordered.length - 1];
     args = ['diff', '--no-ext-diff', '-M', '-U4', from, to, '--', ...pathspec];
-    leftLabel = from === EMPTY_TREE ? '(boş)' : from.slice(0, 8);
+    leftLabel = from === EMPTY_TREE ? t('(boş)') : from.slice(0, 8);
     rightLabel = to.slice(0, 8);
   }
   const out = await git(root, args, { maxBuffer: MAX_DIFF_BYTES * 2 });
-  if (out.length > MAX_DIFF_BYTES) return { ok: false, tooLarge: true, reason: 'Fark çok büyük (4 MB üstü)', lines: [], additions: 0, deletions: 0, leftLabel, rightLabel };
+  if (out.length > MAX_DIFF_BYTES) return { ok: false, tooLarge: true, reason: t('Fark çok büyük (4 MB üstü)'), lines: [], additions: 0, deletions: 0, leftLabel, rightLabel };
   const parsed = parseUnifiedDiff(out.toString('utf8'));
-  if (parsed.binary) return { ok: false, binary: true, reason: 'İkili dosya: satır farkı gösterilemez', lines: [], additions: 0, deletions: 0, leftLabel, rightLabel };
+  if (parsed.binary) return { ok: false, binary: true, reason: t('İkili dosya: satır farkı gösterilemez'), lines: [], additions: 0, deletions: 0, leftLabel, rightLabel };
   return { ok: true, lines: parsed.lines, additions: parsed.additions, deletions: parsed.deletions, identical: parsed.lines.length === 0, leftLabel, rightLabel };
 }
 

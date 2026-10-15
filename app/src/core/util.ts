@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Transform } from 'node:stream';
+import { t } from '../shared/i18n';
 
 export const isWin = process.platform === 'win32';
 
@@ -40,16 +41,16 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (it
 }
 
 /** Rejects after `ms` unless the promise settles first. */
-export function withTimeout<T>(p: Promise<T>, ms: number, message = 'Zaman aşımı'): Promise<T> {
+export function withTimeout<T>(p: Promise<T>, ms: number, message = t('Zaman aşımı')): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(message)), ms);
+    const timer = setTimeout(() => reject(new Error(message)), ms);
     p.then(
       (v) => {
-        clearTimeout(t);
+        clearTimeout(timer);
         resolve(v);
       },
       (e) => {
-        clearTimeout(t);
+        clearTimeout(timer);
         reject(e);
       },
     );
@@ -149,7 +150,7 @@ export class CancelToken {
 
 export class CancelledError extends Error {
   constructor() {
-    super('İptal edildi');
+    super(t('İptal edildi'));
     this.name = 'CancelledError';
   }
 }

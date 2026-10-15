@@ -1,5 +1,6 @@
 import { Menu, Tray, nativeImage } from 'electron';
 import type { AutomationState } from '../shared/types';
+import { getLang, t } from '../shared/i18n';
 
 export interface TrayActions {
   show(): void;
@@ -17,6 +18,7 @@ export class TrayManager {
     private actions: TrayActions,
   ) {}
 
+  /** Builds the menu and tooltip again whenever the state or the UI language changed. */
   update(enabled: boolean, state: AutomationState): void {
     if (!enabled) {
       this.tray?.destroy();
@@ -32,19 +34,19 @@ export class TrayManager {
     const watches = state.watches.filter((w) => w.enabled).length;
     const schedules = state.schedules.filter((s) => s.enabled && s.activeHere).length;
     const busy = state.watches.some((w) => w.status === 'sending') || state.schedules.some((s) => s.running);
-    const summary = `${watches} izleme • ${schedules} zamanlanmış iş`;
-    const key = `${state.paused}|${busy}|${summary}`;
+    const summary = t('{watches} izleme • {schedules} zamanlanmış iş', { watches, schedules });
+    const key = `${getLang()}|${state.paused}|${busy}|${summary}`;
     if (key === this.lastKey) return;
     this.lastKey = key;
-    this.tray.setToolTip(`SamSync — ${state.paused ? 'otomasyon duraklatıldı' : busy ? 'gönderiliyor…' : summary}`);
+    this.tray.setToolTip(`SamSync — ${state.paused ? t('otomasyon duraklatıldı') : busy ? t('gönderiliyor…') : summary}`);
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'SamSync’i aç', click: () => this.actions.show() },
+        { label: t('SamSync’i aç'), click: () => this.actions.show() },
         { type: 'separator' },
         { label: summary, enabled: false },
-        { label: state.paused ? 'Otomasyonu sürdür' : 'Otomasyonu duraklat', click: () => this.actions.setPaused(!state.paused) },
+        { label: state.paused ? t('Otomasyonu sürdür') : t('Otomasyonu duraklat'), click: () => this.actions.setPaused(!state.paused) },
         { type: 'separator' },
-        { label: 'Çıkış', click: () => this.actions.quit() },
+        { label: t('Çıkış'), click: () => this.actions.quit() },
       ]),
     );
   }

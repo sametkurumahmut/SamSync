@@ -6,7 +6,7 @@ A desktop app that sends files, folders and Git changes to many machines at **th
 
 It replaces the old PowerShell tool ([`../legacy`](../legacy/README.md)) and reads that tool's `config.json` as is.
 
-The user interface is in Turkish. Below, UI labels are given in Turkish with the English meaning next to them, e.g. **Gönder** (Send).
+The user interface is in Turkish and English. It follows the computer's display language (Turkish for a Turkish Windows, English for anything else) unless one is picked under Settings → **Language**. Below, UI labels are given in Turkish with the English label next to them, e.g. **Gönder** (Send).
 
 ## Installation
 
@@ -76,22 +76,59 @@ Automation runs while the app is running. Under Ayarlar (Settings) → *Arka pla
 - **Hedefler** — machine cards, reachability (refreshed every 45 s), adding and editing machines. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
 - **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first).
 - **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones).
-- **Ayarlar** — theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menu; background and startup; updates.
+- **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates.
 
 The backup folder is `_SamSyncYedek` under each target root by default; its name can be changed in Settings → Kopyalama (Copy).
 
 On computers where the old tool's machine id was pinned with `setx`, set the same value as `SAMSYNC_NODE_ID` (`setx SAMSYNC_NODE_ID Unit1Trainer`) or pick the machine under Targets → *Bu makine* (this machine).
 
-## Command line and Explorer
+## Explorer and Notepad++ menus
+
+The installed app puts the old tool's right-click menus back, and they are **on by default**. They can be switched off under Settings → **Sağ tık menüleri** (right-click menus). On every start, and whenever the machine list, the language or these switches change, the app rebuilds them. They always point at the program that is running, so they keep working after an update or a move. The uninstaller removes them.
+
+**Explorer** (files and folders; on Windows 11 under “Show more options”) gets a **SamSync** submenu, built the same way as the old one:
+
+| Entry | Click |
+| --- | --- |
+| Tümüne gönder (send to all) | sends at once to every enabled machine except this one |
+| İncele ve gönder… (review and send) | opens SamSync with the items on the Send page |
+| Son ayarla gönder (send with last settings) | sends at once with the targets and options of the last reviewed send |
+| Yedekten geri al… (restore from backup) | opens Backups with the items and looks on every machine |
+| <profile> (profil) | sends at once with the profile's targets and options |
+| <group> | sends at once to the whole group, or opens a submenu with “<group> - Tümü” and its machines |
+| <machine> | sends at once to that machine (machines outside groups) |
+
+- **Separators** split the menu into all | review and last settings | restore | profiles | groups | single machines.
+- **Fitting the menu:** Windows shows a static submenu comfortably up to 16 entries. This machine's own group is expanded first; the other groups are expanded only if they all fit, otherwise each is a single entry. `menuShowNodes` in config.json (`auto`, `always`, `never`; also on the settings page) changes that, as in the old tool.
+- **One-click sends** do not touch the Send page list. A send that would delete on a target (mirror from a profile or the last settings) opens the review instead.
+- **Large selections:** up to 100 selected items work. Explorer starts the app once per item, and the requests are merged into one send: 400 ms of quiet, 1.2 s once a second item has arrived, at most 30 s.
+
+**Notepad++** (8.4.8 or later; standard installs and portable ones with `doLocalConf.xml`):
+- **Tab menu:** right-clicking a tab shows a **SamSync** folder with the same entries, flat, with a separator per section and per group.
+- **Run menu:** the same entries are Run commands.
+- **Shortcuts:** they come from `notepadPlusPlusShortcuts` in config.json, for example `{ "wizard:last": "Ctrl+Alt+W" }`, which is also the default. `Ctrl+Alt+W` sends the saved file of the active tab with the last settings, without opening a window. The entry ids are the old ones (`all`, `wizard`, `wizard:last`, `restore`, `profile:<name>`, `group:<name>`, machine ids), and the shortcuts can also be edited in Settings.
+- **What changes in the files:** SamSync edits `shortcuts.xml` and `tabContextMenu.xml` as text and only touches entries named `[SamSync] …`. It then signs `shortcuts.xml` in `config.xml` (`shortcutsXmlHMAC`, required since Notepad++ 8.9.6.2).
+- **If Notepad++ is open:** Notepad++ writes these files back from memory when it exits, so changes made while it is open would be lost. SamSync writes them again once it has closed.
+- **Commands too long:** a command longer than 260 characters (Notepad++'s limit) is left out with a warning.
+
+On a machine that still has the old tool's menus, remove those with `legacy\Uninstall-ContextMenu.bat`; otherwise both menus are shown.
+
+## Command line
 
 ```bat
 SamSync.exe "C:\Sim\ActiveRelease\Data\x.entity" "C:\Sim\ActiveRelease\Models"
-SamSync.exe "C:\...\Data" --to group:Unit1,Arsiv
+SamSync.exe --to group:Unit1,Arsiv "C:\...\Data"
+SamSync.exe --to last --yes "C:\...\Data\x.entity"
 ```
 
-The paths are added to the Send list. `--to` (machine id, `group:<name>`, `profile:<name>`, `all`) selects the targets and opens the review right away; it replaces the old menu's "send to this group" entries and can be saved as a shortcut.
-
-Settings → **Sağ tık menüsü** (right-click menu) adds “SamSync ile gönder” (send with SamSync) to Explorer, for up to 100 selected items. Explorer starts the app once per item; the single-instance lock gathers them all into one window.
+| Argument | Meaning |
+| --- | --- |
+| paths | added to the Send list |
+| `--to <ids>` | machine ids, `group:<name>`, `profile:<name>`, `all`, `last` (the last reviewed send's targets and options), comma separated; opens the review |
+| `--yes` | with `--to`: sends at once without the review (what the menu entries use) |
+| `--restore` | opens Backups with the items |
+| `--hidden` | starts in the tray (used by start at login) |
+| `--remove-integrations` | removes the Explorer menu and the Notepad++ entries, then quits (used by the uninstaller) |
 
 Shortcuts: `Ctrl+K` command palette, `Ctrl+1…8` pages, `F12` developer tools.
 
@@ -127,7 +164,7 @@ The workflow tests and packages the app on Windows, macOS and Linux and uploads 
 | `config.json` (the chosen file) | machines, groups, profiles, sync jobs and their schedules, copy and update settings |
 | `%APPDATA%\SamSync\settings.json` | specific to this computer: theme, last selections, configuration path, pinned machine, **watches**, tray/startup |
 | `…\secrets.json` | SFTP passwords (encrypted with the operating system's secure store) |
-| `…\history\` | run history; `…\reports\` CSV reports |
+| `…\history\` | run history; `…\reports\` a CSV report for every run (`rapor-<time>-<id>.csv`, the last 300 are kept) |
 | `…\syncdb\` | last state of two-way syncs |
 | `…\log\root.log` | log (rotated at 5 MB); can be redirected with `SAMSYNC_LOG` |
 
@@ -143,4 +180,4 @@ npm run web -- --user-data .demo/userdata   # core + UI in a browser (http://loc
 npm run dist:win     # installer + portable exe
 ```
 
-Layers: `src/core` (engine independent of Electron: configuration, machine detection, transports, planner, executor, git, sync, automation, backups), `src/main` (window, IPC, tray, Explorer menu, updater), `src/preload`, `src/renderer` (React UI), `src/shared` (shared types and the API contract).
+Layers: `src/core` (engine independent of Electron: configuration, machine detection, transports, planner, executor, git, sync, automation, backups), `src/main` (window, IPC, tray, command line, Explorer and Notepad++ integration, updater), `src/preload`, `src/renderer` (React UI), `src/shared` (shared types, the API contract, the menu entries and `i18n`: the Turkish text is the key, `i18n/en/*.ts` hold the English; `tests/i18n.test.ts` fails when a text has no English or a Turkish text is left outside `t()`).

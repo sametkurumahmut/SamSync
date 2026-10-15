@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppConfig, CopySettings, NodeConfig, Profile, SyncJob, LocalSettings } from '../shared/types';
+import { t } from '../shared/i18n';
 
 export const DEFAULT_COPY: CopySettings = {
   retryCount: 2,
@@ -22,7 +23,7 @@ export const DEFAULT_COPY: CopySettings = {
 export const DEFAULT_SETTINGS: LocalSettings = {
   theme: 'dark',
   accent: '#2f7cf6',
-  lang: 'tr',
+  language: 'system',
   recentRepos: [],
   lastTargets: [],
   density: 'comfortable',
@@ -61,18 +62,18 @@ function clampInt(v: unknown, def: number, min: number, max: number): number {
 
 /**
  * Accepts both the v2 format and the legacy PowerShell config.json (localRoot / localRoots,
- * copy.retryCount ...) and returns a validated v2 config. Throws ConfigError with a Turkish message.
+ * copy.retryCount ...) and returns a validated v2 config. Throws ConfigError with a message in the UI language.
  */
 export function normalizeConfig(raw: unknown): AppConfig {
-  if (!raw || typeof raw !== 'object') throw new ConfigError('Yapılandırma bir JSON nesnesi olmalı.');
+  if (!raw || typeof raw !== 'object') throw new ConfigError(t('Yapılandırma bir JSON nesnesi olmalı.'));
   const r = raw as Record<string, any>;
   const nodesRaw: any[] = Array.isArray(r.nodes) ? r.nodes : [];
   const seen = new Set<string>();
   const nodes: NodeConfig[] = nodesRaw.map((n, i) => {
     const id = String(n?.id ?? '').trim();
-    if (!id || !ID_RE.test(id)) throw new ConfigError(`Node #${i + 1}: id yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '${id}'`);
+    if (!id || !ID_RE.test(id)) throw new ConfigError(t("Node #{n}: id yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '{id}'", { n: i + 1, id }));
     const key = id.toLowerCase();
-    if (seen.has(key)) throw new ConfigError(`Node id değerleri benzersiz olmalı (büyük/küçük harf duyarsız): ${id}`);
+    if (seen.has(key)) throw new ConfigError(t('Node id değerleri benzersiz olmalı (büyük/küçük harf duyarsız): {id}', { id }));
     seen.add(key);
     const localRoots = [...(n.localRoot ? [String(n.localRoot)] : []), ...asStringArray(n.localRoots)];
     const uniqRoots = localRoots.filter((x, j) => localRoots.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === j);
@@ -102,10 +103,10 @@ export function normalizeConfig(raw: unknown): AppConfig {
         root: String(n.sftp.root ?? '/'),
       };
     }
-    if (transport === 'smb' && !node.address) throw new ConfigError(`${id}: address (IP veya bilgisayar adı) gerekli.`);
-    if (transport === 'smb' && !node.networkRoot && !node.path) throw new ConfigError(`${id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).`);
-    if (transport === 'path' && !node.path) throw new ConfigError(`${id}: path transport için hedef klasör (path) gerekli.`);
-    if (transport === 'sftp' && (!node.sftp || !node.sftp.username)) throw new ConfigError(`${id}: sftp için kullanıcı adı gerekli.`);
+    if (transport === 'smb' && !node.address) throw new ConfigError(t('{id}: address (IP veya bilgisayar adı) gerekli.', { id }));
+    if (transport === 'smb' && !node.networkRoot && !node.path) throw new ConfigError(t('{id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).', { id }));
+    if (transport === 'path' && !node.path) throw new ConfigError(t('{id}: path transport için hedef klasör (path) gerekli.', { id }));
+    if (transport === 'sftp' && (!node.sftp || !node.sftp.username)) throw new ConfigError(t('{id}: sftp için kullanıcı adı gerekli.', { id }));
     return node;
   });
 
@@ -140,7 +141,13 @@ export function normalizeConfig(raw: unknown): AppConfig {
   const syncJobs: SyncJob[] = (Array.isArray(r.syncJobs) ? r.syncJobs : []).filter((j: any) => j && j.id && Array.isArray(j.pairs));
 
   const cfg: AppConfig = { schema: 2, nodes, copy, profiles, syncJobs };
-  if (r.title || r.menuTitle) cfg.title = String(r.title || r.menuTitle);
+  // menuTitle belongs to the PowerShell tool's own menu; reading it here would also write it back as title
+  if (r.title) cfg.title = String(r.title);
+  const show = String(r.menuShowNodes ?? '').toLowerCase();
+  if (show === 'auto' || show === 'always' || show === 'never') cfg.menuShowNodes = show;
+  if (r.notepadPlusPlusShortcuts && typeof r.notepadPlusPlusShortcuts === 'object') {
+    cfg.notepadPlusPlusShortcuts = Object.fromEntries(Object.entries(r.notepadPlusPlusShortcuts).map(([k, v]) => [k, String(v ?? '')]));
+  }
   if (r.smbPathTemplate && typeof r.smbPathTemplate === 'object') cfg.smbPathTemplate = r.smbPathTemplate;
   if (r.update && typeof r.update === 'object') {
     const src = ['github', 'url', 'folder', 'off'].includes(r.update.source) ? r.update.source : 'github';
@@ -162,7 +169,7 @@ export async function readJson(file: string): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new ConfigError(`${path.basename(file)} geçerli JSON değil: ${(e as Error).message}`);
+    throw new ConfigError(t('{file} geçerli JSON değil: {error}', { file: path.basename(file), error: (e as Error).message }));
   }
 }
 

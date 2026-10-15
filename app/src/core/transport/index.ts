@@ -3,6 +3,7 @@ import type { Transport } from './types';
 import { FsTransport } from './fs';
 import { SftpTransport, expandHome } from './sftp';
 import { joinRoot, toPosix } from '../paths';
+import { t } from '../../shared/i18n';
 
 export type { Transport, Entry } from './types';
 export { FsTransport } from './fs';
@@ -46,7 +47,7 @@ export interface TransportContext {
 
 export async function transportForNode(ctx: TransportContext, node: NodeConfig, subPath = ''): Promise<Transport> {
   if (node.transport === 'sftp') {
-    if (!node.sftp) throw new Error(`${node.id}: SFTP ayarları eksik.`);
+    if (!node.sftp) throw new Error(t('{id}: SFTP ayarları eksik.', { id: node.id }));
     const root = subPath ? `${node.sftp.root.replace(/\/+$/, '')}/${toPosix(subPath).replace(/^\/+/, '')}` : node.sftp.root;
     return new SftpTransport({
       host: node.sftp.host || node.address,
@@ -65,7 +66,7 @@ export async function transportForNode(ctx: TransportContext, node: NodeConfig, 
 export async function transportForEndpoint(ctx: TransportContext, ep: Endpoint): Promise<Transport> {
   if (ep.kind === 'local') return new FsTransport(ep.path);
   const node = ctx.config.nodes.find((n) => n.id === ep.nodeId);
-  if (!node) throw new Error(`Hedef bulunamadı: ${ep.nodeId}`);
+  if (!node) throw new Error(t('Hedef bulunamadı: {id}', { id: ep.nodeId }));
   return transportForNode(ctx, node, ep.subPath);
 }
 

@@ -36,29 +36,35 @@ import { SettingsPage } from './pages/SettingsPage';
 import { AutomationPage } from './pages/AutomationPage';
 import { Welcome } from './pages/Welcome';
 import iconUrl from '../../../resources/icon.png';
+import { t, tk } from '@shared/i18n';
 
 const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
-  { id: 'send', label: 'Gönder', icon: Send, hint: 'Dosya ve klasörleri makinelere gönder' },
-  { id: 'git', label: 'Git', icon: GitBranch, hint: 'Commit ve yerel değişiklikleri gönder' },
-  { id: 'sync', label: 'Senkron', icon: ArrowLeftRight, hint: 'Klasörleri karşılaştır ve eşitle' },
-  { id: 'automation', label: 'Otomasyon', icon: Zap, hint: 'Değişince gönder, zamanlanmış senkron' },
-  { id: 'targets', label: 'Hedefler', icon: Server, hint: 'Makineler, gruplar, erişim' },
-  { id: 'backups', label: 'Yedekler', icon: ArchiveRestore, hint: 'Hedeflerdeki eski hâlleri geri al' },
-  { id: 'history', label: 'Geçmiş', icon: History, hint: 'Çalıştırmalar ve raporlar' },
+  { id: 'send', label: tk('Gönder'), icon: Send, hint: tk('Dosya ve klasörleri makinelere gönder') },
+  { id: 'git', label: 'Git', icon: GitBranch, hint: tk('Commit ve yerel değişiklikleri gönder') },
+  { id: 'sync', label: tk('Senkron'), icon: ArrowLeftRight, hint: tk('Klasörleri karşılaştır ve eşitle') },
+  { id: 'automation', label: tk('Otomasyon'), icon: Zap, hint: tk('Değişince gönder, zamanlanmış senkron') },
+  { id: 'targets', label: tk('Hedefler'), icon: Server, hint: tk('Makineler, gruplar, erişim') },
+  { id: 'backups', label: tk('Yedekler'), icon: ArchiveRestore, hint: tk('Hedeflerdeki eski hâlleri geri al') },
+  { id: 'history', label: tk('Geçmiş'), icon: History, hint: tk('Çalıştırmalar ve raporlar') },
 ];
 
 const TITLES: Record<Page, string> = {
-  send: 'Gönder',
+  send: tk('Gönder'),
   git: 'Git',
-  sync: 'Senkron',
-  automation: 'Otomasyon',
-  targets: 'Hedefler',
-  backups: 'Yedekler',
-  history: 'Geçmiş',
-  settings: 'Ayarlar',
+  sync: tk('Senkron'),
+  automation: tk('Otomasyon'),
+  targets: tk('Hedefler'),
+  backups: tk('Yedekler'),
+  history: tk('Geçmiş'),
+  settings: tk('Ayarlar'),
 };
 
 export function App() {
+  const lang = useApp((s) => s.lang);
+  return <Shell key={lang} />;
+}
+
+function Shell() {
   const boot = useApp((s) => s.boot);
   const bootError = useApp((s) => s.bootError);
   const page = useApp((s) => s.page);
@@ -139,7 +145,7 @@ export function App() {
         <div className="empty-icon">
           <AlertTriangle />
         </div>
-        <h3>Uygulama başlatılamadı</h3>
+        <h3>{t('Uygulama başlatılamadı')}</h3>
         <p className="selectable">{bootError}</p>
       </div>
     );
@@ -165,12 +171,12 @@ export function App() {
           <span>SamSync</span>
           <span className="ver">v{boot.appVersion}</span>
         </div>
-        <span className="crumb">/ {TITLES[page]}</span>
+        <span className="crumb">/ {t(TITLES[page])}</span>
         <div className="spacer" />
         <button className="titlebar-search" onClick={() => useApp.setState({ palette: true })}>
           <Search size={14} />
           <span className="grow" style={{ textAlign: 'left' }}>
-            Komut ara…
+            {t('Komut ara…')}
           </span>
           <span className="kbd">Ctrl K</span>
         </button>
@@ -178,18 +184,18 @@ export function App() {
         <RunPill />
         {updateHot && (
           <Button size="sm" variant="primary" icon={update.phase === 'downloading' ? <Loader2 size={14} className="spin" /> : <Download size={14} />} onClick={() => setPage('settings')}>
-            {update.phase === 'ready' ? 'Güncellemeye hazır' : update.phase === 'downloading' ? `İndiriliyor %${Math.round(update.percent ?? 0)}` : `v${update.version} çıktı`}
+            {update.phase === 'ready' ? t('Güncellemeye hazır') : update.phase === 'downloading' ? t('İndiriliyor %{pct}', { pct: Math.round(update.percent ?? 0) }) : t('v{version} çıktı', { version: update.version ?? '' })}
           </Button>
         )}
         <div
           className="chip static no-drag"
-          data-tip={boot.identity.node ? `Bu makine: ${boot.identity.node.name}\n${boot.identity.reason}` : boot.identity.reason}
+          data-tip={boot.identity.node ? `${t('Bu makine: {name}', { name: boot.identity.node.name })}\n${boot.identity.reason}` : boot.identity.reason}
           data-tip-pos="bottom"
           onClick={() => setPage('targets')}
           style={{ cursor: 'pointer' }}
         >
           <span className={cls('dot', boot.identity.node ? 'ok' : 'bad')} />
-          {boot.identity.node ? boot.identity.node.id : 'Tanımsız makine'}
+          {boot.identity.node ? boot.identity.node.id : t('Tanımsız makine')}
         </div>
       </header>
 
@@ -197,12 +203,12 @@ export function App() {
         {NAV.map((n) => {
           const Icon = n.icon;
           return (
-            <button key={n.id} className={cls('nav-item', page === n.id && 'active')} onClick={() => setPage(n.id)} data-tip={collapsed ? n.label : undefined} data-tip-pos="right">
+            <button key={n.id} className={cls('nav-item', page === n.id && 'active')} onClick={() => setPage(n.id)} data-tip={collapsed ? t(n.label) : undefined} data-tip-pos="right">
               <Icon size={17} />
-              <span>{n.label}</span>
+              <span>{t(n.label)}</span>
               {n.id === 'send' && sendCount > 0 && <span className="count hot">{sendCount}</span>}
               {n.id === 'automation' && autoActive > 0 && (
-                <span className={cls('count', autoBusy && 'hot')} data-tip={automation?.paused ? 'Duraklatıldı' : undefined}>
+                <span className={cls('count', autoBusy && 'hot')} data-tip={automation?.paused ? t('Duraklatıldı') : undefined}>
                   {automation?.paused ? '❚❚' : autoActive}
                 </span>
               )}
@@ -215,18 +221,18 @@ export function App() {
           );
         })}
         <div className="sidebar-foot">
-          <button className={cls('nav-item', page === 'settings' && 'active')} onClick={() => setPage('settings')} data-tip={collapsed ? 'Ayarlar' : undefined} data-tip-pos="right">
+          <button className={cls('nav-item', page === 'settings' && 'active')} onClick={() => setPage('settings')} data-tip={collapsed ? t('Ayarlar') : undefined} data-tip-pos="right">
             <Settings size={17} />
-            <span>Ayarlar</span>
+            <span>{t('Ayarlar')}</span>
             {updateHot && <span className="count hot">1</span>}
           </button>
-          <button className="nav-item" onClick={() => void saveSettings({ theme: dark ? 'light' : 'dark' })} data-tip={collapsed ? 'Tema' : undefined} data-tip-pos="right">
+          <button className="nav-item" onClick={() => void saveSettings({ theme: dark ? 'light' : 'dark' })} data-tip={collapsed ? t('Tema') : undefined} data-tip-pos="right">
             {dark ? <Sun size={17} /> : <Moon size={17} />}
-            <span>{dark ? 'Açık tema' : 'Koyu tema'}</span>
+            <span>{dark ? t('Açık tema') : t('Koyu tema')}</span>
           </button>
-          <button className="nav-item" onClick={toggleSidebar} data-tip={collapsed ? 'Genişlet' : undefined} data-tip-pos="right">
+          <button className="nav-item" onClick={toggleSidebar} data-tip={collapsed ? t('Genişlet') : undefined} data-tip-pos="right">
             {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-            <span>Daralt</span>
+            <span>{t('Daralt')}</span>
           </button>
         </div>
       </nav>
@@ -254,7 +260,7 @@ export function App() {
             <div className="icon-tile accent lg">
               <Upload size={18} />
             </div>
-            Göndermek için bırakın
+            {t('Göndermek için bırakın')}
           </div>
         </div>
       )}

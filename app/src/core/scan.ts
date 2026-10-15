@@ -2,6 +2,7 @@ import type { Transport, Entry } from './transport';
 import type { PathFilter } from './filter';
 import { relKey } from './paths';
 import { CancelToken } from './util';
+import { t } from '../shared/i18n';
 
 export interface ScanResult {
   /** key (case folded when the side is case insensitive) -> entry, rel relative to the scan base */
@@ -20,11 +21,11 @@ export interface ScanOptions {
 }
 
 /** Recursively lists `baseRel` on a transport. Paths in the result are relative to `baseRel`. */
-export async function scanTree(t: Transport, baseRel: string, opts: ScanOptions = {}): Promise<ScanResult> {
+export async function scanTree(tport: Transport, baseRel: string, opts: ScanOptions = {}): Promise<ScanResult> {
   const entries = new Map<string, Entry>();
   const errors: { rel: string; error: string }[] = [];
-  const ci = opts.caseInsensitive ?? t.caseInsensitive;
-  const root = await t.stat(baseRel);
+  const ci = opts.caseInsensitive ?? tport.caseInsensitive;
+  const root = await tport.stat(baseRel);
   if (!root || !root.isDir) return { entries, errors, exists: !!root };
 
   const queue: string[] = [''];
@@ -36,7 +37,7 @@ export async function scanTree(t: Transport, baseRel: string, opts: ScanOptions 
   await new Promise<void>((resolve, reject) => {
     const pump = () => {
       if (opts.cancel?.cancelled) {
-        reject(new Error('İptal edildi'));
+        reject(new Error(t('İptal edildi')));
         return;
       }
       if (!queue.length && active === 0) {
@@ -47,7 +48,7 @@ export async function scanTree(t: Transport, baseRel: string, opts: ScanOptions 
         const dir = queue.shift()!;
         active++;
         const full = dir ? (baseRel ? `${baseRel}/${dir}` : dir) : baseRel;
-        t.list(full)
+        tport.list(full)
           .then((children) => {
             for (const c of children) {
               const rel = c.rel.slice(strip);

@@ -1,5 +1,6 @@
 import { structuredPatch, type StructuredPatch } from 'diff';
 import type { DiffLine, DiffResult } from '../shared/types';
+import { t } from '../shared/i18n';
 
 export const MAX_TEXT_DIFF_BYTES = 4 * 1024 * 1024;
 
@@ -34,18 +35,18 @@ export interface TextDiffOptions {
 export function textDiff(left: Buffer, right: Buffer, opts: TextDiffOptions = {}): DiffResult {
   const base = { leftLabel: opts.leftLabel, rightLabel: opts.rightLabel, additions: 0, deletions: 0, lines: [] as DiffLine[] };
   if (left.length > MAX_TEXT_DIFF_BYTES || right.length > MAX_TEXT_DIFF_BYTES)
-    return { ...base, ok: false, tooLarge: true, reason: 'Dosya satır farkı için çok büyük (4 MB üstü)' };
-  if (isBinary(left) || isBinary(right)) return { ...base, ok: false, binary: true, identical: left.equals(right), reason: left.equals(right) ? 'İkili dosyalar aynı' : 'İkili dosya: satır farkı gösterilemez' };
+    return { ...base, ok: false, tooLarge: true, reason: t('Dosya satır farkı için çok büyük (4 MB üstü)') };
+  if (isBinary(left) || isBinary(right)) return { ...base, ok: false, binary: true, identical: left.equals(right), reason: left.equals(right) ? t('İkili dosyalar aynı') : t('İkili dosya: satır farkı gösterilemez') };
   if (left.equals(right)) return { ...base, ok: true, identical: true };
   const a = decodeText(left).replace(/\r\n/g, '\n');
   const b = decodeText(right).replace(/\r\n/g, '\n');
-  if (a === b) return { ...base, ok: true, identical: true, reason: 'Yalnızca satır sonları (CRLF/LF) farklı' };
+  if (a === b) return { ...base, ok: true, identical: true, reason: t('Yalnızca satır sonları (CRLF/LF) farklı') };
   const patch = (structuredPatch as any)('a', 'b', a, b, undefined, undefined, {
     context: opts.context ?? 3,
     timeout: 4000,
     ignoreWhitespace: opts.ignoreWhitespace,
   }) as StructuredPatch | undefined;
-  if (!patch) return { ...base, ok: false, tooLarge: true, reason: 'Fark hesaplanamayacak kadar karmaşık' };
+  if (!patch) return { ...base, ok: false, tooLarge: true, reason: t('Fark hesaplanamayacak kadar karmaşık') };
   const lines: DiffLine[] = [];
   let additions = 0;
   let deletions = 0;

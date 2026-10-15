@@ -6,6 +6,7 @@ import { Client, type SFTPWrapper, type ConnectConfig } from 'ssh2';
 import type { Entry, Transport, WriteOptions } from './types';
 import { progressCounter } from './fs';
 import { mapLimit } from '../util';
+import { t } from '../../shared/i18n';
 
 export interface SftpOptions {
   host: string;
@@ -151,7 +152,7 @@ export class SftpTransport implements Transport {
 
   async copyWithin(fromRel: string, toRel: string): Promise<void> {
     const st = await this.stat(fromRel);
-    if (!st) throw new Error(`Bulunamadı: ${fromRel}`);
+    if (!st) throw new Error(t('Bulunamadı: {path}', { path: fromRel }));
     if (!st.isDir) {
       await this.writeStream(toRel, await this.readStream(fromRel), { mtimeMs: st.mtimeMs });
       return;
@@ -171,7 +172,7 @@ export class SftpTransport implements Transport {
       const sub = parts.slice(0, i).join('/');
       const st = await this.stat(sub);
       if (st?.isDir) continue;
-      if (st) throw new Error(`Klasör oluşturulamadı, aynı adda dosya var: ${sub}`);
+      if (st) throw new Error(t('Klasör oluşturulamadı, aynı adda dosya var: {path}', { path: sub }));
       await cb((d) => s.mkdir(this.abs(sub), d)).catch(async (e) => {
         if (!(await this.stat(sub))?.isDir) throw e;
       });
@@ -206,8 +207,8 @@ export class SftpTransport implements Transport {
 
   async setMtime(rel: string, mtimeMs: number): Promise<void> {
     const s = await this.conn();
-    const t = Math.floor(mtimeMs / 1000);
-    await cb((d) => s.utimes(this.abs(rel), t, t, d));
+    const secs = Math.floor(mtimeMs / 1000);
+    await cb((d) => s.utimes(this.abs(rel), secs, secs, d));
   }
 
   async freeSpace(): Promise<number | undefined> {

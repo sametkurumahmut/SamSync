@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
-import type { AppEvent, LocalSettings } from '../shared/types';
+import type { AppEvent, LocalSettings, OpenRequest } from '../shared/types';
 import { isApiMethod, type PickOptions } from '../shared/api';
-import { explorerMenuInstall, explorerMenuStatus } from './explorer';
+import { getLang, t } from '../shared/i18n';
 import { Updater } from './updater';
 import { TrayManager } from './tray';
+import { launcherCommand, launcherPath } from './launcher';
+import { LaunchQueue, parseLaunch } from './launch';
+import { Integrations, removeIntegrations } from './integration';
 
 const isMac = process.platform === 'darwin';
 const iconPath = path.join(__dirname, '../../resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -14,56 +17,44 @@ const iconPath = path.join(__dirname, '../../resources', process.platform === 'w
 if (process.env.SAMSYNC_USER_DATA) app.setPath('userData', process.env.SAMSYNC_USER_DATA);
 app.setAppUserModelId('com.sametkurumahmut.samsync');
 
-/** --to <ids> / --to=<ids>: node ids, group:<name>, profile:<name> or all, comma separated. */
-function targetsFromArgv(argv: string[]): string[] {
-  const i = argv.findIndex((a) => a === '--to' || a.startsWith('--to='));
-  if (i < 0) return [];
-  const raw = argv[i].startsWith('--to=') ? argv[i].slice(5) : argv[i + 1] ?? '';
-  return raw.split(',').map((x) => x.trim()).filter(Boolean);
-}
+/** argv of this or a second instance, without the program (and the app folder when unpackaged). */
+const launchOf = (argv: string[]) => parseLaunch(argv.slice(app.isPackaged ? 1 : 2), app.isPackaged ? undefined : app.getAppPath());
+const launch = launchOf(process.argv);
 
-/** Paths passed on the command line (Explorer verb, "Open with", drag onto the exe). */
-function pathsFromArgv(argv: string[]): string[] {
-  const out: string[] = [];
-  const args = argv.slice(app.isPackaged ? 1 : 2);
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k];
-    if (a === '--to') {
-      k++;
-      continue;
-    }
-    if (!a || a.startsWith('-')) continue;
-    try {
-      if (fs.existsSync(a) && path.resolve(a) !== path.resolve(app.getAppPath())) out.push(path.resolve(a));
-    } catch {
-      /* ignore */
-    }
-  }
-  return out;
-}
-
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
+if (launch.removeIntegrations) {
+  // the uninstaller: take the Explorer menu and the Notepad++ entries out, no window
+  void removeIntegrations().finally(() => app.exit(0));
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   let win: BrowserWindow | null = null;
-  const initialPaths = pathsFromArgv(process.argv);
-  const initialTargets = targetsFromArgv(process.argv);
-  let pendingPaths: string[] = [];
-  let pendingTargets: string[] = [];
-  let flushTimer: NodeJS.Timeout | null = null;
+  /** The renderer has asked for its bootstrap, so it listens to events; false again on every (re)load. */
+  let rendererReady = false;
+  const waiting: OpenRequest[] = [];
 
   const emit = (e: AppEvent) => {
+    if (e.type === 'config-changed') integrations.refresh();
     if (win && !win.isDestroyed()) win.webContents.send('samsync:event', e);
   };
+  const deliver = (r: OpenRequest) => {
+    if (rendererReady && win && !win.isDestroyed()) emit({ type: 'open', request: r });
+    else waiting.push(r);
+  };
+  const flushWaiting = () => {
+    while (waiting.length && rendererReady) emit({ type: 'open', request: waiting.shift()! });
+  };
+  const launches = new LaunchQueue(deliver);
+  launches.add(launch);
 
   // --hidden: started at login; stay in the tray when that is enabled
-  const startHidden = process.argv.includes('--hidden');
+  const startHidden = launch.hidden;
   let quitting = false;
   let currentSettings: LocalSettings | null = null;
   let loginItem: boolean | null = null;
+  let integrationKey = '';
   let trayNoticeShown = false;
   const showWindow = () => {
+    if (!app.isReady()) return; // the window opens once the app is ready anyway
     if (!win) createWindow(true);
     if (!win) return;
     if (win.isMinimized()) win.restore();
@@ -79,29 +70,18 @@ if (!gotLock) {
     },
   });
 
-  // Explorer starts one process per selected item; the extra instances land here. Collect them for a
-  // moment so a 40 file selection opens as one send instead of 40.
-  const queuePaths = (paths: string[], targets: string[] = []) => {
-    pendingPaths.push(...paths);
-    if (targets.length) pendingTargets = targets;
-    if (flushTimer) clearTimeout(flushTimer);
-    flushTimer = setTimeout(() => {
-      const list = [...new Set(pendingPaths)];
-      const tg = pendingTargets;
-      pendingPaths = [];
-      pendingTargets = [];
-      if (list.length) emit({ type: 'open-paths', paths: list, targets: tg.length ? tg : undefined, review: tg.length > 0 });
-    }, 450);
-  };
-
   const updater = new Updater((state) => emit({ type: 'update', state }));
 
   const host: HostAdapter = {
     isElectron: true,
     appVersion: app.getVersion(),
     userDataPath: app.getPath('userData'),
-    initialPaths,
-    initialTargets,
+    // launches go through the queue and the 'open' event, so a big Explorer selection merges with the first item
+    initialPaths: [],
+    initialTargets: [],
+    get systemLanguages() {
+      return app.isReady() ? [...app.getPreferredSystemLanguages(), app.getLocale()] : [];
+    },
     emit,
     async pick(opts: PickOptions) {
       const props: OpenDialogOptions['properties'] = [];
@@ -142,7 +122,10 @@ if (!gotLock) {
       });
       n.show();
     },
-    explorerMenu: { status: explorerMenuStatus, install: (on) => explorerMenuInstall(on) },
+    integrations: {
+      status: () => integrations.status(),
+      apply: () => integrations.apply(),
+    },
     updater,
     windowControl(action) {
       if (!win) return;
@@ -167,18 +150,42 @@ if (!gotLock) {
       currentSettings = s;
       trayMgr.update(s.closeToTray, state);
       if (app.isPackaged && process.platform !== 'linux' && loginItem !== s.launchAtLogin) {
-        app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: ['--hidden'] });
+        app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, path: launcherPath(), args: ['--hidden'] });
         loginItem = s.launchAtLogin;
       }
+      // the menus carry labels and the machine list: rebuild them when the language, the pinned machine or a switch changes
+      const key = JSON.stringify([getLang(), s.localNodeId, s.explorerMenu, s.notepadPlusPlus]);
+      if (integrationKey && key !== integrationKey) integrations.refresh();
+      integrationKey = key;
     },
   };
 
   const service = new Service(host);
+  const integrations = new Integrations({
+    config: () => service.config,
+    localNode: () => service.identity?.node ?? null,
+    settings: () => service.settings,
+    launcher: launcherCommand,
+    icon: () => `"${launcherPath()}",0`,
+    log: service.log,
+    onChange: (status) => emit({ type: 'integration', status }),
+    // a development run does not put its own menus on the machine unless they are switched on
+    defaultOn: app.isPackaged,
+  });
 
   ipcMain.handle('samsync:api', async (_e, method: string, args: unknown[]) => {
     const fn = (service as unknown as Record<string, unknown>)[method];
-    if (!isApiMethod(method) || typeof fn !== 'function') throw new Error(`Bilinmeyen işlem: ${method}`);
-    return (fn as (...a: unknown[]) => unknown).apply(service, args);
+    if (!isApiMethod(method) || typeof fn !== 'function') throw new Error(t('Bilinmeyen işlem: {method}', { method }));
+    const result = await (fn as (...a: unknown[]) => unknown).apply(service, args);
+    if (method === 'bootstrap') {
+      // the renderer subscribes to events before it asks for the bootstrap
+      setTimeout(() => {
+        rendererReady = true;
+        flushWaiting();
+      }, 0);
+      integrations.refresh();
+    }
+    return result;
   });
 
   const createWindow = (forceShow = false) => {
@@ -212,10 +219,14 @@ if (!gotLock) {
       win?.hide();
       if (!trayNoticeShown) {
         trayNoticeShown = true;
-        host.notify?.('SamSync arka planda çalışıyor', 'İzleme ve zamanlanmış işler sürüyor. Tepsideki simgeden açabilir ya da çıkabilirsiniz.');
+        host.notify?.(t('SamSync arka planda çalışıyor'), t('İzleme ve zamanlanmış işler sürüyor. Tepsideki simgeden açabilir ya da çıkabilirsiniz.'));
       }
     });
-    win.on('closed', () => (win = null));
+    win.on('closed', () => {
+      win = null;
+      rendererReady = false;
+    });
+    win.webContents.on('did-start-loading', () => (rendererReady = false));
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) void shell.openExternal(url);
       return { action: 'deny' };
@@ -235,6 +246,11 @@ if (!gotLock) {
     if (process.env.SAMSYNC_SCREENSHOT) {
       win.webContents.once('did-finish-load', () => {
         setTimeout(async () => {
+          // SAMSYNC_SCREENSHOT_SCROLL=<css selector>: bring that part of the page into view first
+          if (process.env.SAMSYNC_SCREENSHOT_SCROLL) {
+            await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(process.env.SAMSYNC_SCREENSHOT_SCROLL)})?.scrollIntoView({ block: 'start' })`);
+            await new Promise((r) => setTimeout(r, 1000));
+          }
           const img = await win!.webContents.capturePage();
           fs.writeFileSync(process.env.SAMSYNC_SCREENSHOT!, img.toPNG());
           if (process.env.SAMSYNC_SCREENSHOT_EXIT) app.quit();
@@ -244,16 +260,13 @@ if (!gotLock) {
   };
 
   app.on('second-instance', (_e, argv) => {
-    const paths = pathsFromArgv(argv);
-    const targets = targetsFromArgv(argv);
     showWindow();
-    if (paths.length) queuePaths(paths, targets);
+    launches.add(launchOf(argv));
   });
 
   app.on('open-file', (e, p) => {
     e.preventDefault();
-    if (win) queuePaths([p]);
-    else initialPaths.push(p);
+    launches.add({ paths: [p] });
   });
 
   app.whenReady().then(async () => {
@@ -273,6 +286,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     quitting = true;
     service.automation?.stop();
+    integrations.stop();
   });
 
   app.on('window-all-closed', () => {

@@ -8,6 +8,7 @@ import { buildSendPlan } from './plan';
 import { makeFilter, ancestorExcluded, type PathFilter } from './filter';
 import { isUnder, normalizeAbs, toPosix } from './paths';
 import { errMessage, newId } from './util';
+import { t } from '../shared/i18n';
 
 /** What the automation needs from the service (kept narrow so it can be tested without Electron). */
 export interface AutomationHost {
@@ -225,23 +226,23 @@ class WatchRunner {
         targetIds,
         options: { ...this.cfg.options, dryRun: false },
         origin: 'send',
-        label: `Otomatik: ${this.cfg.name}`,
+        label: t('Otomatik: {name}', { name: this.cfg.name }),
       });
       // unreachable targets keep the changed paths and get them again later
-      for (const t of plan.targets) {
-        if (t.reachable) this.deferred.delete(t.targetId);
+      for (const tp of plan.targets) {
+        if (tp.reachable) this.deferred.delete(tp.targetId);
         else {
-          const set = this.deferred.get(t.targetId) ?? new Set<string>();
+          const set = this.deferred.get(tp.targetId) ?? new Set<string>();
           for (const p of changed) set.add(p);
-          this.deferred.set(t.targetId, set);
+          this.deferred.set(tp.targetId, set);
         }
       }
       this.state.deferredTargets = [...this.deferred.keys()];
-      const ops = plan.targets.reduce((s, t) => s + (t.reachable ? t.ops.filter((o) => o.selected).length : 0), 0);
+      const ops = plan.targets.reduce((s, tp) => s + (tp.reachable ? tp.ops.filter((o) => o.selected).length : 0), 0);
       this.state.lastRunAt = Date.now();
       if (!ops) {
         this.state.lastStatus = 'nothing';
-        this.state.lastSummary = `${files} değişiklik, hedefler zaten güncel`;
+        this.state.lastSummary = t('{n} değişiklik, hedefler zaten güncel', { n: files });
         return;
       }
       const handle = this.host.runPlan(plan, false);
@@ -251,12 +252,13 @@ class WatchRunner {
       this.state.runs++;
       this.state.sentFiles += detail.opsOk;
       this.state.lastStatus = detail.status;
-      this.state.lastSummary = `${detail.opsOk} işlem • ${detail.targets.length} hedef${detail.opsFailed ? ` • ${detail.opsFailed} hata` : ''}`;
-      if (detail.status !== 'ok') this.host.notify(`✕ ${this.cfg.name}`, `Otomatik gönderim: ${detail.opsFailed} hatalı işlem`);
+      const sum = { n: detail.opsOk, targets: detail.targets.length, failed: detail.opsFailed };
+      this.state.lastSummary = detail.opsFailed ? t('{n} işlem • {targets} hedef • {failed} hata', sum) : t('{n} işlem • {targets} hedef', sum);
+      if (detail.status !== 'ok') this.host.notify(`✕ ${this.cfg.name}`, t('Otomatik gönderim: {n} hatalı işlem', { n: detail.opsFailed }));
     } catch (e) {
       this.state.lastStatus = 'failed';
       this.state.lastSummary = errMessage(e);
-      this.host.ctx().log.error('İzleme', `${this.cfg.name}: gönderim başarısız`, e);
+      this.host.ctx().log.error(t('İzleme'), t('{name}: gönderim başarısız', { name: this.cfg.name }), e);
     }
   }
 
@@ -301,8 +303,8 @@ export function nextRun(s: SyncSchedule, last: number | undefined, since: number
       const d = new Date(now);
       d.setDate(d.getDate() + day);
       d.setHours(h, m, 0, 0);
-      const t = d.getTime();
-      if (t > after && (best == null || t < best)) best = t;
+      const at = d.getTime();
+      if (at > after && (best == null || at < best)) best = at;
     }
   }
   // a slot passed while the app was closed today: run it now
@@ -376,7 +378,7 @@ export class Automation {
           name: j.name,
           enabled: s.enabled,
           activeHere,
-          reason: activeHere ? undefined : `Yalnızca ${s.machineId} makinesinde çalışır`,
+          reason: activeHere ? undefined : t('Yalnızca {machine} makinesinde çalışır', { machine: s.machineId ?? '' }),
           running: this.running.has(j.id),
           nextAt: s.enabled && activeHere ? nextRun(s, last, this.startedAt) : undefined,
           lastAt: last,
@@ -430,19 +432,19 @@ export class Automation {
     this.emit();
     const notify = job.schedule?.notify ?? 'errors';
     try {
-      const { handle, actions } = await this.host.runSyncDefault(job, `Zamanlanmış: ${job.name}`);
+      const { handle, actions } = await this.host.runSyncDefault(job, t('Zamanlanmış: {name}', { name: job.name }));
       if (!handle) {
-        this.lastResult.set(job.id, { status: 'nothing', summary: actions ? 'Yalnızca çakışmalar var' : 'Değişiklik yok' });
-        if (notify === 'always') this.host.notify(`= ${job.name}`, 'Değişiklik yok');
+        this.lastResult.set(job.id, { status: 'nothing', summary: actions ? t('Yalnızca çakışmalar var') : t('Değişiklik yok') });
+        if (notify === 'always') this.host.notify(`= ${job.name}`, t('Değişiklik yok'));
       } else {
         const d = await handle.done;
-        this.lastResult.set(job.id, { status: d.status, summary: `${d.opsOk} işlem${d.opsFailed ? ` • ${d.opsFailed} hata` : ''}` });
+        this.lastResult.set(job.id, { status: d.status, summary: d.opsFailed ? t('{n} işlem • {failed} hata', { n: d.opsOk, failed: d.opsFailed }) : t('{n} işlem', { n: d.opsOk }) });
         if (notify === 'always' || notify === 'changes' || d.status !== 'ok')
-          this.host.notify(`${d.status === 'ok' ? '✓' : '✕'} ${job.name}`, `${d.opsOk} başarılı, ${d.opsFailed} hatalı`);
+          this.host.notify(`${d.status === 'ok' ? '✓' : '✕'} ${job.name}`, t('{ok} başarılı, {failed} hatalı', { ok: d.opsOk, failed: d.opsFailed }));
       }
     } catch (e) {
       this.lastResult.set(job.id, { status: 'failed', summary: errMessage(e) });
-      this.host.ctx().log.error('Zamanlama', `${job.name} çalışmadı`, e);
+      this.host.ctx().log.error(t('Zamanlama'), t('{name} çalışmadı', { name: job.name }), e);
       this.host.notify(`✕ ${job.name}`, errMessage(e));
     } finally {
       this.running.delete(job.id);

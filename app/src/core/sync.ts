@@ -9,6 +9,7 @@ import { compareMeta, sameTime, streamsEqual, type TimeOptions } from './compare
 import type { ExecGroup, ExecOp } from './executor';
 import { CancelToken, errMessage, mapLimit, newId } from './util';
 import { joinRoot } from './paths';
+import { t } from '../shared/i18n';
 
 export const VARIANT_ACTIONS: Record<Exclude<SyncVariant, 'twoWay' | 'custom'>, CustomActions> = {
   mirror: { leftOnly: 'copyRight', rightOnly: 'deleteRight', leftNewer: 'copyRight', rightNewer: 'copyRight', different: 'copyRight' },
@@ -53,10 +54,10 @@ function meta(e?: Entry): FileMeta | undefined {
   return e ? { size: e.size, mtimeMs: e.mtimeMs, isDir: e.isDir } : undefined;
 }
 
-function changedSince(m: FileMeta, side: DbSide | undefined, t: TimeOptions): boolean {
+function changedSince(m: FileMeta, side: DbSide | undefined, tol: TimeOptions): boolean {
   if (!side) return true;
   if (m.isDir) return false;
-  return m.size !== side.s || !sameTime(m.mtimeMs, side.m, t);
+  return m.size !== side.s || !sameTime(m.mtimeMs, side.m, tol);
 }
 
 interface PairCtx {
@@ -72,7 +73,7 @@ async function classify(p: PairCtx, rel: string, l: Entry | undefined, r: Entry 
   if (r && !l) return { category: 'rightOnly' };
   const L = l!;
   const R = r!;
-  if (L.isDir !== R.isDir) return { category: 'conflict', conflict: 'Bir tarafta klasör, öbür tarafta dosya' };
+  if (L.isDir !== R.isDir) return { category: 'conflict', conflict: t('Bir tarafta klasör, öbür tarafta dosya') };
   if (L.isDir) return { category: 'equal' };
   const v = compareMeta(L, R, p.job.compare, p.time);
   if (v === 'equal') return { category: 'equal' };
@@ -85,7 +86,7 @@ async function classify(p: PairCtx, rel: string, l: Entry | undefined, r: Entry 
   return { category: 'different' };
 }
 
-function defaultAction(job: SyncJob, item: Omit<CompareItem, 'action' | 'defaultAction'>, db: SyncDb, t: TimeOptions): { action: SyncAction; conflict?: string; category?: Category } {
+function defaultAction(job: SyncJob, item: Omit<CompareItem, 'action' | 'defaultAction'>, db: SyncDb, tol: TimeOptions): { action: SyncAction; conflict?: string; category?: Category } {
   const c = item.category;
   if (c === 'equal') return { action: 'none' };
   if (c === 'conflict') return { action: 'none' };
@@ -96,24 +97,24 @@ function defaultAction(job: SyncJob, item: Omit<CompareItem, 'action' | 'default
   const e = db[item.key];
   if (c === 'leftOnly') {
     if (!e) return { action: 'copyRight' };
-    if (!changedSince(item.left!, e.l, t)) return { action: 'deleteLeft' };
-    return { action: 'copyRight', category: 'conflict', conflict: 'Sağda silinmiş ama solda değiştirilmiş' };
+    if (!changedSince(item.left!, e.l, tol)) return { action: 'deleteLeft' };
+    return { action: 'copyRight', category: 'conflict', conflict: t('Sağda silinmiş ama solda değiştirilmiş') };
   }
   if (c === 'rightOnly') {
     if (!e) return { action: 'copyLeft' };
-    if (!changedSince(item.right!, e.r, t)) return { action: 'deleteRight' };
-    return { action: 'copyLeft', category: 'conflict', conflict: 'Solda silinmiş ama sağda değiştirilmiş' };
+    if (!changedSince(item.right!, e.r, tol)) return { action: 'deleteRight' };
+    return { action: 'copyLeft', category: 'conflict', conflict: t('Solda silinmiş ama sağda değiştirilmiş') };
   }
   if (e) {
-    const lc = changedSince(item.left!, e.l, t);
-    const rc = changedSince(item.right!, e.r, t);
+    const lc = changedSince(item.left!, e.l, tol);
+    const rc = changedSince(item.right!, e.r, tol);
     if (lc && !rc) return { action: 'copyRight' };
     if (rc && !lc) return { action: 'copyLeft' };
-    if (lc && rc) return { action: 'none', category: 'conflict', conflict: 'İki tarafta da değiştirilmiş' };
+    if (lc && rc) return { action: 'none', category: 'conflict', conflict: t('İki tarafta da değiştirilmiş') };
   }
   if (c === 'leftNewer') return { action: 'copyRight' };
   if (c === 'rightNewer') return { action: 'copyLeft' };
-  return { action: 'none', category: 'conflict', conflict: 'Tarihler aynı, içerik farklı' };
+  return { action: 'none', category: 'conflict', conflict: t('Tarihler aynı, içerik farklı') };
 }
 
 export function emptyStats(): CompareStats {
@@ -165,8 +166,8 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
     counted = ls.entries.size + rs.entries.size;
     res.leftOk = ls.exists;
     res.rightOk = rs.exists || pair.right.kind === 'node';
-    if (!ls.exists) throw new Error(`Sol klasör bulunamadı: ${leftLabel}`);
-    const errs = [...ls.errors.map((e) => `sol ${e.rel}: ${e.error}`), ...rs.errors.map((e) => `sağ ${e.rel}: ${e.error}`)];
+    if (!ls.exists) throw new Error(t('Sol klasör bulunamadı: {path}', { path: leftLabel }));
+    const errs = [...ls.errors.map((e) => t('sol {path}: {error}', { path: e.rel, error: e.error })), ...rs.errors.map((e) => t('sağ {path}: {error}', { path: e.rel, error: e.error }))];
     if (errs.length) res.error = errs.slice(0, 5).join('\n');
 
     const db = await loadDb(ctx, job.id, pair.id);
@@ -196,7 +197,7 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
 export async function compareJob(ctx: CoreContext, job: SyncJob, cancel = new CancelToken(), onProgress?: (msg: string) => void): Promise<CompareResult> {
   const started = Date.now();
   const pairs = await mapLimit(job.pairs, 2, (p) =>
-    comparePair(ctx, job, p, cancel, (n) => onProgress?.(`${endpointLabel(ctx.config, p.left)} ⇄ ${endpointLabel(ctx.config, p.right)}: ${n} öğe`)),
+    comparePair(ctx, job, p, cancel, (n) => onProgress?.(t('{left} ⇄ {right}: {n} öğe', { left: endpointLabel(ctx.config, p.left), right: endpointLabel(ctx.config, p.right), n }))),
   );
   return { id: newId('cmp-'), jobId: job.id, createdAt: Date.now(), durationMs: Date.now() - started, pairs, stats: computeStats(pairs) };
 }
@@ -227,8 +228,8 @@ export function syncGroups(ctx: CoreContext, job: SyncJob, cmp: CompareResult): 
     }
     const endpoints = { L: openL, R: openR };
     const node = (ep: SyncPair['left']) => (ep.kind === 'node' ? ctx.config.nodes.find((n) => n.id === ep.nodeId) : undefined);
-    if (toR.length) groups.push({ key: `${pr.pairId}:R`, title: `${shortLabel(pr.rightLabel)} (sağ)`, rootLabel: pr.rightLabel, open: openR, ops: toR, endpoints, node: node(pair.right) });
-    if (toL.length) groups.push({ key: `${pr.pairId}:L`, title: `${shortLabel(pr.leftLabel)} (sol)`, rootLabel: pr.leftLabel, open: openL, ops: toL, endpoints, node: node(pair.left) });
+    if (toR.length) groups.push({ key: `${pr.pairId}:R`, title: t('{name} (sağ)', { name: shortLabel(pr.rightLabel) }), rootLabel: pr.rightLabel, open: openR, ops: toR, endpoints, node: node(pair.right) });
+    if (toL.length) groups.push({ key: `${pr.pairId}:L`, title: t('{name} (sol)', { name: shortLabel(pr.leftLabel) }), rootLabel: pr.leftLabel, open: openL, ops: toL, endpoints, node: node(pair.left) });
   }
   return groups;
 }
