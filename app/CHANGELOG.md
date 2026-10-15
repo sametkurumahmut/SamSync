@@ -1,63 +1,56 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.0.0 — SamSync
 
-Eski araçla kalan beş fark kapandı.
+Eski PowerShell aracının (1.x) yerine sıfırdan yazılmış, çapraz platform bir masaüstü uygulaması (Electron + React + TypeScript). Eski aracın menüleri, tek tıkla gönderimi ve sihirbaz özellikleri de içindedir.
 
-- **Hedefe özel ayar** — eski sihirbazın *Yedek al* / *Yalnızca yeni* / *Ayna* sütunları geri geldi. Hedef listesinde her makinenin satırındaki ayar düğmesi o makineye kendi kipini ve yedeğini verir. Ayarlar:
-  - satırda rozetle, alt çubukta sayıyla, incelemede hedef kartında görünür;
-  - son gönderimle (`--to last`, *Son ayarla gönder*) ve profillerle saklanır;
-  - çalıştırmada her hedef kendi yedek ayarıyla yazılır; ayna onayı yalnızca aynalanan hedeflerin silmelerini sayar.
-
-  İzleme oluşturulurken hedefe özel ayna kaldırılır.
-- **Pencere açmadan denetim** — `--plan-only` ve `--check-only` (eski `-PlanOnly` / `-CheckOnly`). Hedef başına tablo standart çıktıya yazılır; sütun adları ve durumlar eskisiyle aynıdır (`Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata`). Çıkış kodu 0 = hepsi aynı, 1 = değil ya da hata. Açık bir SamSync penceresinin yanında da çalışır; sonuç `root.log`'a yazılır.
-- **Eski yedek klasörleri** — hedef kökünde `_` ile başlayıp yalnızca `yyyyMMdd-HHmmss` klasörleri içeren klasör (eski aracın `_…Yedek` klasörü) yedek klasörü sayılır:
-  - kökün tamamı ayna kipinde gönderilirken ya da senkronda aynalanırken silinmez, içine yazılmaz, gönderime katılmaz;
-  - Yedekler sayfasında ek kök olarak taranır ve sürümleri geri alınabilir.
-
-  Geri almada klasör ve tarih adı denetlenir; hedef kökünün dışına çıkan bir yol reddedilir.
-- **Eski sihirbazdan içe aktarma** — Ayarlar → Yapılandırma dosyası → *Sihirbaz ayarlarını içe aktar*. `%LOCALAPPDATA%` altındaki `wizard-state.json` kendiliğinden bulunur ya da elle seçilir.
-  - Son seçim, hedefler ve hedef başına sütunlarla birlikte son gönderim ayarı olur.
-  - Profiller yapılandırmaya eklenir; aynı adlı profiller korunur.
-  - Bilinmeyen makineler atlanır ve bildirilir.
-- **Makine tanıma** — bilgisayar adı etki alanında `<ad>.<USERDNSDOMAIN>` olarak da eşleşir (eski araçtaki gibi).
-- **Grup adı denetimi** — grup adı node kimliğiyle aynı karakterlerle sınırlıdır (harf, rakam, `.`, `_`, `-`). Uymayan yapılandırma yüklenmez; Hedefler düzenleyicisi bunu kaydetmeden önce gösterir.
-
-## 2.1.0
-
-Eski aracın sağ tık menüleri ve tek tıkla gönderimi geri geldi; arayüz İngilizce de kullanılabilir.
-
-- **Dil** — Türkçe ve İngilizce. Varsayılan olarak bilgisayarın dili izlenir (Türkçe Windows'ta Türkçe, diğerlerinde İngilizce); Ayarlar → Dil'den değiştirilebilir. Menüler, bildirimler, günlük ve CSV raporu da seçilen dilde yazılır.
-- **Explorer menüsü** — kurulumla gelir, varsayılan olarak açıktır. Eskisiyle aynı yapıdadır:
+- **Gönder** — sürükle-bırak, dosya/klasör seçimi ya da yol yapıştırma. Gruplu hedef seçicide arama, erişim noktası, profiller ve “son çalıştırmada hatalılar” var.
+  - **Plan:** gönderimden önce her hedef için dosya dosya plan çıkar: yeni / güncellenecek / hedef daha yeni / fazla.
+  - **İnceleme:** satır bazında dahil etme, kaynak–hedef satır farkı, seçimi tüm hedeflere uygulama.
+  - **Kipler:** üzerine yaz, yalnızca yeni, ayna. Eski sihirbazdaki gibi her hedefe ayrı kip ve yedek ayarı verilebilir.
+  - **Karşılaştırma:** tarih+boyut, içerik, boyut.
+- **Git** — yerel değişiklikler (hazırlanmış, hazırlanmamış, izlenmeyen) ya da seçilen commit'ler (tek, çoklu, aralık; son commit, son 3, push edilmemişler).
+  - Commit'lerin dosyaları birleşik bir listede, her dosyanın farkı yanında gösterilir.
+  - İçerik diskten ya da commit'ten alınır; silinen ve taşınan dosyalar hedeften de kalkar.
+  - Commit içeriği git nesne özetiyle karşılaştırılır.
+- **Senkron** — klasör çiftleri: iki yönlü (son durumu hatırlayarak silmeleri ve çakışmaları ayırır), ayna, güncelle, özel. Filtreler, sürümleme, işlem ızgarasında satır bazında değiştirme ve uzak klasör tarayıcı var.
+- **Otomasyon** — canlı izleme ve zamanlanmış senkron.
+  - **İzleme:** değişince yalnızca değişenleri gönderir, erişilemeyen makinelere dakikada bir yeniden dener.
+  - **Zamanlanmış senkron:** aralıkla ya da belirli saatlerde, tek bir makinede çalışır.
+  - Hepsi duraklatılabilir; uygulama sistem tepsisinde çalışmaya devam edebilir ve oturum açılınca gizli başlayabilir.
+- **Yedekler** — hedeflerdeki yedek sürümlerini (`_SamSyncYedek`) bulup geri yazar.
+  - Explorer ve Notepad++ menüsünden gelen öğeleri bütün makinelerde arar.
+  - Eski aracın yedek klasörleri de taranır. Hedef kökünde `_` ile başlayıp yalnızca `yyyyMMdd-HHmmss` klasörleri içeren klasör yedek klasörü sayılır ve ayna kipinde silinmez.
+- **Geçmiş** — hedef bazında sonuçlar, hatalar, günlük, yeniden gönderme.
+  - Her çalıştırmadan sonra bir CSV rapor kendiliğinden yazılır; son 300 rapor saklanır.
+  - Kapalı olan makineler de hatalı sayılır.
+- **Explorer menüsü** — kurulumla gelir ve varsayılan olarak açıktır. Eski aracın menüsüyle aynı yapıdadır:
   - tümüne gönder, incele ve gönder, son ayarla gönder, yedekten geri al;
   - profiller, gruplar ve makineler;
   - bölümler arasında ayırıcılar;
-  - 16 girdi sınırına göre önce bu makinenin grubunun açılması; `menuShowNodes` ayarı.
+  - 16 girdi sınırına göre önce bu makinenin grubu açılır; davranış `menuShowNodes` ile değiştirilebilir.
 
-  Her açılışta çalışan programa göre yeniden kurulur; kaldırıcı menüyü siler. 2.0.0'daki tek “SamSync ile gönder” girdisi kaldırıldı.
-- **Notepad++** — sekme sağ tık menüsünde bir “SamSync” klasörü, Çalıştır menüsünde aynı komutlar ve kısayollar gelir (`notepadPlusPlusShortcuts`; varsayılan `Ctrl+Alt+W` = son ayarla gönder). Notepad++ 8.9.6.2'nin istediği `shortcuts.xml` imzası `config.xml` içine yazılır. Notepad++ açıkken değişen ayarlar, Notepad++ kapanınca yeniden yazılır. 260 karakteri aşan komutlar uyarıyla atlanır.
-- **Komut satırı** — `--yes` incelemeden hemen gönderir. `--to last` son incelenen gönderimin hedeflerini ve seçeneklerini kullanır; tek tıkla gönderimler bu son ayarı değiştirmez. `--restore` Yedekler sayfasını öğelerle açar ve bütün makinelerde arar.
-- **Çoklu seçim** — Explorer'ın her öğe için başlattığı süreçler türlerine göre ayrı ayrı birleştirilir. Bekleme önce 400 ms sürer, ikinci öğeden sonra 1,2 sn olur, en çok 30 sn bekler. Pencere hazır olmadan gelen istekler kaybolmaz.
-- **Profiller** — artık hedeflerle birlikte gönderim seçeneklerini de saklar ve uygular (kip, yedek, filtreler…).
+  Uygulama her açılışta menüyü çalışan programa göre yeniden kurar; kaldırıcı menüyü siler.
+- **Notepad++** — sekme sağ tık menüsünde bir “SamSync” klasörü, Çalıştır menüsünde aynı komutlar ve kısayollar (`notepadPlusPlusShortcuts`; varsayılan `Ctrl+Alt+W` = son ayarla gönder).
+  - Notepad++ 8.9.6.2'nin istediği `shortcuts.xml` imzası `config.xml` içine yazılır.
+  - Notepad++ açıkken değişen ayarlar, Notepad++ kapanınca yeniden yazılır.
+  - 260 karakteri aşan komutlar uyarıyla atlanır.
+- **Komut satırı**
+  - `--to` hedefleri seçer: makine, `group:`, `profile:`, `all`, `last`.
+  - `--yes` incelemeden hemen gönderir.
+  - `--restore` Yedekler sayfasını öğelerle açar.
+  - `--plan-only` ve `--check-only` pencere açmadan çalışır: plan ya da hedeflerin durumu standart çıktıya yazılır. Durumlar `Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata`; çıkış kodu 0 hepsinin aynı olduğunu gösterir.
+  - Explorer'ın her öğe için başlattığı süreçler tek gönderimde birleşir.
+- **Profiller** — hedeflerle birlikte gönderim seçeneklerini de saklar. Eski sihirbazın profilleri ve son ayarları Ayarlar → Yapılandırma dosyası → *Sihirbaz ayarlarını içe aktar* ile alınabilir.
 - **Ayna kipi** — hedeflerde silinecek öğe varsa göndermeden önce toplam sayıyla ayrıca onay istenir. Tek tıkla gönderimde silme varsa doğrudan gönderilmez, inceleme açılır.
-- **CSV rapor** — her çalıştırmadan sonra kendiliğinden yazılır; son 300 rapor saklanır.
-- **Erişilemeyen hedefler** — çalıştırmada hatalı sayılır. Böylece “son çalıştırmada hatalıları seç” ve “hatalılara yeniden gönder” kapalı olan makineleri de kapsar.
-- **Kopyalama sonrası komut** — `{source}` son gönderilen öğe, `{destination}` o öğenin hedefteki yoludur (eski araçtaki gibi).
-- **Taşınabilir sürüm** — açılışta başlatma ve menüler artık geçici klasörü değil, taşınabilir exe'nin kendisini gösterir.
-
-## 2.0.0 — SamSync
-
-Eski PowerShell aracının (1.x) yerine, sıfırdan yazılmış çapraz platform masaüstü uygulaması (Electron + React + TypeScript).
-
-- **Gönder** — sürükle-bırak, dosya/klasör seçimi ya da yol yapıştırma; gruplu hedef seçici (arama, erişim noktası, profiller, “son çalıştırmada hatalılar”). Gönderimden önce her hedef için dosya dosya plan: yeni / güncellenecek / hedef daha yeni / fazla; satır bazında dahil etme, kaynak–hedef satır farkı, seçimi tüm hedeflere uygulama. Kipler: üzerine yaz, yalnızca yeni, ayna. Karşılaştırma: tarih+boyut, içerik, boyut.
-- **Git** — yerel değişiklikler (hazırlanmış, hazırlanmamış, izlenmeyen) ya da seçilen commit'ler (tek, çoklu, aralık; son commit, son 3, push edilmemişler). Commit'lerin dosyaları birleşik listede, her dosyanın farkı yanında. İçerik diskten ya da commit'ten; silinen/taşınan dosyalar hedeften de kalkar; commit içeriği git nesne özetiyle karşılaştırılır.
-- **Senkron** — klasör çiftleri: iki yönlü (son durumu hatırlayarak silmeleri ve çakışmaları ayırır), ayna, güncelle, özel. Filtreler, sürümleme, işlem ızgarasında satır bazında değiştirme, uzak klasör tarayıcı.
-- **Otomasyon** — canlı izleme (değişince yalnızca değişenleri gönderir, erişilemeyen makinelere dakikada bir yeniden dener) ve zamanlanmış senkron (aralıkla ya da belirli saatlerde, tek bir makinede). Hepsini duraklatma, sistem tepsisinde çalışmaya devam etme, oturum açılınca gizli başlama.
-- **Yedekler** — hedeflerdeki yedek sürümlerini (`_SamSyncYedek`) bulma ve geri yazma.
-- **Geçmiş** — hedef bazında sonuçlar, hatalar, günlük, CSV rapor, yeniden gönderme.
-- Atomik yazma (geçici dosya + yeniden adlandırma), isteğe bağlı içerik doğrulaması, yeniden deneme, eşzamanlı hedefler ve dosyalar, hedef başına bant genişliği sınırı, iptal, kopyalama sonrası komut, eski yedeklerin temizlenmesi.
-- Hedef türleri: SMB paylaşımı, klasör/bağlı sürücü, SFTP.
-- Eski `config.json` doğrudan okunur, kaydederken eski aracın alanları korunur; makine tanıma kuralları aynıdır (ortam değişkeni `SAMSYNC_NODE_ID`).
-- Explorer sağ tık menüsü (100 öğeye kadar, tek pencerede toplanır), komut satırı (`--to group:...`), komut paleti (`Ctrl+K`).
-- Otomatik güncelleme: GitHub Releases, web adresi ya da ağ klasörü. GitHub Actions ile Windows, macOS ve Linux paketleri.
-- Koyu (varsayılan), açık ve sistemle eşlenen tema; vurgu rengi; sıkı yoğunluk.
+- **Yazma** — atomik yazma (geçici dosya + yeniden adlandırma), isteğe bağlı içerik doğrulaması, yeniden deneme, eşzamanlı hedefler ve dosyalar, hedef başına bant genişliği sınırı, iptal, eski yedeklerin temizlenmesi.
+- **Kopyalama sonrası komut** — `{source}` son gönderilen öğe, `{destination}` o öğenin hedefteki yoludur.
+- **Hedef türleri** — SMB paylaşımı, klasör/bağlı sürücü, SFTP.
+- **Eski yapılandırma** — eski `config.json` doğrudan okunur; kaydederken eski aracın alanları korunur.
+  - Makine tanıma kuralları aynıdır (ortam değişkeni `SAMSYNC_NODE_ID`, `<ad>.<USERDNSDOMAIN>` dahil).
+  - Grup adları node kimliğiyle aynı karakterlerle sınırlıdır.
+- **Otomatik güncelleme** — GitHub Releases, web adresi ya da ağ klasörü. GitHub Actions ile Windows, macOS ve Linux paketleri üretilir.
+- **Görünüm**
+  - Türkçe ve İngilizce arayüz; varsayılan olarak bilgisayarın dili izlenir.
+  - Koyu (varsayılan), açık ve sistemle eşlenen tema; vurgu rengi; sıkı yoğunluk.
+  - Komut paleti (`Ctrl+K`).

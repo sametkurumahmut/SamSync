@@ -118,7 +118,6 @@ export class Service implements Api {
     try {
       const raw = (await readJson(this.settingsFile)) as Partial<LocalSettings>;
       this.settings = { ...DEFAULT_SETTINGS, ...raw };
-      delete (this.settings as { lang?: unknown }).lang; // 2.0.0 kept an unused "lang"; "language" replaced it
     } catch {
       this.settings = { ...DEFAULT_SETTINGS };
     }

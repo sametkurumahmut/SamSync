@@ -1,0 +1,60 @@
+{
+  "version": "1.3.2",
+  "menuTitle": "SamePathCopy",
+  "allLabel": "Tümü",
+  "wizardLabel": "Wizard",
+  "notepadPlusPlusShortcuts": {
+    "wizard:last": "Ctrl+Alt+W"
+  },
+  "nodes": [
+    {
+      "id": "Root",
+      "name": "Root - 10.0.10.1",
+      "address": "10.0.10.1",
+      "localNames": ["DEV-PC"],
+      "localRoots": ["C:\\E\\repo\\proje\\Deploy", "C:\\E\\repo\\proje\\contents"],
+      "networkRoot": "proje",
+      "enabled": true
+    },
+    {
+      "id": "Lab1Trainer",
+      "group": "Lab1",
+      "name": "Eğitmen - 10.0.10.11",
+      "address": "10.0.10.11",
+      "localRoot": "D:\\Sim\\ActiveRelease",
+      "networkRoot": "Sim\\ActiveRelease",
+      "enabled": true
+    },
+    {
+      "id": "Lab1IG1",
+      "group": "Lab1",
+      "name": "IG1 - 10.0.10.12",
+      "address": "10.0.10.12",
+      "localRoot": "D:\\Sim\\ActiveRelease",
+      "networkRoot": "Sim\\ActiveRelease",
+      "enabled": true
+    },
+    {
+      "id": "Lab2Trainer",
+      "group": "Lab2",
+      "name": "Eğitmen - 10.0.10.21",
+      "address": "10.0.10.21",
+      "localRoot": "D:\\Sim\\ActiveRelease",
+      "networkRoot": "Sim\\ActiveRelease",
+      "enabled": true
+    },
+    {
+      "id": "Lab2IG1",
+      "group": "Lab2",
+      "name": "IG1 - 10.0.10.22",
+      "address": "10.0.10.22",
+      "localRoot": "D:\\Sim\\ActiveRelease",
+      "networkRoot": "Sim\\ActiveRelease",
+      "enabled": true
+    }
+  ],
+  "copy": {
+    "retryCount": 2,
+    "waitSeconds": 1
+  }
+}

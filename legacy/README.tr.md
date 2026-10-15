@@ -423,6 +423,8 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 
 ## Node'ları ayarlama
 
+`config.json` kendi makine listenizi içerdiği için depoda yok. Betiklerin yanındaki [`config.example.json`](config.example.json) dosyasını `config.json` adıyla kopyalayıp düzenleyin; git `config.json` dosyasını yok sayar.
+
 `config.json` içindeki `nodes` dizisine eğitmen dahil bütün bilgisayarları ekleyin:
 
 ```json

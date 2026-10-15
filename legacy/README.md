@@ -423,6 +423,8 @@ The command asks for the password interactively; do not write the password into 
 
 ## Configuring nodes
 
+`config.json` is not in the repository, because it holds your own machine list. Copy [`config.example.json`](config.example.json) to `config.json` next to the scripts and edit it; git ignores `config.json`.
+
 Add all computers, including the trainer, to the `nodes` array in `config.json`:
 
 ```json

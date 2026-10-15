@@ -10,14 +10,12 @@ import path from 'node:path';
 import { entryCommand, type MenuEntry, type MenuPlan } from '../../shared/menu';
 
 export const EXPLORER_ROOT = 'HKEY_CURRENT_USER\\Software\\Classes\\AllFilesystemObjects\\shell\\SamSync';
-/** Where SamSync 2.0.0 put its single verb; removed on every write. */
-const OLD_KEYS = ['HKEY_CURRENT_USER\\Software\\Classes\\*\\shell\\SamSync', 'HKEY_CURRENT_USER\\Software\\Classes\\Directory\\shell\\SamSync'];
 const HASH_VALUE = 'SamSyncMenu';
 const SEPARATOR_BEFORE = 0x20; // ECF_SEPARATORBEFORE
 
 const regFile = (parts: string[]) => ['Windows Registry Editor Version 5.00', '', ...parts, ''].join('\r\n');
 /** "[-key]" deletes the key with everything under it. */
-const deleteKeys = () => [EXPLORER_ROOT, ...OLD_KEYS].map((k) => `[-${k}]`);
+const deleteKeys = () => [`[-${EXPLORER_ROOT}]`];
 const regString = (s: string) =>`"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 const keyName = (i: number, id: string) => `${String(i * 10).padStart(3, '0')}_${id.replace(/[^A-Za-z0-9._-]/g, '_')}`;
 
@@ -63,7 +61,7 @@ export function explorerRegBody(spec: ExplorerMenuSpec, hash?: string): string {
   return lines.join('\r\n');
 }
 
-/** The full .reg file: delete the old trees, write the new one with its hash. */
+/** The full .reg file: delete the old tree, write the new one with its hash. */
 export function explorerRegFile(spec: ExplorerMenuSpec): { text: string; hash: string } {
   const hash = crypto.createHash('sha256').update(explorerRegBody(spec)).digest('hex').slice(0, 16);
   return { text: regFile([...deleteKeys(), explorerRegBody(spec, hash)]), hash };
