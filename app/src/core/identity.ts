@@ -14,7 +14,8 @@ export function localAddresses(): string[] {
 /**
  * Finds which node of the shared config is this machine, from the most to the least specific rule:
  * explicit override / SAMSYNC_NODE_ID, IP address match, computer name match (address or
- * localNames), and, when a rule matches several nodes, the single one whose local root exists here.
+ * localNames, as the bare name or as <name>.<USERDNSDOMAIN> on a domain), and, when a rule matches
+ * several nodes, the single one whose local root exists here.
  */
 export function detectIdentity(cfg: AppConfig, override?: string, env = process.env): LocalIdentity {
   const hostname = os.hostname();
@@ -47,10 +48,10 @@ export function detectIdentity(cfg: AppConfig, override?: string, env = process.
   const ip = pick(ipMatches, 'ip', t('IP adresi eşleşti ({address})', { address: ipMatches[0]?.address ?? '' }));
   if (ip) return ip;
 
-  const host = hostname.toLowerCase();
-  const nameMatches = cfg.nodes.filter(
-    (n) => n.address.toLowerCase() === host || (n.localNames ?? []).some((x) => x.toLowerCase() === host),
-  );
+  // on a domain the config may name this machine by its full DNS name, as the PowerShell tool accepted
+  const domain = env.USERDNSDOMAIN?.trim().replace(/^\.+|\.+$/g, '');
+  const names = new Set([hostname.toLowerCase(), ...(domain ? [`${hostname}.${domain}`.toLowerCase()] : [])]);
+  const nameMatches = cfg.nodes.filter((n) => names.has(n.address.toLowerCase()) || (n.localNames ?? []).some((x) => names.has(x.toLowerCase())));
   const nm = pick(nameMatches, 'name', t('Bilgisayar adı eşleşti ({host})', { host: hostname }));
   if (nm) return nm;
 

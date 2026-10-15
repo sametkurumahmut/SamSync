@@ -4,7 +4,7 @@ import type { CopySettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
-import { ago, cls } from '../lib/format';
+import { ago, cls, dateTime } from '../lib/format';
 import { t, tk } from '@shared/i18n';
 import { menuEntries } from '@shared/menu';
 import { tx } from '../lib/i18n';
@@ -41,6 +41,7 @@ export function SettingsPage() {
   const [upd, setUpd] = useState<UpdateConfig>(boot.config.update ?? { source: 'github' });
   const integration = useApp((st) => st.integration);
   const [integrationBusy, setIntegrationBusy] = useState(false);
+  const [wizardBusy, setWizardBusy] = useState(false);
   const copyDirty = JSON.stringify(copy) !== JSON.stringify(boot.config.copy);
   const updDirty = JSON.stringify(upd) !== JSON.stringify(boot.config.update ?? { source: 'github' });
 
@@ -85,6 +86,41 @@ export function SettingsPage() {
         toast('ok', t('İçe aktarıldı'), existed ? t('{n} yeni makine eklendi, {m} zaten vardı', { n: added.length, m: existed }) : t('{n} yeni makine eklendi', { n: added.length }));
     } catch (e) {
       toast('error', t('İçe aktarılamadı'), (e as Error).message);
+    }
+  };
+
+  /** The old wizard's profiles and last selection: found under %LOCALAPPDATA% or picked by hand. */
+  const importWizard = async (choose: boolean) => {
+    let file = choose ? null : await api.findWizardState();
+    if (!file) {
+      if (!choose) toast('info', t('Eski sihirbaz ayarı bulunamadı'), t('Dosyayı kendiniz seçin (wizard-state.json).'));
+      [file] = await api.pick({ files: true, title: t('Eski sihirbazın durum dosyası'), filters: [{ name: 'JSON', extensions: ['json'] }] });
+      if (!file) return;
+    }
+    if (s.wizardImport && !confirm(t('Bu ayarlar daha önce içe aktarılmıştı. Son seçim yeniden yazılsın mı? Var olan profiller korunur.'))) return;
+    setWizardBusy(true);
+    try {
+      const r = await api.importWizardState(file);
+      const st = useApp.getState();
+      const known = new Set(r.config.nodes.map((n) => n.id));
+      const took = r.lastTargets.length > 0;
+      useApp.setState({
+        boot: { ...st.boot!, settings: r.settings, config: r.config },
+        targets: took ? r.settings.lastTargets.filter((id) => known.has(id)) : st.targets,
+        options: took ? { ...st.options, ...r.settings.lastOptions, dryRun: false } : st.options,
+      });
+      const parts = [
+        t('{n} hedef seçildi', { n: r.lastTargets.length }),
+        t('{n} profil eklendi', { n: r.profilesAdded.length }),
+        ...(r.profilesSkipped.length ? [t('{n} profil zaten vardı', { n: r.profilesSkipped.length })] : []),
+        ...(r.unknownTargets.length ? [t('bilinmeyen makineler atlandı: {ids}', { ids: r.unknownTargets.join(', ') })] : []),
+        ...(r.profilesError ? [t('profiller kaydedilemedi: {error}', { error: r.profilesError })] : []),
+      ];
+      toast(r.profilesError ? 'warn' : 'ok', t('Eski sihirbaz ayarları içe aktarıldı'), parts.join(' • '));
+    } catch (e) {
+      toast('error', t('İçe aktarılamadı'), (e as Error).message);
+    } finally {
+      setWizardBusy(false);
     }
   };
 
@@ -255,6 +291,24 @@ export function SettingsPage() {
               )}
               <Button variant="ghost" icon={<ExternalLink size={14} />} onClick={() => void api.openPath(boot.configPath).catch((e) => toast('error', t('Açılamadı'), (e as Error).message))}>
                 {t('Aç')}
+              </Button>
+            </div>
+            <div className="divider" />
+            <div className="section-title">{t('Eski sihirbazdan içe aktar')}</div>
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              {t('Eski aracın sihirbazındaki profilleri ve son seçimi (hedefler ve hedef başına Yedek al / Yalnızca yeni / Ayna) bir kez buraya taşır. Aynı adlı profiller olduğu gibi kalır.')}
+            </p>
+            {s.wizardImport && (
+              <p className="faint selectable" style={{ fontSize: 12 }}>
+                {t('İçe aktarıldı: {time} • {file}', { time: dateTime(s.wizardImport.at), file: s.wizardImport.file })}
+              </p>
+            )}
+            <div className="row" style={{ flexWrap: 'wrap' }}>
+              <Button icon={<Upload size={14} />} loading={wizardBusy} onClick={() => void importWizard(false)} disabled={!boot.isElectron}>
+                {s.wizardImport ? t('Yeniden içe aktar') : t('Sihirbaz ayarlarını içe aktar')}
+              </Button>
+              <Button variant="ghost" icon={<FolderOpen size={14} />} onClick={() => void importWizard(true)} disabled={!boot.isElectron}>
+                {t('Dosya seç…')}
               </Button>
             </div>
           </Section>

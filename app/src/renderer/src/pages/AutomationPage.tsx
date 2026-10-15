@@ -33,6 +33,7 @@ import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { ago, baseName, cls, num } from '../lib/format';
 import { t, locale } from '@shared/i18n';
 import { tx } from '../lib/i18n';
+import { withoutMirror } from '@shared/options';
 
 function StatusPill({ status }: { status: WatchState['status'] }) {
   const map: Record<WatchState['status'], { label: string; cls: string; icon: React.ReactNode }> = {
@@ -307,7 +308,7 @@ export function useStartWatchFromSend() {
     }
     const name = st.sendPaths.length === 1 ? baseName(st.sendPaths[0]) : `${baseName(st.sendPaths[0])} +${st.sendPaths.length - 1}`;
     const { dryRun: _d, ...rest } = st.options;
-    const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false }, quietMs: 2000, enabled: true });
+    const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: 2000, enabled: true });
     useApp.setState({ automation: a });
     await st.saveSettings({});
     st.toast('ok', t('İzleme başladı'), t('{name} → {n} hedef. Değişiklikler kendiliğinden gönderilecek.', { name, n: st.targets.length }), { label: t('Otomasyonu aç'), run: () => st.setPage('automation') });
@@ -320,7 +321,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const [name, setName] = useState(initial?.name ?? '');
   const [paths, setPaths] = useState<string[]>(initial?.paths ?? st.sendPaths);
   const [targets, setTargets] = useState<string[]>(initial?.targetIds ?? st.targets);
-  const [opts, setOpts] = useState<SendOptions>(initial?.options ?? { ...DEFAULT_OPTIONS, ...st.options, dryRun: false, propagateDeletes: false, mode: st.options.mode === 'mirror' ? 'overwrite' : st.options.mode });
+  const [opts, setOpts] = useState<SendOptions>(initial?.options ?? { ...DEFAULT_OPTIONS, ...st.options, dryRun: false, propagateDeletes: false, mode: st.options.mode === 'mirror' ? 'overwrite' : st.options.mode, perTarget: withoutMirror(st.options.perTarget) });
   const [quiet, setQuiet] = useState((initial?.quietMs ?? 2000) / 1000);
   const [manual, setManual] = useState('');
   const [saving, setSaving] = useState(false);

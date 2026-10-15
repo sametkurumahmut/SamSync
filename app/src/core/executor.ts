@@ -30,6 +30,8 @@ export interface ExecGroup {
   node?: NodeConfig;
   /** Transports a sync op may read from (key -> transport opener). */
   endpoints?: Record<string, () => Promise<Transport>>;
+  /** This target's own backup choice; the run setting applies when it is not given. */
+  backup?: boolean;
 }
 
 export interface ExecSettings {
@@ -188,9 +190,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     const backupBase = relJoin(s.backupFolderName, runStamp);
+    const backup = g.backup ?? s.backup;
     let backedUpAny = false;
     const groupParams = { root: g.rootLabel, n: g.ops.length };
-    log('info', s.backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
+    log('info', backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
 
     const record = (op: ExecOp, ok: boolean, error?: string, backedUp?: boolean) => {
       results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp });
@@ -205,7 +208,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const backupOrRemove = async (rel: string, isDir: boolean): Promise<boolean> => {
       const cur = await tgt.stat(rel);
       if (!cur) return false;
-      if (s.backup) {
+      if (backup) {
         await tgt.rename(rel, relJoin(backupBase, rel));
         backedUpAny = true;
         return true;
@@ -265,7 +268,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       const cur = await tgt.stat(op.rel);
       if (!cur) return false;
       if (cur.isDir || op.replaceType) return backupOrRemove(op.rel, cur.isDir);
-      if (s.backup) {
+      if (backup) {
         await tgt.rename(op.rel, relJoin(backupBase, op.rel));
         backedUpAny = true;
         return true;

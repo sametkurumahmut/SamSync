@@ -25,6 +25,7 @@ import type {
   ThemePref,
   AutomationState,
   WatchConfig,
+  WizardImportResult,
 } from './types';
 
 export interface PickOptions {
@@ -120,8 +121,12 @@ export interface Api {
 
   findBackups(rel: string, targetIds: string[]): Promise<BackupLookup[]>;
   backupSets(targetIds: string[]): Promise<BackupSet[]>;
-  browseBackup(targetId: string, stamp: string, relDir: string): Promise<BrowseEntry[]>;
-  restore(rel: string, picks: { targetId: string; stamp: string }[], backupCurrent: boolean): Promise<string>;
+  browseBackup(targetId: string, stamp: string, relDir: string, folder?: string): Promise<BrowseEntry[]>;
+  restore(rel: string, picks: { targetId: string; stamp: string; folder?: string }[], backupCurrent: boolean): Promise<string>;
+
+  /** The old wizard's state file on this computer, if there is one. */
+  findWizardState(): Promise<string | null>;
+  importWizardState(file: string): Promise<WizardImportResult>;
 
   pick(opts: PickOptions): Promise<string[]>;
   openPath(p: string): Promise<void>;
@@ -191,6 +196,8 @@ export const API_METHODS = {
   backupSets: true,
   browseBackup: true,
   restore: true,
+  findWizardState: true,
+  importWizardState: true,
   pick: true,
   openPath: true,
   showInFolder: true,

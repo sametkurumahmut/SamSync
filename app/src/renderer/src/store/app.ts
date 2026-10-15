@@ -19,6 +19,7 @@ import type {
 import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
+import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
 export type Page = 'send' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
 export const PAGES: Page[] = ['send', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
@@ -43,19 +44,7 @@ export interface Review {
   selected: Record<string, Set<string>>;
 }
 
-export const DEFAULT_OPTIONS: SendOptions = {
-  mode: 'overwrite',
-  compare: 'timeSize',
-  backup: false,
-  dryRun: false,
-  verify: false,
-  excludeFiles: [],
-  excludeDirs: [],
-  parallelTargets: 4,
-  propagateDeletes: true,
-  runPostCommand: true,
-  notify: true,
-};
+export const DEFAULT_OPTIONS: SendOptions = DEFAULT_SEND_OPTIONS;
 
 interface State {
   boot: Bootstrap | null;
@@ -308,9 +297,10 @@ export const useApp = create<State>((set, get) => ({
     const selected: Record<string, string[]> = {};
     for (const [k, v] of Object.entries(r.selected)) selected[k] = [...v];
     // mirror deletes on the targets: ask once more, with the total, before anything is written
-    const deletes = r.plan.targets.reduce((n, tp) => n + tp.ops.filter((o) => o.kind === 'delete' && r.selected[tp.targetId]?.has(o.id)).length, 0);
+    const mirrors = r.plan.targets.filter((tp) => tp.mode === 'mirror');
+    const deletes = mirrors.reduce((n, tp) => n + tp.ops.filter((o) => o.kind === 'delete' && r.selected[tp.targetId]?.has(o.id)).length, 0);
     const dry = dryRun ?? r.plan.request.options.dryRun;
-    if (r.plan.request.options.mode === 'mirror' && deletes && !dry && !confirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }))) return;
+    if (deletes && !dry && !confirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }))) return;
     try {
       const runId = await api.executePlan(r.plan.id, selected, dryRun != null ? { dryRun } : undefined);
       set({ review: null });
@@ -434,15 +424,7 @@ const pendingOpen: OpenRequest[] = [];
 
 /** Send options before the user changes anything: config defaults plus the defaults from Settings. */
 function baseOptions(boot: Bootstrap): SendOptions {
-  return {
-    ...DEFAULT_OPTIONS,
-    excludeFiles: boot.config.copy.excludeFiles,
-    excludeDirs: boot.config.copy.excludeDirs,
-    parallelTargets: boot.config.copy.parallelTargets,
-    verify: boot.config.copy.verify,
-    ...(boot.settings.sendDefaults ?? {}),
-    dryRun: false,
-  };
+  return baseSendOptions(boot.config.copy, boot.settings.sendDefaults);
 }
 
 interface ResolvedTargets {
@@ -466,14 +448,15 @@ function resolveTargets(raw: string[]): ResolvedTargets | null {
     if (k === 'all') cfg.nodes.forEach((n) => ids.add(n.id));
     else if (k === 'last') {
       boot.settings.lastTargets.forEach((id) => ids.add(id));
-      options = { ...options, ...(boot.settings.lastOptions ?? {}) };
+      options = { ...options, ...(boot.settings.lastOptions ?? {}), perTarget: { ...options?.perTarget, ...boot.settings.lastOptions?.perTarget } };
       label = t('Son ayar');
     } else if (k.startsWith('group:')) cfg.nodes.filter((n) => n.group?.toLowerCase() === k.slice(6)).forEach((n) => ids.add(n.id));
     else if (k.startsWith('profile:')) {
       const p = cfg.profiles.find((x) => x.name.toLowerCase() === k.slice(8) || x.id.toLowerCase() === k.slice(8));
       p?.targetIds.forEach((id) => ids.add(id));
       if (p) {
-        options = { ...options, ...(p.options ?? {}) };
+        // the profile's own per target exceptions replace whatever the Send page had
+        options = { ...options, ...(p.options ?? {}), perTarget: { ...options?.perTarget, ...p.options?.perTarget } };
         label = t('Profil: {name}', { name: p.name });
       }
     } else {

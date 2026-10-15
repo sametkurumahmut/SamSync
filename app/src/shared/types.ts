@@ -56,6 +56,12 @@ export interface CopySettings {
   excludeDirs: string[];
 }
 
+/** One target's exceptions to the send options, like the per machine columns of the old wizard. */
+export interface TargetOptions {
+  mode?: SendMode;
+  backup?: boolean;
+}
+
 export interface SendOptions {
   mode: SendMode;
   compare: CompareMethod;
@@ -69,6 +75,8 @@ export interface SendOptions {
   propagateDeletes: boolean;
   runPostCommand: boolean;
   notify: boolean;
+  /** Per target (node id) mode and backup that differ from the ones above. */
+  perTarget?: Record<string, TargetOptions>;
 }
 
 export interface Profile {
@@ -194,6 +202,25 @@ export interface LocalSettings {
   explorerMenu?: boolean;
   /** Notepad++ tab menu and Run commands (Windows, when Notepad++ is installed); on in the installed app unless turned off. */
   notepadPlusPlus?: boolean;
+  /** When the old wizard's profiles and last selection were imported, and from which file. */
+  wizardImport?: { at: number; file: string };
+}
+
+/** What the import of the old wizard's state did. */
+export interface WizardImportResult {
+  file: string;
+  /** The config path the imported entry was saved for. */
+  configKey: string;
+  lastTargets: string[];
+  profilesAdded: string[];
+  /** Profiles with a name that already exists here; they are left as they are. */
+  profilesSkipped: string[];
+  /** Machine ids in the file that this config does not have. */
+  unknownTargets: string[];
+  /** The profiles could not be saved (a read-only shared config, for instance). */
+  profilesError?: string;
+  settings: LocalSettings;
+  config: AppConfig;
 }
 
 export interface WatchConfig {
@@ -375,7 +402,12 @@ export interface TargetPlan {
   targetId: string;
   targetName: string;
   root: string;
+  /** Mode and backup in effect on this target (the send options with this target's exceptions). */
+  mode: SendMode;
+  backup: boolean;
   reachable: boolean;
+  /** The target answered, but reading it failed part way (the error says why). */
+  failed?: boolean;
   error?: string;
   ops: PlanOp[];
   counts: CategoryCounts;
@@ -594,6 +626,8 @@ export interface CompareResult {
 
 export interface BackupVersion {
   stamp: string;
+  /** The backup folder at the target root: the configured one, or an older one found next to it. */
+  folder: string;
   date: number;
   size: number;
   isDir: boolean;
@@ -611,5 +645,5 @@ export interface BackupLookup {
 
 export interface BackupSet {
   targetId: string;
-  stamps: { stamp: string; date: number }[];
+  stamps: { stamp: string; date: number; folder: string }[];
 }

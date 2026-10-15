@@ -209,6 +209,16 @@ const d: Dict = {
   'Aynı adla kaydetmek mevcut profilin hedeflerini günceller.': 'Saving under the same name updates the targets of the existing profile.',
   "ör. Unit1 IG'ler": 'e.g. Unit1 IGs',
   'Kayıtlı profiller': 'Saved profiles',
+  // per target exceptions in the machine list
+  'Hedefe özel ayarları temizle': 'Clear per-target settings',
+  'Bu hedefte kip': 'Mode on this target',
+  // {value} is the general mode or backup state
+  'Genel ayar ({value})': 'General setting ({value})',
+  'Bu hedefte yedek': 'Backup on this target',
+  yedeksiz: 'without backup',
+  'Yedek alma': 'Do not back up',
+  'Genel ayarlara dön': 'Back to the general settings',
+  'Bu hedefe özel kip ve yedek': 'Mode and backup for this target only',
   Sil: 'Delete',
   // {n} and {names} are elements; count carries the number for the plural
   '{n} hedef: {names}': pl('{n} target: {names}', '{n} targets: {names}', 'count'),

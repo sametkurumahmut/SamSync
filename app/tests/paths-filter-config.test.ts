@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
+import os from 'node:os';
 import fsp from 'node:fs/promises';
 import { mapToRel, joinRoot, commonDir, relIsWithin } from '../src/core/paths';
 import { makeFilter } from '../src/core/filter';
@@ -120,5 +121,26 @@ describe('config', () => {
     const c = normalizeConfig(legacy);
     expect(detectIdentity(c, 'IG1').node?.id).toBe('IG1');
     expect(detectIdentity(c, undefined, { SAMSYNC_NODE_ID: 'root' }).node?.id).toBe('Root');
+  });
+
+  it('rejects group names a command line could not carry, like the PowerShell tool', () => {
+    expect(() => normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: 'Unit 1' }] })).toThrow(/group/);
+    expect(() => normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: 'U1/IG' }] })).toThrow(/group/);
+    expect(normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: '  Unit-1.a_b  ' }] }).nodes[0].group).toBe('Unit-1.a_b');
+    expect(normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: '  ' }] }).nodes[0].group).toBeUndefined();
+  });
+
+  it('matches this machine by <name>.<USERDNSDOMAIN> on a domain', () => {
+    const fqdn = `${os.hostname()}.corp.example`;
+    const c = normalizeConfig({
+      nodes: [
+        { id: 'Here', name: 'Here', address: fqdn.toUpperCase(), localRoots: ['C:\\x'], networkRoot: 'x' },
+        { id: 'Other', name: 'Other', address: '198.51.100.7', localNames: ['other.corp.example'], localRoots: ['C:\\x'], networkRoot: 'x' },
+      ],
+    });
+    expect(detectIdentity(c, undefined, { USERDNSDOMAIN: 'CORP.EXAMPLE' })).toMatchObject({ method: 'name', node: { id: 'Here' } });
+    expect(detectIdentity(c, undefined, {}).node).toBeNull();
+    const byLocalName = normalizeConfig({ nodes: [{ id: 'N', name: 'N', address: '198.51.100.8', localNames: [fqdn], localRoots: ['C:\\x'], networkRoot: 'x' }] });
+    expect(detectIdentity(byLocalName, undefined, { USERDNSDOMAIN: 'corp.example' }).node?.id).toBe('N');
   });
 });

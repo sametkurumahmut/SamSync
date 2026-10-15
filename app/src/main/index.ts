@@ -10,12 +10,43 @@ import { TrayManager } from './tray';
 import { launcherCommand, launcherPath } from './launcher';
 import { LaunchQueue, parseLaunch } from './launch';
 import { Integrations, removeIntegrations } from './integration';
+import { headlessFromDisk } from '../core/headless';
 
 const isMac = process.platform === 'darwin';
 const iconPath = path.join(__dirname, '../../resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 
 if (process.env.SAMSYNC_USER_DATA) app.setPath('userData', process.env.SAMSYNC_USER_DATA);
 app.setAppUserModelId('com.sametkurumahmut.samsync');
+
+async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<number> {
+  app.dock?.hide();
+  await app.whenReady();
+  // stdout may be a pipe, which Node writes asynchronously on Windows: wait for both streams before quitting
+  const flush = (s: NodeJS.WriteStream) => new Promise<void>((r) => s.write('', () => r()));
+  let code = 1;
+  try {
+    code = await headlessFromDisk(
+      {
+        userDataPath: app.getPath('userData'),
+        appVersion: app.getVersion(),
+        systemLanguages: [...app.getPreferredSystemLanguages(), app.getLocale()],
+        decrypt: (enc) => {
+          try {
+            return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+          } catch {
+            return null;
+          }
+        },
+      },
+      { mode: l.headless!, paths: l.paths, missing: l.missing, targets: l.targets ?? [] },
+      { out: (line) => process.stdout.write(line + '\n'), err: (line) => process.stderr.write(line + '\n') },
+    );
+  } catch (e) {
+    process.stderr.write(`${e instanceof Error ? e.message : String(e)}\n`);
+  }
+  await Promise.all([flush(process.stdout), flush(process.stderr)]);
+  return code;
+}
 
 /** argv of this or a second instance, without the program (and the app folder when unpackaged). */
 const launchOf = (argv: string[]) => parseLaunch(argv.slice(app.isPackaged ? 1 : 2), app.isPackaged ? undefined : app.getAppPath());
@@ -24,6 +55,9 @@ const launch = launchOf(process.argv);
 if (launch.removeIntegrations) {
   // the uninstaller: take the Explorer menu and the Notepad++ entries out, no window
   void removeIntegrations().finally(() => app.exit(0));
+} else if (launch.headless) {
+  // --plan-only / --check-only: answer on the console and quit; runs next to an open window too
+  void runHeadlessLaunch(launch).then((code) => app.exit(code));
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {

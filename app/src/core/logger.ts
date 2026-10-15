@@ -10,6 +10,8 @@ export interface Logger {
   warn(component: string, message: string): void;
   error(component: string, message: string, err?: unknown): void;
   readonly file: string;
+  /** Resolves once every line written so far is on disk (before a short lived process quits). */
+  drain?(): Promise<void>;
 }
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -61,6 +63,9 @@ export function createLogger(dir: string): Logger {
     info: (c, m) => write('INFO', c, m),
     warn: (c, m) => write('WARN', c, m),
     error: (c, m, e) => write('ERROR', c, e ? `${m}: ${e instanceof Error ? e.stack || e.message : String(e)}` : m),
+    async drain() {
+      while (writing || queue.length) await new Promise((r) => setTimeout(r, 10));
+    },
   };
 }
 

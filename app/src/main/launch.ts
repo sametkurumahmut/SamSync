@@ -3,6 +3,8 @@
 //   --to      node ids, group:<name>, profile:<name>, all, or last (the last send's targets and options), comma separated
 //   --yes     send at once, no review (the one-click menu entries)
 //   --restore show the backups of the items
+//   --plan-only   print where the items would go on each target, no window (exit code 0, 1 on an error)
+//   --check-only  print whether each target holds the same items, no window (exit code 0 = all the same, else 1)
 //   --hidden  started at login: stay in the tray when that is enabled
 //   --remove-integrations  take the Explorer menu and the Notepad++ entries out, then quit (used by the uninstaller)
 import fs from 'node:fs';
@@ -12,11 +14,15 @@ import type { OpenRequest } from '../shared/types';
 export interface Launch extends OpenRequest {
   hidden: boolean;
   removeIntegrations: boolean;
+  /** --plan-only / --check-only: answer on the console and quit, without a window. */
+  headless?: 'plan' | 'check';
+  /** Arguments that looked like paths but do not exist (reported by the headless modes). */
+  missing: string[];
 }
 
 /** argv without the program (and, unpackaged, the app folder). */
 export function parseLaunch(args: string[], appPath?: string): Launch {
-  const out: Launch = { paths: [], hidden: false, removeIntegrations: false };
+  const out: Launch = { paths: [], hidden: false, removeIntegrations: false, missing: [] };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--to' || a.startsWith('--to=')) {
@@ -26,10 +32,14 @@ export function parseLaunch(args: string[], appPath?: string): Launch {
     else if (a === '--restore') out.restore = true;
     else if (a === '--hidden') out.hidden = true;
     else if (a === '--remove-integrations') out.removeIntegrations = true;
+    else if (a === '--plan-only') out.headless = 'plan';
+    else if (a === '--check-only') out.headless = 'check';
     else if (a && !a.startsWith('-')) {
       try {
         const p = path.resolve(a);
-        if (fs.existsSync(p) && (!appPath || p !== path.resolve(appPath))) out.paths.push(p);
+        if (appPath && p === path.resolve(appPath)) continue;
+        if (fs.existsSync(p)) out.paths.push(p);
+        else out.missing.push(p);
       } catch {
         /* not a path */
       }

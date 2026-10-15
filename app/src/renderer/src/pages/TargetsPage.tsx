@@ -223,6 +223,7 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
   if (!n.id) errors.id = t('Gerekli');
   else if (!ID_RE.test(n.id)) errors.id = t('Yalnızca harf, rakam, nokta, alt çizgi, tire');
   else if (cfg.nodes.some((x) => x !== node && x.id.toLowerCase() === n.id.toLowerCase())) errors.id = t('Bu kimlik kullanılıyor');
+  if (n.group && !ID_RE.test(n.group)) errors.group = t('Yalnızca harf, rakam, nokta, alt çizgi, tire');
   if (transport === 'smb' && !n.address) errors.address = t('Gerekli');
   if (transport === 'smb' && !n.networkRoot) errors.networkRoot = t('Gerekli');
   if (transport === 'path' && !n.path) errors.path = t('Gerekli');
@@ -297,7 +298,7 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
         <Field label={t('Kimlik (id)')} error={n.id ? errors.id : undefined} help={t('Komutlar ve profiller bu anahtarı kullanır')}>
           <input className="input mono" value={n.id} onChange={(e) => set({ id: e.target.value.trim() })} placeholder="Unit1IG1" />
         </Field>
-        <Field label={t('Grup')} help={t('Aynı gruptaki makineler birlikte seçilebilir')}>
+        <Field label={t('Grup')} error={errors.group} help={t('Aynı gruptaki makineler birlikte seçilebilir')}>
           <input className="input" list="samsync-groups" value={n.group ?? ''} onChange={(e) => set({ group: e.target.value.trim() || undefined })} placeholder="Unit1" />
           <datalist id="samsync-groups">
             {groups.map((g) => (

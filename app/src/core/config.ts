@@ -87,7 +87,11 @@ export function normalizeConfig(raw: unknown): AppConfig {
       enabled: n.enabled !== false,
       transport,
     };
-    if (n.group && String(n.group).trim()) node.group = String(n.group).trim();
+    const group = String(n.group ?? '').trim();
+    // the group is a menu label and, as group:<name>, a target id on command lines: the same characters as an id
+    if (group && !ID_RE.test(group))
+      throw new ConfigError(t("Node #{n}: group yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '{group}'", { n: i + 1, group }));
+    if (group) node.group = group;
     const names = asStringArray(n.localNames);
     if (names.length) node.localNames = names;
     if (n.path) node.path = String(n.path).trim();

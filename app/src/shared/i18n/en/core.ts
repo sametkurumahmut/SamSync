@@ -16,12 +16,15 @@ const d: Dict = {
   Kopyala: 'Copy',
   İzleme: 'Watch',
   Zamanlama: 'Schedule',
+  'Komut satırı': 'Command line',
 
   // Service
   'SamSync {version} başladı ({host}, {platform}); config: {config}; node: {node} ({reason})':
     'SamSync {version} started ({host}, {platform}); config: {config}; node: {node} ({reason})',
   'Yapılandırma okunamadı: {path}': 'Could not read the configuration: {path}',
   'Yapılandırma kaydedildi ({n} node)': pl('Configuration saved ({n} node)', 'Configuration saved ({n} nodes)'),
+  'Bu dosyada eski sihirbazın ayarları yok: {path}': 'This file holds no settings of the old wizard: {path}',
+  'Eski sihirbazdan içe aktarıldı ({file}): {targets} hedef, {profiles} profil': 'Imported from the old wizard ({file}): {targets} targets, {profiles} profiles',
   '{n} kaynak → {targets} ({mode}, {compare})': pl('{n} source → {targets} ({mode}, {compare})', '{n} sources → {targets} ({mode}, {compare})'),
   Kaydedilemedi: 'Could not save',
   'Sonrası işlem': 'Post-run step',
@@ -70,6 +73,8 @@ const d: Dict = {
   'Yapılandırma bir JSON nesnesi olmalı.': 'The configuration must be a JSON object.',
   "Node #{n}: id yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '{id}'":
     "Node #{n}: the id may only contain letters, digits, dots, underscores and hyphens: '{id}'",
+  "Node #{n}: group yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir: '{group}'":
+    "Node #{n}: the group may only contain letters, digits, dots, underscores and hyphens: '{group}'",
   'Node id değerleri benzersiz olmalı (büyük/küçük harf duyarsız): {id}': 'Node ids must be unique (case-insensitive): {id}',
   '{id}: address (IP veya bilgisayar adı) gerekli.': '{id}: address (IP or computer name) is required.',
   '{id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).': '{id}: networkRoot is required (example: Sim\\ActiveRelease).',
@@ -89,6 +94,23 @@ const d: Dict = {
   'Kaynak bulunamadı: {path} ({error})': 'Source not found: {path} ({error})',
   '{path} yerel kökün kendisi: kökün tamamı gönderilecek.': '{path} is the local root itself: the whole root will be sent.',
   'Kaynak taranıyor: {path}': 'Scanning source: {path}',
+
+  // --plan-only / --check-only on the console
+  'Kaynak bulunamadı: {path}': 'Source not found: {path}',
+  '{n} kaynak bulunamadı; hiçbir şey denetlenmedi.': pl('{n} source was not found; nothing was checked.', '{n} sources were not found; nothing was checked.'),
+  'Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"': 'No source given. Example: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"',
+  'Bu makine yapılandırmadaki bir node ile eşleşmedi: {reason}': 'This machine did not match a node in the configuration: {reason}',
+  'Bu makine: {id} ({reason})': 'This machine: {id} ({reason})',
+  'Hedef bulunamadı ya da boş: {ids}': 'Target not found or empty: {ids}',
+  '(kök dışı)': '(outside roots)',
+  'Yalnızca plan: {n} işlem hesaplandı, kopyalama yapılmadı.': pl('Plan only: {n} operation computed, nothing copied.', 'Plan only: {n} operations computed, nothing copied.'),
+  'Bütün hedefler aynı ({n}).': pl('The target is the same ({n}).', 'All targets are the same ({n}).'),
+  'Fark var: {same}/{n} hedef aynı.': 'Differences: {same}/{n} targets are the same.',
+  'Yalnızca denetim: {summary}': 'Check only: {summary}',
+  'Yapılandırma dosyası yok: {path}': 'The configuration file does not exist: {path}',
+  '{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.': '{name}: {folders} was recognised as a backup folder; mirror mode does not delete it.',
+  'Geçersiz yedek klasörü: {folder}': 'Invalid backup folder: {folder}',
+  'Geçersiz yedek tarihi: {stamp}': 'Invalid backup date: {stamp}',
   'Okunamadı: {path} ({error})': 'Could not read: {path} ({error})',
   '{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.': '{path} is not under any local root; it will be sent with its full path ({rel}).',
   'Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.': 'A folder with the same name is on the target; it will be removed and the file written.',

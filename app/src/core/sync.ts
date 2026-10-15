@@ -2,7 +2,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { Category, CompareItem, CompareResult, CompareStats, CustomActions, FileMeta, PairResult, SyncAction, SyncJob, SyncPair, SyncVariant, RunDetail } from '../shared/types';
 import type { CoreContext } from './context';
-import { makeFilter } from './filter';
+import { makeFilter, withTopDirsExcluded } from './filter';
+import { otherBackupRoots } from './backups';
 import { scanTree } from './scan';
 import { transportForEndpoint, endpointLabel, type Transport, type Entry } from './transport';
 import { compareMeta, sameTime, streamsEqual, type TimeOptions } from './compare';
@@ -157,11 +158,14 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
       alwaysExcludeDirs: [ctx.config.copy.backupFolderName],
       caseInsensitive: ci,
     });
+    // an older backup folder at either root (a machine root kept by the PowerShell tool) is left out on both sides
+    const kept = [...new Set((await Promise.all([left, right].map((x) => otherBackupRoots(x, ctx.config.copy.backupFolderName)))).flat())];
+    const scanFilter = withTopDirsExcluded(filter, kept);
     let counted = 0;
     const tick = (n: number) => onProgress?.(counted + n);
     const [ls, rs] = await Promise.all([
-      scanTree(left, '', { filter, cancel, caseInsensitive: ci, onProgress: tick }),
-      scanTree(right, '', { filter, cancel, caseInsensitive: ci, onProgress: tick }),
+      scanTree(left, '', { filter: scanFilter, cancel, caseInsensitive: ci, onProgress: tick }),
+      scanTree(right, '', { filter: scanFilter, cancel, caseInsensitive: ci, onProgress: tick }),
     ]);
     counted = ls.entries.size + rs.entries.size;
     res.leftOk = ls.exists;

@@ -3,15 +3,17 @@ import fsp from 'node:fs/promises';
 import type { CategoryCounts, NodeConfig, PlanCategory, PlanOp, SendPlan, SendRequest, SourceInfo, TargetPlan } from '../shared/types';
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
-import { makeFilter, type PathFilter } from './filter';
+import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
 import { mapToRel, normalizeAbs, relKey, relIsWithin, relJoin } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
 import { compareMeta, gitBlobId, streamsEqual } from './compare';
 import { blobInfo } from './git';
 import { probeNode } from './probe';
+import { otherBackupRoots } from './backups';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
 import { t } from '../shared/i18n';
+import { targetOptions } from '../shared/options';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -114,7 +116,10 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
     }
     if (st.isDirectory()) {
       progress({ message: t('Kaynak taranıyor: {path}', { path: abs }) });
-      const scan = await scanTree(new FsTransport(abs), '', { filter, cancel, caseInsensitive: true });
+      const local = new FsTransport(abs);
+      // a local root that once was a target may hold an older backup folder: it is never sent along
+      const skip = m.rel ? [] : await otherBackupRoots(local, ctx.config.copy.backupFolderName);
+      const scan = await scanTree(local, '', { filter: withTopDirsExcluded(filter, skip), cancel, caseInsensitive: true });
       for (const e of scan.errors) warnings.push(t('Okunamadı: {path} ({error})', { path: `${abs}/${e.rel}`, error: e.error }));
       units.push({ kind: 'dir', sourceIndex: i, rel: m.rel, abs, entries: scan.entries });
       let size = 0;
@@ -182,12 +187,23 @@ function push(b: OpBuilder, op: Omit<PlanOp, 'id'>) {
   b.ops.push({ ...op, id: String(b.ops.length) });
 }
 
-async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, units: Unit[], filter: PathFilter, cancel: CancelToken): Promise<TargetPlan> {
-  const opt = req.options;
+async function planTarget(
+  ctx: CoreContext,
+  req: SendRequest,
+  node: NodeConfig,
+  units: Unit[],
+  filter: PathFilter,
+  cancel: CancelToken,
+  warn: (message: string) => void,
+): Promise<TargetPlan> {
+  // this target's own mode and backup, when the send gives it exceptions
+  const opt = targetOptions(req.options, node.id);
   const base: TargetPlan = {
     targetId: node.id,
     targetName: node.name,
     root: nodeRootLabel(ctx.config, node),
+    mode: opt.mode,
+    backup: opt.backup,
     reachable: true,
     ops: [],
     counts: emptyCounts(),
@@ -245,11 +261,17 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
       } else if (!dstRoot) {
         push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
       }
-      const dstScan = dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter, cancel, caseInsensitive: true }) : null;
+      // older backup folders at the target root are neither compared, written to nor deleted (not even by a mirror)
+      const kept = !u.rel && dstRoot?.isDir ? await otherBackupRoots(tgt, ctx.config.copy.backupFolderName) : [];
+      const keptKeys = new Set(kept.map((k) => k.toLowerCase()));
+      const inKept = (rel: string) => keptKeys.has(rel.split('/')[0].toLowerCase());
+      if (kept.length && opt.mode === 'mirror') warn(t('{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.', { name: node.name, folders: kept.join(', ') }));
+      const dstScan = dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: withTopDirsExcluded(filter, kept), cancel, caseInsensitive: true }) : null;
       const dstEntries = dstScan?.entries ?? new Map<string, Entry>();
       const local = new FsTransport(u.abs);
       const files: [string, Entry][] = [];
       for (const [key, e] of u.entries) {
+        if (inKept(e.rel)) continue;
         const rel = relJoin(u.rel, e.rel);
         const d = dstEntries.get(key);
         if (e.isDir) {
@@ -279,7 +301,7 @@ async function planTarget(ctx: CoreContext, req: SendRequest, node: NodeConfig, 
   } catch (e) {
     await tgt.close();
     if (cancel.cancelled) throw e;
-    return { ...base, reachable: false, error: errMessage(e), counts: b.counts, ops: b.ops };
+    return { ...base, reachable: false, failed: true, error: errMessage(e), counts: b.counts, ops: b.ops };
   }
 
   b.ops.sort((x, y) => x.rel.localeCompare(y.rel));
@@ -310,7 +332,7 @@ export async function buildSendPlan(
   let done = 0;
   progress({ message: t('Hedefler inceleniyor'), done, total: nodes.length });
   const targets = await mapLimit(nodes, 6, async (n) => {
-    const tp = await planTarget(ctx, req, n, units, filter, cancel);
+    const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m));
     progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
     return tp;
   });
@@ -319,8 +341,9 @@ export async function buildSendPlan(
     if (tp.freeBytes != null && tp.bytes > tp.freeBytes)
       warnings.push(t('{name}: hedefte {free} boş alan var, {size} yazılacak.', { name: tp.targetName, free: formatBytes(tp.freeBytes), size: formatBytes(tp.bytes) }));
   }
-  if (req.options.mode === 'mirror') {
-    const del = targets.reduce((s, tp) => s + tp.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
+  const mirrors = targets.filter((tp) => tp.mode === 'mirror');
+  if (mirrors.length) {
+    const del = mirrors.reduce((s, tp) => s + tp.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
     if (del) warnings.push(t('Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.', { n: del }));
   }
   return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started };

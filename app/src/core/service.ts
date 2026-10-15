@@ -21,6 +21,7 @@ import type {
   GitRepoInfo,
   AutomationState,
   WatchConfig,
+  WizardImportResult,
 } from '../shared/types';
 import type { CoreContext } from './context';
 import { DEFAULT_SETTINGS, emptyConfig, loadConfig, readJson, saveConfigFile, writeJsonAtomic, normalizeConfig } from './config';
@@ -39,6 +40,7 @@ import { findBackups, listBackupSets, browseBackup, restoreGroups } from './back
 import { findNode } from './context';
 import { CancelToken, errMessage } from './util';
 import { Automation } from './automation';
+import { convertWizardState, findWizardStates, isWizardState } from './wizardImport';
 import { resolveLang, setLang, systemLang, t, type Lang } from '../shared/i18n';
 
 export interface HostAdapter {
@@ -413,6 +415,7 @@ export class Service implements Api {
         rootLabel: tp.root,
         open: () => transportForNode(ctx, node),
         node,
+        backup: tp.backup,
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType })),
       });
     }
@@ -698,11 +701,11 @@ export class Service implements Api {
   backupSets(targetIds: string[]) {
     return listBackupSets(this.ctx(), targetIds);
   }
-  browseBackup(targetId: string, stamp: string, relDir: string) {
-    return browseBackup(this.ctx(), targetId, stamp, relDir);
+  browseBackup(targetId: string, stamp: string, relDir: string, folder?: string) {
+    return browseBackup(this.ctx(), targetId, stamp, relDir, folder);
   }
 
-  async restore(rel: string, picks: { targetId: string; stamp: string }[], backupCurrent: boolean): Promise<string> {
+  async restore(rel: string, picks: { targetId: string; stamp: string; folder?: string }[], backupCurrent: boolean): Promise<string> {
     const ctx = this.ctx();
     const groups = await restoreGroups(ctx, rel, picks);
     if (!groups.length) throw new Error(t('Geri alınacak yedek bulunamadı.'));
@@ -710,6 +713,51 @@ export class Service implements Api {
     const handle = startRun(ctx, groups, s);
     this.track(handle, true);
     return handle.id;
+  }
+
+  // ------------------------------------------------------------ import from the old wizard
+
+  async findWizardState(): Promise<string | null> {
+    return (await findWizardStates())[0] ?? null;
+  }
+
+  /** Brings the old wizard's profiles and last selection over, once; profiles that already exist here are kept. */
+  async importWizardState(file: string): Promise<WizardImportResult> {
+    const raw = await readJson(file);
+    const conv = isWizardState(raw) ? convertWizardState(raw, this.config, this.configPath) : null;
+    if (!conv) throw new Error(t('Bu dosyada eski sihirbazın ayarları yok: {path}', { path: file }));
+    const has = new Set(this.config.profiles.flatMap((p) => [p.id.toLowerCase(), p.name.toLowerCase()]));
+    const added = conv.profiles.filter((p) => !has.has(p.id.toLowerCase()) && !has.has(p.name.toLowerCase()));
+    const skipped = conv.profiles.filter((p) => !added.includes(p)).map((p) => p.name);
+    let profilesError: string | undefined;
+    if (added.length) {
+      try {
+        await this.saveConfig({ ...this.config, profiles: [...this.config.profiles, ...added] });
+      } catch (e) {
+        profilesError = errMessage(e);
+      }
+    }
+    const patch: Partial<LocalSettings> = { wizardImport: { at: Date.now(), file } };
+    if (conv.lastTargets.length) {
+      patch.lastTargets = conv.lastTargets;
+      patch.lastOptions = { ...this.settings.lastOptions, ...conv.lastOptions };
+    }
+    await this.saveSettings(patch);
+    this.log.info(
+      t('Config'),
+      t('Eski sihirbazdan içe aktarıldı ({file}): {targets} hedef, {profiles} profil', { file, targets: conv.lastTargets.length, profiles: added.length }),
+    );
+    return {
+      file,
+      configKey: conv.configKey,
+      lastTargets: conv.lastTargets,
+      profilesAdded: profilesError ? [] : added.map((p) => p.name),
+      profilesSkipped: skipped,
+      unknownTargets: conv.unknownTargets,
+      profilesError,
+      settings: this.settings,
+      config: this.config,
+    };
   }
 
   // ------------------------------------------------------------ shell & host

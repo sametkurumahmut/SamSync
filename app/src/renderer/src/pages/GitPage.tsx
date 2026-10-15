@@ -574,7 +574,7 @@ function GitActionBar() {
       </Button>
       {tpOpen && (
         <Popover anchor={tpRef.current} onClose={() => setTpOpen(false)} align="end" width={400} placement="top">
-          <TargetPicker value={targets} onChange={setTargets} maxHeight={420} />
+          <TargetPicker value={targets} onChange={setTargets} maxHeight={420} overrides />
         </Popover>
       )}
       {optOpen && (

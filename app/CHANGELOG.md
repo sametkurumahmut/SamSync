@@ -1,5 +1,28 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+Eski araçla kalan beş fark kapandı.
+
+- **Hedefe özel ayar** — eski sihirbazın *Yedek al* / *Yalnızca yeni* / *Ayna* sütunları geri geldi. Hedef listesinde her makinenin satırındaki ayar düğmesi o makineye kendi kipini ve yedeğini verir. Ayarlar:
+  - satırda rozetle, alt çubukta sayıyla, incelemede hedef kartında görünür;
+  - son gönderimle (`--to last`, *Son ayarla gönder*) ve profillerle saklanır;
+  - çalıştırmada her hedef kendi yedek ayarıyla yazılır; ayna onayı yalnızca aynalanan hedeflerin silmelerini sayar.
+
+  İzleme oluşturulurken hedefe özel ayna kaldırılır.
+- **Pencere açmadan denetim** — `--plan-only` ve `--check-only` (eski `-PlanOnly` / `-CheckOnly`). Hedef başına tablo standart çıktıya yazılır; sütun adları ve durumlar eskisiyle aynıdır (`Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata`). Çıkış kodu 0 = hepsi aynı, 1 = değil ya da hata. Açık bir SamSync penceresinin yanında da çalışır; sonuç `root.log`'a yazılır.
+- **Eski yedek klasörleri** — hedef kökünde `_` ile başlayıp yalnızca `yyyyMMdd-HHmmss` klasörleri içeren klasör (eski aracın `_…Yedek` klasörü) yedek klasörü sayılır:
+  - kökün tamamı ayna kipinde gönderilirken ya da senkronda aynalanırken silinmez, içine yazılmaz, gönderime katılmaz;
+  - Yedekler sayfasında ek kök olarak taranır ve sürümleri geri alınabilir.
+
+  Geri almada klasör ve tarih adı denetlenir; hedef kökünün dışına çıkan bir yol reddedilir.
+- **Eski sihirbazdan içe aktarma** — Ayarlar → Yapılandırma dosyası → *Sihirbaz ayarlarını içe aktar*. `%LOCALAPPDATA%` altındaki `wizard-state.json` kendiliğinden bulunur ya da elle seçilir.
+  - Son seçim, hedefler ve hedef başına sütunlarla birlikte son gönderim ayarı olur.
+  - Profiller yapılandırmaya eklenir; aynı adlı profiller korunur.
+  - Bilinmeyen makineler atlanır ve bildirilir.
+- **Makine tanıma** — bilgisayar adı etki alanında `<ad>.<USERDNSDOMAIN>` olarak da eşleşir (eski araçtaki gibi).
+- **Grup adı denetimi** — grup adı node kimliğiyle aynı karakterlerle sınırlıdır (harf, rakam, `.`, `_`, `-`). Uymayan yapılandırma yüklenmez; Hedefler düzenleyicisi bunu kaydetmeden önce gösterir.
+
 ## 2.1.0
 
 Eski aracın sağ tık menüleri ve tek tıkla gönderimi geri geldi; arayüz İngilizce de kullanılabilir.

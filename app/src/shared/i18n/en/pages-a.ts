@@ -45,6 +45,8 @@ const d: Dict = {
   // {sources}, {arrow} and {targets} are elements; s and n carry the numbers for the plurals
   '{sources} kaynak {arrow} {targets} hedef': (p) => `{sources} ${pl('source', 'sources', 's')(p)} {arrow} {targets} ${pl('target', 'targets')(p)}`,
   yedekli: 'with backup',
+  '{n} hedefte özel ayar': pl('own settings on {n} target', 'own settings on {n} targets'),
+  'Bu hedeflerin kipi ya da yedeği genel ayardan farklı': 'These targets use a mode or backup other than the general one',
   'Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir': 'Watches these sources and sends them to the\nselected targets automatically when they change',
   İzle: 'Watch',
   Deneme: 'Dry run',

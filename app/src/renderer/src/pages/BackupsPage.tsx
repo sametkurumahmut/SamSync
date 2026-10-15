@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArchiveRestore, FilePlus, FolderPlus, Search, ArrowRight, AlertTriangle, History as HistoryIcon, WifiOff, Server } from 'lucide-react';
-import type { BackupLookup } from '@shared/types';
+import type { BackupLookup, BackupVersion } from '@shared/types';
 import { useApp } from '../store/app';
 import { api, pathForFile } from '../lib/api';
 import { Button, Checkbox, Empty, ToggleRow, useDebounced } from '../components/ui';
@@ -8,6 +8,9 @@ import { TargetPicker } from '../components/TargetPicker';
 import { baseName, bytes, cls, dateTime } from '../lib/format';
 import { t } from '@shared/i18n';
 import { tx } from '../lib/i18n';
+
+/** A version is a date folder inside one backup folder: the configured one or an older one at the target root. */
+const versionKey = (v: BackupVersion) => `${v.folder}/${v.stamp}`;
 
 export function BackupsPage() {
   const isElectron = useApp((s) => s.boot!.isElectron);
@@ -68,7 +71,7 @@ export function BackupsPage() {
       const r = await api.findBackups(rel, targets);
       setResults(r);
       const p: Record<string, string | null> = {};
-      for (const x of r) p[x.targetId] = x.versions[0]?.stamp ?? null;
+      for (const x of r) p[x.targetId] = x.versions[0] ? versionKey(x.versions[0]) : null;
       setPicks(p);
     } catch (e) {
       toast('error', t('Yedekler aranamadı'), (e as Error).message);
@@ -90,7 +93,7 @@ export function BackupsPage() {
     try {
       const id = await api.restore(
         rel,
-        chosen.map(([targetId, stamp]) => ({ targetId, stamp })),
+        chosen.map(([targetId, key]) => ({ targetId, folder: key.slice(0, key.lastIndexOf('/')), stamp: key.slice(key.lastIndexOf('/') + 1) })),
         backupCurrent,
       );
       watchRun(id);
@@ -110,7 +113,8 @@ export function BackupsPage() {
         <div className="grow">
           <h1>{t('Yedekler')}</h1>
           <div className="sub">
-            {tx('“Yedek al” ile gönderilen dosyaların eski hâlleri hedefte {folder} altında tarih klasörlerinde durur. Buradan geri yazabilirsiniz.', { folder: <span className="mono">{folder}</span> })}
+            {tx('“Yedek al” ile gönderilen dosyaların eski hâlleri hedefte {folder} altında tarih klasörlerinde durur. Buradan geri yazabilirsiniz.', { folder: <span className="mono">{folder}</span> })}{' '}
+            {t('Hedef kökünde “_” ile başlayıp yalnızca tarih klasörleri içeren eski yedek klasörleri de taranır.')}
           </div>
         </div>
       </div>
@@ -205,7 +209,7 @@ export function BackupsPage() {
                 ) : (
                   results.map((r) => (
                     <div key={r.targetId} className="list-row" style={{ height: 'auto', minHeight: 54, padding: '8px 14px', opacity: r.versions.length ? 1 : 0.6 }}>
-                      <Checkbox checked={!!picks[r.targetId]} disabled={!r.versions.length} onChange={(v) => setPicks((p) => ({ ...p, [r.targetId]: v ? r.versions[0]?.stamp ?? null : null }))} />
+                      <Checkbox checked={!!picks[r.targetId]} disabled={!r.versions.length} onChange={(v) => setPicks((p) => ({ ...p, [r.targetId]: v && r.versions[0] ? versionKey(r.versions[0]) : null }))} />
                       <div className="grow" style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 580 }}>{r.targetName}</div>
                         <div className="faint" style={{ fontSize: 12 }}>
@@ -221,10 +225,11 @@ export function BackupsPage() {
                         </div>
                       </div>
                       {r.versions.length ? (
-                        <select className="select" style={{ width: 260 }} value={picks[r.targetId] ?? r.versions[0].stamp} onChange={(e) => setPicks((p) => ({ ...p, [r.targetId]: e.target.value }))}>
+                        <select className="select" style={{ width: 260 }} value={picks[r.targetId] ?? versionKey(r.versions[0])} onChange={(e) => setPicks((p) => ({ ...p, [r.targetId]: e.target.value }))}>
                           {r.versions.map((v) => (
-                            <option key={v.stamp} value={v.stamp}>
+                            <option key={versionKey(v)} value={versionKey(v)}>
                               {dateTime(v.date)} — {v.isDir ? t('klasör') : bytes(v.size)}
+                              {v.folder !== folder ? ` • ${v.folder}` : ''}
                             </option>
                           ))}
                         </select>

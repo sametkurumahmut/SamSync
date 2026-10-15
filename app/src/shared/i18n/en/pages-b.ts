@@ -203,6 +203,8 @@ const d: Dict = {
   // {folder} is the backup folder name in monospace
   '“Yedek al” ile gönderilen dosyaların eski hâlleri hedefte {folder} altında tarih klasörlerinde durur. Buradan geri yazabilirsiniz.':
     'For files sent with “Back up”, the old versions are kept on the target in dated folders under {folder}. You can write them back from here.',
+  'Hedef kökünde “_” ile başlayıp yalnızca tarih klasörleri içeren eski yedek klasörleri de taranır.':
+    'Older backup folders at the target root (names starting with “_” that hold only dated folders) are searched too.',
   'Yerel yol (C:\\…\\Data\\x.entity) ya da göreli yol (Data/x.entity)': 'Local path (C:\\…\\Data\\x.entity) or relative path (Data/x.entity)',
   'Dosya seç': 'Select file',
   'hedefte:': 'on target:',
@@ -294,6 +296,24 @@ const d: Dict = {
   'Eski PowerShell aracının dosyası doğrudan okunur; kaydederken onun alanları korunur.': 'The old PowerShell tool’s file is read directly; its fields are kept when saving.',
   'Başka dosya kullan…': 'Use another file…',
   'Makineleri içe aktar…': 'Import machines…',
+  // import from the old wizard (Settings → Configuration file)
+  'Eski sihirbazdan içe aktar': 'Import from the old wizard',
+  'Eski aracın sihirbazındaki profilleri ve son seçimi (hedefler ve hedef başına Yedek al / Yalnızca yeni / Ayna) bir kez buraya taşır. Aynı adlı profiller olduğu gibi kalır.':
+    'Brings the old tool’s wizard profiles and last selection (targets and the per target Back up / Newer only / Mirror) over, once. Profiles with the same name are left as they are.',
+  'İçe aktarıldı: {time} • {file}': 'Imported: {time} • {file}',
+  'Yeniden içe aktar': 'Import again',
+  'Sihirbaz ayarlarını içe aktar': 'Import wizard settings',
+  'Dosya seç…': 'Choose file…',
+  'Eski sihirbaz ayarı bulunamadı': 'No old wizard settings found',
+  'Dosyayı kendiniz seçin (wizard-state.json).': 'Choose the file yourself (wizard-state.json).',
+  'Eski sihirbazın durum dosyası': 'The old wizard’s state file',
+  'Bu ayarlar daha önce içe aktarılmıştı. Son seçim yeniden yazılsın mı? Var olan profiller korunur.':
+    'These settings were imported before. Overwrite the last selection again? Existing profiles are kept.',
+  '{n} profil eklendi': pl('{n} profile added', '{n} profiles added'),
+  '{n} profil zaten vardı': pl('{n} profile already existed', '{n} profiles already existed'),
+  'bilinmeyen makineler atlandı: {ids}': 'unknown machines skipped: {ids}',
+  'profiller kaydedilemedi: {error}': 'profiles could not be saved: {error}',
+  'Eski sihirbaz ayarları içe aktarıldı': 'Old wizard settings imported',
   'Varsayılana dön': 'Back to default',
   Aç: 'Open',
   'Bu özellik yalnızca Windows’ta kullanılabilir. macOS ve Linux’ta dosyaları pencereye sürükleyin ya da uygulamayı dosya yollarıyla başlatın.':

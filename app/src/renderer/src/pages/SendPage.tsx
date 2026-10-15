@@ -8,6 +8,7 @@ import { bytes, cls, num, baseName } from '../lib/format';
 import type { SendMode, CompareMethod } from '@shared/types';
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
+import { pickOverrides } from '@shared/options';
 import { useStartWatchFromSend } from './AutomationPage';
 
 export const MODE_OPTIONS: { value: SendMode; label: string; tip: string }[] = [
@@ -62,6 +63,7 @@ export function SendPage() {
 
   const review = () => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
   const modeLabel = MODE_OPTIONS.find((m) => m.value === options.mode)?.label;
+  const ownSettings = pickOverrides(options.perTarget, targets);
 
   return (
     <div className="page">
@@ -202,7 +204,7 @@ export function SendPage() {
               <h2>{t('Hedefler')}</h2>
               <span className="spacer" />
             </div>
-            <TargetPicker value={targets} onChange={setTargets} />
+            <TargetPicker value={targets} onChange={setTargets} overrides />
           </div>
         </div>
 
@@ -218,6 +220,11 @@ export function SendPage() {
             <span className="badge outline">{modeLabel && t(modeLabel)}</span>
             {options.backup && <span className="badge blue">{t('yedekli')}</span>}
             {options.dryRun && <span className="badge amber">{t('deneme')}</span>}
+            {Object.keys(ownSettings).length > 0 && (
+              <span className="badge violet" data-tip={t('Bu hedeflerin kipi ya da yedeği genel ayardan farklı')}>
+                {t('{n} hedefte özel ayar', { n: Object.keys(ownSettings).length })}
+              </span>
+            )}
           </div>
           <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
             {t('İzle')}

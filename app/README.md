@@ -27,7 +27,9 @@ Without a configuration, the welcome screen offers three ways in:
 - **Kopyasını içe aktar** (import a copy) — copies the machines into this computer's own configuration.
 - **Sıfırdan başla** (start from scratch) — add the machines one by one on the **Hedefler** (Targets) page.
 
-The app recognises the machine it runs on with the same rules as the old tool: the `SAMSYNC_NODE_ID` environment variable, the IP address, the computer name (`address` / `localNames`), and, when several nodes match, the one whose local root exists here. The machine can also be pinned by hand on the Targets page.
+The app recognises the machine it runs on with the same rules as the old tool: the `SAMSYNC_NODE_ID` environment variable, the IP address, the computer name (`address` / `localNames`, as the bare name or, on a domain, as `<name>.<USERDNSDOMAIN>`), and, when several nodes match, the one whose local root exists here. The machine can also be pinned by hand on the Targets page.
+
+Node ids and group names may only contain letters, digits, dots, underscores and hyphens (`Unit1`, no spaces), because they are used as machine ids and `group:<name>` on command lines and in the menus. As with the old tool, a config that breaks this rule is not loaded.
 
 ## Pages
 
@@ -44,6 +46,11 @@ Drag files/folders onto the window, pick them, or paste a path; then choose targ
 Any row can be unticked, `⇄` opens the line diff between source and target, and **Seçimi tüm hedeflere uygula** (apply selection to all targets) copies the choices made for one target to the others. **İzle** (watch) puts the chosen sources under watch (see *Automation*).
 
 Options: mode (overwrite / update only / mirror), comparison (date+size / content / size), **yedek al** (keep a backup: old versions are moved into the backup folder on the target under a `<timestamp>` folder), verification (content hash), excluded file/folder patterns, number of parallel targets, dry run, notification when done, post-copy command.
+
+**Per-target settings** (the old wizard's *Yedek al* / *Yalnızca yeni* / *Ayna* columns): the slider button at the end of a machine row gives that machine its own mode and backup. For example, the trainer can mirror with a backup while the IGs take newer files only.
+- The row shows the exception as a badge, the bottom bar counts them (*N hedefte özel ayar*, own settings on N targets), and the review shows them on each target card.
+- **Seç → Hedefe özel ayarları temizle** (clear per-target settings) brings every machine back to the general options.
+- They are saved with the last send, so `--to last` and *Son ayarla gönder* use them. A profile keeps the exceptions of its own machines.
 
 Writes are atomic: a file is first written under a temporary name, its size (and optionally its hash) is checked, then it is moved into place. An interrupted copy never leaves a broken file on the target.
 
@@ -74,11 +81,24 @@ Automation runs while the app is running. Under Ayarlar (Settings) → *Arka pla
 
 ### Hedefler (Targets), Yedekler (Backups), Geçmiş (History), Ayarlar (Settings)
 - **Hedefler** — machine cards, reachability (refreshed every 45 s), adding and editing machines. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
-- **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first).
+- **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first). Older backup folders at a target root are searched too (see below); their versions show the folder name.
 - **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones).
 - **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates.
 
 The backup folder is `_SamSyncYedek` under each target root by default; its name can be changed in Settings → Kopyalama (Copy).
+
+**Older backup folders** — the old tool kept its backups in a `_…Yedek` folder of its own at the target root. SamSync treats a folder as a backup folder when it sits at the root of a target (or of a local root), its name starts with `_`, and it holds nothing but `yyyyMMdd-HHmmss` folders. Such a folder:
+- is neither deleted nor written into by a mirror send or a mirror sync of the whole root (the review says so), and is never sent along;
+- shows up on the Backups page, and its versions can be restored;
+- is never trimmed: only the configured folder keeps just the newest *Saklanacak yedek* (backups to keep).
+
+The same applies to an earlier SamSync backup folder after its name was changed.
+
+**Importing from the old wizard** — Settings → *Yapılandırma dosyası* (configuration file) → **Sihirbaz ayarlarını içe aktar** (import wizard settings) brings the old wizard's profiles and last selection over once.
+- **The file:** `wizard-state.json` under `%LOCALAPPDATA%` is found by itself; *Dosya seç…* (choose file) picks it by hand. The entry saved for this config is used; if the folder has moved since, the entry that knows most of its machines is used.
+- **Last selection:** the ticked machines become the last send's targets. The per-machine columns become the general options plus per-target exceptions, so every machine keeps exactly what it had. The wizard's excluded files and folders are added to the config's. Dry run and the robocopy-only settings (fast copy, inter-packet gap, retries) are not taken over.
+- **Profiles:** they become SamSync profiles in the config. A profile whose name already exists is left as it is.
+- **Unknown machines:** machines that are not in the config are skipped and listed.
 
 On computers where the old tool's machine id was pinned with `setx`, set the same value as `SAMSYNC_NODE_ID` (`setx SAMSYNC_NODE_ID Unit1Trainer`) or pick the machine under Targets → *Bu makine* (this machine).
 
@@ -129,8 +149,34 @@ SamSync.exe --to last --yes "C:\...\Data\x.entity"
 | `--restore` | opens Backups with the items |
 | `--hidden` | starts in the tray (used by start at login) |
 | `--remove-integrations` | removes the Explorer menu and the Notepad++ entries, then quits (used by the uninstaller) |
+| `--plan-only` | prints where each item would go on each target, without a window (the old `-PlanOnly`) |
+| `--check-only` | prints whether each target holds the same items, without a window (the old `-CheckOnly`) |
 
 Shortcuts: `Ctrl+K` command palette, `Ctrl+1…8` pages, `F12` developer tools.
+
+### Plan and equality check without a window
+
+```bat
+start /wait SamSync.exe --check-only --to all "C:\Sim\ActiveRelease\Data"
+echo %ERRORLEVEL%
+SamSync.exe --plan-only --to profile:Unit1IG "C:\Sim\ActiveRelease\Data\x.entity" | more
+```
+
+Both modes use the same settings and config as the app, and they also run while a SamSync window is open. `--to` works as for a send: all targets when it is left out, and `last` and `profile:` bring their per-target settings. The table goes to standard output; the machine, warnings, errors and the summary go to standard error, so the table can be redirected on its own. Column names and state values are ASCII and the same as the old tool's:
+
+- `--plan-only` — one row per item and target: `Source`, `LocalRoot`, `LocalMachine`, `Target`, `Destination`, `Options` (`Backup`, `OnlyNewer`, `Mirror`). Nothing is read on the targets.
+- `--check-only` — one row per target: `Target`, `TargetId`, `State`, `Changes`, `Missing`, `DestNewer`, `Extras`. Nothing is written. `State` is one of:
+  - `Ayni` — same;
+  - `Farkli` — different;
+  - `Yok` — none of the items is on the target;
+  - `Erisilemedi` — unreachable;
+  - `Hata` — reading the target failed.
+
+  Extra files on a target do not make it different by themselves.
+
+Exit code: `0` means the plan was computed or every target is the same. `1` means a difference, a missing item, an unreachable target, or an error (missing source, unknown target, this machine not recognised, unreadable config). The result is also written to `root.log`.
+
+SamSync.exe is a Windows GUI program, so `cmd` does not wait for it by itself. Use `start /wait` to read `%ERRORLEVEL%`, or pipe the output (`| more`; `| Out-String` in PowerShell), which makes the shell wait and sets `$LASTEXITCODE`.
 
 ## Auto-update
 

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Server, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw } from 'lucide-react';
-import type { NodeConfig, Profile } from '@shared/types';
+import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Server, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check } from 'lucide-react';
+import type { NodeConfig, Profile, TargetOptions } from '@shared/types';
+import { overrideFor, pickOverrides, setOverride } from '@shared/options';
+import { MODE_OPTIONS } from '../pages/SendPage';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type MenuEntry } from './ui';
 import { api } from '../lib/api';
@@ -32,7 +34,11 @@ function groupNodes(nodes: NodeConfig[]): Group[] {
   return [...list.filter((g) => g.key), ...list.filter((g) => !g.key)];
 }
 
-export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; onChange: (ids: string[]) => void; maxHeight?: number | string }) {
+/**
+ * The machine list with groups, search and the selection helpers. With `overrides` (Send and Git pages) every row
+ * can also carry its own mode and backup, like the per machine columns of the old wizard.
+ */
+export function TargetPicker({ value, onChange, maxHeight, overrides }: { value: string[]; onChange: (ids: string[]) => void; maxHeight?: number | string; overrides?: boolean }) {
   const nodes = useTargetNodes();
   const probes = useApp((s) => s.probes);
   const probing = useApp((s) => s.probing);
@@ -40,6 +46,7 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
   const cfg = useApp((s) => s.boot!.config);
   const saveConfig = useApp((s) => s.saveConfig);
   const toast = useApp((s) => s.toast);
+  const perTarget = useApp((s) => s.options.perTarget);
   const [q, setQ] = useState('');
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -73,6 +80,9 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
     { label: t('Erişilemeyenleri bırak'), icon: <WifiOff size={15} />, onClick: () => onChange(value.filter((id) => probes[id]?.ok !== false)) },
     { label: t('Seçimi ters çevir'), icon: <ListChecks size={15} />, onClick: () => onChange(nodes.filter((n) => (visibleIds.includes(n.id) ? !sel.has(n.id) : sel.has(n.id))).map((n) => n.id)) },
     { label: t('Son çalıştırmada hatalıları seç'), icon: <RefreshCw size={15} />, onClick: () => void lastFailed() },
+    ...(overrides
+      ? [{ label: t('Hedefe özel ayarları temizle'), icon: <SlidersHorizontal size={15} />, disabled: !Object.keys(perTarget ?? {}).length, onClick: () => useApp.getState().setOptions({ perTarget: {} }) }]
+      : []),
     { sep: true },
     { section: t('Profiller') },
     ...cfg.profiles.map((p) => ({
@@ -81,8 +91,8 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
       hint: `${p.targetIds.length}`,
       onClick: () => {
         onChange(p.targetIds.filter((id) => nodes.some((n) => n.id === id)));
-        // a profile is the targets together with the send options saved with them
-        if (p.options) useApp.getState().setOptions(p.options);
+        // a profile is the targets together with the send options (and per target exceptions) saved with them
+        if (p.options) useApp.getState().setOptions({ ...p.options, perTarget: p.options.perTarget ?? {} });
       },
     })),
     { label: t('Seçimi profil olarak kaydet…'), icon: <Bookmark size={15} />, onClick: () => setSaving(true), disabled: !value.length },
@@ -152,6 +162,7 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
                         </div>
                       </div>
                       {p?.ok && p.latencyMs != null && <span className="faint tabular" style={{ fontSize: 11 }}>{p.latencyMs} ms</span>}
+                      {overrides && <TargetOverride id={n.id} />}
                     </div>
                   );
                 })}
@@ -166,7 +177,8 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
           onClose={() => setSaving(false)}
           onSave={async (name) => {
             const id = name.replace(/[^\w.-]/g, '_');
-            const { dryRun: _dryRun, ...options } = useApp.getState().options;
+            const { dryRun: _dryRun, ...rest } = useApp.getState().options;
+            const options = { ...rest, perTarget: pickOverrides(rest.perTarget, value) };
             const profiles: Profile[] = [...cfg.profiles.filter((p) => p.id !== id), { id, name, targetIds: value, options }];
             if (await saveConfig({ ...cfg, profiles })) toast('ok', t('Profil kaydedildi'), t('{name}: {n} hedef', { name, n: value.length }));
             setSaving(false);
@@ -177,6 +189,36 @@ export function TargetPicker({ value, onChange, maxHeight }: { value: string[]; 
         />
       )}
     </div>
+  );
+}
+
+const modeLabel = (mode: string) => t(MODE_OPTIONS.find((m) => m.value === mode)?.label ?? mode);
+
+/** A row's own mode and backup: badges for the exceptions and a menu to set them. */
+function TargetOverride({ id }: { id: string }) {
+  const options = useApp((s) => s.options);
+  const setOptions = useApp((s) => s.setOptions);
+  const ov = overrideFor(options.perTarget, id);
+  const set = (patch: TargetOptions | null) => setOptions({ perTarget: setOverride(options, id, patch) });
+  const mark = (on: boolean) => (on ? <Check size={15} /> : <span style={{ width: 15, display: 'inline-block' }} />);
+  const items: MenuEntry[] = [
+    { section: t('Bu hedefte kip') },
+    { label: t('Genel ayar ({value})', { value: modeLabel(options.mode) }), icon: mark(!ov?.mode), onClick: () => set({ mode: undefined }) },
+    ...MODE_OPTIONS.filter((m) => m.value !== options.mode).map((m) => ({ label: t(m.label), icon: mark(ov?.mode === m.value), onClick: () => set({ mode: m.value }) })),
+    { sep: true },
+    { section: t('Bu hedefte yedek') },
+    { label: t('Genel ayar ({value})', { value: options.backup ? t('yedekli') : t('yedeksiz') }), icon: mark(ov?.backup == null), onClick: () => set({ backup: undefined }) },
+    { label: options.backup ? t('Yedek alma') : t('Yedek al'), icon: mark(ov?.backup != null), onClick: () => set({ backup: !options.backup }) },
+    ...(ov ? [{ sep: true }, { label: t('Genel ayarlara dön'), icon: <RotateCcw size={15} />, onClick: () => set(null) }] : []),
+  ];
+  return (
+    <span className="row" style={{ gap: 4, flex: 'none' }} onClick={(e) => e.stopPropagation()}>
+      {ov?.mode && <span className={cls('badge', ov.mode === 'mirror' ? 'violet' : 'outline')}>{modeLabel(ov.mode)}</span>}
+      {ov?.backup != null && <span className={cls('badge', ov.backup ? 'blue' : 'outline')}>{ov.backup ? t('yedekli') : t('yedeksiz')}</span>}
+      <MenuButton items={items} align="end" width={250} buttonProps={{ size: 'sm', variant: 'ghost', iconOnly: true, tip: t('Bu hedefe özel kip ve yedek') }}>
+        <SlidersHorizontal size={13} />
+      </MenuButton>
+    </span>
   );
 }
 

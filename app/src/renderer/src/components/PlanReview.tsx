@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
 import { tx } from '../lib/i18n';
 import { t, tk } from '@shared/i18n';
+import { MODE_OPTIONS } from '../pages/SendPage';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
@@ -222,6 +223,12 @@ export function PlanReview() {
                     </span>
                     {tp.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
                   </div>
+                  {(tp.mode !== plan.request.options.mode || tp.backup !== plan.request.options.backup) && (
+                    <div className="row" style={{ gap: 4, marginTop: 4 }} data-tip={t('Bu hedefe özel kip ve yedek')}>
+                      {tp.mode !== plan.request.options.mode && <span className={cls('badge', tp.mode === 'mirror' ? 'violet' : 'outline')}>{t(MODE_OPTIONS.find((m) => m.value === tp.mode)?.label ?? tp.mode)}</span>}
+                      {tp.backup !== plan.request.options.backup && <span className={cls('badge', tp.backup ? 'blue' : 'outline')}>{tp.backup ? t('yedekli') : t('yedeksiz')}</span>}
+                    </div>
+                  )}
                   {tp.reachable ? (
                     <div className="row" style={{ gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                       {tp.counts.new > 0 && <span className="badge green">+{tp.counts.new}</span>}

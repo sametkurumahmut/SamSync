@@ -107,6 +107,17 @@ export function makeFilter(spec: FilterSpec = {}): PathFilter {
   };
 }
 
+/** The filter plus folders left out only at the top of a scan (older backup folders found at a target root). */
+export function withTopDirsExcluded(filter: PathFilter, names: readonly string[]): PathFilter {
+  if (!names.length) return filter;
+  const top = new Set(names.map((n) => n.toLowerCase()));
+  return {
+    isTrivial: false,
+    dir: (rel) => !top.has(rel.toLowerCase()) && filter.dir(rel),
+    file: (rel, size, mtimeMs) => filter.file(rel, size, mtimeMs),
+  };
+}
+
 /** True when any ancestor folder of `rel` is excluded by the filter. */
 export function ancestorExcluded(filter: PathFilter, rel: string): boolean {
   const parts = rel.split('/');
