@@ -10,12 +10,15 @@ The user interface is in Turkish and English. It follows the computer's display 
 
 ## Installation
 
-`npm run dist:win` produces two files in `release/<version>/`:
+`npm run dist:win` produces three files in `release/<version>/`:
 
 | File | When to use |
 | --- | --- |
 | `SamSync-Setup-<version>.exe` | Recommended. Installs per user (no admin rights needed), creates Start menu and desktop shortcuts, **updates itself**. |
-| `SamSync-<version>-portable.exe` | No installation, a single file. Can run from a USB stick or a share; cannot update itself. |
+| `SamSync-<version>-portable.exe` | No installation, a single file. Can run from a USB stick or a share; it unpacks itself on every start and cannot update itself. |
+| `SamSync-<version>-win.zip` | No installation, the unpacked app: extract it anywhere and run `SamSync.exe`; starts faster than the single file. Cannot update itself. |
+
+The two portable forms keep their settings, history and logs in a `SamSync-data` folder next to the program, so they travel with it and are there on the next start. If that folder cannot be written (a read-only share), the per-user folder of the installed app is used.
 
 macOS (`.dmg`) and Linux (`.AppImage`) packages have to be built on their own operating systems; GitHub Actions builds all three (see *Publishing a release* below).
 
@@ -52,7 +55,12 @@ Options: mode (overwrite / update only / mirror), comparison (date+size / conten
 - **Seç → Hedefe özel ayarları temizle** (clear per-target settings) brings every machine back to the general options.
 - They are saved with the last send, so `--to last` and *Son ayarla gönder* use them. A profile keeps the exceptions of its own machines.
 
+**Tabs.** The Send page has tabs, each with its own sources and targets (**+** opens one, a double click renames it). An Explorer or Notepad++ *İncele ve gönder* (review and send) opens a tab of its own, so items from the menu never mix with a list being put together by hand.
+
 Writes are atomic: a file is first written under a temporary name, its size (and optionally its hash) is checked, then it is moved into place. An interrupted copy never leaves a broken file on the target.
+
+### Karşılaştır (Compare)
+Compares the Send page's sources with the targets **without sending anything**. Each target gets a tab with its counts; the list on the left shows the new, changed, newer-on-target and extra files (with a filter and a search), and the file you pick shows its line diff on the right, as on the Git page. **Bu farkları gönder…** (send these differences) opens the usual review.
 
 ### Git
 The repository is found automatically from the local roots (or added by hand).
@@ -73,14 +81,22 @@ For folder pairs (left: this machine or a target; right: a subfolder of any targ
 The comparison is shown in a grid; click a row's action to change it, double-click a row to open its line diff.
 
 ### Otomasyon (Automation)
-- **Canlı izleme** (live watch) — watches files and folders; after a save it waits for a short quiet period (2 s by default) and sends only what changed to the chosen machines. Machines that are unreachable at that moment do not lose the changes: they are retried every minute. Temporary files (`~$…`, `.tmp`, `.swp`) and `.git` are ignored; deleting files on the targets when they are deleted locally is optional. Add a watch with the **İzle** button on the Send page or from this page.
+- **Canlı izleme** (live watch) — after a change it waits for a short quiet period (2 s by default) and sends only what changed. Add one with the **İzle** button on the Send page or from this page.
+  - *When:* on saved files, or on **Git events** — after a commit, amend, merge or pull (optionally rebase, cherry-pick, reset) the files those commits changed are sent, as they are on disk. It reads the repository's reflog, so no Git hook is needed, and a branch switch sends nothing unless you ask for it.
+  - *Where:* machines from the configuration and/or **plain folders** (local, mounted or `\\server\share`) that need no configuration: each watched folder's content goes into them with its paths inside that folder. Or, instead of sending, **run a sync job** on every change (live two-way, mirror… sync).
+  - *Also:* send the existing differences once when the watch starts; temporary files (`~$…`, `.tmp`, `.swp`) and `.git` are ignored; deleting on the targets is optional.
 - **Zamanlanmış senkron** (scheduled sync) — sync jobs are compared every N minutes or at set times (e.g. 09:00, 18:30) and synchronized with the suggested actions; conflicts are left alone. Because the configuration is shared by all machines, each job is marked to run on **one machine only**. A time missed while the app was closed runs when it starts again.
 - **Hepsini duraklat** (pause all) — stops watching and scheduling together (also from the tray menu).
+- **Otomasyon ayarları** (automation settings, per computer):
+  - retry unreachable machines — off by default: an unreachable machine misses those changes; when on, they are kept and sent again every N minutes;
+  - notifications: never / on errors / on every send;
+  - the most files one automatic send may carry (a branch switch seen as thousands of changed files is held back, 1000 by default, 0 = no limit);
+  - whether a schedule missed while the app was closed runs at start.
 
 Automation runs while the app is running. Under Ayarlar (Settings) → *Arka plan ve başlangıç* (background and startup), **Kapatınca sistem tepsisinde çalışmaya devam et** (keep running in the tray when closed) and **Windows açılışında başlat** (start with Windows, hidden in the tray) keep it running all the time. Automatic runs are recorded in the history too.
 
 ### Hedefler (Targets), Yedekler (Backups), Geçmiş (History), Ayarlar (Settings)
-- **Hedefler** — machine cards, reachability (refreshed every 45 s), adding and editing machines. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
+- **Hedefler** — machine cards, reachability (refreshed every 45 s), adding and editing machines; **JSON olarak düzenle** (edit as JSON) opens the whole configuration file as text, checks it as you type (line and column of a mistake) and again as a configuration on save, writes it exactly as typed (the old tool's fields stay), loads another file into the editor for review and exports a copy. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
 - **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first). Older backup folders at a target root are searched too (see below); their versions show the folder name.
 - **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones).
 - **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates.
@@ -213,6 +229,9 @@ The workflow tests and packages the app on Windows, macOS and Linux and uploads 
 | `…\history\` | run history; `…\reports\` a CSV report for every run (`rapor-<time>-<id>.csv`, the last 300 are kept) |
 | `…\syncdb\` | last state of two-way syncs |
 | `…\log\root.log` | log (rotated at 5 MB); can be redirected with `SAMSYNC_LOG` |
+| `SamSync-data\` next to a portable `SamSync.exe` | all of the above for the portable forms |
+
+**Kept between starts:** besides the files above, the window remembers the open page, the Send tabs with their sources and targets, an unsaved sync job edit and the item on the Backups page. Leaving a page with unsaved settings, or closing the app, asks first.
 
 ## Development
 

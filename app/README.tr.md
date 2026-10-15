@@ -10,12 +10,15 @@ Arayüz Türkçe ve İngilizcedir. Ayarlar → **Dil** altında bir dil seçilme
 
 ## Kurulum
 
-`npm run dist:win` iki dosya üretir (`release/<sürüm>/`):
+`npm run dist:win` üç dosya üretir (`release/<sürüm>/`):
 
 | Dosya | Ne zaman |
 | --- | --- |
 | `SamSync-Setup-<sürüm>.exe` | Önerilen. Kullanıcı başına kurulur (yönetici yetkisi gerekmez), Başlat menüsü ve masaüstü kısayolu oluşturur, **otomatik güncellenir**. |
-| `SamSync-<sürüm>-portable.exe` | Kurulumsuz, tek dosya. USB/paylaşımdan çalıştırılabilir; kendini güncelleyemez. |
+| `SamSync-<sürüm>-portable.exe` | Kurulumsuz, tek dosya. USB'den ya da paylaşımdan çalıştırılabilir. Her açılışta kendini yeniden açar ve kendini güncelleyemez. |
+| `SamSync-<sürüm>-win.zip` | Kurulumsuz, açılmış uygulama: istediğiniz yere çıkarıp `SamSync.exe`'yi çalıştırın. Tek dosyalı sürümden hızlı açılır, kendini güncelleyemez. |
+
+İki taşınabilir biçim de ayarlarını, geçmişini ve günlüğünü programın yanındaki `SamSync-data` klasöründe tutar; böylece programla birlikte taşınır ve sonraki açılışta yerinde olur. Bu klasöre yazılamıyorsa (salt okunur paylaşım) kurulu uygulamanın kullanıcı klasörü kullanılır.
 
 macOS (`.dmg`) ve Linux (`.AppImage`) paketleri kendi işletim sistemlerinde üretilir; GitHub Actions bunu üçü için birden yapar (aşağıda *Sürüm yayınlama*).
 
@@ -52,7 +55,12 @@ Seçenekler: kip (Üzerine yaz / Yalnızca yeni / Ayna), karşılaştırma (tari
 - **Seç → Hedefe özel ayarları temizle** bütün makineleri genel seçeneklere döndürür.
 - Son gönderimle birlikte saklanır; `--to last` ve *Son ayarla gönder* bunları kullanır. Profil kendi makinelerinin istisnalarını saklar.
 
+**Sekmeler.** Gönder sayfasında her biri kendi kaynaklarını ve hedeflerini tutan sekmeler var (**+** yeni sekme açar, çift tık yeniden adlandırır). Explorer'dan ya da Notepad++'tan gelen *İncele ve gönder* kendi sekmesinde açılır; menüden gelen öğeler elle hazırladığınız listeye hiç karışmaz.
+
 Yazma atomiktir: dosya önce geçici adla yazılır, boyutu (ve istenirse özeti) doğrulanır, sonra yerine konur. Yarım kalan kopya hedefi bozmaz.
+
+### Karşılaştır
+Gönder sayfasındaki kaynakları hedeflerle **hiçbir şey göndermeden** karşılaştırır. Her hedefin sayılarıyla bir sekmesi olur. Soldaki listede yeni, değişen, hedefte daha yeni ve fazla dosyalar süzgeç ve aramayla görünür; seçtiğiniz dosyanın satır farkı, Git sayfasındaki gibi sağda açılır. **Bu farkları gönder…** her zamanki incelemeyi açar.
 
 ### Git
 Depo, yerel köklerden otomatik bulunur (ya da eklenir).
@@ -73,14 +81,25 @@ Klasör çiftleri (sol: bu makine ya da bir hedef, sağ: herhangi bir hedefin al
 Karşılaştırma sonucu ızgarada görünür; her satırın işlemi tıklanarak değiştirilir, çift tıklama satır farkını açar.
 
 ### Otomasyon
-- **Canlı izleme** — dosya ve klasörleri izler; kayıttan sonra kısa bir sessizlik süresi (varsayılan 2 sn) bekler ve yalnızca değişenleri seçili makinelere gönderir. O an erişilemeyen makineler değişiklikleri kaybetmez: dakikada bir yeniden denenir. Geçici dosyalar (`~$…`, `.tmp`, `.swp`) ve `.git` yok sayılır; silinen dosyaların hedefte de silinmesi isteğe bağlıdır. Gönder sayfasındaki **İzle** düğmesiyle ya da bu sayfadan eklenir.
+- **Canlı izleme** — bir değişiklikten sonra kısa bir sessizlik süresi (varsayılan 2 sn) bekler ve yalnızca değişenleri gönderir. Gönder sayfasındaki **İzle** düğmesiyle ya da bu sayfadan eklenir.
+  - *Ne zaman:* dosya kaydedilince ya da **Git olaylarında**. Commit, amend, merge ya da pull'dan sonra (isteğe bağlı olarak rebase, cherry-pick, reset de) o commit'lerin değiştirdiği dosyalar diskteki hâlleriyle gönderilir. Deponun reflog'u okunduğu için Git kancası gerekmez; dal değiştirmek, siz istemedikçe bir şey göndermez.
+  - *Nereye:* yapılandırmadaki makinelere ve/veya yapılandırma gerektirmeyen **düz klasörlere** (yerel, bağlı ya da `\\sunucu\paylaşım`). İzlenen her klasörün içeriği, kendi içindeki yollarıyla oraya yazılır. Göndermek yerine her değişiklikte **bir senkron işi de çalıştırılabilir** (canlı iki yönlü, ayna… senkron).
+  - *Ayrıca:* izleme başlarken mevcut farklar bir kez gönderilebilir. Geçici dosyalar (`~$…`, `.tmp`, `.swp`) ve `.git` yok sayılır; hedefte silme isteğe bağlıdır.
 - **Zamanlanmış senkron** — senkron işleri her N dakikada bir ya da belirli saatlerde (örn. 09:00, 18:30) karşılaştırılıp önerilen işlemlerle eşitlenir; çakışmalara dokunulmaz. Yapılandırma bütün makinelerde ortak olduğu için her iş **tek bir makinede** çalışacak şekilde işaretlenir. Uygulama kapalıyken kaçırılan saat, açılınca çalıştırılır.
 - **Hepsini duraklat** — izleme ve zamanlamayı birlikte durdurur (tepsi menüsünden de).
+- **Otomasyon ayarları** (bilgisayar başına):
+  - erişilemeyen makinelere yeniden deneme: varsayılan olarak kapalı. Kapalıyken erişilemeyen makine o değişiklikleri almaz; açıkken değişiklikler saklanır ve N dakikada bir yeniden gönderilir;
+  - bildirimler: hiç / yalnızca hatalarda / her gönderimde;
+  - tek bir otomatik gönderimin en çok kaç dosya taşıyacağı (binlerce değişiklik gibi görünen bir dal değişikliği gönderilmez; varsayılan 1000, 0 = sınırsız);
+  - uygulama kapalıyken kaçırılan zamanlamanın açılışta çalışıp çalışmayacağı.
 
 Otomasyon uygulama açıkken çalışır. Ayarlar → *Arka plan ve başlangıç*: **Kapatınca sistem tepsisinde çalışmaya devam et** ve **Windows açılışında başlat** (tepside gizli başlar) ile sürekli çalışabilir. Otomatik çalışmalar da Geçmiş'e yazılır.
 
 ### Hedefler, Yedekler, Geçmiş, Ayarlar
-- **Hedefler** — makine kartları, erişim durumu (45 sn'de bir yenilenir), ekleme/düzenleme. Bağlantı türleri: Windows paylaşımı (SMB, `\\adres\networkRoot`), klasör/bağlı sürücü, **SFTP** (anahtar, agent ya da işletim sisteminin şifreli deposunda saklanan parola).
+- **Hedefler** — makine kartları, erişim durumu (45 sn'de bir yenilenir), ekleme/düzenleme. **JSON olarak düzenle** bütün yapılandırma dosyasını metin olarak açar:
+  - siz yazarken denetler ve hatanın satırını ve sütununu gösterir; kaydederken yapılandırma olarak bir kez daha denetler;
+  - metni yazdığınız gibi kaydeder, eski aracın alanları korunur;
+  - başka bir dosyayı gözden geçirmek için düzenleyiciye yükleyebilir ve bir kopyasını dışa aktarabilir. Bağlantı türleri: Windows paylaşımı (SMB, `\\adres\networkRoot`), klasör/bağlı sürücü, **SFTP** (anahtar, agent ya da işletim sisteminin şifreli deposunda saklanan parola).
 - **Yedekler** — bir öğenin hedeflerdeki yedeklerini bulur, tarih seçip geri yazar (önce şu anki hâli yedekleyerek). Hedef kökündeki eski yedek klasörleri de taranır (aşağıya bakın); onların sürümlerinde klasör adı görünür.
 - **Geçmiş** — son 300 çalıştırma: hedef bazında sonuç, hatalar, günlük, CSV rapor, *yeniden gönder* / *hatalılara yeniden gönder*.
 - **Ayarlar** — dil (Sistemle eşle / Türkçe / English; varsayılan sistemle eşle), tema (Koyu / Açık / Sistemle eşle; varsayılan koyu), vurgu rengi, yoğunluk; kopyalama varsayılanları (yeniden deneme, eşzamanlılık, **hedef başına bant genişliği sınırı** — eski aracın `/IPG` karşılığı, yedek klasörü adı); yapılandırma dosyası; sağ tık menüleri (Explorer, Notepad++); arka plan ve başlangıç; güncellemeler.
@@ -213,6 +232,9 @@ git push origin v2.1.0
 | `…\history\` | çalıştırma geçmişi; `…\reports\` her çalıştırma için bir CSV rapor (`rapor-<zaman>-<kimlik>.csv`; son 300 rapor saklanır) |
 | `…\syncdb\` | iki yönlü senkronun son durumu |
 | `…\log\root.log` | günlük (5 MB'ta döner); `SAMSYNC_LOG` ile değiştirilebilir |
+| taşınabilir `SamSync.exe`'nin yanındaki `SamSync-data\` | taşınabilir biçimler için yukarıdakilerin hepsi |
+
+**Açılışlar arasında korunanlar:** yukarıdaki dosyaların yanında pencere şunları hatırlar: açık sayfa, Gönder sekmeleri (kaynakları ve hedefleriyle), kaydedilmemiş bir senkron işi düzenlemesi ve Yedekler sayfasındaki öğe. Kaydedilmemiş ayarlar varken sayfadan çıkmak ya da uygulamayı kapatmak önce sorar.
 
 ## Geliştirme
 
