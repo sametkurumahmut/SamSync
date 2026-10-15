@@ -107,7 +107,7 @@ export function ComparePage() {
         </Button>
       </div>
       <div className="page-body fill">
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 34%) 1fr', gap: 14, minHeight: 0, height: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 32%) minmax(0, 1fr)', gap: 14, minHeight: 0, height: '100%' }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
             <div className="card">
               <div className="card-head">
@@ -135,7 +135,7 @@ export function ComparePage() {
             </div>
           </div>
 
-          <div className="card" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div className="card" style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {!plan ? (
               <Empty icon={<GitCompare size={22} />} title={t('Henüz karşılaştırma yok')}>
                 {t('Kaynakları ve hedefleri seçip Karşılaştır’a basın.')}
@@ -161,10 +161,16 @@ export function ComparePage() {
                     <WifiOff size={15} /> {tp.error || t('Hedefe erişilemiyor')}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 40%) 1fr', minHeight: 0, flex: 1 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 38%) minmax(0, 1fr)', minHeight: 0, flex: 1 }}>
                     <div className="col" style={{ minHeight: 0, borderRight: '1px solid var(--border)' }}>
                       <div className="col" style={{ gap: 8, padding: 10 }}>
-                        <Segmented value={filter} onChange={setFilter} options={FILTERS.map((f) => ({ value: f.value, label: t(f.label) }))} />
+                        <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                          {FILTERS.map((f) => (
+                            <Button key={f.value} size="sm" variant={filter === f.value ? 'primary' : 'ghost'} onClick={() => setFilter(f.value)}>
+                              {t(f.label)}
+                            </Button>
+                          ))}
+                        </div>
                         <div className="row" style={{ gap: 6 }}>
                           <Search size={13} className="faint" />
                           <input className="input sm grow" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Dosya ara')} />
@@ -173,7 +179,13 @@ export function ComparePage() {
                       <div style={{ overflow: 'auto', minHeight: 0, flex: 1 }}>
                         {ops.length ? (
                           ops.map((o) => (
-                            <button key={o.id} type="button" className={cls('list-row', o.id === opId && 'active')} style={{ width: '100%', textAlign: 'left', gap: 8 }} onClick={() => setOpId(o.id)}>
+                            <button
+                              key={o.id}
+                              type="button"
+                              className={cls('list-row', o.id === opId && 'active')}
+                              style={{ width: '100%', textAlign: 'left', gap: 8, border: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', background: o.id === opId ? 'var(--bg-active)' : 'transparent' }}
+                              onClick={() => setOpId(o.id)}
+                            >
                               <span className={cls('badge', CAT_COLOR[o.category])} style={{ minWidth: 18, justifyContent: 'center' }}>
                                 {SIGN[o.category]}
                               </span>
@@ -191,7 +203,7 @@ export function ComparePage() {
                         )}
                       </div>
                     </div>
-                    <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                       {op ? (
                         <DiffView
                           diff={diff.diff}

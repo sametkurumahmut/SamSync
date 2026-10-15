@@ -308,6 +308,8 @@ if (launch.removeIntegrations) {
     if (process.env.SAMSYNC_SCREENSHOT) {
       win.webContents.once('did-finish-load', () => {
         setTimeout(async () => {
+          // SAMSYNC_SCREENSHOT_EVAL=<script>: run it in the page first (click a button, pick a row…), awaited
+          if (process.env.SAMSYNC_SCREENSHOT_EVAL) await win!.webContents.executeJavaScript(process.env.SAMSYNC_SCREENSHOT_EVAL).catch(() => undefined);
           // SAMSYNC_SCREENSHOT_SCROLL=<css selector>: bring that part of the page into view first
           if (process.env.SAMSYNC_SCREENSHOT_SCROLL) {
             await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(process.env.SAMSYNC_SCREENSHOT_SCROLL)})?.scrollIntoView({ block: 'start' })`);

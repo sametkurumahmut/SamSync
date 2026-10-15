@@ -8,6 +8,14 @@ Eski PowerShell aracının ([`../legacy`](../legacy/README.tr.md)) yerini alır 
 
 Arayüz Türkçe ve İngilizcedir. Ayarlar → **Dil** altında bir dil seçilmedikçe bilgisayarın görüntü dilini izler: Türkçe Windows'ta Türkçe, diğerlerinde İngilizce.
 
+## Ekran görüntüleri
+
+| | |
+| --- | --- |
+| ![Gönder](../docs/screenshots/tr-send.png) | ![Karşılaştır](../docs/screenshots/tr-compare.png) |
+| ![Git](../docs/screenshots/tr-git.png) | ![Senkron](../docs/screenshots/tr-sync.png) |
+| ![Otomasyon](../docs/screenshots/tr-automation.png) | |
+
 ## Kurulum
 
 `npm run dist:win` üç dosya üretir (`release/<sürüm>/`):

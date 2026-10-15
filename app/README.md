@@ -8,6 +8,14 @@ It replaces the old PowerShell tool ([`../legacy`](../legacy/README.md)) and rea
 
 The user interface is in Turkish and English. It follows the computer's display language (Turkish for a Turkish Windows, English for anything else) unless one is picked under Settings → **Language**. Below, UI labels are given in Turkish with the English label next to them, e.g. **Gönder** (Send).
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Send](../docs/screenshots/en-send.png) | ![Compare](../docs/screenshots/en-compare.png) |
+| ![Git](../docs/screenshots/en-git.png) | ![Sync](../docs/screenshots/en-sync.png) |
+| ![Automation](../docs/screenshots/en-automation.png) | |
+
 ## Installation
 
 `npm run dist:win` produces three files in `release/<version>/`:
