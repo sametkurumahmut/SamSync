@@ -8,6 +8,8 @@ export interface CoreContext {
   localNodeId?: string;
   userDataPath: string;
   getSecret?: (nodeId: string) => Promise<string | undefined>;
+  /** Moves a local file or folder to the operating system's trash; without it the versioning folder is used. */
+  trash?: (absPath: string) => Promise<void>;
   emit: (e: AppEvent) => void;
   log: Logger;
 }

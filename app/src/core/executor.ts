@@ -32,6 +32,8 @@ export interface ExecGroup {
   endpoints?: Record<string, () => Promise<Transport>>;
   /** This target's own backup choice; the run setting applies when it is not given. */
   backup?: boolean;
+  /** A local folder side of a sync job that sends replaced and deleted items to the operating system's trash. */
+  trash?: (absPath: string) => Promise<void>;
 }
 
 export interface ExecSettings {
@@ -40,6 +42,8 @@ export interface ExecSettings {
   dryRun: boolean;
   backup: boolean;
   backupKeep: number;
+  /** Backup folders older than this many days go too, after a successful run (0 or undefined = no age limit). */
+  backupMaxDays?: number;
   backupFolderName: string;
   verify: boolean;
   retryCount: number;
@@ -192,6 +196,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const backupBase = relJoin(s.backupFolderName, runStamp);
     const backup = g.backup ?? s.backup;
     let backedUpAny = false;
+    let trashed = 0;
+    let trashFailed = false;
     const groupParams = { root: g.rootLabel, n: g.ops.length };
     log('info', backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
 
@@ -205,14 +211,29 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       emitProgress();
     };
 
+    /** Moves the current item to the trash or into the backup folder; true when it was kept one of these ways. */
+    const keepOld = async (rel: string): Promise<boolean> => {
+      if (g.trash && tgt.localPath && !trashFailed) {
+        try {
+          await g.trash(tgt.localPath(rel));
+          trashed++;
+          return true;
+        } catch (e) {
+          // no trash here (a network drive, a system without one): the versioning folder keeps it instead
+          trashFailed = true;
+          log('warn', t('Geri dönüşüm kutusu kullanılamadı ({error}); eski hâller yedek klasörüne taşınacak.', { error: errMessage(e) }), g.key);
+        }
+      }
+      if (!backup) return false;
+      await moveInto(tgt, rel, relJoin(backupBase, rel));
+      backedUpAny = true;
+      return true;
+    };
+
     const backupOrRemove = async (rel: string, isDir: boolean): Promise<boolean> => {
       const cur = await tgt.stat(rel);
       if (!cur) return false;
-      if (backup) {
-        await tgt.rename(rel, relJoin(backupBase, rel));
-        backedUpAny = true;
-        return true;
-      }
+      if (await keepOld(rel)) return true;
       await tgt.remove(rel, cur.isDir || isDir);
       return false;
     };
@@ -268,12 +289,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       const cur = await tgt.stat(op.rel);
       if (!cur) return false;
       if (cur.isDir || op.replaceType) return backupOrRemove(op.rel, cur.isDir);
-      if (backup) {
-        await tgt.rename(op.rel, relJoin(backupBase, op.rel));
-        backedUpAny = true;
-        return true;
-      }
-      return false; // the rename replaces it
+      return keepOld(op.rel); // otherwise the rename replaces it
     };
 
     const runOp = async (op: ExecOp) => {
@@ -327,10 +343,18 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         log('warn', t('İptal edildi'), g.key);
       } else {
         st.status = st.failed === 0 ? 'ok' : st.failed === g.ops.length ? 'failed' : 'partial';
+        if (trashed) log('info', t('{n} eski hâl geri dönüşüm kutusuna taşındı', { n: trashed }), g.key);
         if (backedUpAny) {
           st.backupPath = relJoin(s.backupFolderName, runStamp);
           log('info', t('Eski hâller yedeklendi: {path}', { path: st.backupPath }), g.key);
-          await pruneBackups(tgt, s.backupFolderName, s.backupKeep, (m) => log('info', m, g.key));
+        }
+        // an age limit also clears versions on a side that kept nothing new this time
+        const byAge = !!s.backupMaxDays && s.backupMaxDays > 0 && backup && !s.dryRun && st.status === 'ok';
+        if (backedUpAny || byAge) {
+          // the copies are done: an unreadable backup folder is worth a warning, not a failed run
+          await pruneBackups(tgt, s.backupFolderName, s.backupKeep, (m) => log('info', m, g.key), s.backupMaxDays).catch((e) =>
+            log('warn', t('Eski yedekler temizlenemedi: {error}', { error: errMessage(e) }), g.key),
+          );
         }
         const ok = g.ops.length - st.failed;
         const doneParams = { ok, n: g.ops.length };
@@ -363,17 +387,33 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   return { id, cancel, done };
 }
 
+/**
+ * Renames `from` to `to`. A folder whose files were moved to `to` before it (a deleted folder's own deletions run
+ * first) is merged into it, as a folder cannot be renamed onto one that is not empty.
+ */
+async function moveInto(tgt: Transport, from: string, to: string): Promise<void> {
+  const dst = await tgt.stat(to);
+  if (!dst?.isDir || !(await tgt.stat(from))?.isDir) return tgt.rename(from, to);
+  for (const c of await tgt.list(from)) await moveInto(tgt, c.rel, relJoin(to, relBase(c.rel)));
+  await tgt.remove(from, true);
+}
+
 function opLabel(op: ExecOp): string {
   return op.kind === 'copy' ? t('Kopyalama') : op.kind === 'mkdir' ? t('Klasör') : t('Silme');
 }
 
-/** Keeps the newest `keep` yyyyMMdd-HHmmss folders under the backup folder; hand made folders are left alone. */
-export async function pruneBackups(tgt: Transport, folder: string, keep: number, log?: (m: string) => void): Promise<string[]> {
-  if (keep <= 0) return [];
+/**
+ * Keeps the newest `keep` yyyyMMdd-HHmmss folders under the backup folder (0 = any number) and, with `maxDays`,
+ * only those younger than that; hand made folders are left alone.
+ */
+export async function pruneBackups(tgt: Transport, folder: string, keep: number, log?: (m: string) => void, maxDays = 0, now = Date.now()): Promise<string[]> {
+  const byAge = maxDays > 0;
+  if (keep <= 0 && !byAge) return [];
   const list = (await tgt.list(folder)).filter((e) => e.isDir && parseStamp(relBase(e.rel)) != null);
   list.sort((a, b) => relBase(b.rel).localeCompare(relBase(a.rel)));
+  const cutoff = byAge ? now - maxDays * 86400_000 : -Infinity;
   const removed: string[] = [];
-  for (const old of list.slice(keep)) {
+  for (const old of list.filter((e, i) => (keep > 0 && i >= keep) || parseStamp(relBase(e.rel))! < cutoff)) {
     try {
       await tgt.remove(old.rel, true);
       removed.push(old.rel);

@@ -3,23 +3,29 @@
 //   --check-only  is every item the same on every target? One row per target; exit code 0 = all the same
 // The table goes to stdout and everything else (machine, warnings, summary, errors) to stderr, so the table can be
 // piped on. Column names and state values are ASCII and the same as the old tool's, for scripts that read them.
+//   --sync <job>  compares a sync job and runs its default actions as a schedule does (conflicts stay as they
+//                 are); the summary (job, a row per side, conflicts, errors) goes to stdout, the error details to
+//                 stderr; exit code 0 = everything done. The columns are ASCII like the other tables.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AppConfig, LocalIdentity, LocalSettings, NodeConfig, SendOptions, TargetPlan } from '../shared/types';
+import type { AppConfig, CompareResult, LocalIdentity, LocalSettings, NodeConfig, RunDetail, SendOptions, SyncJob, TargetPlan } from '../shared/types';
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
 import { DEFAULT_SETTINGS, loadConfig, readJson } from './config';
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { buildSendPlan } from './plan';
+import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun } from './sync';
+import { startRun } from './executor';
+import { History, pruneReports } from './history';
 import { joinRoot, mapToRel, normalizeAbs, relIsWithin } from './paths';
 import { nodeRootLabel } from './transport';
 import { errMessage } from './util';
 import { baseSendOptions, targetOptions } from '../shared/options';
 import { resolveLang, setLang, systemLang, t } from '../shared/i18n';
 
-export type HeadlessMode = 'plan' | 'check';
+export type HeadlessMode = 'plan' | 'check' | 'sync';
 
 export interface HeadlessRequest {
   mode: HeadlessMode;
@@ -29,6 +35,8 @@ export interface HeadlessRequest {
   missing: string[];
   /** --to tokens; all targets when empty. */
   targets: string[];
+  /** --sync: the job's id or name. */
+  job?: string;
 }
 
 export interface HeadlessIO {
@@ -115,6 +123,98 @@ export function checkRow(tp: TargetPlan, items: { rel: string }[]): CheckRow {
   return row(state, changes, missing.length, newer, extras);
 }
 
+/** A sync job by its id, or else by its name; case is ignored, and a name that several jobs share is refused. */
+export function findSyncJob(cfg: AppConfig, ref: string): { job?: SyncJob; error?: string } {
+  const k = ref.trim().toLowerCase();
+  const byId = cfg.syncJobs.find((j) => j.id === ref.trim()) ?? cfg.syncJobs.find((j) => j.id.toLowerCase() === k);
+  if (byId) return { job: byId };
+  const byName = cfg.syncJobs.filter((j) => j.name.trim().toLowerCase() === k);
+  if (byName.length === 1) return { job: byName[0] };
+  if (byName.length > 1) return { error: t('“{name}” adında {n} iş var; kimliğiyle verin: {ids}', { name: ref, n: byName.length, ids: byName.map((j) => j.id).join(', ') }) };
+  return { error: t('Senkron işi bulunamadı: {id}', { id: ref }) };
+}
+
+/** One side of a pair in the --sync summary. Column names and values are ASCII, for scripts. */
+export interface SyncSideRow {
+  Pair: number;
+  Side: 'right' | 'left';
+  Root: string;
+  Copied: number;
+  Deleted: number;
+  Failed: number;
+  /** ok, partial, failed, none (nothing to do) or error (the pair could not be compared). */
+  Status: string;
+}
+
+export function syncSummaryRows(job: SyncJob, cmp: CompareResult, detail: RunDetail | null): SyncSideRow[] {
+  const rows: SyncSideRow[] = [];
+  cmp.pairs.forEach((pr, i) => {
+    const broken = !!pr.error && !pr.items.length;
+    for (const side of ['right', 'left'] as const) {
+      const key = `${pr.pairId}:${side === 'right' ? 'R' : 'L'}`;
+      const results = detail?.results.filter((r) => r.key === key) ?? [];
+      const st = detail?.targets.find((x) => x.key === key);
+      rows.push({
+        Pair: job.pairs.findIndex((p) => p.id === pr.pairId) + 1 || i + 1,
+        Side: side,
+        Root: side === 'right' ? pr.rightLabel : pr.leftLabel,
+        Copied: results.filter((r) => r.ok && r.kind !== 'delete').length,
+        Deleted: results.filter((r) => r.ok && r.kind === 'delete').length,
+        Failed: results.filter((r) => !r.ok).length,
+        Status: broken ? 'error' : st ? String(st.status) : 'none',
+      });
+    }
+  });
+  return rows;
+}
+
+/**
+ * --sync: compares the job and runs its default actions the way a schedule does; returns the exit code.
+ * `record` keeps the run (history and report) like the app does.
+ */
+export async function runHeadlessSync(ctx: CoreContext, ref: string, io: HeadlessIO, record?: (d: RunDetail) => Promise<void>): Promise<number> {
+  const fail = (msg: string) => {
+    io.err(msg);
+    ctx.log.error(t('Komut satırı'), msg);
+    return 1;
+  };
+  if (!ref.trim()) return fail(t('Senkron işi verilmedi. Örnek: SamSync.exe --sync "Gece yedeği"'));
+  const found = findSyncJob(ctx.config, ref);
+  if (!found.job) return fail(found.error!);
+  const job = found.job;
+
+  let cmp: CompareResult;
+  try {
+    cmp = await compareJob(ctx, job);
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+  const errors: string[] = cmp.pairs.filter((p) => p.error).map((p) => `${p.leftLabel} ⇄ ${p.rightLabel}: ${p.error}`);
+  let detail: RunDetail | null = null;
+  // as a schedule: a pair that could not be compared at all stops the job
+  if (!cmp.pairs.some((p) => p.error && !p.items.length)) {
+    const groups = syncGroups(ctx, job, cmp);
+    if (groups.length) {
+      detail = await startRun(ctx, groups, syncExecSettings(ctx, job, t('Komut satırı: {name}', { name: job.name }), cmp, groups)).done;
+      await updateDbAfterRun(ctx, job, cmp, detail);
+      await record?.(detail).catch((e) => ctx.log.error(t('Geçmiş'), t('Kaydedilemedi'), e));
+      const titles = new Map(detail.targets.map((x) => [x.key, x.title]));
+      for (const r of detail.results) if (!r.ok) errors.push(`${titles.get(r.key) ?? r.key}: ${r.rel}: ${r.error ?? ''}`);
+      // a side that stopped without failing an item still counts
+      for (const st of detail.targets) if (st.error && !detail.results.some((r) => r.key === st.key && !r.ok)) errors.push(`${st.title}: ${st.error}`);
+    }
+  }
+
+  io.out(t('Senkron işi: {name} ({id})', { name: job.name, id: job.id }));
+  for (const line of table(syncSummaryRows(job, cmp, detail) as unknown as Record<string, string | number>[])) io.out(line);
+  io.out(t('Çakışma: {n} (dokunulmadı)', { n: cmp.stats.byCategory.conflict }));
+  io.out(t('Hata: {n}', { n: errors.length }));
+  for (const e of errors.slice(0, 50)) io.err(`! ${e}`);
+  if (errors.length > 50) io.err(t('… ve {n} hata daha', { n: errors.length - 50 }));
+  ctx.log.info(t('Komut satırı'), t('Senkron {name}: işlem {ops}, hata {errors}', { name: job.name, ops: detail?.opsOk ?? 0, errors: errors.length }));
+  return !errors.length && (!detail || detail.status === 'ok') ? 0 : 1;
+}
+
 /** Runs --plan-only or --check-only against a loaded config and returns the exit code. */
 export async function runHeadless(
   ctx: CoreContext,
@@ -128,6 +228,7 @@ export async function runHeadless(
     ctx.log.error(t('Komut satırı'), msg);
     return 1;
   };
+  if (req.mode === 'sync') return runHeadlessSync(ctx, req.job ?? '', io);
   for (const m of req.missing) io.err(t('Kaynak bulunamadı: {path}', { path: m }));
   if (req.missing.length) return fail(t('{n} kaynak bulunamadı; hiçbir şey denetlenmedi.', { n: req.missing.length }));
   if (!req.paths.length) return fail(t('Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"'));
@@ -181,6 +282,8 @@ export interface HeadlessHost {
   /** The computer's preferred language tags, for the language of the messages. */
   systemLanguages: string[];
   decrypt?: (enc: string) => string | null;
+  /** The operating system's trash, for sync jobs that delete to the Recycle Bin. */
+  trash?: (absPath: string) => Promise<void>;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -197,7 +300,7 @@ export async function headlessFromDisk(host: HeadlessHost, req: HeadlessRequest,
   const logEnv = env.SAMSYNC_LOG;
   const log: Logger = createLogger(logEnv ? path.dirname(logEnv) : path.join(host.userDataPath, 'log'));
   const configPath = env.SAMSYNC_CONFIG || settings.configPath || path.join(host.userDataPath, 'config.json');
-  io.err(`SamSync ${host.appVersion} --${req.mode === 'plan' ? 'plan-only' : 'check-only'} • ${configPath}`);
+  io.err(`SamSync ${host.appVersion} --${req.mode === 'plan' ? 'plan-only' : req.mode === 'check' ? 'check-only' : 'sync'} • ${configPath}`);
   let config: AppConfig;
   try {
     if (!fs.existsSync(configPath)) throw new Error(t('Yapılandırma dosyası yok: {path}', { path: configPath }));
@@ -219,10 +322,19 @@ export async function headlessFromDisk(host: HeadlessHost, req: HeadlessRequest,
       const enc = (await secrets())[id];
       return enc && host.decrypt ? host.decrypt(enc) ?? undefined : undefined;
     },
+    trash: host.trash,
     emit: () => undefined,
     log,
   };
-  const code = await runHeadless(ctx, identity, settings, req, io);
+  // a sync run shows up in the app's history and gets its report, as one started in the window does
+  const history = new History(host.userDataPath);
+  const reports = path.join(host.userDataPath, 'reports');
+  const record = async (d: RunDetail) => {
+    await history.save(d);
+    await history.exportCsv(d.id, reports);
+    await pruneReports(reports);
+  };
+  const code = req.mode === 'sync' ? await runHeadlessSync(ctx, req.job ?? '', io, record) : await runHeadless(ctx, identity, settings, req, io);
   await log.drain?.();
   return code;
 }

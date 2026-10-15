@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   Copy,
   CalendarClock,
+  Upload,
+  Download,
 } from 'lucide-react';
 import type { Category, CompareItem, CompareResult, Endpoint, SyncAction, SyncJob, SyncPair, SyncVariant, CustomActions, DiffResult, SyncSchedule } from '@shared/types';
 import type { BrowseEntry } from '@shared/api';
@@ -85,6 +87,9 @@ function ActionIcon({ a }: { a: SyncAction }) {
   return <Equal size={14} />;
 }
 
+/** Filters of the job file dialogs; built when shown, so the name follows the language. */
+const jobFileFilters = () => [{ name: t('SamSync senkron işi'), extensions: ['json'] }];
+
 function newJob(): SyncJob {
   const id = 'job-' + Math.random().toString(36).slice(2, 8);
   return {
@@ -103,6 +108,7 @@ export function SyncPage() {
   const cfg = useApp((s) => s.boot!.config);
   const saveConfig = useApp((s) => s.saveConfig);
   const toast = useApp((s) => s.toast);
+  const isElectron = useApp((s) => s.boot!.isElectron);
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem('samsync.sync.job'));
   const [draft, setDraftState] = useState<SyncJob | null>(() => readStored<SyncJob | null>('samsync.sync.draft', null));
   const setDraft = (d: SyncJob | null) => {
@@ -128,6 +134,17 @@ export function SyncPage() {
     if (ok) setDraft(null);
     return ok;
   };
+  const importJob = async () => {
+    const [p] = await api.pick({ files: true, title: t('İçe aktarılacak senkron işi'), filters: jobFileFilters() });
+    if (!p) return;
+    try {
+      // the configuration arrives with the config-changed event; the new job is shown once it is there
+      select(await api.importSyncJob(p));
+      toast('ok', t('Senkron işi içe aktarıldı'), p);
+    } catch (e) {
+      toast('error', t('İçe aktarılamadı'), (e as Error).message);
+    }
+  };
 
   return (
     <div className="page">
@@ -136,6 +153,9 @@ export function SyncPage() {
           <h1>{t('Senkron')}</h1>
           <div className="sub">{t('Klasör çiftlerini karşılaştırın; farkları görüp işlemleri tek tek ayarlayın, sonra eşitleyin.')}</div>
         </div>
+        <Button icon={<Download size={15} />} disabled={!isElectron} onClick={() => void importJob()}>
+          {t('İçe aktar…')}
+        </Button>
         <Button
           icon={<Plus size={15} />}
           onClick={async () => {
@@ -229,6 +249,7 @@ function JobView({
   const toast = useApp((s) => s.toast);
   const watchRun = useApp((s) => s.watchRun);
   const backupFolder = useApp((s) => s.boot!.config.copy.backupFolderName);
+  const isElectron = useApp((s) => s.boot!.isElectron);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [comparing, setComparing] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, Record<string, SyncAction>>>({});
@@ -275,6 +296,19 @@ function JobView({
   }, [result, overrides]);
   const work = stats.copyLeft + stats.copyRight + stats.deleteLeft + stats.deleteRight;
 
+  const exportJob = async () => {
+    if (dirty && !(await onPersist(job))) return;
+    const safeName = job.name.replace(/[\\/:*?"<>|]+/g, '_').trim() || job.id;
+    const p = await api.pickSave({ title: t('Senkron işini dışa aktar'), defaultPath: `${safeName}.samsync-job.json`, filters: jobFileFilters() });
+    if (!p) return;
+    try {
+      await api.exportSyncJob(job.id, p);
+      toast('ok', t('Senkron işi dışa aktarıldı'), p);
+    } catch (e) {
+      toast('error', t('Dışa aktarılamadı'), (e as Error).message);
+    }
+  };
+
   const run = async (dryRun: boolean) => {
     if (!result) return;
     try {
@@ -307,6 +341,9 @@ function JobView({
               </Button>
             </>
           )}
+          <Button size="sm" variant="ghost" icon={<Upload size={13} />} disabled={!isElectron} tip={t('İşi başka bir yapılandırmaya taşımak için dosyaya yazar')} onClick={() => void exportJob()}>
+            {t('Dışa aktar…')}
+          </Button>
           <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} tip={t('İşi sil')} onClick={onDelete} />
         </div>
         <div className="card-body sync-config">
@@ -334,14 +371,30 @@ function JobView({
                 onChange={(deletion) => onChange({ deletion })}
                 options={[
                   { value: 'versioning', label: t('Sürümle (yedekle)'), tip: t('Eski hâller o tarafın yedek klasörüne taşınır') },
+                  { value: 'recycle', label: t('Geri dönüşüm kutusu'), tip: t('Bu makinedeki klasörlerde eski hâller geri dönüşüm kutusuna gider;\nağ yollarında ve hedef makinelerde yedek klasörüne taşınır') },
                   { value: 'permanent', label: t('Kalıcı sil') },
                 ]}
               />
             </Field>
-            {job.deletion === 'versioning' && (
-              <Field label={t('Saklanacak sürüm')}>
-                <input className="input" type="number" min={0} value={job.versioningKeep} onChange={(e) => onChange({ versioningKeep: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} />
-              </Field>
+            {job.deletion !== 'permanent' && (
+              <>
+                <Field label={t('Saklanacak sürüm')}>
+                  <input className="input" type="number" min={0} value={job.versioningKeep} onChange={(e) => onChange({ versioningKeep: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 80 }} />
+                </Field>
+                <Field label={t('Saklama süresi (gün)')}>
+                  <span data-tip={t('Bundan eski sürümler başarılı bir çalışmadan sonra silinir.\nBoş ya da 0: yaş sınırı yok')}>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={job.versioningMaxDays || ''}
+                      placeholder="—"
+                      onChange={(e) => onChange({ versioningMaxDays: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                      style={{ width: 80 }}
+                    />
+                  </span>
+                </Field>
+              </>
             )}
             <Field label={t('Filtre')}>
               <button ref={filterRef} className="btn" onClick={() => setFilterOpen((o) => !o)}>
@@ -484,7 +537,11 @@ function JobView({
             </div>
           </div>
           <p className="muted" style={{ marginTop: 14 }}>
-            {job.deletion === 'versioning' ? t('Silinen ve üzerine yazılan dosyalar her iki tarafın {folder} klasörüne taşınır.', { folder: backupFolder }) : t('Silinen dosyalar kalıcı olarak kaldırılır.')}
+            {job.deletion === 'versioning'
+              ? t('Silinen ve üzerine yazılan dosyalar her iki tarafın {folder} klasörüne taşınır.', { folder: backupFolder })
+              : job.deletion === 'recycle'
+                ? t('Silinen ve üzerine yazılan dosyalar bu makinedeki klasörlerde geri dönüşüm kutusuna, öbür taraflarda {folder} klasörüne taşınır.', { folder: backupFolder })
+                : t('Silinen dosyalar kalıcı olarak kaldırılır.')}
           </p>
         </Modal>
       )}

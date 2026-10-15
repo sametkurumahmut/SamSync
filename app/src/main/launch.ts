@@ -5,6 +5,7 @@
 //   --restore show the backups of the items
 //   --plan-only   print where the items would go on each target, no window (exit code 0, 1 on an error)
 //   --check-only  print whether each target holds the same items, no window (exit code 0 = all the same, else 1)
+//   --sync <job>  compare and run a sync job (id or name) with its default actions, no window (exit code 0 = all done)
 //   --hidden  started at login: stay in the tray when that is enabled
 //   --remove-integrations  take the Explorer menu and the Notepad++ entries out, then quit (used by the uninstaller)
 import fs from 'node:fs';
@@ -14,8 +15,10 @@ import type { OpenRequest } from '../shared/types';
 export interface Launch extends OpenRequest {
   hidden: boolean;
   removeIntegrations: boolean;
-  /** --plan-only / --check-only: answer on the console and quit, without a window. */
-  headless?: 'plan' | 'check';
+  /** --plan-only / --check-only / --sync: answer on the console and quit, without a window. */
+  headless?: 'plan' | 'check' | 'sync';
+  /** --sync: the job's id or name. */
+  syncJob?: string;
   /** Arguments that looked like paths but do not exist (reported by the headless modes). */
   missing: string[];
 }
@@ -34,7 +37,10 @@ export function parseLaunch(args: string[], appPath?: string): Launch {
     else if (a === '--remove-integrations') out.removeIntegrations = true;
     else if (a === '--plan-only') out.headless = 'plan';
     else if (a === '--check-only') out.headless = 'check';
-    else if (a && !a.startsWith('-')) {
+    else if (a === '--sync' || a.startsWith('--sync=')) {
+      out.headless = 'sync';
+      out.syncJob = (a === '--sync' ? args[++i] ?? '' : a.slice(7)).trim();
+    } else if (a && !a.startsWith('-')) {
       try {
         const p = path.resolve(a);
         if (appPath && p === path.resolve(appPath)) continue;

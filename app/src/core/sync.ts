@@ -1,13 +1,14 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { Category, CompareItem, CompareResult, CompareStats, CustomActions, FileMeta, PairResult, SyncAction, SyncJob, SyncPair, SyncVariant, RunDetail } from '../shared/types';
+import type { Category, CompareItem, CompareResult, CompareStats, CustomActions, Endpoint, FileMeta, PairResult, SyncAction, SyncJob, SyncPair, SyncVariant, RunDetail } from '../shared/types';
 import type { CoreContext } from './context';
 import { makeFilter, withTopDirsExcluded } from './filter';
 import { otherBackupRoots } from './backups';
 import { scanTree } from './scan';
 import { transportForEndpoint, endpointLabel, type Transport, type Entry } from './transport';
 import { compareMeta, sameTime, streamsEqual, type TimeOptions } from './compare';
-import type { ExecGroup, ExecOp } from './executor';
+import type { ExecGroup, ExecOp, ExecSettings } from './executor';
+import { IGNORE_FILE, readIgnore } from './ignore';
 import { CancelToken, errMessage, mapLimit, newId } from './util';
 import { joinRoot } from './paths';
 import { t } from '../shared/i18n';
@@ -149,9 +150,12 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
     right = await transportForEndpoint(ctx, pair.right);
     const ci = left.caseInsensitive || right.caseInsensitive;
     const f = job.filter;
+    // the ignore files at both roots add to the job's exclusions; they are never copied themselves
+    const ignored = [...new Set((await Promise.all([left, right].map((x) => readIgnore(x)))).flat())];
     const filter = makeFilter({
       include: f.include,
-      exclude: f.exclude,
+      exclude: [...f.exclude, ...ignored],
+      excludeFiles: [IGNORE_FILE],
       minSize: f.minSizeKb != null ? f.minSizeKb * 1024 : undefined,
       maxSize: f.maxSizeKb != null ? f.maxSizeKb * 1024 : undefined,
       newerThan: f.newerThanDays ? Date.now() - f.newerThanDays * 86400_000 : undefined,
@@ -232,10 +236,41 @@ export function syncGroups(ctx: CoreContext, job: SyncJob, cmp: CompareResult): 
     }
     const endpoints = { L: openL, R: openR };
     const node = (ep: SyncPair['left']) => (ep.kind === 'node' ? ctx.config.nodes.find((n) => n.id === ep.nodeId) : undefined);
-    if (toR.length) groups.push({ key: `${pr.pairId}:R`, title: t('{name} (sağ)', { name: shortLabel(pr.rightLabel) }), rootLabel: pr.rightLabel, open: openR, ops: toR, endpoints, node: node(pair.right) });
-    if (toL.length) groups.push({ key: `${pr.pairId}:L`, title: t('{name} (sol)', { name: shortLabel(pr.leftLabel) }), rootLabel: pr.leftLabel, open: openL, ops: toL, endpoints, node: node(pair.left) });
+    const trash = (ep: SyncPair['left']) => (job.deletion === 'recycle' && canTrash(ep) ? ctx.trash : undefined);
+    if (toR.length) groups.push({ key: `${pr.pairId}:R`, title: t('{name} (sağ)', { name: shortLabel(pr.rightLabel) }), rootLabel: pr.rightLabel, open: openR, ops: toR, endpoints, node: node(pair.right), trash: trash(pair.right) });
+    if (toL.length) groups.push({ key: `${pr.pairId}:L`, title: t('{name} (sol)', { name: shortLabel(pr.leftLabel) }), rootLabel: pr.leftLabel, open: openL, ops: toL, endpoints, node: node(pair.left), trash: trash(pair.left) });
   }
   return groups;
+}
+
+/** Only a folder of this computer has a trash to go to: a UNC path or a target machine keeps the versioning folder. */
+export function canTrash(ep: Endpoint): boolean {
+  return ep.kind === 'local' && !!ep.path && !/^[\\/]{2}/.test(ep.path);
+}
+
+/** Run settings of a sync job: the copy settings, with the job's own versioning (recycle falls back to it). */
+export function syncExecSettings(ctx: CoreContext, job: SyncJob, label: string, cmp: CompareResult, groups: ExecGroup[], opts: { dryRun?: boolean; notify?: boolean } = {}): ExecSettings {
+  const c = ctx.config.copy;
+  const backup = job.deletion !== 'permanent';
+  return {
+    label,
+    origin: 'sync',
+    dryRun: !!opts.dryRun,
+    backup,
+    backupKeep: job.versioningKeep,
+    backupMaxDays: job.versioningMaxDays,
+    backupFolderName: c.backupFolderName,
+    verify: c.verify,
+    retryCount: c.retryCount,
+    waitSeconds: c.waitSeconds,
+    parallelGroups: c.parallelTargets,
+    parallelFiles: c.parallelFiles,
+    postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
+    bandwidthMBps: c.bandwidthMBps,
+    sources: cmp.pairs.map((p) => p.leftLabel),
+    targetIds: groups.map((g) => g.key),
+    options: { dryRun: !!opts.dryRun, backup, ...(opts.notify != null ? { notify: opts.notify } : {}) },
+  };
 }
 
 function shortLabel(s: string): string {

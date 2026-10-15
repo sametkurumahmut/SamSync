@@ -7,8 +7,9 @@ import integration from './integration';
 import pagesA from './pages-a';
 import pagesB from './pages-b';
 import automation from './automation';
+import sync from './sync';
 
-export const EN: Dict = { ...common, ...core, ...integration, ...pagesA, ...pagesB, ...automation };
+export const EN: Dict = { ...common, ...core, ...integration, ...pagesA, ...pagesB, ...automation, ...sync };
 
 /** Per file, for the duplicate check in the tests. */
-export const EN_PARTS: Record<string, Dict> = { common, core, integration, 'pages-a': pagesA, 'pages-b': pagesB, automation };
+export const EN_PARTS: Record<string, Dict> = { common, core, integration, 'pages-a': pagesA, 'pages-b': pagesB, automation, sync };

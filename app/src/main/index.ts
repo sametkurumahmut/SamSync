@@ -43,8 +43,9 @@ async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<num
             return null;
           }
         },
+        trash: (p) => shell.trashItem(p),
       },
-      { mode: l.headless!, paths: l.paths, missing: l.missing, targets: l.targets ?? [] },
+      { mode: l.headless!, paths: l.paths, missing: l.missing, targets: l.targets ?? [], job: l.syncJob },
       { out: (line) => process.stdout.write(line + '\n'), err: (line) => process.stderr.write(line + '\n') },
     );
   } catch (e) {
@@ -62,7 +63,7 @@ if (launch.removeIntegrations) {
   // the uninstaller: take the Explorer menu and the Notepad++ entries out, no window
   void removeIntegrations().finally(() => app.exit(0));
 } else if (launch.headless) {
-  // --plan-only / --check-only: answer on the console and quit; runs next to an open window too
+  // --plan-only / --check-only / --sync: answer on the console and quit; runs next to an open window too
   void runHeadlessLaunch(launch).then((code) => app.exit(code));
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -145,6 +146,9 @@ if (launch.removeIntegrations) {
     },
     async openExternal(url) {
       await shell.openExternal(url);
+    },
+    async trash(p) {
+      await shell.trashItem(p);
     },
     encrypt(plain) {
       if (!safeStorage.isEncryptionAvailable()) return null;

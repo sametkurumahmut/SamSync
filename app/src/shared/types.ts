@@ -112,7 +112,8 @@ export interface SyncFilter {
   newerThanDays?: number;
 }
 
-export type DeletionPolicy = 'versioning' | 'permanent';
+/** recycle: a local folder side uses the operating system's trash, any other side the versioning folder. */
+export type DeletionPolicy = 'versioning' | 'permanent' | 'recycle';
 
 export interface SyncSchedule {
   enabled: boolean;
@@ -136,6 +137,8 @@ export interface SyncJob {
   filter: SyncFilter;
   deletion: DeletionPolicy;
   versioningKeep: number;
+  /** Versions older than this many days are removed after a run (0 or empty = no age limit). */
+  versioningMaxDays?: number;
   detectMoves?: boolean;
   lastRun?: string;
 }

@@ -122,6 +122,10 @@ export interface Api {
   syncRun(compareId: string, job: SyncJob, overrides: Record<string, Record<string, SyncAction>>, dryRun?: boolean): Promise<string>;
   syncItemDiff(compareId: string, pairId: string, key: string): Promise<DiffResult>;
   resetSyncState(jobId: string): Promise<void>;
+  /** Writes a sync job to a file ({ "samsyncSyncJob": 1, "job": ... }) to bring it into another configuration. */
+  exportSyncJob(jobId: string, dest: string): Promise<void>;
+  /** Adds the job of such a file to the configuration and returns its id (a new one when the id is taken). */
+  importSyncJob(path: string): Promise<string>;
   browse(endpoint: { kind: 'local'; path: string } | { kind: 'node'; nodeId: string; subPath: string }, rel: string): Promise<BrowseEntry[]>;
 
   findBackups(rel: string, targetIds: string[]): Promise<BackupLookup[]>;
@@ -200,6 +204,8 @@ export const API_METHODS = {
   syncRun: true,
   syncItemDiff: true,
   resetSyncState: true,
+  exportSyncJob: true,
+  importSyncJob: true,
   browse: true,
   findBackups: true,
   backupSets: true,

@@ -36,7 +36,8 @@ import { transportForNode, transportForEndpoint, nodeRootLabel } from './transpo
 import { mapToRel, normalizeAbs, pathKey } from './paths';
 import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
-import { compareJob, syncGroups, updateDbAfterRun, resetDb } from './sync';
+import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } from './sync';
+import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
 import { CancelToken, errMessage } from './util';
@@ -59,6 +60,8 @@ export interface HostAdapter {
   openPath?(p: string): Promise<void>;
   showInFolder?(p: string): Promise<void>;
   openExternal?(url: string): Promise<void>;
+  /** Moves a local file or folder to the operating system's trash (sync jobs that delete to the Recycle Bin). */
+  trash?(absPath: string): Promise<void>;
   encrypt?(plain: string): string | null;
   decrypt?(enc: string): string | null;
   notify?(title: string, body: string): void;
@@ -191,6 +194,7 @@ export class Service implements Api {
       localNodeId: this.identity.node?.id,
       userDataPath: this.host.userDataPath,
       getSecret: (id) => this.getSecret(id),
+      trash: this.host.trash ? (p) => this.host.trash!(p) : undefined,
       emit: (e) => this.host.emit(e),
       log: this.log,
     };
@@ -634,11 +638,7 @@ export class Service implements Api {
     const ctx = this.ctx();
     const groups = syncGroups(ctx, job, result);
     if (!groups.length) throw new Error(t('Yapılacak işlem yok.'));
-    const s = this.execSettings(t('Senkron: {name}', { name: job.name }), 'sync', { dryRun, backup: job.deletion === 'versioning', notify: true }, {
-      backupKeep: job.versioningKeep,
-      sources: result.pairs.map((p) => p.leftLabel),
-      targetIds: groups.map((g) => g.key),
-    });
+    const s = syncExecSettings(ctx, job, t('Senkron: {name}', { name: job.name }), result, groups, { dryRun, notify: true });
     const handle = startRun(ctx, groups, s);
     this.track(handle, true, async (detail) => {
       await updateDbAfterRun(ctx, job, result, detail);
@@ -660,12 +660,7 @@ export class Service implements Api {
     const groups = syncGroups(ctx, job, result);
     const conflicts = result.stats.byCategory.conflict;
     if (!groups.length) return { handle: null, actions: conflicts };
-    const s = this.execSettings(label, 'sync', { backup: job.deletion === 'versioning' }, {
-      backupKeep: job.versioningKeep,
-      sources: result.pairs.map((p) => p.leftLabel),
-      targetIds: groups.map((g) => g.key),
-    });
-    const handle = startRun(ctx, groups, s);
+    const handle = startRun(ctx, groups, syncExecSettings(ctx, job, label, result, groups));
     this.track(handle, false, (detail) => updateDbAfterRun(ctx, job, result, detail));
     return { handle, actions: groups.reduce((a, g) => a + g.ops.length, 0) };
   }
@@ -728,6 +723,22 @@ export class Service implements Api {
 
   resetSyncState(jobId: string) {
     return resetDb(this.ctx(), jobId);
+  }
+
+  /** Writes one sync job to a file of its own, to bring it into another configuration. */
+  async exportSyncJob(jobId: string, dest: string): Promise<void> {
+    const job = this.config.syncJobs.find((j) => j.id === jobId);
+    if (!job) throw new Error(t('İş bulunamadı'));
+    await fsp.writeFile(dest, jobFileText(job), 'utf8');
+    this.log.info(t('Senkron'), t('{name} dışa aktarıldı: {path}', { name: job.name, path: dest }));
+  }
+
+  /** Adds the job of an exported job file to the configuration; returns its id here (a new one when the id was taken). */
+  async importSyncJob(file: string): Promise<string> {
+    const job = jobFromFile(await readJson(file), this.config.syncJobs, this.identity.node?.id);
+    await this.saveConfig({ ...this.config, syncJobs: [...this.config.syncJobs, job] });
+    this.log.info(t('Senkron'), t('{name} içe aktarıldı: {path}', { name: job.name, path: file }));
+    return job.id;
   }
 
   async browse(ep: Parameters<Api['browse']>[0], rel: string): Promise<BrowseEntry[]> {

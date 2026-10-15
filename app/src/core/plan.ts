@@ -11,6 +11,7 @@ import { compareMeta, gitBlobId, streamsEqual } from './compare';
 import { blobInfo } from './git';
 import { probeNode } from './probe';
 import { otherBackupRoots } from './backups';
+import { IGNORE_FILE, ignoreExcludes, readLocalIgnore } from './ignore';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
 import { t } from '../shared/i18n';
 import { targetOptions } from '../shared/options';
@@ -31,12 +32,30 @@ export interface PlanProgress {
   total?: number;
 }
 
-export function sendFilter(ctx: CoreContext, req: SendRequest): PathFilter {
+/** The send's exclusions plus the patterns of the sent folders' ignore files; the ignore file itself is never sent. */
+export function sendFilter(ctx: CoreContext, req: SendRequest, ignored: readonly string[] = []): PathFilter {
+  const extra = ignoreExcludes(ignored);
   return makeFilter({
-    excludeFiles: req.options.excludeFiles,
-    excludeDirs: req.options.excludeDirs,
+    excludeFiles: [...req.options.excludeFiles, ...extra.excludeFiles, IGNORE_FILE],
+    excludeDirs: [...req.options.excludeDirs, ...extra.excludeDirs],
     alwaysExcludeDirs: [ctx.config.copy.backupFolderName],
   });
+}
+
+/**
+ * The ignore file patterns of every folder in the send, merged: each applies inside every sent folder.
+ * An ignore file that cannot be read stops the plan, as a mirror without its patterns could delete what it protects.
+ */
+export async function sendIgnorePatterns(req: SendRequest): Promise<string[]> {
+  const patterns = new Set<string>();
+  await mapLimit(req.sources, 8, async (s) => {
+    if (s.kind !== 'fs') return;
+    const abs = normalizeAbs(s.path);
+    const st = await fsp.stat(abs).catch(() => null);
+    if (!st?.isDirectory()) return;
+    for (const p of await readLocalIgnore(abs)) patterns.add(p);
+  });
+  return [...patterns];
 }
 
 /** Counts files and bytes below a folder, giving up (capped = true) after a file or time budget. */
@@ -320,7 +339,7 @@ export async function buildSendPlan(
   const started = Date.now();
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
-  const filter = sendFilter(ctx, req);
+  const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
   const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress);
 
   const requested = req.targetIds;
