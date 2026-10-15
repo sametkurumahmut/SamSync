@@ -1,0 +1,40 @@
+# Builds SamSync for Windows, macOS and Linux when a version tag is pushed and uploads the
+# installers plus the latest*.yml update feeds to one draft GitHub Release. Publish the draft
+# when it looks right; installed apps then update from it.
+#   1. bump "version" in app/package.json   2. git tag v2.1.0   3. git push origin v2.1.0
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build and upload to the draft release
+        run: node scripts/dist.mjs --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # no signing certificates in CI: macOS builds are unsigned (no auto-update there)
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

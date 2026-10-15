@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "samsync-web-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "app/scripts/web-server.mjs",
+        "--port",
+        "5198",
+        "--user-data",
+        "app/.demo/userdata"
+      ],
+      "port": 5198
+    }
+  ]
+}

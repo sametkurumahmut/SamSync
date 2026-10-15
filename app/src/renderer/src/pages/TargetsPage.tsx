@@ -1,0 +1,446 @@
+import { useState } from 'react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink } from 'lucide-react';
+import type { NodeConfig, TransportKind } from '@shared/types';
+import { useApp } from '../store/app';
+import { api } from '../lib/api';
+import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput } from '../components/ui';
+import { ago, cls } from '../lib/format';
+
+const ID_RE = /^[A-Za-z0-9._-]+$/;
+
+export function rootPreview(n: Partial<NodeConfig>, platform: string): string {
+  if (n.transport === 'sftp') return `sftp://${n.sftp?.username || 'kullanıcı'}@${n.sftp?.host || n.address || 'adres'}${n.sftp?.root?.startsWith('/') ? '' : '/'}${n.sftp?.root ?? ''}`;
+  if (n.transport === 'path' || n.path) return n.path || '';
+  const nr = (n.networkRoot || '').replace(/[\\/]+/g, platform === 'win32' ? '\\' : '/');
+  return platform === 'win32' ? `\\\\${n.address || 'adres'}\\${nr}` : `/mnt/${n.address || 'adres'}/${nr}`;
+}
+
+export function TargetsPage() {
+  const boot = useApp((s) => s.boot!);
+  const cfg = boot.config;
+  const probes = useApp((s) => s.probes);
+  const probing = useApp((s) => s.probing);
+  const probe = useApp((s) => s.probe);
+  const saveConfig = useApp((s) => s.saveConfig);
+  const saveSettings = useApp((s) => s.saveSettings);
+  const toast = useApp((s) => s.toast);
+  const [editing, setEditing] = useState<NodeConfig | 'new' | null>(null);
+  const [q, setQ] = useState('');
+  const id = boot.identity;
+
+  const ql = q.trim().toLowerCase();
+  const nodes = cfg.nodes.filter((n) => !ql || `${n.name} ${n.id} ${n.group ?? ''} ${n.address}`.toLowerCase().includes(ql));
+  const groups = new Map<string, NodeConfig[]>();
+  for (const n of nodes) {
+    const g = n.group ?? '';
+    groups.set(g, [...(groups.get(g) ?? []), n]);
+  }
+  const ordered = [...groups.entries()].sort((a, b) => (a[0] === '' ? 1 : b[0] === '' ? -1 : a[0].localeCompare(b[0])));
+
+  const toggleEnabled = async (n: NodeConfig, on: boolean) => {
+    await saveConfig({ ...cfg, nodes: cfg.nodes.map((x) => (x.id === n.id ? { ...x, enabled: on } : x)) });
+  };
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <div className="grow">
+          <h1>Hedefler</h1>
+          <div className="sub">Aynı yapılandırma bütün makinelerde kullanılır; uygulama çalıştığı makineyi kendisi tanır.</div>
+        </div>
+        <SearchInput value={q} onChange={setQ} placeholder="Ara" style={{ width: 200 }} />
+        <Button icon={<RefreshCw size={14} className={probing ? 'spin' : undefined} />} onClick={() => void probe()}>
+          Erişimi sına
+        </Button>
+        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')} disabled={!boot.configWritable}>
+          Hedef ekle
+        </Button>
+      </div>
+      <div className="page-body">
+        <div className="targets-top">
+          <div className="card identity-card">
+            <div className="card-head">
+              <div className={cls('icon-tile', id.node && 'accent')}>
+                <Laptop size={15} />
+              </div>
+              <h2>Bu makine</h2>
+              <span className="spacer" />
+              <span className="row" style={{ gap: 6 }}>
+                <Pin size={13} className="faint" />
+                <select className="select" style={{ height: 27, width: 200, fontSize: 12.5 }} value={boot.settings.localNodeId ?? ''} onChange={(e) => void saveSettings({ localNodeId: e.target.value || undefined })}>
+                  <option value="">Otomatik tanı</option>
+                  {cfg.nodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name} ({n.id})
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+            <div className="card-body">
+              <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+                <div className="grow">
+                  <div style={{ fontSize: 16, fontWeight: 650 }}>{id.node ? id.node.name : 'Tanımlanamadı'}</div>
+                  <div className="muted" style={{ marginTop: 2 }}>
+                    {id.reason}
+                  </div>
+                  <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+                    {id.hostname} • {id.addresses.filter((a) => /^\d+\.\d+\.\d+\.\d+$/.test(a) && a !== '127.0.0.1').join(', ')}
+                  </div>
+                </div>
+                {id.node && <span className="badge blue lg">{id.node.id}</span>}
+              </div>
+              {id.node && (
+                <>
+                  <div className="section-title" style={{ marginTop: 14 }}>
+                    Yerel kökler
+                  </div>
+                  <div className="col" style={{ gap: 4 }}>
+                    {id.node.localRoots.map((r) => (
+                      <div key={r} className="row mono selectable" style={{ fontSize: 12 }}>
+                        <HardDrive size={13} className="faint" /> {r}
+                      </div>
+                    ))}
+                    {!id.node.localRoots.length && <span className="faint">Yerel kök tanımlı değil: her şey tam yoluyla gönderilir.</span>}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-head">
+              <div className="icon-tile">
+                <FileJson size={15} />
+              </div>
+              <h2>Yapılandırma</h2>
+              <span className="spacer" />
+              {!boot.configWritable && <span className="badge amber">salt okunur</span>}
+            </div>
+            <div className="card-body col" style={{ gap: 10 }}>
+              <div className="mono selectable" style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                {boot.configPath}
+              </div>
+              <div className="faint" style={{ fontSize: 12 }}>
+                {cfg.nodes.length} makine • {new Set(cfg.nodes.map((n) => n.group).filter(Boolean)).size} grup • {cfg.profiles.length} profil • {cfg.syncJobs.length} senkron işi
+              </div>
+              <div className="row" style={{ flexWrap: 'wrap' }}>
+                <Button size="sm" icon={<ExternalLink size={13} />} onClick={() => void api.openPath(boot.configPath).catch((e) => toast('error', 'Açılamadı', (e as Error).message))}>
+                  Düzenleyicide aç
+                </Button>
+                <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => useApp.getState().setPage('settings')}>
+                  Dosyayı değiştir…
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {!cfg.nodes.length ? (
+          <div className="card" style={{ marginTop: 16 }}>
+            <Empty icon={<Server size={22} />} title="Henüz hedef yok" action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>İlk hedefi ekle</Button>}>
+              Eğitmen dahil bütün makineleri ekleyin. Her makinenin yerel kökü (kaynak olduğunda) ve paylaşım kökü (hedef olduğunda) ayrı tanımlanır.
+            </Empty>
+          </div>
+        ) : (
+          ordered.map(([g, list]) => (
+            <div key={g || '_'} style={{ marginTop: 20 }}>
+              <div className="row" style={{ marginBottom: 10 }}>
+                <span className={g ? 'section-title keep-case' : 'section-title'} style={{ margin: 0 }}>
+                  {g || 'Gruba ait olmayanlar'}
+                </span>
+                <span className="faint" style={{ fontSize: 12 }}>
+                  {list.length} makine • {list.filter((n) => probes[n.id]?.ok).length} erişilebilir
+                </span>
+              </div>
+              <div className="target-grid">
+                {list.map((n) => {
+                  const p = probes[n.id];
+                  const isLocal = n.id === id.node?.id;
+                  return (
+                    <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local')}>
+                      <div className="row" style={{ gap: 10 }}>
+                        <span className={cls('dot', isLocal ? 'ok' : p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} />
+                        <div className="grow" style={{ minWidth: 0 }}>
+                          <div className="ellipsis" style={{ fontWeight: 620 }}>
+                            {n.name}
+                          </div>
+                          <div className="faint mono ellipsis" style={{ fontSize: 11.5 }}>
+                            {n.id}
+                          </div>
+                        </div>
+                        {isLocal ? <span className="badge blue">bu makine</span> : <Switch on={n.enabled} onChange={(v) => void toggleEnabled(n, v)} disabled={!boot.configWritable} />}
+                      </div>
+                      <div className="target-root mono selectable" title={rootPreview(n, boot.platform)}>
+                        {n.transport === 'sftp' ? <KeyRound size={12} /> : n.transport === 'path' ? <HardDrive size={12} /> : <Network size={12} />}
+                        <span className="ellipsis">{rootPreview(n, boot.platform)}</span>
+                      </div>
+                      <div className="row" style={{ gap: 6 }}>
+                        {!isLocal &&
+                          (p ? (
+                            <span className={cls('row faint')} style={{ fontSize: 11.5, gap: 4 }} data-tip={p.detail}>
+                              {p.ok ? <Wifi size={12} color="var(--green)" /> : <WifiOff size={12} color="var(--red)" />}
+                              {p.ok ? `${p.latencyMs ?? '?'} ms` : 'erişilemedi'} • {ago(p.checkedAt)}
+                            </span>
+                          ) : (
+                            <span className="faint" style={{ fontSize: 11.5 }}>
+                              yoklanmadı
+                            </span>
+                          ))}
+                        <span className="spacer" />
+                        <span className="badge">{n.localRoots.length} kök</span>
+                        <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip="Düzenle" onClick={() => setEditing(n)} disabled={!boot.configWritable} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      {editing && <NodeEditor node={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () => void }) {
+  const boot = useApp((s) => s.boot!);
+  const cfg = boot.config;
+  const saveConfig = useApp((s) => s.saveConfig);
+  const toast = useApp((s) => s.toast);
+  const [n, setN] = useState<NodeConfig>(
+    node ?? { id: '', name: '', address: '', localRoots: [], networkRoot: 'Sim\\ActiveRelease', enabled: true, transport: 'smb' },
+  );
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const set = (p: Partial<NodeConfig>) => setN((x) => ({ ...x, ...p }));
+  const transport: TransportKind = n.transport ?? 'smb';
+  const groups = [...new Set(cfg.nodes.map((x) => x.group).filter(Boolean))] as string[];
+
+  const errors: Record<string, string> = {};
+  if (!n.id) errors.id = 'Gerekli';
+  else if (!ID_RE.test(n.id)) errors.id = 'Yalnızca harf, rakam, nokta, alt çizgi, tire';
+  else if (cfg.nodes.some((x) => x !== node && x.id.toLowerCase() === n.id.toLowerCase())) errors.id = 'Bu kimlik kullanılıyor';
+  if (transport === 'smb' && !n.address) errors.address = 'Gerekli';
+  if (transport === 'smb' && !n.networkRoot) errors.networkRoot = 'Gerekli';
+  if (transport === 'path' && !n.path) errors.path = 'Gerekli';
+  if (transport === 'sftp' && !n.sftp?.username) errors.sftpUser = 'Gerekli';
+  const valid = Object.keys(errors).length === 0;
+
+  const save = async () => {
+    setSaving(true);
+    const clean: NodeConfig = { ...n, name: n.name || n.id };
+    if (transport !== 'sftp') delete clean.sftp;
+    if (transport !== 'path' && !clean.path) delete clean.path;
+    if (!clean.group) delete clean.group;
+    const nodes = node ? cfg.nodes.map((x) => (x === node ? clean : x)) : [...cfg.nodes, clean];
+    const ok = await saveConfig({ ...cfg, nodes });
+    if (ok && transport === 'sftp' && password) {
+      const stored = await api.setSecret(clean.id, password);
+      if (!stored) toast('warn', 'Parola saklanamadı', 'Bu sistemde şifreli saklama kullanılamıyor.');
+    }
+    setSaving(false);
+    if (ok) {
+      toast('ok', node ? 'Hedef güncellendi' : 'Hedef eklendi', clean.name);
+      onClose();
+      void useApp.getState().probe([clean.id]);
+    }
+  };
+
+  const remove = async () => {
+    if (!node || !confirm(`${node.name} silinsin mi?`)) return;
+    if (await saveConfig({ ...cfg, nodes: cfg.nodes.filter((x) => x !== node), profiles: cfg.profiles.map((p) => ({ ...p, targetIds: p.targetIds.filter((t) => t !== node.id) })) })) onClose();
+  };
+
+  return (
+    <Modal
+      size="medium"
+      title={node ? `${node.name} düzenle` : 'Yeni hedef'}
+      icon={
+        <div className="icon-tile accent">
+          <Server size={16} />
+        </div>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          {node && (
+            <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => void remove()}>
+              Sil
+            </Button>
+          )}
+          {node && (
+            <Button
+              variant="ghost"
+              icon={<CopyIcon size={14} />}
+              onClick={() => {
+                setN({ ...n, id: `${n.id}-kopya`, name: `${n.name} (kopya)` });
+              }}
+            >
+              Çoğalt
+            </Button>
+          )}
+          <span className="spacer" />
+          <Button onClick={onClose}>Vazgeç</Button>
+          <Button variant="primary" disabled={!valid} loading={saving} onClick={() => void save()}>
+            Kaydet
+          </Button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <Field label="Görünen ad">
+          <input className="input" value={n.name} onChange={(e) => set({ name: e.target.value })} placeholder="IG1 - 10.10.1.11" autoFocus />
+        </Field>
+        <Field label="Kimlik (id)" error={n.id ? errors.id : undefined} help="Komutlar ve profiller bu anahtarı kullanır">
+          <input className="input mono" value={n.id} onChange={(e) => set({ id: e.target.value.trim() })} placeholder="Unit1IG1" />
+        </Field>
+        <Field label="Grup" help="Aynı gruptaki makineler birlikte seçilebilir">
+          <input className="input" list="samsync-groups" value={n.group ?? ''} onChange={(e) => set({ group: e.target.value.trim() || undefined })} placeholder="Unit1" />
+          <datalist id="samsync-groups">
+            {groups.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+        </Field>
+        <Field label="Adres" error={n.address ? undefined : errors.address} help="IPv4 ya da bilgisayar adı">
+          <input className="input mono" value={n.address} onChange={(e) => set({ address: e.target.value.trim() })} placeholder="10.10.1.11" />
+        </Field>
+      </div>
+
+      <div className="divider" />
+      <Field label="Bağlantı türü">
+        <Segmented
+          value={transport}
+          onChange={(t) => set({ transport: t, sftp: t === 'sftp' ? n.sftp ?? { username: '', root: '/' } : n.sftp })}
+          options={[
+            { value: 'smb', label: 'Windows paylaşımı (SMB)', icon: <Network size={14} /> },
+            { value: 'path', label: 'Klasör / bağlı sürücü', icon: <HardDrive size={14} /> },
+            { value: 'sftp', label: 'SFTP (SSH)', icon: <KeyRound size={14} /> },
+          ]}
+        />
+      </Field>
+      <div className="form-grid" style={{ marginTop: 12 }}>
+        {transport === 'smb' && (
+          <>
+            <Field label="Paylaşım kökü (networkRoot)" error={errors.networkRoot} help="Paylaşım adıyla başlar: Sim\ActiveRelease → \\adres\Sim\ActiveRelease">
+              <input className="input mono" value={n.networkRoot} onChange={(e) => set({ networkRoot: e.target.value })} placeholder="Sim\ActiveRelease" />
+            </Field>
+            <Field label="Yol geçersiz kılma (isteğe bağlı)" help="macOS/Linux’ta bağlama noktası, örn. /Volumes/Sim/ActiveRelease">
+              <input className="input mono" value={n.path ?? ''} onChange={(e) => set({ path: e.target.value || undefined })} placeholder="(otomatik)" />
+            </Field>
+          </>
+        )}
+        {transport === 'path' && (
+          <Field label="Hedef klasör" error={errors.path} style={{ gridColumn: '1 / -1' }}>
+            <div className="row">
+              <input className="input mono" value={n.path ?? ''} onChange={(e) => set({ path: e.target.value })} placeholder="D:\Yedek\Sim  ya da  \\sunucu\paylaşım\klasör" />
+              <Button
+                iconOnly
+                icon={<FolderOpen size={14} />}
+                disabled={!boot.isElectron}
+                onClick={async () => {
+                  const [p] = await api.pick({ folders: true });
+                  if (p) set({ path: p });
+                }}
+              />
+            </div>
+          </Field>
+        )}
+        {transport === 'sftp' && (
+          <>
+            <Field label="Kullanıcı" error={errors.sftpUser}>
+              <input className="input mono" value={n.sftp?.username ?? ''} onChange={(e) => set({ sftp: { ...(n.sftp ?? { root: '/' }), username: e.target.value } as NodeConfig['sftp'] })} placeholder="sim" />
+            </Field>
+            <Field label="Uzak kök">
+              <input className="input mono" value={n.sftp?.root ?? ''} onChange={(e) => set({ sftp: { ...(n.sftp ?? { username: '' }), root: e.target.value } as NodeConfig['sftp'] })} placeholder="/srv/sim/ActiveRelease" />
+            </Field>
+            <Field label="Port">
+              <input className="input" type="number" value={n.sftp?.port ?? 22} onChange={(e) => set({ sftp: { ...n.sftp!, port: Number(e.target.value) || 22 } })} />
+            </Field>
+            <Field label="Özel anahtar (isteğe bağlı)">
+              <input className="input mono" value={n.sftp?.privateKeyPath ?? ''} onChange={(e) => set({ sftp: { ...n.sftp!, privateKeyPath: e.target.value || undefined } })} placeholder="~/.ssh/id_ed25519" />
+            </Field>
+            <Field label="Parola (isteğe bağlı)" help="Yalnızca bu bilgisayarda, işletim sisteminin şifreli deposunda saklanır">
+              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••" autoComplete="new-password" />
+            </Field>
+            <Field label="SSH agent">
+              <label className="check-label" style={{ height: 32 }}>
+                <Switch on={!!n.sftp?.useAgent} onChange={(v) => set({ sftp: { ...n.sftp!, useAgent: v } })} /> Agent’taki anahtarları kullan
+              </label>
+            </Field>
+          </>
+        )}
+      </div>
+      <div className="root-preview">
+        <span className="faint">Hedef kökü:</span> <span className="mono selectable">{rootPreview(n, boot.platform)}</span>
+      </div>
+
+      <div className="divider" />
+      <Field label="Yerel kökler" help="Bu makine kaynak olduğunda göreli yol bu köklerden hesaplanır; en uzun eşleşen kök kullanılır">
+        <RootsEditor value={n.localRoots} onChange={(localRoots) => set({ localRoots })} />
+      </Field>
+      <div className="form-grid" style={{ marginTop: 12 }}>
+        <Field label="Bilgisayar adları (localNames)" help="IP’si değişken makinelerin tanınması için">
+          <TagInput value={n.localNames ?? []} onChange={(v) => set({ localNames: v.length ? v : undefined })} placeholder="IG-14" />
+        </Field>
+        <Field label="Notlar">
+          <input className="input" value={n.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} />
+        </Field>
+      </div>
+      <div className="toggle-row" style={{ marginTop: 6 }} onClick={() => set({ enabled: !n.enabled })}>
+        <div className="grow">
+          <div className="t-title">Etkin</div>
+          <div className="t-desc">Kapalı hedefler listelerde ve “tümü” gönderimlerinde yer almaz</div>
+        </div>
+        <Switch on={n.enabled} onChange={(v) => set({ enabled: v })} />
+      </div>
+    </Modal>
+  );
+}
+
+function RootsEditor({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const isElectron = useApp((s) => s.boot!.isElectron);
+  const [text, setText] = useState('');
+  return (
+    <div className="col" style={{ gap: 6 }}>
+      {value.map((r, i) => (
+        <div key={i} className="row">
+          <HardDrive size={14} className="faint" />
+          <input className="input sm mono grow" value={r} onChange={(e) => onChange(value.map((x, j) => (j === i ? e.target.value : x)))} />
+          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={13} />} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      <div className="row">
+        <input
+          className="input sm mono grow"
+          value={text}
+          placeholder="C:\Sim\ActiveRelease"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && text.trim()) {
+              onChange([...value, text.trim()]);
+              setText('');
+            }
+          }}
+        />
+        <Button
+          size="sm"
+          icon={<Plus size={13} />}
+          onClick={async () => {
+            if (text.trim()) {
+              onChange([...value, text.trim()]);
+              setText('');
+              return;
+            }
+            if (!isElectron) return;
+            const p = await api.pick({ folders: true, multi: true });
+            if (p.length) onChange([...value, ...p]);
+          }}
+        >
+          {text.trim() ? 'Ekle' : 'Klasör seç'}
+        </Button>
+      </div>
+    </div>
+  );
+}

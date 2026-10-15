@@ -1,24 +1,26 @@
-﻿# SamePathCopy
+# SamePathCopy
 
-Windows Explorer sağ tık menüsünden bir veya birden fazla dosya ya da klasörü seçilen bilgisayarlara kopyalar. Aynı hedefler Notepad++ sekme sağ tık menüsünde de kullanılabilir. Yapılandırılmış kök dizinler arasındaki göreli yolu korur; kaynak öğeleri silmez.
+[Türkçe](README.tr.md)
 
-Örnek:
+Copies one or more files or folders to selected computers from the Windows Explorer right-click menu. The same targets are also available in the Notepad++ tab right-click menu. It preserves the relative path between the configured root directories; it never deletes the source items.
+
+Example:
 
 ```text
 C:\ActiveRelease\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity
 ```
 
-Yerel node'un `localRoot` değeri `C:\ActiveRelease`, uzak node'un `networkRoot` değeri `Sim\Samet` ise `10.10.2.181` hedefinde şuraya kopyalanır:
+If the local node's `localRoot` is `C:\ActiveRelease` and the remote node's `networkRoot` is `Sim\Samet`, the file is copied on the `10.10.2.181` target to:
 
 ```text
 \\10.10.2.181\Sim\Samet\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity
 ```
 
-Klasör seçildiğinde klasörün kendisi ve bütün içeriği aynı konuma kopyalanır.
+When a folder is selected, the folder itself and all of its contents are copied to the same location.
 
-## Sürüm takibi
+## Version tracking
 
-Uygulamanın sürümü `config.json` dosyasındaki `version` alanında tutulur:
+The application version is kept in the `version` field of `config.json`:
 
 ```json
 {
@@ -27,13 +29,13 @@ Uygulamanın sürümü `config.json` dosyasındaki `version` alanında tutulur:
 }
 ```
 
-Sürüm numarası `MAJOR.MINOR.PATCH` (SemVer) biçimindedir. Yeni paket paylaşılırken davranışı bozan değişikliklerde `MAJOR`, geriye uyumlu özelliklerde `MINOR`, hata düzeltmelerinde `PATCH` artırılmalıdır. Sürüm, kopyalama sonuç penceresinin başlığında ve yerel kök satırında görünür.
+The version number uses the `MAJOR.MINOR.PATCH` (SemVer) format. When a new package is shared, bump `MAJOR` for changes that break behavior, `MINOR` for backward-compatible features and `PATCH` for bug fixes. The version appears in the title of the copy result window and in the local root line.
 
-Sürüm değişiklikleri [CHANGELOG.md](CHANGELOG.md) dosyasında listelenir.
+Version changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
-### Birden fazla kaynak kökü
+### Multiple source roots
 
-Bir node birden fazla kaynak kökü tanımlayabilir. Kaynak hangi kökün altındaysa göreli yol o köke göre hesaplanır ve hedefte aynı `networkRoot` altına yazılır:
+A node can define more than one source root. The relative path is computed against whichever root contains the source, and it is written under the same `networkRoot` on the target:
 
 ```json
 {
@@ -50,7 +52,7 @@ Bir node birden fazla kaynak kökü tanımlayabilir. Kaynak hangi kökün altın
 }
 ```
 
-Hedefin `networkRoot` değeri `Sim\ActiveRelease` ise:
+If the target's `networkRoot` is `Sim\ActiveRelease`:
 
 ```text
 proje\Data\x.entity            -> \\10.10.1.11\Sim\ActiveRelease\Data\x.entity
@@ -58,109 +60,109 @@ simulatorexternaldata\ses\a.wav -> \\10.10.1.11\Sim\ActiveRelease\ses\a.wav
 simcontents\model\b.fbx        -> \\10.10.1.11\Sim\ActiveRelease\model\b.fbx
 ```
 
-Göreli yol doğrudan `networkRoot` altına yazıldığı için iki kökte aynı göreli yol varsa (`proje\Data\x` ve `simcontents\Data\x`) hedefte aynı dosyaya denk gelirler; kökleri buna göre seçin. Sonuç penceresi ve `-PlanOnly` çıktısı her öğe için hangi kökün eşleştiğini gösterir.
+Because the relative path is written directly under `networkRoot`, the same relative path in two roots (`proje\Data\x` and `simcontents\Data\x`) lands on the same file on the target; choose your roots with that in mind. The result window and the `-PlanOnly` output show which root matched for each item.
 
-İç içe kökler tanımlanabilir; en uzun eşleşen kök kullanılır. Tek köklü eski yapılandırmalar `localRoot` alanıyla çalışmaya devam eder; iki alan birlikte verilirse `localRoot` ilk kök olur.
+Nested roots are allowed; the longest matching root is used. Older single-root configurations keep working with the `localRoot` field; if both fields are given, `localRoot` becomes the first root.
 
-### Kökler dışındaki öğeler
+### Items outside the roots
 
-Seçilen öğe yerel node'un köklerinden birinin içindeyse, o kökün altındaki göreli yol hedef `networkRoot` altında korunur.
+If the selected item is inside one of the local node's roots, its relative path under that root is preserved under the target's `networkRoot`.
 
-Öğe köklerin hiçbirinin altında değilse tam yerel yol sürücü harfi bir klasöre dönüştürülerek korunur:
+If the item is under none of the roots, its full local path is preserved, with the drive letter turned into a folder:
 
 ```text
 C:\Fraps\README.HTM
 → \\10.10.2.181\Sim\Samet\C\Fraps\README.HTM
 ```
 
-Bu sayede farklı sürücülerde aynı ada sahip yollar çakışmaz. UNC kaynakları `networkRoot\UNC\sunucu\paylaşım\...` altında saklanır.
+This way, paths with the same name on different drives do not collide. UNC sources are stored under `networkRoot\UNC\server\share\...`.
 
-### Arayüz
+### User interface
 
-Sihirbaz ve kopyalama penceresi WPF ile yazılmıştır ([SamePathCopy.Ui.ps1](SamePathCopy.Ui.ps1) ortak temayı üretir). Renkler Windows ayarlarından okunur: açık/koyu tema `AppsUseLightTheme` değerine, vurgu rengi `DWM\AccentColor` değerine göre belirlenir (okunabilirlik için çok açık vurgu renkleri yerine varsayılan mavi kullanılır). Arayüz PowerShell'in STA kipini gerektirir; `powershell.exe` varsayılan olarak STA çalışır, kurulumun ürettiği komutlar da bu yüzden olduğu gibi çalışır.
+The wizard and the copy window are written in WPF ([SamePathCopy.Ui.ps1](SamePathCopy.Ui.ps1) produces the shared theme). Colors are read from the Windows settings: the light/dark theme follows the `AppsUseLightTheme` value and the accent color follows `DWM\AccentColor` (very light accent colors are replaced with the default blue for readability). The UI requires PowerShell's STA mode; `powershell.exe` runs in STA by default, which is why the commands generated by the installer work as they are.
 
-### Sihirbaz
+### Wizard
 
-Menüde `Tümü`'nün hemen ardından gelen `Wizard` girdisi, göndermeden önce bir pencere açar: hangi bilgisayarlara gönderileceği listeden işaretlenir ve her bilgisayar için parametreler ayrı ayrı seçilir. Etiket `config.json` içindeki `wizardLabel` alanından değiştirilebilir.
+The `Wizard` entry, which comes right after `Tümü` (All) in the menu, opens a window before sending: you tick the computers to send to in a list and choose the parameters separately for each computer. The label can be changed with the `wizardLabel` field in `config.json`.
 
-Pencerede kaynak özeti ve yerel kök çipi üstte, hedef tablosu ortada (grup adıyla birlikte), canlı `N / M seçili` göstergesi tablonun sağ üstünde durur. Her onay kutusu kolonunun başlığının altında o kolonun tamamını çeviren **tek bir onay kutusu** vardır: basıldığında hepsi işaretlenir, hepsi işaretliyken basıldığında temizlenir. Kutu kolonun durumunu da gösterir: hepsi işaretliyse **onay işareti**, hiçbiri işaretli değilse **boş**, bir kısmı işaretliyse **tire** (`–`) — böylece "bu kolonda bazıları seçili" tek bakışta görülür. Durum pencere açılırken de saklanmış ayardan hesaplanır: kaydedilen seçimle açılan pencerede üstteki kutular satırlarla tutarlı gelir. Böylece `Gönder`, `Yedek al`, `Yalnızca yeni` ve `Ayna` kolonları ayrı ayrı topluca açılıp kapatılabilir; ne yaptıkları kutunun ipucunda yazar. Filtre uygulanmışsa yalnızca görünen satırlar hem sayıma hem toplu işleme girer. Parametre kolonları [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1) içindeki tanım listesinden üretilir; yeni bir parametre eklemek için o listeye bir satır yazmak yeterlidir, kolon ve onay kutuları kendiliğinden oluşur. Kolon başlıklarında parametrenin ne yaptığını anlatan ipuçları vardır.
+In the window, the source summary and the local root chip are at the top, the target table is in the middle (with group names), and a live `N / M seçili` (N / M selected) indicator sits at the top right of the table. Under the header of each checkbox column there is **a single checkbox** that toggles the whole column: clicking it checks every row, and clicking it while every row is checked clears them all. The box also shows the column's state: a **check mark** if all rows are checked, **empty** if none are, and a **dash** (`–`) if some are — so "some rows in this column are selected" is visible at a glance. The state is also computed from the saved settings when the window opens: when the window opens with a saved selection, the boxes at the top are consistent with the rows. This way the `Gönder` (send), `Yedek al` (back up), `Yalnızca yeni` (newer only) and `Ayna` (mirror) columns can each be switched on or off in bulk; the box's tooltip says what each one does. If a filter is applied, only the visible rows count toward both the tally and the bulk action. The parameter columns are generated from the definition list in [SamePathCopy.Wizard.ps1](SamePathCopy.Wizard.ps1); to add a new parameter, writing one line in that list is enough, and the column and its checkboxes appear on their own. The column headers have tooltips that explain what each parameter does.
 
-Hedef listesinin üstünde üç yardımcı vardır:
+Above the target list there are the following helpers:
 
-- **Filtre kutusu** — ada, gruba veya node kimliğine göre süzer. Süzme sırasında kolon başlığındaki toplu seçim ikonları yalnızca görünen satırlara uygulanır: `Unit2` yazıp `Gönder` kolonunu işaretlemek o gruba ait satırları seçer. Gizlenen satırların seçim durumu korunur.
-- **Grup çipleri** — her grubun adının solunda tek bir onay kutusu; o gruptaki bütün bilgisayarları tek tıkla seçer veya bırakır. Kutu grubun durumunu da gösterir: hepsi seçiliyse onay işareti, hiçbiri seçili değilse boş, **bir kısmı seçiliyse tire** (`–`).
-- **Erişim yoklaması** — pencere açılırken her hedefin SMB portuna (445) kısa bir TCP yoklaması yapılır; bilgisayar adının solundaki nokta yeşil (yanıt var) ya da kırmızı (yanıt yok) olur, ipucunda ayrıntısı yazar. `Erişimi sına` yoklamayı yeniler. Böylece kapalı bir eğitmen bilgisayarı yüzünden kopyalamanın zaman aşımını beklemek gerekmez.
-- **`Hedefi incele`** — seçili hedeflerde `robocopy /L` çalıştırıp tabloya eklenen `Hedefte` kolonunu doldurur: `aynı` (yeşil), `N değişecek`, `hedefte yok`, `erişilemedi`. Hedefteki dosya kaynaktakinden **daha yeniyse** rozet uyarı rengine döner ve `!` ile başlar — kopyalama o dosyanın üzerine yazar; ipucunda döküm (hedefte olmayan / kaynak daha yeni / hedef daha yeni / boyutu farklı / fazladan) yazar. Hedefe hiçbir şey yazılmaz; erişilemeyen hedefler atlanır. Hangi **dosyaların** değişeceğini görmek için bilgisayar adına tıklayın (aşağıdaki *Makine başına dosya listesi*).
-- **`Seç ⌄` menüsü** — seçim yardımcılarını tek düğmede toplar:
-  - `Erişilebilirleri seç` — yalnızca yoklamaya yanıt veren hedefleri işaretler (görünen satırlarda).
-  - `Son çalıştırmada hatalıları seç` — en son CSV raporunda hata alan hedefleri işaretler, diğerlerini bırakır; yarım kalan gönderim iki tıkla tamamlanır. Rapor yoksa ya da hata yoksa bunu söyler.
-  - `Seçimi ters çevir` — görünen satırlarda seçimi tersine çevirir.
+- **Filter box** — filters by name, group or node ID. While a filter is active, the bulk-selection icons in the column headers apply only to the visible rows: typing `Unit2` and checking the `Gönder` column selects the rows of that group. Hidden rows keep their selection state.
+- **Group chips** — a single checkbox to the left of each group's name; selects or clears every computer in that group with one click. The box also shows the group's state: a check mark if all are selected, empty if none are, and **a dash if some are selected** (`–`).
+- **Reachability probe** — when the window opens, a short TCP probe is sent to each target's SMB port (445); the dot to the left of the computer name turns green (responding) or red (no response), and the tooltip gives the details. `Erişimi sına` (test access) repeats the probe. This way you don't have to wait for the copy to time out because a trainer computer is switched off.
+- **`Hedefi incele`** (inspect target) — runs `robocopy /L` on the selected targets and fills in the `Hedefte` (on target) column that is added to the table: `aynı` (same, green), `N değişecek` (N will change), `hedefte yok` (not on target), `erişilemedi` (unreachable). If a file on the target is **newer** than the source, the badge switches to the warning color and starts with `!` — the copy will overwrite that file; the tooltip shows a breakdown (not on target / source newer / target newer / size differs / extra). Nothing is written to the target; unreachable targets are skipped. To see which **files** will change, click the computer name (see *Per-machine file list* below).
+- **`Seç ⌄`** (select) **menu** — gathers the selection helpers into a single button:
+  - `Erişilebilirleri seç` (select reachable) — checks only the targets that answered the probe (among the visible rows).
+  - `Son çalıştırmada hatalıları seç` (select failed in last run) — checks the targets that failed in the most recent CSV report and clears the others; an interrupted send can be completed in two clicks. If there is no report, or no failures, it says so.
+  - `Seçimi ters çevir` (invert selection) — inverts the selection in the visible rows.
 
-Başlık satırı seçimi tek satırda özetler: tek öğede tam yol ve türü, çok öğede ortak klasör ile sayı dökümü (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`), öğeler ayrı klasörlerden geliyorsa klasör sayısı. Ayrıntı, altındaki iki tıklanabilir çipte durur — böylece kalabalık seçimlerde satır uzayıp kesilmez:
+The title line summarizes the selection on a single line: for a single item, its full path and type; for several items, the common folder and a count breakdown (`C:\...\Data içinden 9 öğe (6 dosya, 3 klasör)`, i.e. "9 items from C:\...\Data (6 files, 3 folders)"); if the items come from different folders, the number of folders. The details live in the two clickable chips below it — so the line does not grow long and get cut off for large selections:
 
-- **`Kaynak: N öğe`** — açılan listede öğeler ait oldukları yerel köke göre gruplanır ve her öğe **hedefte oluşacak göreli yoluyla** yazılır (klasörler `\` ile biter, satır ipucunda tam yol görünür). Hiçbir kökün altında olmayan öğeler `Yerel kök dışında (sürücü adıyla kopyalanır)` başlığı altında toplanır. Liste en fazla 200 satır gösterir, kalanı `... ve N öğe daha` diye bildirir; `Yolları panoya kopyala` düğmesi seçimin tamamını panoya yazar.
+- **`Kaynak: N öğe`** (Source: N items) — in the list that opens, items are grouped by the local root they belong to, and each item is written **with the relative path it will have on the target** (folders end with `\`, and the row tooltip shows the full path). Items that are under no root are collected under the heading `Yerel kök dışında (sürücü adıyla kopyalanır)` (outside the local root (copied with the drive name)). The list shows at most 200 rows and reports the rest as `... ve N öğe daha` (... and N more items); the `Yolları panoya kopyala` (copy paths to clipboard) button writes the entire selection to the clipboard.
 
-  Sihirbazda bu liste düzenlenebilir: her satırın başındaki **onay kutusunun işareti kaldırılan öğe o kopyalamaya girmez** (çip `Kaynak: 7 / 9 öğe` der, başlık ve inceleme yalnızca kalanları sayar) ve **pencereye dosya/klasör bırakmak** öğeyi listeye ekler. Değişiklik yalnızca o çalıştırma içindir, kayıtlı ayarlara yazılmaz; bütün öğelerin işareti kaldırılırsa kopyalama başlatılmaz. İlk 200 satırın dışında kalan öğeler tek tek düşürülemez.
-- **`Yerel kök: <yol>` / `N yerel kök`** — bir kök varsa yolu çipte görünür, birden fazla kök varsa yalnızca sayı yazar; açılan listede bütün kökler tam yolla ve her birinden kaç öğe seçildiğiyle (`3 öğe` / `seçimde yok`) durur. Yol artık çipin içinde yarıda kesilmiyor.
+  In the wizard this list is editable: **an item whose checkbox at the start of its row is cleared is left out of that copy** (the chip then reads `Kaynak: 7 / 9 öğe` (Source: 7 / 9 items), and the title and the inspection count only the remaining items), and **dropping files/folders onto the window** adds them to the list. The change applies to that run only and is not written to the saved settings; if every item is unchecked, the copy is not started. Items beyond the first 200 rows cannot be excluded individually.
+- **`Yerel kök: <yol>` / `N yerel kök`** (Local root: <path> / N local roots) — if there is one root, its path is shown in the chip; if there is more than one root, only the count is shown. The list that opens shows every root with its full path and how many items were selected from each (`3 öğe` / `seçimde yok` — 3 items / not in selection). The path is no longer cut off halfway inside the chip.
 
-Aynı iki çip kopyalama penceresinin başlığında da vardır; geri alma penceresi de aynı özet satırını kullanır.
+The same two chips also appear in the header of the copy window; the restore window uses the same summary line as well.
 
-Üst satırdaki `Son gönderim` çipi, günlükteki en son kopyalama özetini gösterir (tarih, başarılı/hatalı sayıları, süre). Tıklanınca **son 10 çalıştırma** CSV raporlarından listelenir: her satırda tarih, hedef sayısı, başarılı/hatalı/iptal dökümü ve kaynak görünür. `Hedefleri seç` o çalıştırmanın hedef kümesini tabloya uygular (o hedefler seçilir, diğerleri bırakılır) — "geçen seferkinin aynısına gönder" iki tıktır; `Raporu aç` CSV'yi varsayılan uygulamayla açar. Liste her açılışta yeniden okunur.
+The `Son gönderim` (last send) chip on the top line shows the most recent copy summary from the log (date, success/failure counts, duration). Clicking it lists **the last 10 runs** from the CSV reports: each row shows the date, the number of targets, the succeeded/failed/cancelled breakdown and the source. `Hedefleri seç` (select targets) applies that run's target set to the table (those targets are selected, the others are cleared) — "send to the same ones as last time" takes two clicks; `Raporu aç` (open report) opens the CSV in the default application. The list is re-read every time it is opened.
 
-Bilgisayar başına parametreler:
+Per-computer parameters:
 
-| Parametre | Ne yapar |
+| Parameter | What it does |
 | --- | --- |
-| `Yedek al` | Hedefte aynı yolda hâlihazırda duran dosya/klasörü, kopyalamadan önce `<networkRoot>\_SamePathCopyYedek\<tarih-saat>\<göreli yol>` altına kopyalar. Hedefte önceki hâli yoksa atlanır. Yedek başarısız olursa o öğe kopyalanmaz. |
-| `Yalnızca yeni` | Hedefteki dosya kaynaktan yeni ya da aynı yaştaysa dokunmaz (`robocopy /XO`). |
-| `Ayna (fazlayı sil)` | Hedefi kaynağın aynası yapar; kaynakta olmayan dosyalar hedefte silinir (`robocopy /MIR`). Yalnızca klasör kopyalamada uygulanır ve başlatmadan önce ayrıca onay ister. |
+| `Yedek al` (back up) | Before copying, copies the file/folder already at the same path on the target to `<networkRoot>\_SamePathCopyYedek\<date-time>\<relative path>`. Skipped if the target has no previous version. If the backup fails, that item is not copied. |
+| `Yalnızca yeni` (newer only) | Leaves the file on the target untouched if it is newer than the source or the same age (`robocopy /XO`). |
+| `Ayna (fazlayı sil)` (mirror (delete extras)) | Makes the target a mirror of the source; files that do not exist in the source are deleted on the target (`robocopy /MIR`). Applies only to folder copies and asks for a separate confirmation before starting. |
 
-Bütün hedefler için geçerli parametreler:
+Parameters that apply to all targets:
 
-| Parametre | Ne yapar |
+| Parameter | What it does |
 | --- | --- |
-| `Bitince bildirim göster` | Kopyalama bitince görev çubuğunda bildirim balonu gösterir (varsayılan açık). Pencere arkada kalsa da sonuç görülür. |
-| `Deneme çalıştırması` | Ne kopyalanacağını hesaplar, hiçbir şey yazmaz (`robocopy /L`). Yedek adımı da atlanır. |
-| `Hızlı kopyalama` | Çok iş parçacıklı kopyalama (`robocopy /MT:8`). Yeniden başlatılabilir kip (`/Z`) bu durumda kullanılmaz. |
-| `Hariç dosyalar` | Noktalı virgülle ayrılmış dosya kalıpları kopyalanmaz (`robocopy /XF`). Örnek: `*.pdb;*.tmp;desktop.ini` |
-| `Hariç klasörler` | Noktalı virgülle ayrılmış klasör adları kopyalanmaz (`robocopy /XD`). Örnek: `.git;Logs;Temp`. Yedek klasörü zaten hep hariç tutulur. |
-| `Eşzamanlı hedef` | Aynı anda kaç bilgisayara kopyalandığı (varsayılan `4`, `1` = sırayla, en fazla `16`). Aynı hedefe iki robocopy birden gönderilmez; bir hedefin planları kendi içinde sıralı kalır, böylece `Ayna` gibi yıkıcı parametreler güvenli çalışır. |
-| `Paket arası bekleme (ms)` | Ağı boğmamak için paketler arasına bekleme koyar (`robocopy /IPG:n`). `0` = sınırsız hız. |
-| `Yeniden deneme sayısı` | `robocopy /R:n`. Boş bırakılırsa `config.json` içindeki `copy.retryCount` kullanılır. |
-| `Denemeler arası bekleme (sn)` | `robocopy /W:n`. Boş bırakılırsa `config.json` içindeki `copy.waitSeconds` kullanılır. |
+| `Bitince bildirim göster` (show notification when done) | Shows a notification balloon in the taskbar when the copy finishes (on by default). You see the result even if the window is in the background. |
+| `Deneme çalıştırması` (dry run) | Calculates what would be copied without writing anything (`robocopy /L`). The backup step is skipped as well. |
+| `Hızlı kopyalama` (fast copy) | Multithreaded copy (`robocopy /MT:8`). Restartable mode (`/Z`) is not used in this case. |
+| `Hariç dosyalar` (excluded files) | Semicolon-separated file patterns that are not copied (`robocopy /XF`). Example: `*.pdb;*.tmp;desktop.ini` |
+| `Hariç klasörler` (excluded folders) | Semicolon-separated folder names that are not copied (`robocopy /XD`). Example: `.git;Logs;Temp`. The backup folder is always excluded anyway. |
+| `Eşzamanlı hedef` (concurrent targets) | How many computers are copied to at the same time (default `4`, `1` = one after another, at most `16`). Two robocopy runs are never sent to the same target at once; a target's plans remain sequential among themselves, so destructive parameters such as `Ayna` run safely. |
+| `Paket arası bekleme (ms)` (inter-packet gap (ms)) | Inserts a delay between packets so the network is not saturated (`robocopy /IPG:n`). `0` = unlimited speed. |
+| `Yeniden deneme sayısı` (retry count) | `robocopy /R:n`. If left empty, `copy.retryCount` from `config.json` is used. |
+| `Denemeler arası bekleme (sn)` (wait between retries (s)) | `robocopy /W:n`. If left empty, `copy.waitSeconds` from `config.json` is used. |
 
-İlk açılışta bütün bilgisayarlar işaretli, parametreler kapalı gelir. Seçimler `%LOCALAPPDATA%\SamePathCopy\wizard-state.json` içinde config dosyası yoluna göre saklanır; pencere bir sonraki açılışta son hâliyle gelir. Vazgeçilse bile tablodaki son durum saklanır. `config.json`'a sonradan eklenen bilgisayar işaretli gelir, silinen bilgisayar durumdan düşer. `SAMEPATHCOPY_WIZARD_STATE` ortam değişkeni durum dosyasının yolunu değiştirir.
+On first open, all computers are checked and all parameters are off. Selections are stored in `%LOCALAPPDATA%\SamePathCopy\wizard-state.json`, keyed by the config file path; the next time the window opens it comes back in its last state. The last state of the table is saved even if you cancel. A computer added to `config.json` later comes up checked, and a removed computer drops out of the state. The `SAMEPATHCOPY_WIZARD_STATE` environment variable changes the path of the state file.
 
-Yedek klasörü hedefin `networkRoot` değeri altında durur ve klasör kopyalamalarında kopyalama dışında bırakılır (`robocopy /XD`), böylece yedekler kendi kendini çoğaltmaz.
+The backup folder lives under the target's `networkRoot` and is left out of folder copies (`robocopy /XD`), so backups do not replicate themselves.
 
-Yedekler hedef paylaşımda sınırsız birikmesin diye her başarılı yedekten sonra eski tarih klasörleri silinir; kaç tanesinin tutulacağı `config.json` içindeki `copy.backupKeep` alanından belirlenir (varsayılan `5`, `0` = sınırsız). Yalnızca `yyyyMMdd-HHmmss` biçimindeki klasörler temizlenir; elle oluşturulmuş klasörlere dokunulmaz. Silinen yedekler sonuç panelinde ve günlükte görünür.
+So that backups do not pile up indefinitely on the target share, old date folders are deleted after every successful backup; how many are kept is set by the `copy.backupKeep` field in `config.json` (default `5`, `0` = unlimited). Only folders in the `yyyyMMdd-HHmmss` format are cleaned up; manually created folders are left alone. Deleted backups appear in the result panel and in the log.
 
-#### Makine başına dosya listesi
+#### Per-machine file list
 
-Tablodaki **bilgisayar adına tıklamak**, o satırın altında büyük bir kart açar: kopyalama o makinede tam olarak neyi yapacak, dosya dosya. Adın solundaki `›` işareti açıldığında `⌄` olur; tekrar tıklamak kartı kapatır. Her satırda git'i andıran bir işaret, öğeye göre göreli yol, durum metni ve boyut vardır:
+**Clicking a computer name** in the table opens a large card below that row: exactly what the copy will do on that machine, file by file. The `›` mark to the left of the name turns into `⌄` when the card is open; clicking again closes the card. Each row has a git-like mark, the path relative to the item, a status text and the size:
 
-| İşaret | Durum | Ne anlama gelir |
+| Mark | Status | Meaning |
 | --- | --- | --- |
-| `+` (yeşil) | `yeni` / `yeni klasör` | Hedefte yok; ilk kez kopyalanacak. |
-| `~` (vurgu rengi) | `güncellenecek` / `boyutu farklı` | Hedefteki dosyanın üzerine yazılacak. |
-| `!` (uyarı rengi) | `hedef daha yeni` | Hedefteki dosya kaynaktan **daha yeni**; kopyalama onu eski hâline döndürür. |
-| `-` (kırmızı / soluk) | `silinecek` / `hedefte fazla` | Kaynakta yok, hedefte var. Yalnızca `Ayna` açıkken silinir; kapalıysa olduğu gibi kalır. |
+| `+` (green) | `yeni` / `yeni klasör` (new / new folder) | Not on the target; will be copied for the first time. |
+| `~` (accent color) | `güncellenecek` / `boyutu farklı` (will be updated / size differs) | The file on the target will be overwritten. |
+| `!` (warning color) | `hedef daha yeni` (target is newer) | The file on the target is **newer** than the source; the copy will revert it to the older version. |
+| `-` (red / dimmed) | `silinecek` / `hedefte fazla` (will be deleted / extra on target) | Not in the source, present on the target. Deleted only when `Ayna` (mirror) is on; otherwise it is left as it is. |
 
-Liste ilk açılışta `robocopy /L` ile hesaplanır — hedefe hiçbir şey yazılmaz — ve sonraki açılışlarda önbellekten gelir. Hesaplama sırasında `hesaplanıyor...` yazar ve pencere yanıt vermeye devam eder. Erişim yoklamasına yanıt vermeyen hedefte robocopy'nin ağ zaman aşımı beklenmez, kart bunu söyler. Kalabalık listeler 400 satırda kesilir; kalan sayı satır olarak bildirilir. Birden çok kaynak öğe seçildiyse satırlar öğe başlıkları altında gruplanır. Kart açıldığında o satırın `Hedefte` rozeti de dolar: aynı sayılardan `Hedefi incele` düğmesinin yazdığı rozetin aynısı üretilir.
+The list is computed with `robocopy /L` the first time it is opened — nothing is written to the target — and comes from a cache on later openings. While it is being computed the card shows `hesaplanıyor...` (calculating...) and the window stays responsive. For a target that did not answer the reachability probe, robocopy's network timeout is not waited for; the card says so. Long lists are cut off at 400 rows; the remaining count is reported as a row. If several source items were selected, the rows are grouped under item headings. When the card opens, that row's `Hedefte` (on target) badge is filled in as well: the same badge that the `Hedefi incele` (inspect target) button writes is produced from the same counts.
 
-Satırların hepsi işaretli gelir. **Bir satırın işaretini kaldırmak o öğeyi yalnızca o makinede** kopyalamadan düşürür; öbür hedefler etkilenmez. Yol robocopy'ye tam yolla geçer: dosyalar `/XF`, klasörler `/XD`. Hedefteki fazlalığın işaretini kaldırmak onu `/XF` listesine koyar, yani `Ayna` açık olsa bile o dosya silinmez. Bir klasörün işareti kaldırılınca altındaki satırların kutuları kapanır, çünkü onlar da kopyalanmaz. Düşürülen yollar tek bir robocopy komut satırına sığmak zorunda olduğundan hedef başına toplam uzunluk sınırı vardır; sınıra gelindiğinde neden eklenmediği söylenir (bu durumda tek tek dosya yerine üst klasörü düşürün ya da `Hariç dosyalar` kalıbını kullanın). Düşürme yalnızca o çalıştırma için geçerlidir, `wizard-state.json` içine yazılmaz.
+All rows come checked. **Unchecking a row excludes that item from the copy on that machine only**; the other targets are not affected. The path is passed to robocopy as a full path: files via `/XF`, folders via `/XD`. Unchecking an extra file on the target puts it on the `/XF` list, so that file is not deleted even when `Ayna` is on. When a folder is unchecked, the boxes of the rows below it are cleared too, because they will not be copied either. Because the excluded paths have to fit into a single robocopy command line, there is a total length limit per target; when the limit is reached, you are told why the item was not added (in that case exclude the parent folder instead of individual files, or use a `Hariç dosyalar` (excluded files) pattern). An exclusion applies to that run only and is not written to `wizard-state.json`.
 
-Kartın sağ üstündeki düğmeler: `Yenile` listeyi yeniden hesaplar, `Düşürülenleri geri al` o makinede düşürülen bütün öğeleri geri getirir, `Karşılaştır ⇄` aşağıdaki pencereyi açar. Kaynak listesi değişirse (çipten öğe düşürülür ya da pencereye dosya bırakılır) veya o satırın `Ayna` / `Yalnızca yeni` parametresi elle değiştirilirse açık kart eski listeyi göstermek yerine `Yenile ile güncelleyin` der.
+Buttons at the top right of the card: `Yenile` (refresh) recomputes the list, `Düşürülenleri geri al` (restore excluded items) brings back every item excluded on that machine, and `Karşılaştır ⇄` (compare) opens the window described below. If the source list changes (an item is excluded from the chip or a file is dropped onto the window), or that row's `Ayna` / `Yalnızca yeni` parameter is changed by hand, an open card shows `Yenile ile güncelleyin` (update with Refresh) instead of showing the stale list.
 
-#### Karşılaştırma penceresi
+#### Comparison window
 
-Ayrıntı kartındaki `Karşılaştır ⇄` düğmesi (ya da bir dosya satırının kendi `⇄` düğmesi) ayrı bir pencere açar: solda o makinede etkilenecek öğelerin listesi, sağda seçilen dosyanın **kaynak ile hedef arasındaki satır satır farkı**. Eklenecek satırlar yeşil `+`, hedeften kalkacak satırlar kırmızı `-` ile işaretlenir; iki taraf için ayrı satır numaraları yazılır. Üstte iki dosyanın boyutu, tarihi ve hedef yolu durur. Satır farkı LCS ile hesaplanır: ortak baş ve son kırpılır, uzun değişmeyen bloklar `... N satır aynı` satırına iner, böylece on binlerce satırlık bir dosyada yalnızca değişikliğin çevresi görünür. İkili (NUL baytı taşıyan), çok büyük (2 MB üstü), hedefte olmayan ya da okunamayan dosyalarda satır farkı yerine nedeni yazılır — boyut ve tarih karşılaştırması yine görünür. Pencere yalnızca okuma yapar; `Listeyi panoya kopyala` bütün satırları işaretleriyle panoya alır. Karşılaştırma katmanı [SamePathCopy.Diff.ps1](SamePathCopy.Diff.ps1) içindedir.
+The `Karşılaştır ⇄` (compare) button in the detail card (or a file row's own `⇄` button) opens a separate window: on the left, the list of items affected on that machine; on the right, the **line-by-line difference between the source and the target** for the selected file. Lines to be added are marked with a green `+`, lines to be removed from the target with a red `-`; separate line numbers are shown for each side. At the top are the size, date and target path of both files. The line difference is computed with LCS: the common head and tail are trimmed, and long unchanged blocks collapse into a `... N satır aynı` (... N lines identical) row, so in a file with tens of thousands of lines only the surroundings of the change are visible. For binary files (containing a NUL byte), very large files (over 2 MB), files that are missing on the target and unreadable files, the reason is shown instead of the line difference — the size and date comparison is still visible. The window is read-only; `Listeyi panoya kopyala` (copy list to clipboard) copies all rows, with their marks, to the clipboard. The comparison layer lives in [SamePathCopy.Diff.ps1](SamePathCopy.Diff.ps1).
 
-#### Profiller
+#### Profiles
 
-Sihirbazın sağ üstündeki **Profil** kutusu, adlandırılmış seçim kümeleri tutar: hedef seçimi ve bütün parametreler bir adla saklanır. `Profili kaydet` mevcut tabloyu kaydeder, listeden bir profil seçmek onu tabloya uygular, `Sil` kaldırır. Profil adı harf, rakam, nokta, alt çizgi ve tire içerebilir (menü komutlarında hedef kimliği olarak kullanıldığı için boşluk yoktur).
+The **Profil** (profile) box at the top right of the wizard holds named selection sets: the target selection and all parameters are stored under a name. `Profili kaydet` (save profile) saves the current table, choosing a profile from the list applies it to the table, and `Sil` (delete) removes it. A profile name may contain letters, digits, dots, underscores and hyphens (no spaces, because it is used as a target ID in the menu commands).
 
-Her profil menüde `<ad> (profil)` girdisi olarak görünür ve komutlara `-TargetId profile:<ad>` biçiminde geçer; yani bir profile klavye kısayolu da bağlanabilir:
+Each profile appears in the menu as a `<ad> (profil)` (`<name> (profile)`) entry and is passed to the commands as `-TargetId profile:<name>`; this means a keyboard shortcut can also be bound to a profile:
 
 ```json
 "notepadPlusPlusShortcuts": {
@@ -169,43 +171,43 @@ Her profil menüde `<ad> (profil)` girdisi olarak görünür ve komutlara `-Targ
 }
 ```
 
-Profil eklendikten veya silindikten sonra menü girdilerinin güncellenmesi için kurulumu (`Install-ContextMenu.bat`) yeniden çalıştırın. Profiller `wizard-state.json` içinde, son kullanılan ayarla aynı dosyada ama ondan bağımsız durur: ayar kaydetmek profilleri değiştirmez.
+After adding or deleting a profile, run the installer (`Install-ContextMenu.bat`) again so that the menu entries are updated. Profiles are stored in `wizard-state.json`, in the same file as the last-used settings but independently of them: saving the settings does not change the profiles.
 
-#### Son ayarla gönderme
+#### Sending with the last settings
 
-`Wizard` girdisinin hemen ardından gelen `Wizard (son ayar)` girdisi pencereyi hiç açmaz: sihirbazda en son kaydedilen hedef seçimini ve parametreleri olduğu gibi uygulayıp kopyalamayı başlatır. Komutlara `-TargetId wizard:last` olarak geçer, etiketi `config.json` içindeki `wizardLastLabel` alanından değiştirilebilir.
+The `Wizard (son ayar)` (Wizard (last settings)) entry, which comes right after the `Wizard` entry, does not open the window at all: it applies the target selection and parameters last saved in the wizard as they are and starts the copy. It is passed to the commands as `-TargetId wizard:last`; its label can be changed with the `wizardLastLabel` field in `config.json`.
 
-Bu girdi özellikle klavye kısayolu için düşünülmüştür: hedefler bir kez sihirbazdan seçilir, sonrasında Notepad++ içinde tek tuşla aynı hedeflere gönderilir. Kopyalama penceresi bu durumda `Son sihirbaz ayarı` etiketiyle açılır. Henüz sihirbaz kullanılmamışsa varsayılan geçerlidir (bütün hedefler, parametreler kapalı). Son ayarda hiçbir hedef seçili değilse kopyalama yapılmaz ve sihirbazı açıp seçim yapılması istenir.
+This entry is intended mainly for a keyboard shortcut: the targets are chosen once in the wizard, and from then on you send to the same targets with a single keystroke inside Notepad++. In this case the copy window opens with the label `Son sihirbaz ayarı` (last wizard setting). If the wizard has not been used yet, the defaults apply (all targets, parameters off). If no target is selected in the last settings, nothing is copied and you are asked to open the wizard and make a selection.
 
-### Günlük
+### Log
 
-Bütün betikler araç klasörünün altındaki `log\root.log` dosyasına yazar. Klasör yazılamıyorsa (salt okunur paylaşımdan çalıştırma) sırayla `%LOCALAPPDATA%\SamePathCopy\log\root.log` ve `%TEMP%\SamePathCopy\log\root.log` denenir. `SAMEPATHCOPY_LOG` ortam değişkeni dosyanın yolunu doğrudan belirler. Günlük yazımı hiçbir koşulda kopyalamayı durdurmaz; yazılamazsa sessizce atlanır.
+All scripts write to `log\root.log` under the tool folder. If the folder is not writable (when running from a read-only share), `%LOCALAPPDATA%\SamePathCopy\log\root.log` and then `%TEMP%\SamePathCopy\log\root.log` are tried in that order. The `SAMEPATHCOPY_LOG` environment variable sets the file path directly. Logging never stops a copy under any circumstances; if the log cannot be written, the entry is silently skipped.
 
-Satır biçimi:
+Line format:
 
 ```text
 2026-08-20 16:22:44.473 [INFO ] [41a4729c] [Panel] Demo hedefi 1  [yedek] → başarılı
 ```
 
-Sırasıyla zaman damgası, seviye (`INFO` / `WARN` / `ERROR`), çalıştırma kimliği ve bileşen adı yer alır. Çalıştırma kimliği her süreç için üretilir; aynı dosyaya birden fazla kopyalama paralel yazdığında satırlar bu kimlikle ayrılır. Bileşenler: `Kopyala`, `Panel`, `Sihirbaz`, `Plan`, `Kuyruk`, `Kurulum`, `Kaldırma`, `Notepad++`.
+The fields are, in order: timestamp, level (`INFO` / `WARN` / `ERROR`), run ID and component name. A run ID is generated for each process; when several copies write to the same file in parallel, their lines are told apart by this ID. Components: `Kopyala` (copy), `Panel`, `Sihirbaz` (wizard), `Plan`, `Kuyruk` (queue), `Kurulum` (install), `Kaldırma` (uninstall), `Notepad++`.
 
-**Kopyalama panelinde görünen her satır günlüğe de yazılır**: hedef başına kaynak → hedef satırı, etkin parametreler, yedek yolu, `başarılı` / `hatalı` / `atlandı` durumu, robocopy hata kodu ve hata ayrıntıları, en sonda özet. Bunların yanında oturum başlığı (sürüm, kullanıcı, süreç kimliği), yerel node ve kökler, çözülen hedefler, sihirbazdan gelen seçim ve parametreler, hesaplanan plan, kuyruk birleştirme ve kurulum/kaldırma işlemleri de kaydedilir. `Günlüğü kopyala` düğmesinin ipucunda günlük dosyasının yolu yazar.
+**Every line shown in the copy panel is also written to the log**: the source → target line for each target, the active parameters, the backup path, the `başarılı` / `hatalı` / `atlandı` (succeeded / failed / skipped) status, the robocopy error code and error details, and the summary at the end. In addition, the session header (version, user, process ID), the local node and roots, the resolved targets, the selection and parameters coming from the wizard, the computed plan, queue merging, and install/uninstall operations are recorded. The tooltip of the `Günlüğü kopyala` (copy log) button shows the path of the log file.
 
-Her kopyalama çalıştırması ayrıca `log\reports\rapor-<tarih-saat>.csv` dosyasına yazılır: zaman, hedef, kaynak, hedef yolu, etkin parametreler, sonuç (`başarılı` / `hatalı` / `iptal`), robocopy kodu, süre ve hata notu. Kopyalama penceresindeki `Raporu aç` düğmesi bu dosyayı açar. Dosya noktalı virgül ayırıcıyla yazıldığı için Excel'de doğrudan açılır.
+Each copy run is also written to `log\reports\rapor-<date-time>.csv`: time, target, source, target path, active parameters, result (`başarılı` / `hatalı` / `iptal` — succeeded / failed / cancelled), robocopy code, duration and error note. The `Raporu aç` (open report) button in the copy window opens this file. Because the file is written with a semicolon separator, it opens directly in Excel.
 
-`root.log` 5 MB'ı geçtiğinde `root.1.log`, `root.2.log`, `root.3.log` olarak kaydırılır; en eskisi silinir. Günlük klasörü sürüm denetimine girmez.
+When `root.log` exceeds 5 MB it is rotated to `root.1.log`, `root.2.log`, `root.3.log`; the oldest one is deleted. The log folder is not under version control.
 
-### Yedekten geri alma
+### Restoring from backup
 
-Menüdeki `Yedekten geri al` girdisi (`-TargetId restore`, etiket `config.json` içindeki `restoreLabel` alanından değişir), seçilen öğenin hedeflerdeki eski hâlini geri yazar. Explorer'da bir klasöre sağ tıklayıp bu girdiyi seçmek, o klasörün yedeklerini arar.
+The `Yedekten geri al` (restore from backup) menu entry (`-TargetId restore`; the label can be changed with the `restoreLabel` field in `config.json`) writes the earlier version of the selected item back to the targets. Right-clicking a folder in Explorer and choosing this entry looks for that folder's backups.
 
-Pencerede yalnızca o öğe için yedeği bulunan bilgisayarlar listelenir; her satırda o hedefteki yedek tarihleri açılır listede durur (en yeni önce seçili). `Geri almadan önce hedefin şu anki hâlini yedekle` seçeneği varsayılan olarak açıktır, yani geri alma da geri alınabilir. Geri alma yedekteki dosyaları hedefe yazar; hedefte olup yedekte olmayan dosyalar silinmez (ayna kullanılmaz).
+The window lists only the computers that have a backup of that item; in each row, the backup dates available on that target are in a drop-down list (the newest is selected first). The `Geri almadan önce hedefin şu anki hâlini yedekle` (back up the target's current state before restoring) option is on by default, so a restore can itself be undone. Restoring writes the files from the backup to the target; files that are on the target but not in the backup are not deleted (no mirroring is used).
 
-Seçilen öğe için hiçbir hedefte yedek yoksa işlem başlamaz ve bunu söyleyen bir hata verilir. Yedekler kopyalama sırasında `Yedek al` parametresi seçiliyken oluşur.
+If no target has a backup of the selected item, the operation does not start and an error saying so is shown. Backups are created during copying when the `Yedek al` (back up) parameter is selected.
 
-### Kopyalama sonrası komut
+### Post-copy command
 
-`config.json` içindeki `copy.postCommand` doluysa, bir hedefe kopyalama başarıyla bittikten sonra o komut **bir kez** çalıştırılır (deneme çalıştırmasında çalışmaz). Örnek: dağıtımdan sonra karşı taraftaki simülatörü yeniden başlatan bir görevi tetiklemek.
+If `copy.postCommand` in `config.json` is set, that command runs **once** after a copy to a target has finished successfully (it does not run in a dry run). Example: triggering a task that restarts the simulator on the other side after a deployment.
 
 ```json
 "copy": {
@@ -217,20 +219,20 @@ Seçilen öğe için hiçbir hedefte yedek yoksa işlem başlamaz ve bunu söyle
 }
 ```
 
-Kullanılabilir yer tutucular: `{address}`, `{targetId}`, `{targetName}`, `{networkRoot}`, `{destination}`, `{source}`. Komut `cmd /c` ile çalışır, penceresi görünmez; çıkışı ve hata akışı günlüğe yazılır, sonuç panelde satır olarak görünür. `postCommandTimeoutSeconds` (varsayılan 60, en fazla 3600) süresinde bitmezse süreç durdurulur ve hata olarak kaydedilir. Komut yalnızca `config.json` üzerinden tanımlanır; arayüzden serbest komut girilemez.
+Available placeholders: `{address}`, `{targetId}`, `{targetName}`, `{networkRoot}`, `{destination}`, `{source}`. The command runs via `cmd /c` with its window hidden; its output and error streams are written to the log, and the result appears as a row in the panel. If it does not finish within `postCommandTimeoutSeconds` (default 60, at most 3600), the process is stopped and recorded as an error. The command can only be defined through `config.json`; arbitrary commands cannot be entered from the UI.
 
-### Kopyalama öncesi denetimler
+### Pre-copy checks
 
-Kopyalama penceresi açıldıktan sonra, işlem başlamadan önce iki denetim yapılır:
+After the copy window opens and before the operation starts, two checks are made:
 
-- **Ayna önizlemesi** — `Ayna` seçili her hedef için `robocopy /L /MIR` çalıştırılıp hedefte silinecek öğeler listelenir. Panelde hedef başına "N fazla öğe silinecek, M öğe güncellenecek" satırı ve ilk beş dosyanın yolu görünür; ardından toplam silme sayısını söyleyen bir onay istenir. Onay verilmezse hiçbir şey kopyalanmaz. Bütün liste günlüğe de yazılır.
-- **Disk alanı** — hedef paylaşımdaki boş alan kaynak boyutundan küçükse uyarı satırı eklenir (kopyalama engellenmez, çünkü hedefte üzerine yazılacak dosyalar da yer açar). Boş alan okunamayan paylaşımlar sessizce atlanır.
+- **Mirror preview** — for every target with `Ayna` (mirror) selected, `robocopy /L /MIR` is run and the items that will be deleted on the target are listed. The panel shows a line per target reading "N fazla öğe silinecek, M öğe güncellenecek" ("N extra items will be deleted, M items will be updated") along with the paths of the first five files; then a confirmation that states the total number of deletions is requested. If you do not confirm, nothing is copied. The full list is also written to the log.
+- **Disk space** — if the free space on the target share is smaller than the source size, a warning line is added (the copy is not blocked, because files on the target that will be overwritten also free up space). Shares whose free space cannot be read are silently skipped.
 
-`Deneme çalıştırması` seçiliyken her hedef için ne değişeceği de listelenir: "N öğe kopyalanacaktı, M öğe hedefte fazla" ve ilk beş yol.
+When `Deneme çalıştırması` (dry run) is selected, what would change is also listed for each target: "N öğe kopyalanacaktı, M öğe hedefte fazla" ("N items would have been copied, M items are extra on the target") and the first five paths.
 
-### Gruplar
+### Groups
 
-Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için, o gruptaki bütün makinelere gönderen tek bir girdi oluşur:
+Machines are clustered by giving nodes a `group` field. For each group, the menu gets a single entry that sends to every machine in that group:
 
 ```json
 {
@@ -244,84 +246,84 @@ Node'lara `group` alanı verilerek makineler kümelenir. Menüde her grup için,
 }
 ```
 
-### Kaç dosya seçilebilir (100 öğe sınırı)
+### How many files can be selected (100-item limit)
 
-Windows, komut satırıyla çalışan bir sağ tık fiilini **seçili öğe sayısına** göre gizler. Sınır fiilin seçim modeline (`MultiSelectModel`) bağlıdır ve [Microsoft belgesinde](https://learn.microsoft.com/en-us/windows/win32/shell/how-to-employ-the-verb-selection-model) tabloyla verilir:
+Windows hides a command-line right-click verb depending on **the number of selected items**. The limit depends on the verb's selection model (`MultiSelectModel`) and is given in a table in the [Microsoft documentation](https://learn.microsoft.com/en-us/windows/win32/shell/how-to-employ-the-verb-selection-model):
 
-| Seçim modeli | Komut satırı fiili | COM fiili |
+| Selection model | Command-line verb | COM verb |
 | --- | --- | --- |
-| `Document` (her öğe için ayrı pencere açan fiiller) | 15 öğe | 15 öğe |
-| `Player` (her sayıda öğeyi kabul eden fiiller) | **100 öğe** | sınırsız |
+| `Document` (verbs that open a separate window for each item) | 15 items | 15 items |
+| `Player` (verbs that accept any number of items) | **100 items** | unlimited |
 
-Kurulum bu yüzden bütün girdileri `Player` modeliyle yazar: **16 dosya/klasör seçildiğinde menü girdisi kayboluyordu** (15'te görünüyordu), artık 100 öğeye kadar görünür. 101 ve üstünde Windows girdiyi yine gizler; o durumda öğelerin bulunduğu **klasörü** seçip gönderin (klasör kopyalaması alt ağacın tamamını götürür) ya da seçimi ikiye bölün.
+That is why the installer writes every entry with the `Player` model: **the menu entry used to disappear when 16 files/folders were selected** (it was visible with 15); now it is visible up to 100 items. At 101 and above Windows hides the entry again; in that case select the **folder** that contains the items and send it (a folder copy takes the entire subtree along), or split the selection in two.
 
-Explorer, fiili seçilen her öğe için **bir kez** çalıştırır — 40 dosya seçmek 40 PowerShell süreci başlatır. [Queue-SamePathCopy.ps1](Queue-SamePathCopy.ps1) bu çağrıları hedef + config başına bir kuyrukta toplar: ilk süreç toplayıcı olur, ötekiler isteklerini bırakıp çıkar, sonunda **tek bir kopyalama penceresi** açılır ve bütün seçim tek robocopy planına girer. Toplayıcı yeni istek gelmeyi bırakana kadar bekler (tek dosyada 0,4 sn, çok seçimde 1,2 sn sessizlik; en fazla 30 sn), böylece geç açılan süreçler de aynı çalıştırmaya girer. Kabuğun bütün seçimi tek komut satırına dizdiği durum da desteklenir: fazladan gelen yollar kaynak listesine katılır.
+Explorer runs the verb **once** for each selected item — selecting 40 files starts 40 PowerShell processes. [Queue-SamePathCopy.ps1](Queue-SamePathCopy.ps1) gathers these calls into one queue per target + config: the first process becomes the collector, the others drop off their requests and exit, and in the end **a single copy window** opens and the whole selection goes into one robocopy plan. The collector waits until new requests stop arriving (0.4 s of silence for a single file, 1.2 s for a multi-selection; at most 30 s), so processes that start late also join the same run. The case where the shell lines up the whole selection on a single command line is supported as well: the extra paths are added to the source list.
 
-### Explorer menüsünün 16 öğe sınırı
+### The Explorer menu's 16-item limit
 
-> Bu bölümdeki 16, **menüye kaç girdi sığdığı** ile ilgilidir; yukarıdaki 100 ise **kaç dosya seçilebildiği**. İkisi farklı sınırlardır.
+> The 16 in this section is about **how many entries fit in the menu**; the 100 above is about **how many files can be selected**. They are two different limits.
 
 
-Windows'un klasik basamaklı sağ tık menüsü **bütün ağaçta en fazla 16 öğe** gösterir; fazlasını uyarı vermeden gizler. Alt menüye taşımak bu bütçeyi artırmaz: gözlemlenen iki durum, düz listede 19 girdiden 16'sının, alt menülü ağaçta ise `4 toplu + (1 grup + 5 girdi) + (1 grup + 5 girdi) = 16` öğenin göründüğü ve sonrasının düştüğüdür. Ayırıcı çizgiler bu bütçeden yer yemez.
+Windows' classic cascading right-click menu shows **at most 16 items across the whole tree**; it silently hides the rest. Moving entries into a submenu does not increase this budget: in the two observed cases, a flat list showed 16 of its 19 entries, and a tree with submenus showed `4 bulk + (1 group + 5 entries) + (1 group + 5 entries) = 16` items and dropped everything after that. Separator lines do not take up any of this budget.
 
-Kurulum bu yüzden bütçeyi kimin harcayacağına önceden karar verir. Öncelik sırası:
+So the installer decides in advance who gets to spend the budget. The priority order is:
 
-1. **Toplu girdiler** (`Tümü`, sihirbaz girdileri, `Yedekten geri al`, profiller) — her zaman.
-2. **Bütün grup girdileri** — her zaman: hiçbir grup menüden düşmez, grup girdisine tıklamak o grubun tamamına gönderir.
-3. **Gruba ait olmayan makineler** — düşerlerse menüden hiç erişilemezler (arkalarında bir grup girdisi yok), bu yüzden grup açmadan önce yer bulurlar.
-4. **Bu makinenin kendi grubunun makineleri** — alt menüde tek tek açılır. En çok kendi setindeki makinelere gönderildiği için bütçede öncelik onların.
-5. **Kalan grupların makineleri** — hepsi sığıyorsa açılır, sığmıyorsa hiçbiri. Yarısını açmak "neden Unit1 açık da Unit3 kapalı" sorusunu doğuracağı için simetri korunur.
+1. **Bulk entries** (`Tümü` (All), the wizard entries, `Yedekten geri al` (restore from backup), profiles) — always.
+2. **All group entries** — always: no group is dropped from the menu, and clicking a group entry sends to the whole group.
+3. **Machines that do not belong to a group** — if they were dropped they could not be reached from the menu at all (there is no group entry behind them), so they get a place before any group is expanded.
+4. **The machines of this machine's own group** — expanded one by one in a submenu. Since sends go most often to the machines in one's own set, they get priority in the budget.
+5. **The machines of the remaining groups** — expanded if they all fit, otherwise none of them are. Expanding only half of them would raise the question "why is Unit1 expanded but Unit3 not?", so symmetry is preserved.
 
-Bir grubu açmanın bedeli grubun kendi `<grup> - Tümü` girdisi + üye sayısıdır; grup girdisinin kendisi zaten sayılmıştır.
+The cost of expanding a group is the group's own `<grup> - Tümü` (`<group> - All`) entry plus the number of its members; the group entry itself has already been counted.
 
-Örnek — bu makine `Unit2` setindeki eğitmen istasyonuysa (3 set × 4 makine + 1 gruba ait olmayan makine):
+Example — if this machine is the trainer station in the `Unit2` set (3 sets × 4 machines + 1 machine that does not belong to a group):
 
 ```text
-Tümü                        (ikonlu)
-Wizard                      (ikonlu)
-Wizard (son ayar)           (ikonlu)
-Yedekten geri al            (ikonlu)
-Unit1                  → tıklamak Unit1'in tamamına gönderir
+Tümü                        (icon)
+Wizard                      (icon)
+Wizard (son ayar)           (icon)
+Yedekten geri al            (icon)
+Unit1                  → clicking it sends to all of Unit1
 Unit2 ▸                → Unit2 - Tümü, IG1, IG2, IG3
-Unit3                  → tıklamak Unit3'ün tamamına gönderir
-Root                        (gruba ait olmayan makine)
+Unit3                  → clicking it sends to all of Unit3
+Root                        (machine not in any group)
 ```
 
-12 öğe: kendi setindeki makinelere tek tıkla gönderilir, öbür setler grup girdisiyle erişilebilir kalır. Geliştirme makinesi gibi **gruba ait olmayan** bir makinede açılacak kendi grup yoktur; o durumda bütün gruplar grup girdisi olarak kalır (7 öğe).
+12 items: the machines in its own set can be sent to with one click, and the other sets remain reachable through their group entries. On a machine that **does not belong to a group**, such as a development machine, there is no own group to expand; in that case all groups remain as group entries (7 items).
 
-`config.json` içindeki `menuShowNodes` alanı bu davranışı değiştirir:
+The `menuShowNodes` field in `config.json` changes this behavior:
 
-| Değer | Davranış |
+| Value | Behavior |
 | --- | --- |
-| `auto` (varsayılan) | Yukarıdaki öncelik sırası uygulanır. Kurulum hangi grupların açıldığını ve hangilerinin grup girdisi olarak kaldığını yazar. |
-| `always` | Bütün grupların makineleri konur; sınır aşılıyorsa uyarı verilir (Windows fazlasını gizler). |
-| `never` | Hiçbir makine girdisi konmaz, yalnızca toplu girdiler ve gruplar görünür. |
+| `auto` (default) | The priority order above is applied. The installer reports which groups were expanded and which remained as group entries. |
+| `always` | The machines of all groups are added; if the limit is exceeded, a warning is given (Windows hides the excess). |
+| `never` | No machine entries are added; only the bulk entries and the groups are shown. |
 
-Grup tanımlı değilse tek makineler menüdeki tek hedef olduğu için bütçeye ve bu ayara bakılmaksızın konur.
+If no groups are defined, individual machines are added regardless of the budget and of this setting, because they are the only targets in the menu.
 
-Bu bütçe yalnızca **Explorer** menüsü içindir. Notepad++ sekme menüsünde öğe sınırı yoktur; orada bütün makineler her zaman listelenir.
+This budget applies only to the **Explorer** menu. The Notepad++ tab menu has no item limit; all machines are always listed there.
 
-Sığan bir yapılandırmada menü şöyle görünür (gruplar alt menüde, bölümler ayırıcıyla ayrılmış):
+In a configuration that fits, the menu looks like this (groups in submenus, sections divided by separators):
 
 ```text
-Tümü                        (ikonlu)
+Tümü                        (icon)
 ────────────────────────────────────
-Wizard                      (ikonlu)
-Wizard (son ayar)           (ikonlu)
+Wizard                      (icon)
+Wizard (son ayar)           (icon)
 ────────────────────────────────────
-Yedekten geri al            (ikonlu)
+Yedekten geri al            (icon)
 ────────────────────────────────────
-Unit1              ▸   (ikonlu)   →   Unit1 - Tümü   (ikonlu)
-Unit2              ▸   (ikonlu)       Eğitmen - 10.10.1.10
+Unit1              ▸   (icon)     →   Unit1 - Tümü   (icon)
+Unit2              ▸   (icon)         Eğitmen - 10.10.1.10
 ────────────────────────────────────       IG1 - 10.10.1.11
 Arşiv sunucusu                             IG2 - 10.10.1.12
 ```
 
-12 makineli üç setli yapılandırmada bütün makineler sığmaz (`4 + 3 + 12 = 19`): menü kendi grubunun makinelerini açar, öbür iki grup girdi olarak kalır (yukarıdaki örnek, 12 öğe). Gruba ait olmayan bir makinede kurulduysa açılacak kendi grup olmadığı için menü yalnızca toplu girdilerle ve üç grup girdisiyle (7 öğe) kurulur. Kapalı bir gruptaki tek bir makineye göndermek için sihirbaz kullanılır (filtre + onay kutuları) ya da o makine için bir profil kaydedilir.
+In a three-set configuration with 12 machines, not all machines fit (`4 + 3 + 12 = 19`): the menu expands the machines of its own group and the other two groups remain as entries (the example above, 12 items). If it was installed on a machine that does not belong to a group, there is no own group to expand, so the menu is built only from the bulk entries and the three group entries (7 items). To send to a single machine in a collapsed group, use the wizard (filter + checkboxes) or save a profile for that machine.
 
-Ayırıcılar bölüm değiştiğinde konur (`CommandFlags = 0x20`): `Tümü`, sihirbaz girdileri, geri alma, profiller, gruplar ve tek makineler arasında. İkon yalnızca toplu girdilerde durur; tek makine girdileri ikonsuzdur.
+Separators are inserted where the section changes (`CommandFlags = 0x20`): between `Tümü`, the wizard entries, restore, profiles, groups and individual machines. Only the bulk entries have an icon; individual machine entries have none.
 
-Notepad++ sekme menüsünde böyle bir sınır olmadığı için orada liste düzdür ve bütün makineler görünür: grup girdileri kendi makinelerinin başında durur. Bölümler orada da ayırıcıyla ayrılır — `tabContextMenu.xml` içine `<Item FolderName="SamePathCopy" id="0" />` girdileri yazılır (`id="0"` Notepad++'ta ayırıcı anlamına gelir):
+Because the Notepad++ tab menu has no such limit, the list there is flat and all machines are visible: each group entry sits at the head of its machines. Sections are divided by separators there too — `<Item FolderName="SamePathCopy" id="0" />` entries are written into `tabContextMenu.xml` (`id="0"` means a separator in Notepad++):
 
 ```text
 Tümü
@@ -342,13 +344,13 @@ Unit2
   ...
 ```
 
-Sekme menüsü düz listelendiği için **her grubun önüne de ayırıcı** konur; grubun kendi girdisi ile o gruba ait makineler aynı bölümde kalır (Explorer'da buna gerek yok, çünkü gruplar orada ayrı alt menülerde).
+Because the tab menu is listed flat, **a separator is also placed in front of each group**; the group's own entry and the machines of that group stay in the same section (Explorer does not need this, because groups live in separate submenus there).
 
-Kaldırma bu ayırıcıları da temizler: yönetilen girdiler silinirken bulundukları klasör adı toplanır ve o klasördeki `id="0"` girdileri de kaldırılır.
+Uninstalling cleans up these separators too: while the managed entries are being deleted, the names of the folders they were in are collected, and the `id="0"` entries in those folders are removed as well.
 
-Grup girdileri komutlara `-TargetId group:Unit1` biçiminde geçer; `Queue-SamePathCopy.ps1` ve `Copy-SamePath.ps1` bu kimliği doğrudan kabul eder. Yerel bilgisayar kendi grubunun girdisinden de çıkarıldığı için, Unit1 eğitmeninde `Unit1` seçmek yalnızca o setin IG'lerine gönderir. Grubun bu bilgisayar dışında etkin üyesi kalmazsa grup girdisi menüde hiç oluşmaz.
+Group entries are passed to the commands as `-TargetId group:Unit1`; `Queue-SamePathCopy.ps1` and `Copy-SamePath.ps1` accept this ID directly. Because the local computer is also excluded from its own group's entry, choosing `Unit1` on the Unit1 trainer sends only to that set's IGs. If a group has no enabled member other than this computer, the group entry is not created in the menu at all.
 
-Klavye kısayolu da atanabilir; `notepadPlusPlusShortcuts` anahtarı grup kimliğini kabul eder:
+A keyboard shortcut can be assigned as well; the `notepadPlusPlusShortcuts` key accepts a group ID:
 
 ```json
 "notepadPlusPlusShortcuts": {
@@ -357,28 +359,28 @@ Klavye kısayolu da atanabilir; `notepadPlusPlusShortcuts` anahtarı grup kimli�
 }
 ```
 
-### Birden fazla dosya ve klasör
+### Multiple files and folders
 
-Explorer'da birden fazla dosya, birden fazla klasör veya karışık dosya/klasör seçimi yapılabilir. Seçimler kısa bir kuyrukta birleştirilir ve tek sonuç penceresinde bütün kaynak-hedef kopyalamaları gösterilir.
+In Explorer you can select several files, several folders, or a mix of files and folders. The selections are merged in a short queue, and all source-to-target copies are shown in a single result window.
 
-Windows'un seçim modeli sınırı yüzünden en fazla **100 öğelik** seçim desteklenir; daha fazlasında Windows menü girdisini gizler. Ayrıntı ve nedeni için [Kaç dosya seçilebilir (100 öğe sınırı)](#kaç-dosya-seçilebilir-100-öğe-sınırı) bölümüne bakın.
+Because of the Windows selection model limit, selections of at most **100 items** are supported; beyond that, Windows hides the menu entry. For the details and the reason, see the [How many files can be selected (100-item limit)](#how-many-files-can-be-selected-100-item-limit) section.
 
-## Tek yapılandırmayı bütün bilgisayarlarda kullanma
+## Using one configuration on every computer
 
-Aynı `config.json` eğitmen ve bütün IG bilgisayarlarında **hiç değiştirilmeden** kullanılır. Eğitmen dahil her bilgisayar `nodes` listesinde bulunur ve kendi yerel/paylaşım köklerine sahiptir. Araç çalıştığı bilgisayarı, en belirleyici ölçütten başlayarak otomatik tanır:
+The same `config.json` is used **without any changes** on the trainer and on all IG computers. Every computer, including the trainer, is in the `nodes` list and has its own local/share roots. The tool identifies the computer it is running on automatically, starting from the most decisive criterion:
 
-1. `SAMEPATHCOPY_NODE_ID` ortam değişkeni (ya da `Get-LocalSamePathCopyIdentity -NodeId`) verilmişse doğrudan o node kullanılır.
-2. `address` alanının yerel IP adreslerinden biriyle eşleşmesi.
-3. `address` veya isteğe bağlı `localNames` değerlerinden birinin Windows bilgisayar adıyla eşleşmesi.
-4. Bir kademede birden fazla node eşleşirse, `localRoot` dizini bu bilgisayarda var olan tek node seçilir.
+1. If the `SAMEPATHCOPY_NODE_ID` environment variable (or `Get-LocalSamePathCopyIdentity -NodeId`) is given, that node is used directly.
+2. The `address` field matching one of the local IP addresses.
+3. The `address` value or one of the optional `localNames` values matching the Windows computer name.
+4. If more than one node matches at a step, the single node whose `localRoot` directory exists on this computer is chosen.
 
-IP eşleşmesi ada göre eşleşmeyi ezdiği için, bilgisayar adları benzersiz olmasa bile (örneğin bütün makinelerin adı `MSI` olsa bile) her bilgisayar kendi node'unu bulur. Ada göre birden fazla eşleşme kalan durumda ayrımı `localRoot` yapar: eğitmen kökü `D:\Sim\ActiveRelease`, geliştirme makinesinin kökü `C:\E\repo\musteri\proje` ise yalnızca gerçekten var olan kökün node'u seçilir.
+Because an IP match overrides a match by name, every computer finds its own node even when computer names are not unique (for example, even if every machine is named `MSI`). When more than one match by name remains, `localRoot` breaks the tie: if the trainer's root is `D:\Sim\ActiveRelease` and the development machine's root is `C:\E\repo\musteri\proje`, only the node whose root actually exists is chosen.
 
-Hiçbir kademe tek bir node'a inemezse araç kopyalama yapmaz ve hangi node'ların eşleştiğini söyler. Bu durumda ya bu bilgisayarın adresi/adı tek bir node'da bırakılır, ya `localRoot` değerleri ayrıştırılır, ya da yalnızca o bilgisayarda `setx SAMEPATHCOPY_NODE_ID Unit1Trainer` gibi bir ortam değişkeniyle kimlik sabitlenir; config dosyası ortak kalır.
+If no step narrows it down to a single node, the tool does not copy and reports which nodes matched. In that case, either leave this computer's address/name on a single node, make the `localRoot` values distinct, or pin the identity on that computer only with an environment variable such as `setx SAMEPATHCOPY_NODE_ID Unit1Trainer`; the config file stays shared.
 
-Eşleşen node'un `localRoot` değeri kaynak kökü olarak kullanılır ve o node kendi hedef listesinden çıkarılır. Uzak node'a gönderimde `\\address\networkRoot` kullanılır.
+The matching node's `localRoot` is used as the source root, and that node is removed from its own target list. When sending to a remote node, `\\address\networkRoot` is used.
 
-Örnek olarak IG-12 üzerinde çalışırken:
+For example, when running on IG-12:
 
 ```json
 {
@@ -390,38 +392,38 @@ Eşleşen node'un `localRoot` değeri kaynak kökü olarak kullanılır ve o nod
 }
 ```
 
-Araç bu bilgisayarda `E:\Samet` dizinini göreli yol hesabının yerel kökü olarak kullanır. Kaynaklar bu kökün dışında da seçilebilir; bu durumda sürücü harfi dahil tam yol hedef altında korunur. Başka bilgisayarlar bu node'a `\\10.10.2.12\Sim\Samet` üzerinden gönderir.
+On this computer the tool uses the `E:\Samet` directory as the local root for computing relative paths. Sources can also be selected outside this root; in that case the full path, including the drive letter, is preserved under the target. Other computers send to this node via `\\10.10.2.12\Sim\Samet`.
 
-Eğitmen bilgisayar da aynı `nodes` listesinde olduğu için IG bilgisayarlarından eğitmene doğrudan dosya gönderilebilir.
+Because the trainer computer is in the same `nodes` list as well, files can be sent directly from the IG computers to the trainer.
 
-Dosyanın fiziksel olarak da tek kopya olması istenirse `config.json` ortak bir salt-okunur ağ paylaşımına konabilir ve her bilgisayarda kurulum şu şekilde yapılabilir:
+If you want the file to physically exist as a single copy too, `config.json` can be placed on a shared read-only network share, and each computer can be installed like this:
 
 ```bat
 Install-ContextMenu.bat -ConfigPath "\\dosya-sunucusu\ProjeConfig\config.json"
 ```
 
-Kurulum, bu merkezi config yolunu sağ tık komutlarına kaydeder. Bilgisayarların paylaşımı okuyabilmesi gerekir. Menü yapısını etkileyen `menuTitle`, `allLabel`, node ekleme/silme, `name`, `id` veya `enabled` değişikliklerinden sonra kurulum tekrar çalıştırılmalıdır. Yerel node tespitini değiştirebileceği için `address` veya `localNames` değişikliklerinden sonra da kurulumu yenilemek en güvenli yöntemdir. `localRoot`, `networkRoot`, `version` ve `copy` ayarları her işlem başında config dosyasından yeniden okunur ve tek başlarına menünün yeniden kurulmasını gerektirmez.
+The installer records this central config path in the right-click commands. The computers must be able to read the share. After changes that affect the menu structure — `menuTitle`, `allLabel`, adding/removing nodes, or changes to `name`, `id` or `enabled` — the installer must be run again. Because they can change local node detection, re-running the installer after `address` or `localNames` changes is also the safest approach. The `localRoot`, `networkRoot`, `version` and `copy` settings are re-read from the config file at the start of every operation and do not, on their own, require the menu to be reinstalled.
 
-## Ön koşullar
+## Prerequisites
 
-- Windows PowerShell 5.1 ve Windows Explorer kullanılmalıdır.
-- Notepad++ sekme menüsü bütünleşmesi için Notepad++ 8.4.8 veya üzeri gerekir. Notepad++ zorunlu değildir; bulunmazsa bu adım atlanır.
-- Hedef bilgisayarlarda `networkRoot` değerinin ilk parçasıyla aynı adda SMB paylaşımı bulunmalı. `Sim\Samet` için `Sim` paylaşımı gerekir.
-- İşlemi yapan Windows kullanıcısının hedef paylaşımına yazma yetkisi olmalı.
-- Güvenlik duvarında Windows Dosya ve Yazıcı Paylaşımı açık olmalı.
-- Her node'un yerel klasörü `localRoot`, ağdan erişilen paylaşım yolu `networkRoot` ile ayrı ayrı tanımlanır.
+- Windows PowerShell 5.1 and Windows Explorer must be used.
+- The Notepad++ tab menu integration requires Notepad++ 8.4.8 or later. Notepad++ is not required; if it is not found, this step is skipped.
+- The target computers must have an SMB share with the same name as the first segment of the `networkRoot` value. `Sim\Samet` requires a `Sim` share.
+- The Windows user performing the operation must have write permission on the target share.
+- Windows File and Printer Sharing must be allowed through the firewall.
+- Each node's local folder is defined with `localRoot`, and the share path reached over the network with `networkRoot`, separately.
 
-Etki alanı dışındaki bilgisayarlarda kimlik bilgisini Windows Credential Manager'a bir kez kaydetmek gerekebilir:
+On computers that are not in a domain, you may need to save the credentials in Windows Credential Manager once:
 
 ```powershell
 cmdkey /add:10.10.2.11 /user:HEDEF-BILGISAYAR\Kullanici /pass
 ```
 
-Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
+The command asks for the password interactively; do not write the password into `config.json`.
 
-## Node'ları ayarlama
+## Configuring nodes
 
-`config.json` içindeki `nodes` dizisine eğitmen dahil bütün bilgisayarları ekleyin:
+Add all computers, including the trainer, to the `nodes` array in `config.json`:
 
 ```json
 {
@@ -435,55 +437,55 @@ Komut parolayı etkileşimli ister; parolayı `config.json` içine yazmayın.
 }
 ```
 
-- `id`: Menü komutunun kalıcı anahtarıdır. `Trainer`, `IG1`, `IG2` gibi büyük veya küçük İngilizce harfler, rakam, nokta, alt çizgi ve tire kullanılabilir. Baştaki/sondaki boşluklar otomatik temizlenir. Kimlikler büyük/küçük harfe duyarsız olarak benzersiz olmalıdır; örneğin `IG1` ile `ig1` aynı kimlik kabul edilir. `all` değeri “Tümü” işlemi için ayrılmıştır ve node kimliği olarak kullanılmamalıdır.
-- `name`: Menüde görünen serbest metindir.
-- `address`: IPv4 adresi veya DNS/Windows bilgisayar adıdır.
-- `localNames`: İsteğe bağlı Windows bilgisayar adı veya adlarıdır. IP adresi değişken olan (DHCP ya da Wi-Fi ile bağlanan) bilgisayarların tanınmasını sağlar. Aynı adı birden fazla node'a yazmak eşleşmeyi belirsizleştirir; o durumda ayrımı IP eşleşmesi veya `localRoot` varlığı yapar.
-- `group`: İsteğe bağlı grup adıdır. Aynı grup adını taşıyan node'lar için menüde tek tıkla o grubun tamamına gönderen bir girdi oluşur. Node kimliğiyle aynı karakterler kullanılabilir (`Unit1` gibi; boşluk yok). Büyük/küçük harf farkı gözetilmez.
-- `localRoot`: Bu bilgisayar kaynak olduğunda göreli yol hesabının başlangıcı olan, sürücü harfiyle başlayan mutlak yerel yoldur. Örnek: `E:\Samet`. Bu dizin dışındaki öğeler de tam yolları korunarak kopyalanabilir.
-- `localRoots`: Birden fazla kaynak kökü için kullanılan listedir; `localRoot` yerine ya da onunla birlikte verilebilir. Her kök sürücü harfiyle başlayan mutlak bir yoldur. Ayrıntı için [Birden fazla kaynak kökü](#birden-fazla-kaynak-kökü) bölümüne bakın.
-- `networkRoot`: Bilgisayar hedef olduğunda kullanılan, paylaşım adıyla başlayan yoldur. `Sim\Samet` değeri `\\IP\Sim\Samet` üretir.
-- `enabled`: `false` yapılırsa hedef menüden ve “Tümü” işleminden çıkar.
+- `id`: The persistent key of the menu command. Uppercase or lowercase English letters, digits, dots, underscores and hyphens may be used, as in `Trainer`, `IG1`, `IG2`. Leading/trailing spaces are trimmed automatically. IDs must be unique, compared case-insensitively; for example, `IG1` and `ig1` are treated as the same ID. The value `all` is reserved for the “Tümü” (All) operation and must not be used as a node ID.
+- `name`: Free text shown in the menu.
+- `address`: An IPv4 address or a DNS/Windows computer name.
+- `localNames`: Optional Windows computer name or names. Allows computers whose IP address changes (those connected via DHCP or Wi-Fi) to be recognized. Writing the same name on more than one node makes the match ambiguous; in that case the IP match or the existence of `localRoot` decides.
+- `group`: Optional group name. For nodes that share the same group name, the menu gets an entry that sends to the whole group with one click. The same characters as for node IDs may be used (like `Unit1`; no spaces). Case is ignored.
+- `localRoot`: The absolute local path, starting with a drive letter, that is the base for relative path calculation when this computer is the source. Example: `E:\Samet`. Items outside this directory can also be copied, with their full paths preserved.
+- `localRoots`: A list used for multiple source roots; it can be given instead of `localRoot` or together with it. Each root is an absolute path starting with a drive letter. For details, see the [Multiple source roots](#multiple-source-roots) section.
+- `networkRoot`: The path, starting with the share name, that is used when the computer is a target. The value `Sim\Samet` produces `\\IP\Sim\Samet`.
+- `enabled`: If set to `false`, the target is removed from the menu and from the “Tümü” operation.
 
-Uygulama sürümü `version`, üst menü adı `menuTitle`, tüm hedefler seçeneğinin adı `allLabel`, sihirbaz girdisinin adı `wizardLabel`, son ayarla gönderen girdinin adı `wizardLastLabel` alanından değiştirilebilir. `copy.retryCount`, başarısız kopyalama denemelerinin tekrar sayısını; `copy.waitSeconds` ise tekrarlar arasındaki bekleme süresini belirler. İzin verilen aralıklar sırasıyla `0-100` ve `0-60` saniyedir.
+The application version can be changed with the `version` field, the top-level menu name with `menuTitle`, the name of the all-targets option with `allLabel`, the name of the wizard entry with `wizardLabel`, and the name of the entry that sends with the last settings with `wizardLastLabel`. `copy.retryCount` sets how many times failed copy attempts are retried, and `copy.waitSeconds` sets the wait time between retries. The allowed ranges are `0-100` and `0-60` seconds, respectively.
 
-## Kurulum
+## Installation
 
-Önerilen yöntem `Install-ContextMenu.bat` dosyasına çift tıklamaktır. BAT dosyası PowerShell betiğini yalnızca bu işlem için `ExecutionPolicy Bypass` ile çalıştırır; bilgisayarın kalıcı PowerShell güvenlik politikasını değiştirmez.
+The recommended method is to double-click `Install-ContextMenu.bat`. The BAT file runs the PowerShell script with `ExecutionPolicy Bypass` for this operation only; it does not change the computer's persistent PowerShell execution policy.
 
-Komut satırından da çalıştırılabilir:
+It can also be run from the command line:
 
 ```bat
 Install-ContextMenu.bat
 ```
 
-Merkezi veya farklı bir config kullanılacaksa parametre BAT dosyasına verilebilir:
+If a central or different config is to be used, the parameter can be passed to the BAT file:
 
 ```bat
 Install-ContextMenu.bat -ConfigPath "\\dosya-sunucusu\ProjeConfig\config.json"
 ```
 
-PowerShell betiğini doğrudan çalıştırmak isterseniz execution policy engeline takılmamak için şu komutu kullanın:
+If you want to run the PowerShell script directly, use the following command so you are not blocked by the execution policy:
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Install-ContextMenu.ps1"
 ```
 
-Kurulum yalnızca mevcut kullanıcıya, `HKCU` altında yapılır; yönetici yetkisi gerekmez. Menü yapısını etkileyen config değişikliklerinden sonra kurulum betiğini tekrar çalıştırın. Explorer'ı yeniden başlatmak normalde gerekmez.
+The installation is done for the current user only, under `HKCU`; no administrator rights are required. Run the installer script again after config changes that affect the menu structure. Restarting Explorer is not normally needed.
 
-Kurulum sistemde Notepad++ 8.4.8 veya üzerini bulursa sekme sağ tık bütünleşmesini de otomatik kurar. Standart kurulumların `%APPDATA%\Notepad++` ayar klasörü ve `doLocalConf.xml` kullanan taşınabilir kurulumlar desteklenir. Mevcut `shortcuts.xml` ve `tabContextMenu.xml` içerikleri silinmez; yalnızca adı `[SamePathCopy]` ile başlayan yönetilen komutlar güncellenir.
+If the installer finds Notepad++ 8.4.8 or later on the system, it also sets up the tab right-click integration automatically. Standard installations with the `%APPDATA%\Notepad++` settings folder and portable installations that use `doLocalConf.xml` are supported. Existing `shortcuts.xml` and `tabContextMenu.xml` content is not deleted; only the managed commands whose names start with `[SamePathCopy]` are updated.
 
-Notepad++ kapanırken `shortcuts.xml` ve `config.xml` dosyalarını kendi belleğindeki içerikle yeniden yazar. Bu nedenle kurulumu Notepad++ kapalıyken çalıştırın; açıkken çalıştırdıysanız uygulamayı kapatıp betiği bir kez daha çalıştırın.
+When Notepad++ closes, it rewrites `shortcuts.xml` and `config.xml` with the contents it holds in memory. So run the installer while Notepad++ is closed; if you ran it while Notepad++ was open, close the application and run the script once more.
 
-### shortcuts.xml bütünlük imzası
+### shortcuts.xml integrity signature
 
-Notepad++ 8.9.6.2 ve üzeri, bir kullanıcı komutunu çalıştırmadan önce `shortcuts.xml` dosyasının bütünlüğünü doğrular (CVE-2026-48800). İmza, makine GUID'i anahtarıyla üretilen HMAC-SHA256 değeridir ve `config.xml` içinde `<GUIConfig name="shortcutsXmlHMAC" value="..." />` olarak tutulur. İmza eksik ya da eşleşmiyorsa Notepad++ komutu çalıştırmaz; `shortcuts.xml` dosyasını salt okunur açıp **Security Warning** uyarısını gösterir.
+Notepad++ 8.9.6.2 and later verify the integrity of `shortcuts.xml` before running a user command (CVE-2026-48800). The signature is an HMAC-SHA256 value generated with the machine GUID as the key, and it is kept in `config.xml` as `<GUIConfig name="shortcutsXmlHMAC" value="..." />`. If the signature is missing or does not match, Notepad++ does not run the command; it opens `shortcuts.xml` read-only and shows a **Security Warning**.
 
-Kurulum ve kaldırma, `shortcuts.xml` dosyasını yazdıktan sonra bu imzayı `config.xml` içinde günceller; ek bir adım gerekmez. İmza yazılamazsa (`config.xml` bulunamaması veya makine GUID'inin okunamaması) betik uyarı verir; bu durumda Notepad++ içinde **Çalıştır (Run) > Validate shortcuts.xml** komutunu bir kez kullanmak yeterlidir.
+Installation and uninstallation update this signature in `config.xml` after writing `shortcuts.xml`; no extra step is needed. If the signature cannot be written (because `config.xml` cannot be found or the machine GUID cannot be read), the script prints a warning; in that case it is enough to use the **Run > Validate shortcuts.xml** command in Notepad++ once (**Çalıştır > Validate shortcuts.xml** in the Turkish Notepad++ UI).
 
-### Klavye kısayolu atama
+### Assigning keyboard shortcuts
 
-Notepad++ komutlarına klavye kısayolu `config.json` içindeki `notepadPlusPlusShortcuts` alanından atanır. Anahtar hedef kimliğidir; tüm hedeflere kopyalayan girdi için `all` kullanılır:
+Keyboard shortcuts for the Notepad++ commands are assigned with the `notepadPlusPlusShortcuts` field in `config.json`. The key is the target ID; use `all` for the entry that copies to all targets:
 
 ```json
 "notepadPlusPlusShortcuts": {
@@ -492,113 +494,113 @@ Notepad++ komutlarına klavye kısayolu `config.json` içindeki `notepadPlusPlus
 }
 ```
 
-Varsayılan yapılandırmada `wizard:last` için `Ctrl+Alt+W` tanımlıdır: Notepad++ içinde `Ctrl+Alt+W`, aktif sekmedeki kaydedilmiş dosyayı **sihirbaz penceresini açmadan**, sihirbazda en son kaydedilen hedef seçimi ve parametrelerle kopyalar. Böylece hedefleri bir kez sihirbazdan seçip sonra tek tuşla göndermek mümkün olur; kopyalama penceresi `Son sihirbaz ayarı` etiketiyle açılır. Bütün hedeflere göndermek isteniyorsa kısayol `all` girdisine bağlanabilir. Değişikliğin etkin olması için kurulumu Notepad++ kapalıyken çalıştırın; kısayol Notepad++ açılışında yüklenir ve **Ayarlar > Kısayol Eşleyici > Run komutları** altında görünür.
+In the default configuration, `Ctrl+Alt+W` is defined for `wizard:last`: inside Notepad++, `Ctrl+Alt+W` copies the saved file in the active tab **without opening the wizard window**, using the target selection and parameters last saved in the wizard. This makes it possible to choose the targets once in the wizard and then send with a single keystroke; the copy window opens with the label `Son sihirbaz ayarı` (last wizard setting). If you want to send to all targets, the shortcut can be bound to the `all` entry. For the change to take effect, run the installer while Notepad++ is closed; the shortcut is loaded when Notepad++ starts and appears under **Settings > Shortcut Mapper > Run commands** (**Ayarlar > Kısayol Eşleyici > Run komutları** in the Turkish Notepad++ UI).
 
-Kısayol metni `Ctrl`, `Alt`, `Shift` değiştiricilerini ve tek bir tuşu (`A-Z`, `0-9`, `F1-F24`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`, `Right`, `Space`, `Tab`, `Enter`, `Backspace`, `Esc`) kabul eder. Harf ve rakamlar en az bir değiştirici tuş gerektirir. Tanınmayan tuş, birden fazla tuş veya aynı kısayolun iki hedefe atanması kurulumu hatayla durdurur; menüde bulunmayan bir kimlik yalnızca uyarı üretir.
+The shortcut text accepts the `Ctrl`, `Alt`, `Shift` modifiers and a single key (`A-Z`, `0-9`, `F1-F24`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`, `Right`, `Space`, `Tab`, `Enter`, `Backspace`, `Esc`). Letters and digits require at least one modifier key. An unrecognized key, more than one key, or the same shortcut assigned to two targets stops the installer with an error; an ID that is not in the menu only produces a warning.
 
-Kurulum, istenen kısayolun `shortcuts.xml` içindeki başka bir makro/komutla çakışmasını denetleyip uyarır. Notepad++'ın kendi varsayılan kısayolları bu dosyada tutulmadığı için denetlenemez; `Ctrl+Alt+W` Notepad++ 8.9.7 varsayılanlarında boştur (`Ctrl+W` sekmeyi kapatır, `Ctrl+Shift+W` tümünü kapatır).
+The installer checks whether the requested shortcut conflicts with another macro/command in `shortcuts.xml` and warns if it does. Notepad++'s own default shortcuts are not stored in this file, so they cannot be checked; `Ctrl+Alt+W` is unassigned in the Notepad++ 8.9.7 defaults (`Ctrl+W` closes the tab, `Ctrl+Shift+W` closes all tabs).
 
-### Run komutu 260 karakter sınırı
+### Run command 260-character limit
 
-Notepad++, sekme menüsündeki komut satırını `$(FULL_CURRENT_PATH)` gibi değişkenleri açmadan önce 260 karaktere kırpar ve uyarı vermez; kırpılan komut çalıştığında "Cannot find path ... because it does not exist" gibi hatalar görülür. Kurulum bu yüzden komutu kısa tutar: kısa PowerShell anahtarları (`-nop -w hidden -ep bypass -f`) kullanılır ve `-ConfigPath` yalnızca betiğin yanındaki varsayılan `config.json` dışında bir dosya kullanıldığında yazılır. `Queue-SamePathCopy.ps1` çağrısında `-ConfigPath` verilmezse betiğin yanındaki `config.json` kullanılır.
+Notepad++ truncates the command line in the tab menu to 260 characters before expanding variables such as `$(FULL_CURRENT_PATH)`, and gives no warning; when the truncated command runs, you get errors such as "Cannot find path ... because it does not exist". That is why the installer keeps the command short: short PowerShell switches (`-nop -w hidden -ep bypass -f`) are used, and `-ConfigPath` is written only when a file other than the default `config.json` next to the script is used. If `-ConfigPath` is not given in the `Queue-SamePathCopy.ps1` call, the `config.json` next to the script is used.
 
-Aracın veya özel config dosyasının yolu yine de sınırı aşacak kadar uzunsa kurulum, bozuk bir menü girdisi yazmak yerine o girdiyi atlar ve uyarı verir. Bu durumda aracı daha kısa bir yola (örnek: `C:\SamePathCopy`) taşıyıp kurulumu yeniden çalıştırın.
+If the path of the tool or of a custom config file is still long enough to exceed the limit, the installer skips that entry and prints a warning instead of writing a broken menu entry. In that case, move the tool to a shorter path (for example `C:\SamePathCopy`) and run the installer again.
 
-Kurulum, `assets\SamePathCopy.ico` dosyasını ana menüye ve hedef alt menülerine bağlar. Araç klasörü paylaşılırken `assets` klasörünü de pakete dahil edin.
+The installer attaches the `assets\SamePathCopy.ico` file to the main menu and to the target submenus. When sharing the tool folder, include the `assets` folder in the package.
 
-Windows 11'de klasik Explorer uzantısı ilk menü yerine **Daha fazla seçenek göster** (`Shift+F10`) altında görüntülenebilir.
+On Windows 11, the classic Explorer extension may appear under **Show more options** (`Shift+F10`) instead of in the first menu (**Daha fazla seçenek göster** on Turkish Windows).
 
-Araç klasörünü kurulumdan sonra taşımayın; kayıt defterindeki komut betiğin mevcut tam yolunu kullanır.
+Do not move the tool folder after installation; the command in the registry uses the script's current full path.
 
-## Kullanım
+## Usage
 
-1. Bir veya birden fazla dosya/klasör seçip sağ tıklayın.
-2. **SamePathCopy** menüsünü açın. Menü adı `config.json` içindeki `menuTitle` ile değiştirilmişse yapılandırılan adı kullanın.
-3. Tek bir bilgisayarı veya **Tümü** seçeneğini seçin.
-4. Açılan sonuç penceresinden her hedefin durumunu kontrol edin.
+1. Select one or more files/folders and right-click.
+2. Open the **SamePathCopy** menu. If the menu name has been changed with `menuTitle` in `config.json`, use the configured name.
+3. Choose a single computer or the **Tümü** (All) option.
+4. Check the status of each target in the result window that opens.
 
-Notepad++ içinde kaydedilmiş bir dosyanın sekmesine sağ tıklayıp **SamePathCopy** alt menüsünden aynı hedefler seçilebilir. İsimsiz, henüz kaydedilmemiş sekmelerin dosya sistemi yolu olmadığı için önce kaydedilmeleri gerekir. Sekmede kaydedilmemiş değişiklik varsa kopyalanan içerik diskteki son kaydedilmiş sürümdür.
+In Notepad++, you can right-click the tab of a saved file and choose the same targets from the **SamePathCopy** submenu. Untitled tabs that have not been saved yet have no file system path, so they must be saved first. If the tab has unsaved changes, the content that is copied is the last saved version on disk.
 
-`robocopy` dönüş kodu `0-7` başarılı, `8` ve üzeri hatalı kabul edilir. Var olan dosyalar gerektiğinde güncellenir; hedefte olup kaynakta bulunmayan dosyalar silinmez.
+A `robocopy` return code of `0-7` is treated as success, and `8` or above as failure. Existing files are updated when needed; files that are on the target but not in the source are not deleted.
 
-Sonuç penceresi diğer uygulamaların üzerinde sabitlenmez; normal bir pencere gibi arkaya alınabilir. SMB paylaşımına erişilemiyorsa veya `robocopy` hata verirse sonuç alanında Windows'un ayrıntılı hata mesajı gösterilir.
+The result window is not pinned on top of other applications; it can be sent to the background like a normal window. If the SMB share cannot be reached or `robocopy` reports an error, the detailed Windows error message is shown in the result area.
 
-Kopyalama penceresi her işlem için tek satır gösterir: soldaki işaret durumu verir (`⋯` sürüyor, `✓` başarılı, `✕` hatalı, `–` atlandı), altında kaynak → hedef yolu, hata ya da yedek bilgisi ek satır olarak eklenir. Üstte ilerleme çubuğu ve `3 / 12` sayacı, altta `N başarılı • N hatalı • süre` özeti durur. `İptal` düğmesi çalışan `robocopy` sürecini durdurur ve kalan hedefleri atlanmış olarak işaretler; `Günlüğü kopyala` bütün satırları panoya alır.
+The copy window shows one row per operation: the mark on the left gives the status (`⋯` in progress, `✓` succeeded, `✕` failed, `–` skipped), the source → target path is shown below it, and error or backup information is added as an extra line. At the top there is a progress bar and a `3 / 12` counter, and at the bottom an `N başarılı • N hatalı • süre` (N succeeded • N failed • duration) summary. The `İptal` (cancel) button stops the running `robocopy` process and marks the remaining targets as skipped; `Günlüğü kopyala` (copy log) copies all rows to the clipboard.
 
-### Robocopy 16 ve erişim reddedildi
+### Robocopy 16 and access denied
 
-`robocopy` kodu `16`, hedef yolun bulunamaması, hatalı kullanım veya yetersiz erişim yetkisi gibi ciddi bir hatayı belirtir. `Hedef SMB paylaşımına erişilemiyor` ya da `Access is denied` görülürse hedef bilgisayarda hem paylaşım izni hem de klasörün NTFS Güvenlik izni kontrol edilmelidir. Kaynak bilgisayardaki kullanıcıya hedef paylaşımda değiştirme/yazma yetkisi verilmelidir.
+`robocopy` code `16` indicates a serious error, such as the target path not being found, incorrect usage or insufficient access rights. If you see `Hedef SMB paylaşımına erişilemiyor` (target SMB share is not accessible) or `Access is denied`, check both the share permission and the folder's NTFS Security permission on the target computer. The user on the source computer must be given change/write permission on the target share.
 
-Gerekirse doğru hedef hesabı Windows Credential Manager'a kaydedin:
+If needed, save the correct target account in Windows Credential Manager:
 
 ```bat
 cmdkey /add:10.10.2.182 /user:HEDEF-BILGISAYAR\Kullanici /pass
 ```
 
-Önceden aynı IP için yanlış kimlik bilgisi kaydedilmişse `cmdkey /delete:10.10.2.182` ile kaldırıp yeniden ekleyin.
+If wrong credentials were saved earlier for the same IP, remove them with `cmdkey /delete:10.10.2.182` and add them again.
 
-## Yapılandırmayı değiştirmeden sınama
+## Testing without changing the configuration
 
-Gerçek kopyalama yapmadan hedef yolu görmek için:
+To see the target path without actually copying anything:
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath.ps1" -SourcePath "C:\ActiveRelease\Data\EntityConfigurations\ModelHeavyIndustry\Ornek300LC.entity" -TargetId all -PlanOnly
 ```
 
-`PlanOnly` kaynak öğenin varlığını ve yerel bilgisayarın config içindeki bir node ile eşleşmesini doğrular, hesaplanan hedefleri ekrana yazar ve `robocopy` çalıştırmaz. Tek hedefi sınamak için `all` yerine ilgili node kimliğini verin.
+`PlanOnly` verifies that the source item exists and that the local computer matches a node in the config, prints the computed targets to the screen, and does not run `robocopy`. To test a single target, give the corresponding node ID instead of `all`.
 
-## Eşitlik denetimi (-CheckOnly)
+## Equality check (-CheckOnly)
 
-"Bu kaynak bütün makinelerde aynı mı?" sorusu için, hedeflere hiçbir şey yazmadan:
+To answer the question "Is this source the same on every machine?" without writing anything to the targets:
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Copy-SamePath.ps1" -SourcePath "C:\ActiveRelease\Data" -TargetId all -CheckOnly
 ```
 
-Her hedef için bir satır yazılır: `State` sütunu `Ayni`, `Farkli`, `Yok` (hedefte hiç yok), `Erisilemedi` ya da `Hata`; `Changes` / `Missing` / `DestNewer` / `Extras` sütunları sayıları verir (`DestNewer` hedefte kaynaktan daha yeni dosya demektir — kopyalama üzerine yazar). Erişilemeyen hedef için robocopy zaman aşımı beklenmez. Çıkış kodu otomasyon içindir: **0** bütün hedefler aynı, **1** fark/eksik/erişilemeyen var. Durum değerleri, alt süreç çıktısında kod sayfasına takılmaması için ASCII yazılır. Pencere açılmaz; sihirbaz penceresi de açılmaz (hedef kümesi `all`, grup, makine kimliği ya da `profile:<ad>` ile verilir). Aynı denetimin arayüzlüsü sihirbazdaki `Hedefi incele` düğmesidir.
+One line is written per target: the `State` column is `Ayni` (same), `Farkli` (different), `Yok` (missing: not on the target at all), `Erisilemedi` (unreachable) or `Hata` (error); the `Changes` / `Missing` / `DestNewer` / `Extras` columns give the counts (`DestNewer` means a file on the target that is newer than the source — the copy would overwrite it). For an unreachable target, the robocopy timeout is not waited for. The exit code is meant for automation: **0** means all targets are the same, **1** means there is a difference, a missing item or an unreachable target. The state values are written in ASCII so that they do not get mangled by the code page in child-process output. No window opens; the wizard window does not open either (the target set is given as `all`, a group, a machine ID or `profile:<name>`). The UI counterpart of the same check is the `Hedefi incele` (inspect target) button in the wizard.
 
-## Geliştirme ve testler
+## Development and tests
 
-Bütün test takımlarını tek komutla koşturmak için:
+To run all test suites with a single command:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-SamePathCopyTests.ps1"
 ```
 
-Koşucu her takımı **ayrı bir süreçte** çalıştırır (takımların hepsi `Assert-Equal`'i kendi içinde tanımlıyor ve ortam değişkeni paylaşıyor) ve **üç durum** ayırır:
+The runner runs each suite **in a separate process** (every suite defines `Assert-Equal` on its own and they share environment variables) and distinguishes **three states**:
 
-| Durum | Anlamı |
+| State | Meaning |
 | --- | --- |
-| `geçti` | Takım sıfır çıkış koduyla bitti. |
-| `kaldı` | Takım hata verdi ya da zaman aşımına düştü. Son 20 satır çıktısı ekrana yazılır. |
-| `atlandı` | Takım bu ortamda **koşulamadı**. Nedeni satırda yazar; bu bir başarısızlık değildir. |
+| `geçti` (passed) | The suite finished with a zero exit code. |
+| `kaldı` (failed) | The suite reported an error or timed out. The last 20 lines of its output are printed to the screen. |
+| `atlandı` (skipped) | The suite **could not be run** in this environment. The reason is shown on the line; this is not a failure. |
 
-Çıkış kodu yalnızca `kaldı` varsa `1` olur — atlanan takım otomasyonu kırmızıya çevirmez. Takımların günlüğü ve sihirbaz durumu geçici bir klasöre yönlendirilir, böylece `log\root.log` ve kayıtlı sihirbaz ayarınız kirlenmez; tertemiz koşuda o klasör silinir, kalan varsa yolu yazılır.
+The exit code is `1` only if there is a `kaldı` result — a skipped suite does not turn automation red. The suites' log and wizard state are redirected to a temporary folder, so `log\root.log` and your saved wizard settings are not polluted; after a fully clean run that folder is deleted, and if anything is left behind, its path is printed.
 
-Ortam gereksinimleri (takımların kodundan okunarak koşucuya yazıldı):
+Environment requirements (read from the suites' code and written into the runner):
 
-| Takım | Gereksinim |
+| Suite | Requirement |
 | --- | --- |
-| `Test-CopyRun`, `Test-Destination`, `Test-Queue` | Yönetim paylaşımı: hedefleri `\\127.0.0.1\C$\...` üzerine kuruyorlar, **yükseltilmiş oturum** gerekiyor. |
-| `Test-Diff` | Yönetim paylaşımı + etkileşimli masaüstü oturumu (gerçek WPF penceresi açıyor). |
-| `Test-Wizard` | Yönetim paylaşımı + masaüstü oturumu + bu makinenin `config.json` içindeki bir node ile eşleşmesi. |
-| `Test-NotepadPlusPlusIntegration` | `config.json` ve yerel kimlik. Kurulu Notepad++ **gerekmiyor**: takım kendi sahte kurulumunu geçici klasörde kuruyor. |
-| Diğerleri | Yok. |
+| `Test-CopyRun`, `Test-Destination`, `Test-Queue` | Administrative share: they set up targets on `\\127.0.0.1\C$\...`, so an **elevated session** is required. |
+| `Test-Diff` | Administrative share + an interactive desktop session (it opens a real WPF window). |
+| `Test-Wizard` | Administrative share + desktop session + this machine matching a node in `config.json`. |
+| `Test-NotepadPlusPlusIntegration` | `config.json` and the local identity. An installed Notepad++ is **not required**: the suite sets up its own fake installation in a temporary folder. |
+| Others | None. |
 
-Anahtarlar:
+Switches:
 
-- `-Only Diff,Queue` — yalnızca verilen takımlar (`Diff`, `Test-Diff` ve `Test-Diff.ps1` aynı şeyi seçer).
-- `-SkipUi` — pencere açan takımları atlar (uzak oturum, hızlı denetim).
-- `-TimeoutSeconds 900` — takım başına üst sınır; aşan takım öldürülür ve `kaldı` sayılır.
+- `-Only Diff,Queue` — only the given suites (`Diff`, `Test-Diff` and `Test-Diff.ps1` all select the same suite).
+- `-SkipUi` — skips suites that open windows (remote session, quick check).
+- `-TimeoutSeconds 900` — upper limit per suite; a suite that exceeds it is killed and counted as `kaldı` (failed).
 
-Yeni bir takım eklemek için `tests\Test-<ad>.ps1` yazmak yeterli: koşucu onu kendiliğinden bulur ve gereksinimsiz koşar (satırda `(gereksinim tanımlı değil)` yazar). Ortam gerektiriyorsa koşucudaki `$suiteRequirements` tablosuna bir satır eklenir. Tabloda kalmış ama dosyası silinmiş bir takım varsa koşu sonunda uyarı verilir.
+To add a new suite, writing `tests\Test-<name>.ps1` is enough: the runner finds it on its own and runs it without requirements (the line shows `(gereksinim tanımlı değil)` (no requirement defined)). If it needs a particular environment, a row is added to the `$suiteRequirements` table in the runner. If the table still lists a suite whose file has been deleted, a warning is given at the end of the run.
 
-## Kaldırma
+## Uninstallation
 
-`Uninstall-ContextMenu.bat` dosyasına çift tıklayın veya komut satırından çalıştırın:
+Double-click `Uninstall-ContextMenu.bat` or run it from the command line:
 
 ```bat
 Uninstall-ContextMenu.bat
 ```
 
-Bu işlem Explorer sağ tık kayıtlarını ve Notepad++ içindeki SamePathCopy komutlarını kaldırır; diğer Notepad++ özelleştirmelerini, betikleri, yapılandırmayı veya kopyalanmış dosyaları silmez.
+This removes the Explorer right-click registrations and the SamePathCopy commands in Notepad++; it does not delete other Notepad++ customizations, the scripts, the configuration or any copied files.

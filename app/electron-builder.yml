@@ -1,0 +1,59 @@
+appId: com.sametkurumahmut.samsync
+productName: SamSync
+copyright: Copyright © 2026 Samet Kurumahmut
+
+npmRebuild: false
+
+directories:
+  output: release/${version}
+  buildResources: resources
+
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - '!out/web/**'
+  - '!**/*.map'
+  # ssh2 falls back to pure JavaScript without these optional native add-ons
+  - '!node_modules/cpu-features{,/**}'
+  - '!node_modules/ssh2/lib/protocol/crypto/build{,/**}'
+
+win:
+  icon: resources/icon.ico
+  executableName: SamSync
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SamSync
+  artifactName: ${productName}-Setup-${version}.${ext}
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
+mac:
+  icon: resources/icon.png
+  category: public.app-category.developer-tools
+  target: [dmg, zip]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  icon: resources/icon.png
+  category: Development
+  target: [AppImage]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# owner/repo are set by scripts/dist.mjs from the git remote (or GITHUB_REPOSITORY in CI) and end up in app-update.yml
+publish:
+  - provider: github
+    owner: ${env.SAMSYNC_GH_OWNER}
+    repo: ${env.SAMSYNC_GH_REPO}
