@@ -10,12 +10,18 @@ import { TrayManager } from './tray';
 import { launcherCommand, launcherPath } from './launcher';
 import { LaunchQueue, parseLaunch } from './launch';
 import { Integrations, removeIntegrations } from './integration';
+import { portableDataDir, portableKind } from './portable';
 import { headlessFromDisk } from '../core/headless';
 
 const isMac = process.platform === 'darwin';
 const iconPath = path.join(__dirname, '../../resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 
 if (process.env.SAMSYNC_USER_DATA) app.setPath('userData', process.env.SAMSYNC_USER_DATA);
+else {
+  // portable runs keep settings and history in SamSync-data next to the program
+  const dir = portableDataDir(portableKind(app.isPackaged));
+  if (dir) app.setPath('userData', dir);
+}
 app.setAppUserModelId('com.sametkurumahmut.samsync');
 
 async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<number> {

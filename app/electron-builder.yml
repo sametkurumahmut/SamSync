@@ -26,6 +26,10 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
+    # the unpacked app in a zip: no extraction on every start, data in SamSync-data next to SamSync.exe
+    - target: zip
+      arch: [x64]
+  artifactName: ${productName}-${version}-win.${ext}
 
 nsis:
   oneClick: false

@@ -9,6 +9,7 @@ import electronUpdater from 'electron-updater';
 import type { LocalSettings, UpdateConfig, UpdateState } from '../shared/types';
 import { t } from '../shared/i18n';
 import { explainUpdateError } from './update-errors';
+import { portableKind } from './portable';
 
 const { autoUpdater } = electronUpdater;
 
@@ -78,7 +79,7 @@ export class Updater {
 
   private supportReason(): string | null {
     if (!app.isPackaged) return t('Geliştirme modunda güncelleme denetlenmez.');
-    if (process.env.PORTABLE_EXECUTABLE_DIR) return t('Taşınabilir (portable) sürüm kendini güncelleyemez; kurulum sürümünü kullanın.');
+    if (portableKind(app.isPackaged)) return t('Taşınabilir (portable) sürüm kendini güncelleyemez; kurulum sürümünü kullanın.');
     if (this.cfg.source === 'off') return t('Güncellemeler kapalı.');
     if (this.cfg.source === 'folder' && process.platform !== 'win32') return t('Klasörden güncelleme yalnızca Windows kurulumunda desteklenir.');
     if (this.cfg.source === 'folder' && !this.cfg.folder) return t('Güncelleme klasörü ayarlanmamış.');
