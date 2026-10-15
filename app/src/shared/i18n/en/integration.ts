@@ -81,6 +81,10 @@ const d: Dict = {
   'Rapor yazılamadı': 'Could not write the report',
   'Hedefe erişilemiyor': 'Target unreachable',
 
+  // updates
+  'Bu kaynakta henüz yayımlanmış bir sürüm yok.': 'No version has been published from this source yet.',
+  'Bilinmeyen hata': 'Unknown error',
+
   // one-click sends
   'Son ayar': 'Last settings',
   'Profil: {name}': 'Profile: {name}',

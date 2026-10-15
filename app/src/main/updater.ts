@@ -8,6 +8,7 @@ import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 import type { LocalSettings, UpdateConfig, UpdateState } from '../shared/types';
 import { t } from '../shared/i18n';
+import { explainUpdateError } from './update-errors';
 
 const { autoUpdater } = electronUpdater;
 
@@ -112,15 +113,15 @@ export class Updater {
   private wire() {
     if (this.wired) return;
     this.wired = true;
-    autoUpdater.on('checking-for-update', () => this.set({ phase: 'checking', error: undefined }));
+    autoUpdater.on('checking-for-update', () => this.set({ phase: 'checking', error: undefined, detail: undefined }));
     autoUpdater.on('update-available', (info) => {
       this.set({ phase: 'available', version: info.version, releaseDate: info.releaseDate, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined, checkedAt: Date.now() });
       if (this.settings?.updateAutoDownload) void this.download();
     });
-    autoUpdater.on('update-not-available', () => this.set({ phase: 'none', checkedAt: Date.now() }));
+    autoUpdater.on('update-not-available', () => this.set({ phase: 'none', detail: undefined, checkedAt: Date.now() }));
     autoUpdater.on('download-progress', (p) => this.set({ phase: 'downloading', percent: p.percent, bytesPerSecond: p.bytesPerSecond }));
     autoUpdater.on('update-downloaded', (info) => this.set({ phase: 'ready', version: info.version, percent: 100 }));
-    autoUpdater.on('error', (e) => this.set({ phase: 'error', error: e?.message ?? String(e) }));
+    autoUpdater.on('error', (e) => this.set(explainUpdateError(e)));
   }
 
   async check(silent = false): Promise<UpdateState> {
@@ -134,13 +135,13 @@ export class Updater {
       if (this.cfg.source === 'folder') await this.checkFolder();
       else await autoUpdater.checkForUpdates();
     } catch (e) {
-      if (!silent || this.st.phase !== 'error') this.set({ phase: 'error', error: (e as Error).message });
+      if (!silent || this.st.phase !== 'error') this.set(explainUpdateError(e));
     }
     return this.st;
   }
 
   private async checkFolder() {
-    this.set({ phase: 'checking', error: undefined });
+    this.set({ phase: 'checking', error: undefined, detail: undefined });
     const folder = this.cfg.folder!;
     const yml = await fsp.readFile(path.join(folder, 'latest.yml'), 'utf8');
     const info = parseLatestYml(yml);
@@ -185,7 +186,7 @@ export class Updater {
       this.folderInstaller = dst;
       this.set({ phase: 'ready', percent: 100 });
     } catch (e) {
-      this.set({ phase: 'error', error: (e as Error).message });
+      this.set(explainUpdateError(e));
     }
     return this.st;
   }

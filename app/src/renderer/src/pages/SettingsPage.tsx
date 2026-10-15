@@ -520,7 +520,8 @@ function UpdateStatus() {
             {p === 'error' && t('Güncelleme hatası')}
             {p === 'unsupported' && t('Bu kurulumda güncelleme yok')}
           </div>
-          <div className="faint ellipsis selectable" style={{ fontSize: 12 }}>
+          {/* the whole message wraps: an error cut off after a few words says nothing */}
+          <div className="faint selectable" style={{ fontSize: 12, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
             {update.error ?? update.detail ?? (update.checkedAt ? t('Son denetim {time}', { time: ago(update.checkedAt) }) : '')}
           </div>
         </div>
