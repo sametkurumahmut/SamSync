@@ -75,7 +75,13 @@ Klasör çiftleri (sol: bu makine ya da bir hedef, sağ: herhangi bir hedefin al
 
 - **İki yönlü** — son eşitlemenin durumunu hatırlar; bir tarafta silineni öbür tarafta da siler, iki tarafta değişeni **çakışma** olarak işaretler.
 - **Ayna**, **Güncelle**, **Özel** (her durum için işlemi siz seçersiniz).
-- Filtre: dahil/hariç kalıpları, boyut ve tarih sınırı. Silinen/üzerine yazılanlar sürümlenir ya da kalıcı silinir.
+- Filtre: dahil/hariç kalıpları, boyut ve tarih sınırı. İki taraftan birinin kökündeki (ya da Gönder sayfasından gönderilen bir klasördeki) **`.samsyncignore`** dosyası kendi desenlerini ekler: satır başına bir desen, `#` açıklama, sonda `/` klasör demektir. Dosyanın kendisi hiç kopyalanmaz.
+- Silinen ya da üzerine yazılan dosyalar üç yoldan birine gider:
+  - **sürüm klasörüne**: sayıyla ve istenirse gün olarak yaşla sınırlanır;
+  - **Geri Dönüşüm Kutusu'na**: yerel klasörlerde; diğer yerlerde sürüm klasörü kullanılır;
+  - ya da kalıcı olarak silinir.
+- **Dışa aktar / İçe aktar**, bir işi `.samsync-job.json` dosyası olarak kaydeder ve bu ya da başka bir makinede geri yükler.
+- `SamSync.exe --sync <iş>`, bir işi pencere açmadan çalıştırır (ör. Windows Görev Zamanlayıcı'dan). Bir özet yazar ve her şey başarılıysa `0` ile çıkar.
 - **Zamanla** — iş belirli aralıklarla ya da saatlerde kendiliğinden çalışır (bkz. *Otomasyon*).
 
 Karşılaştırma sonucu ızgarada görünür; her satırın işlemi tıklanarak değiştirilir, çift tıklama satır farkını açar.

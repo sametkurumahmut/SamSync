@@ -9,15 +9,24 @@ Eski PowerShell aracının (1.x) yerine sıfırdan yazılmış, çapraz platform
   - **İnceleme:** satır bazında dahil etme, kaynak–hedef satır farkı, seçimi tüm hedeflere uygulama.
   - **Kipler:** üzerine yaz, yalnızca yeni, ayna. Eski sihirbazdaki gibi her hedefe ayrı kip ve yedek ayarı verilebilir.
   - **Karşılaştırma:** tarih+boyut, içerik, boyut.
+  - **Sekmeler:** her sekme kendi kaynaklarını ve hedeflerini tutar; sağ tık menüsünden gelen öğeler kendi sekmesinde açılır.
+- **Karşılaştır** — Gönder sayfasındaki kaynakları hedeflerle hiçbir şey göndermeden karşılaştırır. Hedef başına yeni / değişen / hedefte daha yeni / fazla dosyalar süzgeç ve aramayla listelenir, seçilen dosyanın satır farkı yanında görünür.
 - **Git** — yerel değişiklikler (hazırlanmış, hazırlanmamış, izlenmeyen) ya da seçilen commit'ler (tek, çoklu, aralık; son commit, son 3, push edilmemişler).
   - Commit'lerin dosyaları birleşik bir listede, her dosyanın farkı yanında gösterilir.
   - İçerik diskten ya da commit'ten alınır; silinen ve taşınan dosyalar hedeften de kalkar.
   - Commit içeriği git nesne özetiyle karşılaştırılır.
 - **Senkron** — klasör çiftleri: iki yönlü (son durumu hatırlayarak silmeleri ve çakışmaları ayırır), ayna, güncelle, özel. Filtreler, sürümleme, işlem ızgarasında satır bazında değiştirme ve uzak klasör tarayıcı var.
+  - **Yok sayma dosyası:** iki tarafın ya da gönderilen klasörün kökündeki `.samsyncignore` desenleri hariç tutulur.
+  - **Silinenler:** sürüm klasörüne (sayıyla ve günle sınırlı), yerel klasörlerde Geri Dönüşüm Kutusu'na ya da kalıcı.
+  - **İş dosyası:** bir iş `.samsync-job.json` olarak dışa aktarılır ve içe aktarılır.
+  - `--sync <iş>` pencere açmadan çalıştırır (çıkış kodu 0 = başarılı).
 - **Otomasyon** — canlı izleme ve zamanlanmış senkron.
   - **İzleme:** değişince yalnızca değişenleri gönderir, erişilemeyen makinelere dakikada bir yeniden dener.
   - **Zamanlanmış senkron:** aralıkla ya da belirli saatlerde, tek bir makinede çalışır.
   - Hepsi duraklatılabilir; uygulama sistem tepsisinde çalışmaya devam edebilir ve oturum açılınca gizli başlayabilir.
+  - **Git olayları:** commit, amend, merge, pull (isteğe bağlı rebase, cherry-pick, reset) sonrası değişen dosyalar gönderilir; dal değiştirmek bir şey göndermez.
+  - **Hedefler:** yapılandırmadaki makineler, yapılandırma gerektirmeyen düz klasörler ya da her değişiklikte çalışan bir senkron işi (canlı senkron).
+  - **Ayarlar:** erişilemeyen makinelere yeniden deneme (varsayılan kapalı, aralığı ayarlanır), bildirim, tek gönderimdeki dosya sınırı, kaçırılan zamanlamaların açılışta çalışması.
 - **Yedekler** — hedeflerdeki yedek sürümlerini (`_SamSyncYedek`) bulup geri yazar.
   - Explorer ve Notepad++ menüsünden gelen öğeleri bütün makinelerde arar.
   - Eski aracın yedek klasörleri de taranır. Hedef kökünde `_` ile başlayıp yalnızca `yyyyMMdd-HHmmss` klasörleri içeren klasör yedek klasörü sayılır ve ayna kipinde silinmez.
@@ -46,10 +55,13 @@ Eski PowerShell aracının (1.x) yerine sıfırdan yazılmış, çapraz platform
 - **Yazma** — atomik yazma (geçici dosya + yeniden adlandırma), isteğe bağlı içerik doğrulaması, yeniden deneme, eşzamanlı hedefler ve dosyalar, hedef başına bant genişliği sınırı, iptal, eski yedeklerin temizlenmesi.
 - **Kopyalama sonrası komut** — `{source}` son gönderilen öğe, `{destination}` o öğenin hedefteki yoludur.
 - **Hedef türleri** — SMB paylaşımı, klasör/bağlı sürücü, SFTP.
+- **Yapılandırma düzenleyici** — config dosyası JSON olarak düzenlenir, yazarken ve kaydederken denetlenir, yazıldığı gibi kaydedilir; başka dosya yüklenebilir, kopyası dışa aktarılabilir.
+- **Açılışlar arası** — açık sayfa, Gönder sekmeleri, kaydedilmemiş senkron işi ve Yedekler girişi korunur; kaydedilmemiş ayarlar varken sayfadan çıkmak ya da kapatmak önce sorar.
+- **Taşınabilir sürümler** — tek dosyalı exe ve zip; ayarlar ve geçmiş programın yanındaki `SamSync-data` klasöründe durur.
 - **Eski yapılandırma** — eski `config.json` doğrudan okunur; kaydederken eski aracın alanları korunur.
   - Makine tanıma kuralları aynıdır (ortam değişkeni `SAMSYNC_NODE_ID`, `<ad>.<USERDNSDOMAIN>` dahil).
   - Grup adları node kimliğiyle aynı karakterlerle sınırlıdır.
-- **Otomatik güncelleme** — GitHub Releases, web adresi ya da ağ klasörü. GitHub Actions ile Windows, macOS ve Linux paketleri üretilir.
+- **Otomatik güncelleme** — GitHub Releases, web adresi ya da ağ klasörü. GitHub Actions Windows, macOS ve Linux paketlerini üretir; üçü de geçince sürümü kendisi yayımlar.
 - **Görünüm**
   - Türkçe ve İngilizce arayüz; varsayılan olarak bilgisayarın dili izlenir.
   - Koyu (varsayılan), açık ve sistemle eşlenen tema; vurgu rengi; sıkı yoğunluk.

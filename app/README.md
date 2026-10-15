@@ -75,7 +75,10 @@ For folder pairs (left: this machine or a target; right: a subfolder of any targ
 
 - **İki yönlü** (two-way) — remembers the state after the last sync; a file deleted on one side is deleted on the other, a file changed on both sides is marked as a **conflict**.
 - **Ayna** (mirror), **Güncelle** (update), **Özel** (custom: you pick the action for each situation).
-- Filter: include/exclude patterns, size and date limits. Deleted/overwritten files are versioned or deleted permanently.
+- Filter: include/exclude patterns, size and date limits. A **`.samsyncignore`** file at the root of either side (or of a folder sent from the Send page) adds its patterns: one per line, `#` comments, a trailing `/` for a folder. The file itself is never copied.
+- Deleted or overwritten files go to the **versioning folder** (kept by count and, optionally, by age in days), to the **Recycle Bin** (local folders; elsewhere the versioning folder is used) or are deleted permanently.
+- **Dışa aktar / İçe aktar** (export / import) saves a job as a `.samsync-job.json` file and brings it back, on this or another machine.
+- `SamSync.exe --sync <job>` runs a job without a window (for the Windows Task Scheduler, for example): it prints a summary and exits with `0` when everything succeeded.
 - **Zamanla** (schedule) — the job runs by itself at an interval or at set times (see *Automation*).
 
 The comparison is shown in a grid; click a row's action to change it, double-click a row to open its line diff.
