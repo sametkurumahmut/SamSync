@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.0.3 — 2026-10-17
 
 - **Manifest ile hızlı karşılaştırma:** her gönderimden sonra hedefin kökünde `samsync-manifest.json` kalır (gönderilen klasörün altındaki her şey: ad, boyut, tarih; kim ne zaman yazdı). Sonraki gönderim hedefi ağ üzerinden klasör klasör gezmek yerine manifestten başlar — önce kökün listesi ve dosyalardan 24 örnek hedefle karşılaştırılır; biri bile tutmazsa (örneğin sürüm diskten kopyalandıysa) eski usul tam tarama yapılır. 7 günden eski manifest kullanılmaz. İncelemede "manifestten" rozeti; Karşılaştır sayfası her zaman doğrudan bakar. Röleye giden paket uygulanınca röle manifesti kendi diskinden yazar.
 - **Aynı makineye iki kişi:** gönderim sürerken hedefin kökünde `samsync-lock.json` durur (bilgisayar adı, kullanıcı, gönderimin adı, başlangıç zamanı, sürüm). Başkasının taze kilidi varsa inceleme makine kartında "ahmet yazıyor" rozeti ve açıklaması çıkar, çalıştırma günlüğüne de uyarı düşer; gönderim yine devam eder. 30 dakikadan eski kilit yok sayılır; kilit bitince kaldırılır. Bu dosya ve `samsync-manifest.json` hiçbir zaman gönderilmez, karşılaştırılmaz, aynada silinmez.
