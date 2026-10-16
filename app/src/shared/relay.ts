@@ -12,6 +12,12 @@ export interface RelaySource {
   kind: 'fs' | 'delete';
 }
 
+/** One operation the relay applies to its own disk from the pack. */
+export type PackOp =
+  | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'store'; replaceType?: boolean; dstExists?: boolean }
+  | { kind: 'mkdir'; id: string; rel: string; replaceType?: boolean; dstExists?: boolean }
+  | { kind: 'delete'; id: string; rel: string; isDir: boolean };
+
 export interface RelayJob {
   id: string;
   createdAt: number;
@@ -20,8 +26,14 @@ export interface RelayJob {
   /** Node id of the sender (for the relay's log). */
   from?: string;
   sources: RelaySource[];
+  /** Machines the relay sends on to (none: the relay only takes the pack for itself). */
   targetIds: string[];
   options: SendOptions;
+  /**
+   * The sender's changes for the relay itself, compressed into `<id>.pack` next to the job instead of
+   * copied one by one: the relay applies them to its disk first, then sends on.
+   */
+  pack?: { ops: PackOp[]; backup: boolean; verify: boolean };
 }
 
 export interface RelayTargetResult {
@@ -31,6 +43,9 @@ export interface RelayTargetResult {
   opsFailed: number;
   bytes: number;
   error?: string;
+  /** For the relay's own apply of a pack: the ids of the operations that failed, and where the old files went. */
+  failedOps?: string[];
+  backupPath?: string;
 }
 
 export interface RelayResult {

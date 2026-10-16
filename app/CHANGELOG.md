@@ -1,5 +1,10 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Sıkıştırılmış paket:** röle olarak işaretlenen (SamSync çalışan) bir makineye dosyalar artık tek tek kopyalanmıyor; gönderimin değişiklikleri tek bir sıkıştırılmış paket olarak (`_SamSyncRelay\jobs\<id>.pack`, dosya başına gzip; zip/png/mp4 gibi zaten sıkışık olanlar olduğu gibi) yazılıyor, oradaki SamSync paketi kendi diskine uyguluyor (yedek, kullanımdaki dosya denetimi, doğrulama aynı), sonra grubundakilere dağıtıyor. Ağ üzerinden dosya başına birkaç tur yerine tek akış; bir DLL ~%40, PDB ~%23 boyuta iniyor. Grubunda kimse olmayan bir röle de paketi kendisi için alır. Çalıştırma günlüğünde "Paket: 6,5 MB → 2,6 MB (%40)". Makine yanıt vermezse paket geri alınır ve röle dahil hepsine doğrudan gönderilir.
+- **Plan:** pencerenin son 60 sn içinde erişilebilir gördüğü makineye plan sırasında yeniden erişim denetimi yapılmıyor (gönderim başına bir tur daha az).
+
 ## 2.0.1 — 2026-10-16
 
 - **Röle (bir makine üzerinden dağıtım):** Hedefler'de bir makine **röle** olarak işaretlenince, onunla birlikte seçilen grup makinelerine dosyalar önce yalnızca ona gider (kendi, çoğu zaman yavaş, bağlantınızdan tek kopya); oradaki SamSync işi paylaşımdaki `_SamSyncRelay` klasöründen alıp dosyaları kendi diskinden grubun ağı üzerinden dağıtır ve sonucu yazar. İnceleme, çalıştırma paneli ve geçmiş her makineyi "X üzerinden" rozetiyle, röleden gelen sonucuyla gösterir. Röle 60 sn içinde işi almazsa (orada SamSync çalışmıyorsa) o makinelere buradan doğrudan ayrı bir gönderim başlar. Tek başına seçilen bir grup makinesi röleye uğramaz; Karşılaştır sayfası ve `--check-only` her makineye doğrudan bakar. `copy.relayAckSeconds` ve `copy.relayTimeoutMinutes` süreleri ayarlar.

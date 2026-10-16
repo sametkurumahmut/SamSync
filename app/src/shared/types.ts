@@ -423,7 +423,9 @@ export type PlanCategory = 'new' | 'changed' | 'targetNewer' | 'extra' | 'delete
 export type SrcRef =
   | { kind: 'fs'; abs: string }
   | { kind: 'git'; repo: string; rev: string; path: string; blob?: string }
-  | { kind: 'endpoint'; key: string; rel: string };
+  | { kind: 'endpoint'; key: string; rel: string }
+  /** A member of a pack file a sender left on this machine (the relay side). */
+  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' };
 
 export interface PlanOp {
   id: string;

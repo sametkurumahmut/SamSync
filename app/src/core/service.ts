@@ -14,6 +14,7 @@ import type {
   SendPlan,
   SendRequest,
   RunDetail,
+  ProbeResult,
   SourceSpec,
   SyncAction,
   SyncJob,
@@ -115,6 +116,8 @@ export class Service implements Api {
   automation: Automation | null = null;
   /** Runs when this machine's node is a relay: hands sends on to the other machines of its group. */
   relay: RelayService | null = null;
+  /** The last reachability check per machine, so a plan right after it skips its own. */
+  private lastProbes = new Map<string, ProbeResult>();
 
   constructor(private host: HostAdapter) {
     this.settingsFile = path.join(host.userDataPath, 'settings.json');
@@ -201,6 +204,7 @@ export class Service implements Api {
       userDataPath: this.host.userDataPath,
       getSecret: (id) => this.getSecret(id),
       trash: this.host.trash ? (p) => this.host.trash!(p) : undefined,
+      recentProbe: (id) => this.lastProbes.get(id),
       emit: (e) => this.host.emit(e),
       log: this.log,
     };
@@ -367,6 +371,7 @@ export class Service implements Api {
   async probe(nodeIds?: string[]) {
     const nodes = this.config.nodes.filter((n) => n.enabled && n.id !== this.identity.node?.id && (!nodeIds || nodeIds.includes(n.id)));
     const results = await probeNodes(this.config, nodes);
+    for (const r of results) this.lastProbes.set(r.nodeId, r);
     this.host.emit({ type: 'probe', results });
     return results;
   }
@@ -479,7 +484,7 @@ export class Service implements Api {
       from: ctx.localNodeId,
       // the sources by their path on the share; a source that is gone is a deletion on the relayed machines too
       sources: plan.sources.filter((s) => s.exists || !s.error).map((s) => ({ rel: s.rel, kind: s.exists ? ('fs' as const) : ('delete' as const) })),
-      targetIds: relayed.get(relayId)!.map((n) => n.id),
+      targetIds: (relayed.get(relayId) ?? []).map((n) => n.id),
       options: { ...req.options, dryRun: false, notify: false, runPostCommand: req.options.runPostCommand },
     });
     for (const tp of plan.targets) {
@@ -498,6 +503,8 @@ export class Service implements Api {
       // a relay with nothing to copy itself still hands the job on: the machines behind it may be behind
       if (!ops.length && !behind) continue;
       const node = nodeOf(tp.targetId)!;
+      // a machine running SamSync takes its changes as a pack, whether or not others are behind it
+      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,
@@ -506,7 +513,7 @@ export class Service implements Api {
         node,
         backup: tp.backup,
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
-        relay: behind ? { targets: behind, job: relayJob(tp.targetId) } : undefined,
+        relay: behind || takesPack ? { targets: behind ?? [], job: relayJob(tp.targetId) } : undefined,
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));
@@ -525,7 +532,8 @@ export class Service implements Api {
 
   /** A relay that never picked the job up: send to the machines behind it from here, as a run of its own. */
   private async relayFallback(plan: SendPlan, d: RunDetail, overrides: { notify?: boolean; nodes?: NodeConfig[] }): Promise<void> {
-    const ids = d.targets.filter((x) => x.via && x.relayUnanswered).map((x) => x.key);
+    // the relay itself too: with a pack its files were never written there
+    const ids = d.targets.filter((x) => x.relayUnanswered).map((x) => x.key);
     if (!ids.length || plan.request.options.dryRun) return;
     this.log.warn(t('Röle'), t('Röle yanıt vermedi; {targets} için doğrudan gönderim başlıyor', { targets: ids.join(', ') }));
     const req: SendRequest = { ...plan.request, targetIds: ids, direct: true, label: t('{label} (doğrudan, röle yanıt vermedi)', { label: plan.request.label || t('Gönderim') }) };
@@ -556,6 +564,12 @@ export class Service implements Api {
           } catch {
             return null; // nothing to do on any machine
           }
+        },
+        runGroups: (groups, label, o) => {
+          const s = this.execSettings(label, 'send', o.options, { backup: o.backup, verify: o.verify, parallelGroups: 1, targetIds: groups.map((g) => g.key) });
+          const handle = startRun(this.ctx(), groups, s);
+          this.track(handle, false);
+          return handle;
         },
       },
       root,

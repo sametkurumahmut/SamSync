@@ -103,6 +103,28 @@ describe('relay end to end', () => {
       expect(fs.readdirSync(path.join(s.trainer, '_SamSyncRelay', 'jobs'))).toEqual([]);
       expect(fs.existsSync(path.join(s.ig1, '_SamSyncRelay'))).toBe(false);
       expect(d.log.some((l) => /röle dağıttı|passed on by the relay/.test(l.message))).toBe(true);
+      // the relay's own files came as one compressed pack, applied there, and the pack is gone again
+      expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
+      expect(rows.T.done).toBe(rows.T.total);
+      expect(fs.existsSync(path.join(s.trainer, '_SamSyncRelay', 'jobs', `${d.id}.pack`))).toBe(false);
+      // the relay's own history shows the apply
+      const relayRuns = await s.relay!.runs();
+      expect(relayRuns.some((r) => /^Paket: |^Pack: /.test(r.label))).toBe(true);
+    } finally {
+      s.stop();
+    }
+  }, 30000);
+
+  it('a machine marked as relay takes its own changes as a pack even when nothing is behind it', async () => {
+    const s = await setup({ relayRunning: true });
+    try {
+      await write(path.join(s.src, 'alone.txt'), 'X'.repeat(50_000));
+      const plan = await s.me.planSend(req(s.src, { targetIds: ['T'] }), 't-alone');
+      expect(plan.targets.map((tp) => tp.targetId)).toEqual(['T']);
+      const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      expect(read(path.join(s.trainer, 'Data', 'alone.txt'))?.length).toBe(50_000);
+      expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
     } finally {
       s.stop();
     }
@@ -120,7 +142,10 @@ describe('relay end to end', () => {
       expect(ig1.error).toMatch(/işi almadı|did not pick the job up/);
       // the job was taken back, and a direct run brings the file anyway
       expect(fs.readdirSync(path.join(s.trainer, '_SamSyncRelay', 'jobs'))).toEqual([]);
-      await until(() => read(path.join(s.ig1, 'Data', 'c.txt')) === 'C' && read(path.join(s.ig2, 'Data', 'c.txt')) === 'C');
+      // the relay itself got nothing but a pack nobody opened: the direct run covers it too
+      expect(d.targets.find((x) => x.key === 'T')!.relayUnanswered).toBe(true);
+      expect(fs.readdirSync(path.join(s.trainer, '_SamSyncRelay', 'jobs')).filter((n) => n.endsWith('.pack'))).toEqual([]);
+      await until(() => read(path.join(s.ig1, 'Data', 'c.txt')) === 'C' && read(path.join(s.ig2, 'Data', 'c.txt')) === 'C' && read(path.join(s.trainer, 'Data', 'c.txt')) === 'C');
       await until(async () => (await s.me.runs()).length >= 2);
       const runs = await s.me.runs();
       expect(runs.some((r) => /doğrudan|direct/.test(r.label))).toBe(true);

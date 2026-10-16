@@ -4,11 +4,13 @@ import type { Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
-import { RelayError, submitRelayJob, waitRelayResult } from './relay';
-import type { RelayJob } from '../shared/relay';
+import { RelayError, submitRelayJob, submitRelayPack, waitRelayResult } from './relay';
+import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
+import type { PackOp, RelayJob } from '../shared/relay';
 import { blobStream } from './git';
 import { hashStream } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
+import { RELAY_FOLDER } from '../shared/relay';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
 import { t } from '../shared/i18n';
 
@@ -289,6 +291,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       const src = op.src!;
       if (src.kind === 'fs') return fs.createReadStream(src.abs, { highWaterMark: limiter ? 256 * 1024 : 1024 * 1024 });
       if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
+      if (src.kind === 'pack') return openPackEntry(src.file, src);
       const et = await endpoint(src.key);
       return et.readStream(src.rel);
     };
@@ -371,6 +374,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     try {
+      if (g.relay && tgt.kind === 'fs' && !s.dryRun) {
+        // a machine running SamSync takes the changes as one compressed pack and applies them itself
+        await runPacked(g, st, tgt);
+        return;
+      }
       const mkdirs = g.ops.filter((o) => o.kind === 'mkdir').sort((a, b) => relDepth(a.rel) - relDepth(b.rel));
       const copies = g.ops.filter((o) => o.kind === 'copy').sort((a, b) => b.size - a.size);
       const deletes = g.ops.filter((o) => o.kind === 'delete');
@@ -450,6 +458,127 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     }
   }
 
+  /**
+   * The changes for a machine that runs SamSync go to it as one compressed pack with the job; it applies
+   * them to its own disk and reports back, then sends on to the machines behind it, if any. One stream over
+   * the network instead of a few round trips per file, and about half the bytes for programs and text.
+   */
+  async function runPacked(g: ExecGroup, st: RunTargetState, tgt: Transport) {
+    const job = g.relay!.job;
+    const copies = g.ops.filter((o) => o.kind === 'copy' && o.src && o.src.kind !== 'endpoint');
+    const entries: PackEntry[] = [];
+    const sources: PackSource[] = copies.map((op) => ({
+      rel: op.rel,
+      size: op.size,
+      mtimeMs: op.mtimeMs ?? Date.now(),
+      open: () => {
+        const src = op.src!;
+        if (src.kind === 'fs') return fs.createReadStream(src.abs, { highWaterMark: 1024 * 1024 });
+        if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
+        throw new Error(t('Kaynak uç bulunamadı: {key}', { key: (src as { key?: string }).key ?? '' }));
+      },
+    }));
+    let written = 0;
+    let packed = 0;
+    const stream = packStream(sources, entries, (src) => {
+      written += src.size;
+      st.bytesDone = written;
+      st.current = src.rel;
+      emitProgress();
+    });
+    const limiter = s.bandwidthMBps && s.bandwidthMBps > 0 ? new RateLimiter(s.bandwidthMBps * 1024 * 1024) : null;
+    try {
+      packed = await submitRelayPack(tgt, job.id, limiter ? stream.pipe(limiter.transform()) : stream);
+    } catch (e) {
+      st.status = 'failed';
+      st.error = errMessage(e);
+      for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
+      st.failed = g.ops.length;
+      st.done = g.ops.length;
+      log('error', t('Paket yazılamadı: {error}', { error: st.error }), g.key);
+      failRelayed(g, t('Röle {name} üzerindeki kopya tamamlanmadı; dağıtım yapılmadı', { name: g.title }));
+      return;
+    }
+    const total = entries.reduce((a, e) => a + e.size, 0);
+    if (total > 0) log('info', t('Paket: {size} → {packed} (%{pct})', { size: formatBytes(total), packed: formatBytes(packed), pct: Math.round((100 * packed) / total) }), g.key);
+    // the job tells the relay what to do with the pack on its own disk
+    const byRel = new Map(entries.map((e) => [e.rel, e]));
+    const ops: PackOp[] = g.ops.map((op) => {
+      if (op.kind === 'copy') {
+        const e = byRel.get(op.rel)!;
+        return { kind: 'copy', id: op.id, rel: op.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, replaceType: op.replaceType, dstExists: op.dstExists };
+      }
+      if (op.kind === 'mkdir') return { kind: 'mkdir', id: op.id, rel: op.rel, replaceType: op.replaceType, dstExists: op.dstExists };
+      return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir };
+    });
+    job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify };
+    const rows = relayed.get(g.key) ?? [];
+    const now = Date.now();
+    for (const r of rows) Object.assign(r, { status: 'running', startedAt: now });
+    st.current = undefined;
+    emitProgress();
+    try {
+      await submitRelayJob(tgt, job);
+      log('info', rows.length ? t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }) : t('Paket bırakıldı; makine kendisi uyguluyor'), g.key);
+      const result = await waitRelayResult(tgt, job.id, {
+        cancel,
+        ackMs: s.relayAckMs ?? 60_000,
+        doneMs: s.relayDoneMs ?? 15 * 60_000,
+        onAck: () => log('info', rows.length ? t('Röle işi aldı, dağıtıyor') : t('Makine paketi aldı, uyguluyor'), g.key),
+      });
+      // the relay's own apply
+      const own = result.targets.find((x) => x.targetId === g.key);
+      if (!own) {
+        st.status = 'failed';
+        st.error = t('Röle bu makine için sonuç bildirmedi');
+        for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
+        st.failed = g.ops.length;
+      } else {
+        st.status = own.status === 'cancelled' ? 'failed' : own.status;
+        st.error = own.error;
+        const failedIds = new Set(own.failedOps ?? []);
+        for (const op of g.ops) {
+          const ok = own.status === 'ok' || !failedIds.has(op.id);
+          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı') });
+        }
+        st.failed = own.opsFailed;
+        if (own.backupPath) st.backupPath = own.backupPath;
+        log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
+      }
+      st.done = g.ops.length;
+      st.bytesDone = st.bytesTotal;
+      applyRelayResult(rows, result);
+    } catch (e) {
+      const unanswered = e instanceof RelayError && e.unanswered;
+      const why = cancel.cancelled ? t('İptal edildi') : errMessage(e);
+      st.status = cancel.cancelled ? 'cancelled' : 'failed';
+      st.error = why;
+      st.relayUnanswered = unanswered || undefined;
+      for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: why });
+      st.failed = g.ops.length;
+      st.done = g.ops.length;
+      for (const r of rows) Object.assign(r, { status: cancel.cancelled ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
+      log(cancel.cancelled ? 'warn' : 'error', why, g.key);
+      if (unanswered) await tgt.remove(relJoin(RELAY_FOLDER, 'jobs', `${job.id}.pack`), false).catch(() => undefined);
+    }
+    emitProgress();
+  }
+
+  /** The rows of the machines behind a relay follow what the relay reported for them. */
+  function applyRelayResult(rows: RunTargetState[], result: { targets: { targetId: string; status: string; opsOk: number; opsFailed: number; bytes: number; error?: string }[] }) {
+    for (const r of rows) {
+      const got = result.targets.find((x) => x.targetId === r.key);
+      if (!got) {
+        Object.assign(r, { status: 'failed', error: t('Röle bu makine için sonuç bildirmedi'), failed: r.total, done: r.total });
+      } else {
+        Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error });
+        if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
+        else log('ok', t('{name}: röle dağıttı ({ok} işlem, {size})', { name: r.title, ok: got.opsOk, size: formatBytes(got.bytes) }), r.key);
+      }
+      r.finishedAt = Date.now();
+    }
+  }
+
   /** Hands the job to the relay and waits for its result; each relayed machine's row follows what it reports. */
   async function runRelay(g: ExecGroup, tgt: Transport) {
     const rows = relayed.get(g.key) ?? [];
@@ -466,17 +595,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         doneMs: s.relayDoneMs ?? 15 * 60_000,
         onAck: () => log('info', t('Röle işi aldı, dağıtıyor'), g.key),
       });
-      for (const r of rows) {
-        const got = result.targets.find((x) => x.targetId === r.key);
-        if (!got) {
-          Object.assign(r, { status: 'failed', error: t('Röle bu makine için sonuç bildirmedi'), failed: r.total, done: r.total });
-        } else {
-          Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error });
-          if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
-          else log('ok', t('{name}: röle dağıttı ({ok} işlem, {size})', { name: r.title, ok: got.opsOk, size: formatBytes(got.bytes) }), r.key);
-        }
-        r.finishedAt = Date.now();
-      }
+      applyRelayResult(rows, result);
     } catch (e) {
       const unanswered = e instanceof RelayError && e.unanswered;
       const why = cancel.cancelled ? t('İptal edildi') : errMessage(e);

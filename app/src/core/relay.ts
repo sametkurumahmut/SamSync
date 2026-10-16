@@ -5,11 +5,11 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { NodeConfig, RunDetail, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { NodeConfig, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
-import type { RunHandle } from './executor';
-import type { Transport } from './transport';
+import type { ExecGroup, ExecOp, RunHandle } from './executor';
+import { FsTransport, type Transport } from './transport';
 import { buildSendPlan } from './plan';
 import { relJoin } from './paths';
 import { CancelToken, errMessage, newId, sleep } from './util';
@@ -66,6 +66,16 @@ export async function submitRelayJob(tgt: Transport, job: RelayJob): Promise<voi
   await writeJson(tgt, relJoin(JOBS, `${job.id}.json`), job);
 }
 
+/** Streams the pack of a job onto the relay's share; returns the bytes written. */
+export async function submitRelayPack(tgt: Transport, id: string, data: NodeJS.ReadableStream, onProgress?: (n: number) => void): Promise<number> {
+  await tgt.mkdirp(JOBS);
+  const rel = relJoin(JOBS, `${id}.pack`);
+  const tmp = `${rel}.tmp`;
+  const n = await tgt.writeStream(tmp, data as import('node:stream').Readable, { onProgress });
+  await tgt.rename(tmp, rel);
+  return n;
+}
+
 /** Waits for the relay's result; a RelayError says whether the relay never answered or ran out of time. */
 export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait): Promise<RelayResult> {
   const started = Date.now();
@@ -95,6 +105,8 @@ export interface RelayHost {
   ctx(): CoreContext;
   /** Runs a plan with the planner's selection; null when there is nothing to do. */
   runPlan(plan: SendPlan, label: string): RunHandle | null;
+  /** Runs ready-made groups (the pack applied to this machine's own disk), tracked like any run. */
+  runGroups(groups: ExecGroup[], label: string, opts: { options: SendOptions; backup: boolean; verify: boolean }): RunHandle;
 }
 
 /**
@@ -179,9 +191,18 @@ export class RelayService {
       log.warn(t('Röle'), t('İş alınamadı: {error}', { error: errMessage(e) }));
       return;
     }
-    log.info(t('Röle'), t('{from} gönderdi: {n} öğe → {targets}', { from: job.from ?? '?', n: job.sources.length, targets: job.targetIds.join(', ') }));
+    log.info(t('Röle'), t('{from} gönderdi: {n} öğe → {targets}', { from: job.from ?? '?', n: job.sources.length, targets: job.targetIds.join(', ') || '-' }));
     const result: RelayResult = { id, finishedAt: 0, targets: [] };
+    // first the pack: the sender's changes for this machine, applied to its own disk
+    let ownOk = true;
+    if (job.pack) {
+      const own = await this.applyPack(id, job);
+      result.targets.push(own);
+      ownOk = own.status !== 'failed' && own.status !== 'cancelled';
+    }
     try {
+      if (!ownOk && job.targetIds.length) throw new Error(t('Paket bu makineye uygulanamadı; dağıtım yapılmadı'));
+      if (!job.targetIds.length) throw null;
       const sources: SourceSpec[] = job.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
       const req: SendRequest = { sources, targetIds: job.targetIds, options: { ...job.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle: {label}', { label: job.label }), direct: true };
       const plan = await buildSendPlan(ctx, req);
@@ -198,8 +219,10 @@ export class RelayService {
       }
       for (const w of plan.warnings) log.warn(t('Röle'), w);
     } catch (e) {
-      log.error(t('Röle'), t('İş çalıştırılamadı: {error}', { error: errMessage(e) }), e);
-      result.targets = job.targetIds.map((targetId) => ({ targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: errMessage(e) }));
+      if (e !== null) {
+        log.error(t('Röle'), t('İş çalıştırılamadı: {error}', { error: errMessage(e) }), e);
+        result.targets.push(...job.targetIds.map((targetId): RelayTargetResult => ({ targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: errMessage(e) })));
+      }
     }
     result.finishedAt = Date.now();
     try {
@@ -211,6 +234,42 @@ export class RelayService {
     } catch (e) {
       log.error(t('Röle'), t('Sonuç yazılamadı: {error}', { error: errMessage(e) }), e);
     }
+  }
+
+  /** Applies the pack that came with a job to this machine's own disk, through the ordinary run machinery. */
+  private async applyPack(id: string, job: RelayJob): Promise<RelayTargetResult> {
+    const packFile = path.join(this.jobsDir, `${id}.pack`);
+    const own: RelayTargetResult = { targetId: this.node.id, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
+    try {
+      const ops: ExecOp[] = job.pack!.ops.map((o) =>
+        o.kind === 'copy'
+          ? { id: o.id, kind: 'copy', rel: o.rel, isDir: false, size: o.size, mtimeMs: o.mtimeMs, src: { kind: 'pack', file: packFile, offset: o.offset, length: o.length, method: o.method }, replaceType: o.replaceType, dstExists: o.dstExists }
+          : o.kind === 'mkdir'
+            ? { id: o.id, kind: 'mkdir', rel: o.rel, isDir: true, size: 0, replaceType: o.replaceType, dstExists: o.dstExists }
+            : { id: o.id, kind: 'delete', rel: o.rel, isDir: o.isDir, size: 0 },
+      );
+      if (ops.length) {
+        const group: ExecGroup = { key: this.node.id, title: this.node.name, rootLabel: this.localRoot, open: async () => new FsTransport(this.localRoot), node: this.node, ops, backup: job.pack!.backup };
+        const h = this.host.runGroups([group], t('Paket: {label}', { label: job.label }), { options: job.options, backup: job.pack!.backup, verify: job.pack!.verify });
+        const d = await h.done;
+        const tg = d.targets[0];
+        own.status = d.status === 'ok' ? 'ok' : d.status === 'partial' ? 'partial' : d.status === 'cancelled' ? 'cancelled' : 'failed';
+        own.opsOk = d.opsOk;
+        own.opsFailed = d.opsFailed;
+        own.bytes = d.bytes;
+        own.error = tg?.error;
+        own.failedOps = d.results.filter((r) => !r.ok).map((r) => r.opId);
+        own.backupPath = tg?.backupPath;
+      }
+    } catch (e) {
+      own.status = 'failed';
+      own.error = errMessage(e);
+      own.opsFailed = job.pack!.ops.length;
+      this.host.ctx().log.error(t('Röle'), t('Paket uygulanamadı: {error}', { error: errMessage(e) }), e);
+    } finally {
+      await fsp.rm(packFile, { force: true }).catch(() => undefined);
+    }
+    return own;
   }
 
   private async prune(): Promise<void> {

@@ -23,6 +23,9 @@ type Unit =
   | { kind: 'git'; sourceIndex: number; rel: string; repo: string; rev: string; path: string; blob: string; size: number; mtimeMs: number }
   | { kind: 'delete'; sourceIndex: number; rel: string; abs: string };
 
+/** How long a reachability check from the window counts for a plan. */
+const RECENT_PROBE_MS = 60_000;
+
 export function emptyCounts(): CategoryCounts {
   return { new: 0, changed: 0, targetNewer: 0, extra: 0, deleted: 0, same: 0 };
 }
@@ -229,8 +232,12 @@ async function planTarget(
     counts: emptyCounts(),
     bytes: 0,
   };
-  const probe = await probeNode(ctx.config, node, 1500, false);
-  if (!probe.ok) return { ...base, reachable: false, error: probe.detail };
+  // a machine the window saw reachable a moment ago is not asked again: one round trip less per send
+  const recent = ctx.recentProbe?.(node.id);
+  if (!(recent?.ok && Date.now() - recent.checkedAt < RECENT_PROBE_MS)) {
+    const probe = await probeNode(ctx.config, node, 1500, false);
+    if (!probe.ok) return { ...base, reachable: false, error: probe.detail };
+  }
 
   let tgt: Transport;
   try {

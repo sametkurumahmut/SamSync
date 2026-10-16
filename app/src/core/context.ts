@@ -10,6 +10,8 @@ export interface CoreContext {
   getSecret?: (nodeId: string) => Promise<string | undefined>;
   /** Moves a local file or folder to the operating system's trash; without it the versioning folder is used. */
   trash?: (absPath: string) => Promise<void>;
+  /** The last reachability check of a machine (the window's periodic one), so a plan can skip its own. */
+  recentProbe?: (nodeId: string) => { ok: boolean; checkedAt: number } | undefined;
   emit: (e: AppEvent) => void;
   log: Logger;
 }
