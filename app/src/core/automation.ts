@@ -12,6 +12,7 @@ import { isUnder, normalizeAbs, toPosix } from './paths';
 import { errMessage, newId } from './util';
 import { t } from '../shared/i18n';
 import { RELAY_FOLDER } from '../shared/relay';
+import { OWN_FILE_PATTERNS } from '../shared/files';
 
 /** What the automation needs from the service (kept narrow so it can be tested without Electron). */
 export interface AutomationHost {
@@ -186,7 +187,7 @@ class WatchRunner {
   }
 
   private filter(): PathFilter {
-    return makeFilter({ excludeFiles: this.cfg.options.excludeFiles, excludeDirs: this.cfg.options.excludeDirs, alwaysExcludeDirs: [this.host.ctx().config.copy.backupFolderName, RELAY_FOLDER] });
+    return makeFilter({ excludeFiles: [...this.cfg.options.excludeFiles, ...OWN_FILE_PATTERNS], excludeDirs: this.cfg.options.excludeDirs, alwaysExcludeDirs: [this.host.ctx().config.copy.backupFolderName, RELAY_FOLDER] });
   }
 
   private roots(): string[] {

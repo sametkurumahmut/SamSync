@@ -13,6 +13,7 @@ import { CancelToken, errMessage, mapLimit, newId } from './util';
 import { joinRoot } from './paths';
 import { t } from '../shared/i18n';
 import { RELAY_FOLDER } from '../shared/relay';
+import { OWN_FILE_PATTERNS } from '../shared/files';
 
 export const VARIANT_ACTIONS: Record<Exclude<SyncVariant, 'twoWay' | 'custom'>, CustomActions> = {
   mirror: { leftOnly: 'copyRight', rightOnly: 'deleteRight', leftNewer: 'copyRight', rightNewer: 'copyRight', different: 'copyRight' },
@@ -156,7 +157,7 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
     const filter = makeFilter({
       include: f.include,
       exclude: [...f.exclude, ...ignored],
-      excludeFiles: [IGNORE_FILE],
+      excludeFiles: [IGNORE_FILE, ...OWN_FILE_PATTERNS],
       minSize: f.minSizeKb != null ? f.minSizeKb * 1024 : undefined,
       maxSize: f.maxSizeKb != null ? f.maxSizeKb * 1024 : undefined,
       newerThan: f.newerThanDays ? Date.now() - f.newerThanDays * 86400_000 : undefined,

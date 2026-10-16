@@ -54,7 +54,7 @@ Dosya/klasörleri pencereye sürükleyin, seçin ya da yolu yapıştırın; hede
 | `!` | hedefteki dosya **daha yeni** (Üzerine yaz kipinde yazılır, Yalnızca yeni kipinde atlanır) |
 | `−` | hedefte fazla (yalnızca Ayna kipinde silinir) / Git'te silinmiş |
 
-Liste varsayılan olarak **klasör ağacı** (her klasör satırında dalın sayıları ve boyutu, tek çocuklu zincirler tek satırda, ilk düzey açık; klasörün onay kutusu bütün dalı alır) ya da istenirse düz liste. Her satırın işareti kaldırılabilir, `⇄` ile kaynak–hedef satır farkı açılır, **Seçimi tüm hedeflere uygula** bir hedefte yapılan seçimi ötekilere taşır. **İzle** seçili kaynakları izlemeye alır (bkz. *Otomasyon*).
+Gönderim bir makineye yazarken kökte `samsync-lock.json` bırakır (bilgisayar, kullanıcı, gönderimin adı, başlangıç); başkasının taze kilidi incelemede o makinede "X yazıyor" uyarısıyla görünür, çalıştırma günlüğüne de düşer (gönderim yine sürer). 30 dakikadan eski kilit yok sayılır. Liste varsayılan olarak **klasör ağacı** (her klasör satırında dalın sayıları ve boyutu, tek çocuklu zincirler tek satırda, ilk düzey açık; klasörün onay kutusu bütün dalı alır) ya da istenirse düz liste. Her satırın işareti kaldırılabilir, `⇄` ile kaynak–hedef satır farkı açılır, **Seçimi tüm hedeflere uygula** bir hedefte yapılan seçimi ötekilere taşır. **İzle** seçili kaynakları izlemeye alır (bkz. *Otomasyon*).
 
 Seçenekler: kip (Üzerine yaz / Yalnızca yeni / Ayna), karşılaştırma (tarih+boyut / içerik / boyut), **yedek al** (eski hâller hedefte yedek klasörüne `<tarih>` altında taşınır), doğrulama (içerik özeti), hariç dosya/klasör kalıpları, eşzamanlı hedef sayısı, deneme çalıştırması, bitince bildirim, kopyalama sonrası komut.
 

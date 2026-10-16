@@ -2,6 +2,7 @@
 
 ## Yayımlanmamış
 
+- **Aynı makineye iki kişi:** gönderim sürerken hedefin kökünde `samsync-lock.json` durur (bilgisayar adı, kullanıcı, gönderimin adı, başlangıç zamanı, sürüm). Başkasının taze kilidi varsa inceleme makine kartında "ahmet yazıyor" rozeti ve açıklaması çıkar, çalıştırma günlüğüne de uyarı düşer; gönderim yine devam eder. 30 dakikadan eski kilit yok sayılır; kilit bitince kaldırılır. Bu dosya ve `samsync-manifest.json` hiçbir zaman gönderilmez, karşılaştırılmaz, aynada silinmez.
 - **İnceleme: klasör ağacı.** Gönderim planı artık klasör klasör görünüyor: her klasör satırında dalın sayıları (+yeni ~değişen !hedef daha yeni −silinecek), işlem sayısı ve boyutu; tek çocuklu klasör zincirleri tek satırda ("SimFrameworkModels/ModelHeavyIndustry"); ilk düzey açık gelir, tümünü aç/kapat düğmeleri var; klasörün onay kutusu bütün dalı seçer ya da bırakır; arama yaparken eşleşenler hep görünür. Düz liste de duruyor, aradaki geçiş hatırlanıyor.
 
 ## 2.0.2 — 2026-10-17

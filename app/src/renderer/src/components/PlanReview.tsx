@@ -6,7 +6,7 @@ import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
 import { api } from '../lib/api';
-import { bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
+import { ago, bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
 import { allFolders, buildOpTree, defaultExpanded, flattenTree, type TreeNode, type TreeRow } from '../lib/optree';
 import { readStored, writeStored } from '../lib/persist';
 import { tx } from '../lib/i18n';
@@ -231,6 +231,13 @@ export function PlanReview() {
                       {tp.backup !== plan.request.options.backup && <span className={cls('badge', tp.backup ? 'blue' : 'outline')}>{tp.backup ? t('yedekli') : t('yedeksiz')}</span>}
                     </div>
                   )}
+                  {tp.lock && (
+                    <div className="row" style={{ gap: 4, marginTop: 4 }} data-tip={t('{user} ({host}) şu anda bu makineye yazıyor: {label}', { user: tp.lock.user, host: tp.lock.host, label: tp.lock.label })}>
+                      <span className="badge amber">
+                        <AlertTriangle size={11} /> {t('{user} yazıyor', { user: tp.lock.user })}
+                      </span>
+                    </div>
+                  )}
                   {tp.via && tp.reachable ? (
                     <div className="row" style={{ gap: 4, marginTop: 6 }}>
                       <span className="badge violet">{t('{relay} üzerinden', { relay: targets.find((x) => x.targetId === tp.via)?.targetName ?? tp.via })}</span>
@@ -392,6 +399,12 @@ function TargetOps({
           </Button>
         )}
       </div>
+      {plan.lock && (
+        <div className="alert warn" style={{ margin: '8px 12px 0', fontSize: 12 }}>
+          <AlertTriangle size={14} />
+          <span>{t('{user} ({host}) {ago} bu makineye yazmaya başladı: {label}. Aynı anda gönderirseniz iki gönderim aynı dosyalara yazabilir; bitmesini beklemek daha güvenli.', { user: plan.lock.user, host: plan.lock.host, ago: ago(plan.lock.startedAt), label: plan.lock.label })}</span>
+        </div>
+      )}
       <div className="row" style={{ padding: '8px 12px', gap: 6, borderBottom: '1px solid var(--border)' }}>
         {FILTERS.map((x) => {
           const n = plan.ops.filter(x.match).length;

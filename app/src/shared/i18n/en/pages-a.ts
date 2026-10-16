@@ -290,6 +290,10 @@ const d: Dict = {
   'Bu makineye son gönderim': 'The last send to this machine',
   'Hız sınanamadı': 'Speed could not be measured',
   'Sürüm notları': 'Release notes',
+  '{user} ({host}) şu anda bu makineye yazıyor: {label}': '{user} ({host}) is writing to this machine right now: {label}',
+  '{user} yazıyor': '{user} is writing',
+  '{user} ({host}) {ago} bu makineye yazmaya başladı: {label}. Aynı anda gönderirseniz iki gönderim aynı dosyalara yazabilir; bitmesini beklemek daha güvenli.':
+    '{user} ({host}) started writing to this machine {ago}: {label}. Sending at the same time may make two sends write the same files; waiting for it to finish is safer.',
   'Tümünü aç': 'Unfold all',
   'Tümünü kapat': 'Fold all',
   'Klasör ağacı': 'Folder tree',

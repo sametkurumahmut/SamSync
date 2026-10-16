@@ -204,6 +204,7 @@ export class Service implements Api {
   ctx(): CoreContext {
     return {
       config: this.config,
+      appVersion: this.host.appVersion,
       localRoots: this.identity.node?.localRoots ?? [],
       localNodeId: this.identity.node?.id,
       userDataPath: this.host.userDataPath,

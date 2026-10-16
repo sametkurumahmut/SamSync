@@ -11,6 +11,7 @@ import { blobStream } from './git';
 import { hashStream } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
+import { myLock, otherLock, removeLock, writeLock } from './lock';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
 import { t } from '../shared/i18n';
 
@@ -218,6 +219,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return endpointCache.get(key)!;
     };
 
+    // say who writes here; a fresh lock of someone else is a warning, not a stop (the review said it too)
+    const lock = myLock(s.label, ctx.appVersion);
+    if (tgt.kind === 'fs' && !s.dryRun) {
+      const other = await otherLock(tgt, lock).catch(() => null);
+      if (other) log('warn', t('{user} ({host}) burada {label} gönderimini sürdürüyor; iki gönderim aynı dosyalara yazabilir', { user: other.user, host: other.host, label: other.label }), g.key);
+      await writeLock(tgt, lock).catch((e) => log('warn', t('Kilit yazılamadı: {error}', { error: errMessage(e) }), g.key));
+    }
     const backupBase = relJoin(s.backupFolderName, runStamp);
     const backup = g.backup ?? s.backup;
     let backedUpAny = false;
@@ -445,6 +453,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       st.current = undefined;
       st.finishedAt = Date.now();
       emitProgress();
+      if (tgt.kind === 'fs' && !s.dryRun) await removeLock(tgt, lock).catch(() => undefined);
       await tgt.close().catch(() => undefined);
       for (const p of endpointCache.values()) await p.then((x) => x.close()).catch(() => undefined);
     }

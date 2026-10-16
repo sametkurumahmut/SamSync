@@ -515,6 +515,8 @@ export interface TargetPlan {
   via?: string;
   /** This machine is marked as relay but no SamSync answers there (stale heartbeat): it is written to directly. */
   relayDown?: boolean;
+  /** Someone else is writing to this machine right now (a fresh lock from another computer). */
+  lock?: { host: string; user: string; label: string; startedAt: number };
 }
 
 export interface SendPlan {

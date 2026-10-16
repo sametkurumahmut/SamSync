@@ -16,7 +16,9 @@ import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
 import { t } from '../shared/i18n';
 import { targetOptions } from '../shared/options';
 import { RELAY_FOLDER, relayRouting } from '../shared/relay';
+import { OWN_FILE_PATTERNS } from '../shared/files';
 import { heartbeatFresh, readHeartbeat } from './relay';
+import { myLock, otherLock } from './lock';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -41,7 +43,7 @@ export interface PlanProgress {
 export function sendFilter(ctx: CoreContext, req: SendRequest, ignored: readonly string[] = []): PathFilter {
   const extra = ignoreExcludes(ignored);
   return makeFilter({
-    excludeFiles: [...req.options.excludeFiles, ...extra.excludeFiles, IGNORE_FILE],
+    excludeFiles: [...req.options.excludeFiles, ...extra.excludeFiles, IGNORE_FILE, ...OWN_FILE_PATTERNS],
     excludeDirs: [...req.options.excludeDirs, ...extra.excludeDirs],
     alwaysExcludeDirs: [ctx.config.copy.backupFolderName, RELAY_FOLDER],
   });
@@ -250,6 +252,8 @@ async function planTarget(
   const freeSpace = tgt.freeSpace().catch(() => undefined);
   // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
   const heartbeat = node.relay && node.transport !== 'sftp' && !req.direct ? readHeartbeat(tgt).then((h) => heartbeatFresh(h)) : Promise.resolve(true);
+  // someone else writing here right now shows in the review
+  const lock = otherLock(tgt, myLock(req.label ?? '', ctx.appVersion)).catch(() => null);
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
 
@@ -331,7 +335,7 @@ async function planTarget(
       }
     });
   } catch (e) {
-    await Promise.all([freeSpace, heartbeat]);
+    await Promise.all([freeSpace, heartbeat, lock]);
     await tgt.close();
     if (cancel.cancelled) throw e;
     return { ...base, reachable: false, failed: true, error: errMessage(e), counts: b.counts, ops: b.ops };
@@ -342,8 +346,15 @@ async function planTarget(
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
   const freeBytes = await freeSpace;
   const alive = await heartbeat;
+  const other = await lock;
   await tgt.close();
-  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true };
+  if (other) warn(t('{name}: {user} ({host}) {ago} önce yazmaya başladı ({label}); aynı anda gönderirseniz dosyalar karışabilir.', { name: node.name, user: other.user, host: other.host, ago: agoMinutes(other.startedAt), label: other.label }));
+  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined };
+}
+
+function agoMinutes(at: number): string {
+  const m = Math.round((Date.now() - at) / 60000);
+  return m < 1 ? t('az') : t('{n} dk', { n: m });
 }
 
 export async function buildSendPlan(

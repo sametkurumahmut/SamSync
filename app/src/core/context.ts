@@ -3,6 +3,8 @@ import type { Logger } from './logger';
 
 export interface CoreContext {
   config: AppConfig;
+  /** The app's version, written into locks and manifests. */
+  appVersion?: string;
   /** Local roots of the node this machine was identified as. */
   localRoots: string[];
   localNodeId?: string;
