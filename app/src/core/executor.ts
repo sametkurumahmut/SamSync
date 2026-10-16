@@ -12,6 +12,9 @@ import { hashStream } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
 import { myLock, otherLock, removeLock, writeLock } from './lock';
+import { applyOps, saveManifestSubtree } from './manifest';
+import type { Entry } from './transport';
+import os from 'node:os';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
 import { t } from '../shared/i18n';
 
@@ -43,6 +46,8 @@ export interface ExecGroup {
   trash?: (absPath: string) => Promise<void>;
   /** This target is a relay: once its own copy is done, the job goes to it and these machines get the files from it. */
   relay?: { targets: NodeConfig[]; job: RelayJob };
+  /** What the plan saw below each sent folder on this target: the run leaves it, updated, as the target's manifest. */
+  manifest?: Map<string, Map<string, Entry>>;
 }
 
 export interface ExecSettings {
@@ -408,6 +413,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         log('warn', t('İptal edildi'), g.key);
       } else {
         st.status = st.failed === 0 ? 'ok' : st.failed === g.ops.length ? 'failed' : 'partial';
+        if (g.manifest?.size && tgt.kind === 'fs' && !s.dryRun && st.status !== 'failed') await leaveManifest(g, tgt);
         if (trashed) log('info', t('{n} eski hâl geri dönüşüm kutusuna taşındı', { n: trashed }), g.key);
         if (backedUpAny) {
           st.backupPath = relJoin(s.backupFolderName, runStamp);
@@ -456,6 +462,20 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       if (tgt.kind === 'fs' && !s.dryRun) await removeLock(tgt, lock).catch(() => undefined);
       await tgt.close().catch(() => undefined);
       for (const p of endpointCache.values()) await p.then((x) => x.close()).catch(() => undefined);
+    }
+  }
+
+  /** The target's manifest after this run: what the plan saw, with the operations that succeeded applied. */
+  async function leaveManifest(g: ExecGroup, tgt: Transport) {
+    const okIds = new Set(results.filter((r) => r.key === g.key && r.ok).map((r) => r.opId));
+    const done = g.ops.filter((op) => okIds.has(op.id));
+    const by = { host: os.hostname(), user: process.env.USERNAME || undefined, version: ctx.appVersion };
+    for (const [rel, scanned] of g.manifest!) {
+      try {
+        await saveManifestSubtree(tgt, rel, applyOps(scanned, rel, done), by, s.label);
+      } catch (e) {
+        log('warn', t('Manifest yazılamadı ({path}): {error}', { path: rel || '/', error: errMessage(e) }), g.key);
+      }
     }
   }
 
@@ -520,7 +540,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       if (op.kind === 'mkdir') return { kind: 'mkdir', id: op.id, rel: op.rel, replaceType: op.replaceType, dstExists: op.dstExists };
       return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir };
     });
-    job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify };
+    job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify, subtrees: g.manifest ? [...g.manifest.keys()] : undefined };
     const rows = relayed.get(g.key) ?? [];
     const now = Date.now();
     for (const r of rows) Object.assign(r, { status: 'running', startedAt: now });

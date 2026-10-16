@@ -10,7 +10,10 @@ import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelayTargetResult }
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
 import { FsTransport, type Transport } from './transport';
-import { buildSendPlan } from './plan';
+import { buildSendPlan, sendFilter } from './plan';
+import { scanTree } from './scan';
+import { saveManifestSubtree } from './manifest';
+import os from 'node:os';
 import { relJoin } from './paths';
 import { CancelToken, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
@@ -316,6 +319,8 @@ export class RelayService {
         const h = this.host.runGroups([group], t('Paket: {label}', { label: job.label }), { options: job.options, backup: job.pack!.backup, verify: job.pack!.verify });
         const d = await h.done;
         const tg = d.targets[0];
+        // the manifest of this machine, from its own disk: the sender's next plan starts from it
+        if (d.status !== 'failed' && job.pack!.subtrees?.length) await this.writeOwnManifest(job).catch((e) => this.host.ctx().log.warn(t('Röle'), t('Manifest yazılamadı ({path}): {error}', { path: this.localRoot, error: errMessage(e) })));
         own.status = d.status === 'ok' ? 'ok' : d.status === 'partial' ? 'partial' : d.status === 'cancelled' ? 'cancelled' : 'failed';
         own.opsOk = d.opsOk;
         own.opsFailed = d.opsFailed;
@@ -333,6 +338,19 @@ export class RelayService {
       await fsp.rm(packFile, { force: true }).catch(() => undefined);
     }
     return own;
+  }
+
+  /** Walks the sent folders on this machine's own disk (fast there) and writes the manifest for them. */
+  private async writeOwnManifest(job: RelayJob): Promise<void> {
+    const ctx = this.host.ctx();
+    const local = new FsTransport(this.localRoot);
+    const filter = sendFilter(ctx, { sources: [], targetIds: [], options: job.options, origin: 'send' });
+    const by = { host: os.hostname(), user: process.env.USERNAME || undefined, version: ctx.appVersion };
+    for (const rel of job.pack!.subtrees ?? []) {
+      const scan = await scanTree(local, rel, { filter, caseInsensitive: true });
+      if (!scan.exists) continue;
+      await saveManifestSubtree(local, rel, scan.entries, by, job.label);
+    }
   }
 
   private async prune(): Promise<void> {

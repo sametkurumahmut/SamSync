@@ -517,6 +517,8 @@ export interface TargetPlan {
   relayDown?: boolean;
   /** Someone else is writing to this machine right now (a fresh lock from another computer). */
   lock?: { host: string; user: string; label: string; startedAt: number };
+  /** The target's folders came from its manifest (written then) after a check, not from a walk over the network. */
+  fromManifest?: number;
 }
 
 export interface SendPlan {

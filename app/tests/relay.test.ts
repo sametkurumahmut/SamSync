@@ -112,6 +112,11 @@ describe('relay end to end', () => {
       expect(relayRuns.some((r) => /^Paket: |^Pack: /.test(r.label))).toBe(true);
       const state = await s.relay!.relayState();
       expect(state).toMatchObject({ active: true, group: 'G', jobs: 1, lastOk: true, lastLabel: 'deneme' });
+      // the relay left its manifest from its own disk, so the sender's next plan starts from it
+      const manifest = JSON.parse(fs.readFileSync(path.join(s.trainer, 'samsync-manifest.json'), 'utf8'));
+      expect(manifest.subtrees['Data'].entries.length).toBe(3);
+      const again = await s.me.planSend(req(s.src), 't1b');
+      expect(again.targets.find((tp) => tp.targetId === 'T')!.fromManifest).toBeTruthy();
       expect(await s.me.relayState()).toMatchObject({ active: false, jobs: 0 });
     } finally {
       s.stop();

@@ -33,7 +33,13 @@ export interface RelayJob {
    * The sender's changes for the relay itself, compressed into `<id>.pack` next to the job instead of
    * copied one by one: the relay applies them to its disk first, then sends on.
    */
-  pack?: { ops: PackOp[]; backup: boolean; verify: boolean };
+  pack?: {
+    ops: PackOp[];
+    backup: boolean;
+    verify: boolean;
+    /** The sent folders (relative to the root): the relay writes its manifest for them after applying. */
+    subtrees?: string[];
+  };
 }
 
 export interface RelayTargetResult {

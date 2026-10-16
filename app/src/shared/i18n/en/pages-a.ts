@@ -292,6 +292,9 @@ const d: Dict = {
   'Sürüm notları': 'Release notes',
   '{user} ({host}) şu anda bu makineye yazıyor: {label}': '{user} ({host}) is writing to this machine right now: {label}',
   '{user} yazıyor': '{user} is writing',
+  'Hedefin klasörleri ağ üzerinden gezilmedi: SamSync’in {ago} bıraktığı manifestten alındı, bir örnekle doğrulandı. Karşılaştır sayfası her zaman doğrudan bakar.':
+    'The target’s folders were not walked over the network: they came from the manifest SamSync left {ago}, checked against a sample. The Compare page always looks for itself.',
+  manifestten: 'from manifest',
   '{user} ({host}) {ago} bu makineye yazmaya başladı: {label}. Aynı anda gönderirseniz iki gönderim aynı dosyalara yazabilir; bitmesini beklemek daha güvenli.':
     '{user} ({host}) started writing to this machine {ago}: {label}. Sending at the same time may make two sends write the same files; waiting for it to finish is safer.',
   'Tümünü aç': 'Unfold all',

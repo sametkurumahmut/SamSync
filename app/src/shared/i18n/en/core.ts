@@ -289,6 +289,8 @@ const d: Dict = {
   '{name}: {user} ({host}) {ago} önce yazmaya başladı ({label}); aynı anda gönderirseniz dosyalar karışabilir.': '{name}: {user} ({host}) started writing {ago} ago ({label}); sending at the same time may mix the files.',
   '{user} ({host}) burada {label} gönderimini sürdürüyor; iki gönderim aynı dosyalara yazabilir': '{user} ({host}) is still sending {label} here; two sends may write the same files',
   'Kilit yazılamadı: {error}': 'The lock could not be written: {error}',
+  '{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)': '{name}: {path} taken from the manifest ({n} entries, {checked} samples checked)',
+  'Manifest yazılamadı ({path}): {error}': 'The manifest could not be written ({path}): {error}',
   az: 'a moment',
   '{n} dk': '{n} min',
   'Hız sınaması': 'Speed test',

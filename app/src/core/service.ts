@@ -33,7 +33,7 @@ import { DEFAULT_SETTINGS, automationSettings, emptyConfig, loadConfig, readJson
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
-import { buildSendPlan, describeSources } from './plan';
+import { buildSendPlan, describeSources, type PlanScans } from './plan';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
 import { transportForNode, transportForEndpoint, nodeRootLabel } from './transport';
@@ -114,6 +114,8 @@ export class Service implements Api {
   readonly log: Logger;
   readonly history: History;
   private plans = new Map<string, SendPlan>();
+  /** What each plan saw on each target (kept here, not sent to the window): the run writes the manifest from it. */
+  private planScans = new Map<string, PlanScans>();
   private compares = new Map<string, { job: SyncJob; result: CompareResult }>();
   private runsActive = new Map<string, RunHandle>();
   private tasks = new Map<string, CancelToken>();
@@ -436,12 +438,19 @@ export class Service implements Api {
         t('Plan'),
         t('{n} kaynak → {targets} ({mode}, {compare})', { n: req.sources.length, targets: req.targetIds.join(', '), mode: req.options.mode, compare: req.options.compare }),
       );
+      const scans: PlanScans = new Map();
       const plan = await buildSendPlan(this.ctx(), req, {
         cancel,
+        scans,
         onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total }),
       });
       this.plans.set(plan.id, plan);
-      while (this.plans.size > 12) this.plans.delete(this.plans.keys().next().value!);
+      this.planScans.set(plan.id, scans);
+      while (this.plans.size > 12) {
+        const oldest = this.plans.keys().next().value!;
+        this.plans.delete(oldest);
+        this.planScans.delete(oldest);
+      }
       return plan;
     } finally {
       this.tasks.delete(taskId);
@@ -556,6 +565,7 @@ export class Service implements Api {
         backup: tp.backup,
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
         relay: behind || takesPack ? { targets: behind ?? [], job: relayJob(tp.targetId) } : undefined,
+        manifest: this.planScans.get(plan.id)?.get(tp.targetId),
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));

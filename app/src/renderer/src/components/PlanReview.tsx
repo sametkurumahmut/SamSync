@@ -386,6 +386,11 @@ function TargetOps({
             <b style={{ fontSize: 14 }}>{plan.targetName}</b>
             <span className="faint">{t('{n} değişiklik', { n: num(plan.ops.length) })}</span>
             {plan.counts.same > 0 && <span className="badge">{t('{n} aynı', { n: num(plan.counts.same) })}</span>}
+            {plan.fromManifest && (
+              <span className="badge blue" data-tip={t('Hedefin klasörleri ağ üzerinden gezilmedi: SamSync’in {ago} bıraktığı manifestten alındı, bir örnekle doğrulandı. Karşılaştır sayfası her zaman doğrudan bakar.', { ago: ago(plan.fromManifest) })}>
+                {t('manifestten')}
+              </span>
+            )}
           </div>
           <div className="row faint mono" style={{ fontSize: 11.5 }}>
             <HardDrive size={12} /> <span className="ellipsis selectable">{plan.root}</span>

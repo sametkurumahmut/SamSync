@@ -19,6 +19,7 @@ import { RELAY_FOLDER, relayRouting } from '../shared/relay';
 import { OWN_FILE_PATTERNS } from '../shared/files';
 import { heartbeatFresh, readHeartbeat } from './relay';
 import { myLock, otherLock } from './lock';
+import { manifestEntries } from './manifest';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -213,6 +214,30 @@ function push(b: OpBuilder, op: Omit<PlanOp, 'id'>) {
   b.ops.push({ ...op, id: String(b.ops.length) });
 }
 
+/** target id -> sent folder (relative to the root) -> the target's entries below it, as the plan compared them. */
+export type PlanScans = Map<string, Map<string, Map<string, Entry>>>;
+
+/** The manifest's entries narrowed to what the current filter would have walked. */
+function filterEntries(entries: Map<string, Entry>, filter: PathFilter): Map<string, Entry> {
+  const out = new Map<string, Entry>();
+  const dirOk = new Map<string, boolean>();
+  const allowedDir = (rel: string): boolean => {
+    if (!rel) return true;
+    const cached = dirOk.get(rel);
+    if (cached != null) return cached;
+    const parent = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+    const ok = allowedDir(parent) && filter.dir(rel);
+    dirOk.set(rel, ok);
+    return ok;
+  };
+  for (const [key, e] of entries) {
+    const parent = e.rel.includes('/') ? e.rel.slice(0, e.rel.lastIndexOf('/')) : '';
+    if (!allowedDir(parent)) continue;
+    if (e.isDir ? filter.dir(e.rel) : filter.file(e.rel, e.size, e.mtimeMs)) out.set(key, e);
+  }
+  return out;
+}
+
 async function planTarget(
   ctx: CoreContext,
   req: SendRequest,
@@ -221,6 +246,7 @@ async function planTarget(
   filter: PathFilter,
   cancel: CancelToken,
   warn: (message: string) => void,
+  scans?: Map<string, Map<string, Entry>>,
 ): Promise<TargetPlan> {
   // this target's own mode and backup, when the send gives it exceptions
   const opt = targetOptions(req.options, node.id);
@@ -254,6 +280,7 @@ async function planTarget(
   const heartbeat = node.relay && node.transport !== 'sftp' && !req.direct ? readHeartbeat(tgt).then((h) => heartbeatFresh(h)) : Promise.resolve(true);
   // someone else writing here right now shows in the review
   const lock = otherLock(tgt, myLock(req.label ?? '', ctx.appVersion)).catch(() => null);
+  let fromManifest: number | undefined;
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
 
@@ -302,8 +329,16 @@ async function planTarget(
       const keptKeys = new Set(kept.map((k) => k.toLowerCase()));
       const inKept = (rel: string) => keptKeys.has(rel.split('/')[0].toLowerCase());
       if (kept.length && opt.mode === 'mirror') warn(t('{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.', { name: node.name, folders: kept.join(', ') }));
-      const dstScan = dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: withTopDirsExcluded(filter, kept), cancel, caseInsensitive: true }) : null;
-      const dstEntries = dstScan?.entries ?? new Map<string, Entry>();
+      // the manifest first: what SamSync left here last time, checked against a sample of the folder
+      const unitFilter = withTopDirsExcluded(filter, kept);
+      const manifest = dstRoot?.isDir && !req.direct && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel).catch(() => null) : null;
+      if (manifest) {
+        fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
+        ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
+      }
+      const dstScan = manifest ? null : dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: unitFilter, cancel, caseInsensitive: true }) : null;
+      const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
+      scans?.set(u.rel, dstEntries);
       const local = new FsTransport(u.abs);
       const files: [string, Entry][] = [];
       for (const [key, e] of u.entries) {
@@ -349,7 +384,7 @@ async function planTarget(
   const other = await lock;
   await tgt.close();
   if (other) warn(t('{name}: {user} ({host}) {ago} önce yazmaya başladı ({label}); aynı anda gönderirseniz dosyalar karışabilir.', { name: node.name, user: other.user, host: other.host, ago: agoMinutes(other.startedAt), label: other.label }));
-  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined };
+  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined, fromManifest };
 }
 
 function agoMinutes(at: number): string {
@@ -360,7 +395,14 @@ function agoMinutes(at: number): string {
 export async function buildSendPlan(
   ctx: CoreContext,
   req: SendRequest,
-  opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void; /** false: write to every machine yourself, even where a relay would take over (comparisons, a relay that did not answer) */ relay?: boolean } = {},
+  opts: {
+    cancel?: CancelToken;
+    onProgress?: (p: PlanProgress) => void;
+    /** false: write to every machine yourself, even where a relay would take over (comparisons, a relay that did not answer) */
+    relay?: boolean;
+    /** Filled with what the plan saw on each target, so the run can leave an up-to-date manifest there. */
+    scans?: PlanScans;
+  } = {},
 ): Promise<SendPlan> {
   const started = Date.now();
   const cancel = opts.cancel ?? new CancelToken();
@@ -379,8 +421,14 @@ export async function buildSendPlan(
 
   let done = 0;
   progress({ message: t('Hedefler inceleniyor'), done, total: nodes.length });
+  const scansFor = (id: string) => {
+    if (!opts.scans) return undefined;
+    const m = opts.scans.get(id) ?? new Map<string, Map<string, Entry>>();
+    opts.scans.set(id, m);
+    return m;
+  };
   const planned = await mapLimit(nodes, 6, async (n) => {
-    const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m));
+    const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id));
     progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
     return tp;
   });
@@ -395,7 +443,7 @@ export async function buildSendPlan(
   }
   const directPlanned = new Map<string, TargetPlan>();
   await mapLimit([...behindDown.values()].flat(), 6, async (n) => {
-    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m)));
+    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id)));
   });
   // the relayed machines follow their relay in the list, reachable as far as the relay is
   const targets: TargetPlan[] = [];
