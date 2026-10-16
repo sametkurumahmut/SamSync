@@ -13,6 +13,7 @@ const d: Dict = {
   Plan: 'Plan',
   Başlatma: 'Launch',
   'Menü bağlantısı dinlenemiyor: {error}': 'Cannot listen for the menu connection: {error}',
+  '{key} kısayolu atanamadı ({name}); başka bir program kullanıyor olabilir': 'The shortcut {key} could not be taken ({name}); another program may use it',
   Geçmiş: 'History',
   Senkron: 'Sync',
   Kopyala: 'Copy',

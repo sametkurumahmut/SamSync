@@ -369,6 +369,8 @@ export interface QuickSend {
   options?: Partial<SendOptions>;
   /** Open the review instead of sending at once. */
   review?: boolean;
+  /** A system-wide key (Electron accelerator, e.g. "Ctrl+Alt+1") that runs it from anywhere. */
+  hotkey?: string;
 }
 
 export interface Bootstrap {

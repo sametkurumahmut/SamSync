@@ -178,7 +178,7 @@ SamSync.exe --to last --yes "C:\...\Data\x.entity"
 SamSync.exe --quick "DLL → Dozer"
 ```
 
-`--quick <ad>`, Gönder sayfasında kaydedilen bir **hızlı gönderimi** (bir ad altında kaynaklar, hedefler ve seçenekler) çalıştırır; aynı gönderimler tepsi menüsünde ve komut paletinde de durur. "Önce incele" ile kaydedilen bir hızlı gönderim inceleme açar.
+`--quick <ad>`, Gönder sayfasında kaydedilen bir **hızlı gönderimi** (bir ad altında kaynaklar, hedefler ve seçenekler) çalıştırır; aynı gönderimler tepsi menüsünde ve komut paletinde de durur, istenirse sistem geneli bir kısayol tuşu alır (örn. `Ctrl+Alt+1`; uygulama tepsideyken de çalışır). "Önce incele" ile kaydedilen bir hızlı gönderim inceleme açar.
 
 | Argüman | Anlamı |
 | --- | --- |

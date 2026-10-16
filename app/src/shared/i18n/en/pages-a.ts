@@ -290,6 +290,8 @@ const d: Dict = {
   'Bu makineye son gönderim': 'The last send to this machine',
   'Hız sınanamadı': 'Speed could not be measured',
   'Sürüm notları': 'Release notes',
+  'Kısayol tuşu (isteğe bağlı)': 'Shortcut key (optional)',
+  'Her yerden çalışır, uygulama tepsideyken de; örn. Ctrl+Alt+1. Başka bir program kullanıyorsa atanamaz.': 'Works from anywhere, also while the app sits in the tray; e.g. Ctrl+Alt+1. Cannot be taken when another program uses it.',
   'Günlükler, yapılandırma, ayarlar ve bir özet tek klasörde (parolalar hariç); bir sorunu anlatırken paylaşın': 'The logs, the configuration, the settings and a summary in one folder (no passwords); share it when describing a problem',
   'Tanılama klasörü hazır': 'Diagnostics folder ready',
   'Tanılama klasörü oluştur…': 'Create a diagnostics folder…',

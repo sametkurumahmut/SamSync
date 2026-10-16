@@ -113,7 +113,7 @@ interface State {
   addSendPaths(paths: string[]): Promise<void>;
   /** Saved sends: run one, save the current list under a name, remove one. */
   runQuickSend(q: QuickSend): void;
-  saveQuickSend(name: string, review: boolean): Promise<void>;
+  saveQuickSend(name: string, review: boolean, hotkey?: string): Promise<void>;
   removeQuickSend(id: string): Promise<void>;
   removeSendPath(p: string): void;
   clearSendPaths(): void;
@@ -289,11 +289,11 @@ export const useApp = create<State>((set, get) => ({
   runQuickSend(q) {
     void handleOpen({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
   },
-  async saveQuickSend(name, review) {
+  async saveQuickSend(name, review, hotkey) {
     const st = get();
     const { dryRun: _d, ...options } = st.options;
     const existing = (st.boot?.settings.quickSends ?? []).filter((q) => q.name.toLowerCase() !== name.toLowerCase());
-    const q: QuickSend = { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review };
+    const q: QuickSend = { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined };
     await st.saveSettings({ quickSends: [...existing, q] });
     st.toast('ok', t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
   },

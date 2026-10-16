@@ -172,7 +172,7 @@ SamSync.exe --to last --yes "C:\...\Data\x.entity"
 SamSync.exe --quick "DLL → Dozer"
 ```
 
-`--quick <name>` runs a **quick send** saved on the Send page (sources, targets and options under a name); the same sends sit in the tray menu and the command palette. A quick send saved with "Önce incele" opens the review instead.
+`--quick <name>` runs a **quick send** saved on the Send page (sources, targets and options under a name); the same sends sit in the tray menu and the command palette, and one can get a system-wide shortcut key (e.g. `Ctrl+Alt+1`) that works while the app sits in the tray. A quick send saved with "Önce incele" opens the review instead.
 
 | Argument | Meaning |
 | --- | --- |

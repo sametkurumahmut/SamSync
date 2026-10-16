@@ -2,7 +2,7 @@
 // headless run that needs no window).
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, shell, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
 import type { AppEvent, LocalSettings, OpenRequest, QuickSend } from '../shared/types';
 import { isApiMethod, type PickOptions } from '../shared/api';
@@ -140,6 +140,28 @@ if (launch.removeIntegrations) {
   };
   /** A saved send as a launch: the window shows it being sent (or its review). */
   const quickRequest = (q: QuickSend): OpenRequest => ({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
+  /** System-wide keys of the saved sends: registered again whenever the settings change. */
+  let hotkeysKey = '';
+  const syncHotkeys = (quick: QuickSend[]) => {
+    if (!app.isReady()) return;
+    const withKeys = quick.filter((q) => q.hotkey);
+    const key = JSON.stringify(withKeys.map((q) => [q.id, q.hotkey]));
+    if (key === hotkeysKey) return;
+    hotkeysKey = key;
+    globalShortcut.unregisterAll();
+    for (const q of withKeys) {
+      let ok = false;
+      try {
+        ok = globalShortcut.register(q.hotkey!, () => {
+          showWindow();
+          launches.add(quickRequest(q), true);
+        });
+      } catch {
+        ok = false;
+      }
+      if (!ok) service.log.warn(t('Başlatma'), t('{key} kısayolu atanamadı ({name}); başka bir program kullanıyor olabilir', { key: q.hotkey!, name: q.name }));
+    }
+  };
   const trayMgr = new TrayManager(iconPath, {
     show: showWindow,
     setPaused: (p) => void service.automationPause(p),
@@ -253,6 +275,7 @@ if (launch.removeIntegrations) {
     applySettings(s, state) {
       currentSettings = s;
       trayMgr.update(s.closeToTray, state);
+      syncHotkeys(s.quickSends ?? []);
       if (app.isPackaged && process.platform !== 'linux' && loginItem !== s.launchAtLogin) {
         app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, path: launcherPath(), args: ['--hidden'] });
         loginItem = s.launchAtLogin;
@@ -408,6 +431,8 @@ if (launch.removeIntegrations) {
     await service.init();
     settingsReady = true;
     for (const name of pendingQuick.splice(0)) runQuickByName(name);
+    syncHotkeys(service.settings.quickSends ?? []);
+    app.on('will-quit', () => globalShortcut.unregisterAll());
     nativeTheme.themeSource = service.settings.theme;
     createWindow();
     app.on('activate', () => {

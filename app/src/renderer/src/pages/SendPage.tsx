@@ -259,6 +259,7 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const [review, setReview] = useState(false);
+  const [hotkey, setHotkey] = useState('');
   if (!quick.length && !canSave) return null;
   return (
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -269,6 +270,7 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
         <span key={q.id} className="chip row" style={{ gap: 4 }} data-tip={t('{n} kaynak → {targets} hedef{review}', { n: q.paths.length, targets: q.targetIds.length, review: q.review ? ` • ${t('inceleyerek')}` : '' })}>
           <button className="chip-btn" onClick={() => run(q)}>
             <Send size={12} /> {q.name}
+            {q.hotkey && <span className="kbd">{q.hotkey}</span>}
           </button>
           <button
             className="chip-x"
@@ -300,9 +302,10 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
                 variant="primary"
                 disabled={!name.trim()}
                 onClick={async () => {
-                  await save(name.trim(), review);
+                  await save(name.trim(), review, hotkey);
                   setNaming(false);
                   setName('');
+                  setHotkey('');
                 }}
               >
                 {t('Kaydet')}
@@ -311,7 +314,10 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
           }
         >
           <Field label={t('Ad')} help={t('Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür')}>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && void save(name.trim(), review).then(() => setNaming(false))} />
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && void save(name.trim(), review, hotkey).then(() => setNaming(false))} />
+          </Field>
+          <Field label={t('Kısayol tuşu (isteğe bağlı)')} help={t('Her yerden çalışır, uygulama tepsideyken de; örn. Ctrl+Alt+1. Başka bir program kullanıyorsa atanamaz.')}>
+            <input className="input mono" value={hotkey} onChange={(e) => setHotkey(e.target.value)} placeholder="Ctrl+Alt+1" />
           </Field>
           <ToggleRow icon={<Eye size={16} className="faint" />} title={t('Önce incele')} desc={t('Kapalıyken plan hesaplanır hesaplanmaz gönderilir; hedefte silme olacaksa yine inceleme açılır')} on={review} onChange={setReview} />
         </Modal>
