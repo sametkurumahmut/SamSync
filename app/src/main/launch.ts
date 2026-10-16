@@ -23,8 +23,8 @@ export interface Launch extends OpenRequest {
   missing: string[];
 }
 
-/** argv without the program (and, unpackaged, the app folder). */
-export function parseLaunch(args: string[], appPath?: string): Launch {
+/** argv without the program (and, unpackaged, the app folder); relative paths count from `cwd`. */
+export function parseLaunch(args: string[], appPath?: string, cwd?: string): Launch {
   const out: Launch = { paths: [], hidden: false, removeIntegrations: false, missing: [] };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -42,7 +42,7 @@ export function parseLaunch(args: string[], appPath?: string): Launch {
       out.syncJob = (a === '--sync' ? args[++i] ?? '' : a.slice(7)).trim();
     } else if (a && !a.startsWith('-')) {
       try {
-        const p = path.resolve(a);
+        const p = cwd ? path.resolve(cwd, a) : path.resolve(a);
         if (appPath && p === path.resolve(appPath)) continue;
         if (fs.existsSync(p)) out.paths.push(p);
         else out.missing.push(p);
@@ -57,6 +57,8 @@ export function parseLaunch(args: string[], appPath?: string): Launch {
 const QUIET_MS = 400;
 /** Once a second process has arrived the selection is a big one and Explorer starts them unevenly. */
 const QUIET_MANY_MS = 1200;
+const QUIET_QUICK_MS = 150;
+const QUIET_MANY_QUICK_MS = 400;
 const MAX_WAIT_MS = 30000;
 
 interface Batch {
@@ -76,7 +78,8 @@ export class LaunchQueue {
 
   constructor(private deliver: (r: OpenRequest) => void, private now = () => Date.now()) {}
 
-  add(r: OpenRequest): void {
+  /** `quick`: the items come through the pipe from SamSyncSend.exe, which Explorer starts within a few ms of each other. */
+  add(r: OpenRequest, quick = false): void {
     if (!r.paths.length && !r.targets?.length) return;
     const key = JSON.stringify([r.targets ?? [], !!r.send, !!r.restore]);
     let b = this.batches.get(key);
@@ -87,7 +90,7 @@ export class LaunchQueue {
     b.req.paths.push(...r.paths);
     b.count++;
     if (b.timer) clearTimeout(b.timer);
-    const quiet = b.count > 1 ? QUIET_MANY_MS : QUIET_MS;
+    const quiet = b.count > 1 ? (quick ? QUIET_MANY_QUICK_MS : QUIET_MANY_MS) : quick ? QUIET_QUICK_MS : QUIET_MS;
     const wait = Math.max(0, Math.min(quiet, b.first + MAX_WAIT_MS - this.now()));
     const batch = b;
     b.timer = setTimeout(() => {

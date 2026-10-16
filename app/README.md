@@ -149,7 +149,8 @@ The installed app puts the old tool's right-click menus back, and they are **on 
 - **Separators** split the menu into all | review and last settings | restore | profiles | groups | single machines.
 - **Fitting the menu:** Windows shows a static submenu comfortably up to 16 entries. This machine's own group is expanded first; the other groups are expanded only if they all fit, otherwise each is a single entry. `menuShowNodes` in config.json (`auto`, `always`, `never`; also on the settings page) changes that, as in the old tool.
 - **One-click sends** do not touch the Send page list. A send that would delete on a target (mirror from a profile or the last settings) opens the review instead.
-- **Large selections:** up to 100 selected items work. Explorer starts the app once per item, and the requests are merged into one send: 400 ms of quiet, 1.2 s once a second item has arrived, at most 30 s.
+- **What the menu starts:** `SamSyncSend.exe`, a small program next to `SamSync.exe` (installed and zip builds). It hands the command line to the running SamSync through a named pipe in a few milliseconds, or starts `SamSync.exe` when nothing is running. The single-file portable build has no such neighbour and starts itself; a second `SamSync.exe` finds the running one and exits before loading anything heavy.
+- **Large selections:** up to 100 selected items work. Explorer starts the program once per item, and the requests are merged into one send: 150 ms of quiet through the pipe (400 ms for a second process), 0.4 s / 1.2 s once a second item has arrived, at most 30 s.
 
 **Notepad++** (8.4.8 or later; standard installs and portable ones with `doLocalConf.xml`):
 - **Tab menu:** right-clicking a tab shows a **SamSync** folder with the same entries, flat, with a separator per section and per group.
@@ -254,7 +255,9 @@ npm test             # core tests (real file system, git and file watching)
 npm run typecheck
 npm run demo -- .demo     # demo environment with fake target folders + config (.demo/ is not committed)
 npm run web -- --user-data .demo/userdata   # core + UI in a browser (http://localhost:5198)
-npm run dist:win     # installer + portable exe
+npm run dist:win     # installer + portable exe + zip
 ```
+
+`dist:win` also compiles `resources/launcher/SamSyncSend.c` (the program the Explorer menu starts) with the Visual C++ compiler found through `vswhere`; without one the package is built without it and the menus start `SamSync.exe` directly.
 
 Layers: `src/core` (engine independent of Electron: configuration, machine detection, transports, planner, executor, git, sync, automation, backups), `src/main` (window, IPC, tray, command line, Explorer and Notepad++ integration, updater), `src/preload`, `src/renderer` (React UI), `src/shared` (shared types, the API contract, the menu entries and `i18n`: the Turkish text is the key, `i18n/en/*.ts` hold the English; `tests/i18n.test.ts` fails when a text has no English or a Turkish text is left outside `t()`).

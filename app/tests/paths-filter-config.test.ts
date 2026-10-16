@@ -4,7 +4,7 @@ import os from 'node:os';
 import fsp from 'node:fs/promises';
 import { mapToRel, joinRoot, commonDir, relIsWithin } from '../src/core/paths';
 import { makeFilter } from '../src/core/filter';
-import { normalizeConfig, saveConfigFile, loadConfig } from '../src/core/config';
+import { normalizeConfig, saveConfigFile, loadConfig, DEFAULT_COPY } from '../src/core/config';
 import { detectIdentity } from '../src/core/identity';
 import { smbRoot } from '../src/core/transport';
 import { expandTargetIds } from '../src/core/context';
@@ -78,7 +78,7 @@ describe('config', () => {
     expect(c.nodes[1].localRoots).toEqual(['C:\\Sim\\ActiveRelease']);
     expect(c.nodes[1].group).toBe('U1');
     expect(c.copy.backupKeep).toBe(3);
-    expect(c.copy.parallelTargets).toBe(4);
+    expect(c.copy.parallelTargets).toBe(DEFAULT_COPY.parallelTargets);
   });
 
   it('rejects duplicate ids', () => {

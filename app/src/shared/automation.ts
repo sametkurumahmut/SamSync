@@ -10,6 +10,9 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
 
 export const DEFAULT_GIT_EVENTS: GitEvent[] = ['commit', 'amend', 'merge', 'pull'];
 
+/** Quiet period of a new watch: long enough to gather a save of several files, short enough to feel immediate. */
+export const DEFAULT_QUIET_MS = 800;
+
 const int = (v: unknown, def: number, min: number, max: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : def;

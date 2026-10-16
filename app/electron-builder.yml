@@ -21,6 +21,11 @@ files:
 win:
   icon: resources/icon.ico
   executableName: SamSync
+  # SamSyncSend.exe next to SamSync.exe: what the Explorer menu starts (built by scripts/build-launcher.mjs)
+  extraFiles:
+    - from: out/launcher
+      to: .
+      filter: ['*.exe']
   target:
     - target: nsis
       arch: [x64]

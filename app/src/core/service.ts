@@ -466,7 +466,7 @@ export class Service implements Api {
         open: () => transportForNode(ctx, node),
         node,
         backup: tp.backup,
-        ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType })),
+        ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));

@@ -30,7 +30,7 @@ import {
   Send,
 } from 'lucide-react';
 import type { AutomationSettings, GitEvent, SendOptions, WatchConfig, WatchState, ScheduleState, SyncSchedule } from '@shared/types';
-import { automationSettings, DEFAULT_GIT_EVENTS } from '@shared/automation';
+import { automationSettings, DEFAULT_GIT_EVENTS, DEFAULT_QUIET_MS } from '@shared/automation';
 import { useApp, DEFAULT_OPTIONS } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Checkbox, Empty, Field, Modal, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
@@ -349,7 +349,7 @@ export function useStartWatchFromSend() {
     }
     const name = st.sendPaths.length === 1 ? baseName(st.sendPaths[0]) : `${baseName(st.sendPaths[0])} +${st.sendPaths.length - 1}`;
     const { dryRun: _d, ...rest } = st.options;
-    const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: 2000, enabled: true });
+    const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: DEFAULT_QUIET_MS, enabled: true });
     useApp.setState({ automation: a });
     await st.saveSettings({});
     st.toast('ok', t('İzleme başladı'), t('{name} → {n} hedef. Değişiklikler kendiliğinden gönderilecek.', { name, n: st.targets.length }), { label: t('Otomasyonu aç'), run: () => st.setPage('automation') });
@@ -363,7 +363,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const [paths, setPaths] = useState<string[]>(initial?.paths ?? st.sendPaths);
   const [targets, setTargets] = useState<string[]>(initial?.targetIds ?? st.targets);
   const [opts, setOpts] = useState<SendOptions>(initial?.options ?? { ...DEFAULT_OPTIONS, ...st.options, dryRun: false, propagateDeletes: false, mode: st.options.mode === 'mirror' ? 'overwrite' : st.options.mode, perTarget: withoutMirror(st.options.perTarget) });
-  const [quiet, setQuiet] = useState((initial?.quietMs ?? 2000) / 1000);
+  const [quiet, setQuiet] = useState((initial?.quietMs ?? DEFAULT_QUIET_MS) / 1000);
   const jobs = st.boot!.config.syncJobs;
   const [trigger, setTrigger] = useState<'files' | 'git'>(initial?.trigger ?? 'files');
   const [events, setEvents] = useState<GitEvent[]>(initial?.gitEvents ?? DEFAULT_GIT_EVENTS);
@@ -392,7 +392,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
         gitEvents: trigger === 'git' ? events : undefined,
         syncOnStart,
         options: opts,
-        quietMs: Math.max(500, Math.round(quiet * 1000)),
+        quietMs: Math.max(200, Math.round(quiet * 1000)),
         enabled: initial?.enabled ?? true,
       };
       const a = initial ? await api.watchUpdate(initial.id, cfg) : await api.watchAdd(cfg);
@@ -576,7 +576,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
           />
         </Field>
         <Field label={t('Bekleme (sn)')} help={t('Son değişiklikten sonra')}>
-          <input className="input" type="number" min={0.5} step={0.5} value={quiet} onChange={(e) => setQuiet(Number(e.target.value) || 2)} style={{ width: 90 }} />
+          <input className="input" type="number" min={0.2} step={0.1} value={quiet} onChange={(e) => setQuiet(Number(e.target.value) || DEFAULT_QUIET_MS / 1000)} style={{ width: 90 }} />
         </Field>
       </div>
       <ToggleRow icon={<Play size={16} className="faint" />} title={t('Başlarken mevcut farkları da gönder')} desc={t('İzleme açılınca, hedefte eksik ya da farklı olanlar önce bir kez gönderilir')} on={syncOnStart} onChange={setSyncOnStart} />

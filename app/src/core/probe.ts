@@ -20,7 +20,13 @@ export function tcpProbe(host: string, port: number, timeoutMs = 1500): Promise<
   });
 }
 
-export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 1500): Promise<ProbeResult> {
+/**
+ * Whether a machine can be reached. `deep` (the periodic check from the window) also touches the share on
+ * Windows: it tells a machine that answers on 445 but does not give the share apart, and it keeps the SMB
+ * session open, so the next send does not pay for setting one up (a second on a slow network). A plan does
+ * not need that: its first file operation opens the session anyway.
+ */
+export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 1500, deep = true): Promise<ProbeResult> {
   const root = nodeRootLabel(cfg, node);
   const base = { nodeId: node.id, root, checkedAt: Date.now() };
   if (node.transport === 'sftp') {
@@ -50,9 +56,19 @@ export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 15
       return { ...base, ok: false, latencyMs: r.ms, detail: t('SMB yanıt verdi ama {path} bağlı değil', { path: smbRoot(cfg, node) }) };
     }
   }
+  if (deep) {
+    const start = Date.now();
+    try {
+      const st = await withTimeout(fsp.stat(smbRoot(cfg, node)), Math.max(timeoutMs * 4, 6000));
+      if (!st.isDirectory()) return { ...base, ok: false, latencyMs: r.ms, detail: t('{path} bir klasör değil', { path: smbRoot(cfg, node) }) };
+      return { ...base, ok: true, latencyMs: Date.now() - start, detail: t('Paylaşım erişilebilir ({ms} ms)', { ms: Date.now() - start }) };
+    } catch (e) {
+      return { ...base, ok: false, latencyMs: r.ms, detail: t('SMB yanıt verdi ama {path} açılamadı: {error}', { path: smbRoot(cfg, node), error: errMessage(e) }) };
+    }
+  }
   return { ...base, ok: true, latencyMs: r.ms, detail: t('SMB (445) yanıt verdi ({ms} ms)', { ms: r.ms }) };
 }
 
-export async function probeNodes(cfg: AppConfig, nodes: NodeConfig[], timeoutMs = 1500): Promise<ProbeResult[]> {
-  return mapLimit(nodes, 24, (n) => probeNode(cfg, n, timeoutMs));
+export async function probeNodes(cfg: AppConfig, nodes: NodeConfig[], timeoutMs = 1500, deep = true): Promise<ProbeResult[]> {
+  return mapLimit(nodes, 24, (n) => probeNode(cfg, n, timeoutMs, deep));
 }

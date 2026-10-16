@@ -267,7 +267,7 @@ export function OptionsCard({ git }: { git?: boolean }) {
             </Field>
           )}
           <Field label={t('Eşzamanlı hedef')}>
-            <input className="input" type="number" min={1} max={16} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(16, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
+            <input className="input" type="number" min={1} max={32} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
           </Field>
         </div>
         <div className="options-toggles">

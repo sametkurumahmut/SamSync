@@ -1,4 +1,5 @@
 // Bundles scripts/web-entry.ts (core + HTTP bridge) with esbuild and starts it.
+import './threadpool.mjs';
 import { build } from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

@@ -229,9 +229,9 @@ export function SettingsPage() {
               <Field label={t('Saklanacak yedek')} help={t('0 = sınırsız')}>
                 {num('backupKeep', 0, 1000)}
               </Field>
-              <Field label={t('Eşzamanlı hedef')}>{num('parallelTargets', 1, 16)}</Field>
+              <Field label={t('Eşzamanlı hedef')}>{num('parallelTargets', 1, 32)}</Field>
               <Field label={t('Hedef başına dosya')} help={t('Eşzamanlı')}>
-                {num('parallelFiles', 1, 32)}
+                {num('parallelFiles', 1, 64)}
               </Field>
               <Field label={t('Zaman toleransı (sn)')} help={t('FAT/ağ sürücüleri için')}>
                 {num('timeToleranceSec', 0, 3600)}

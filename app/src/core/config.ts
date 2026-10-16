@@ -6,8 +6,8 @@ import { t } from '../shared/i18n';
 export const DEFAULT_COPY: CopySettings = {
   retryCount: 2,
   waitSeconds: 1,
-  parallelTargets: 4,
-  parallelFiles: 4,
+  parallelTargets: 8,
+  parallelFiles: 16,
   backupKeep: 5,
   backupFolderName: '_SamSyncYedek',
   verify: false,
@@ -120,8 +120,8 @@ export function normalizeConfig(raw: unknown): AppConfig {
   const copy: CopySettings = {
     retryCount: clampInt(c.retryCount, DEFAULT_COPY.retryCount, 0, 100),
     waitSeconds: clampInt(c.waitSeconds, DEFAULT_COPY.waitSeconds, 0, 60),
-    parallelTargets: clampInt(c.parallelTargets, DEFAULT_COPY.parallelTargets, 1, 16),
-    parallelFiles: clampInt(c.parallelFiles, DEFAULT_COPY.parallelFiles, 1, 32),
+    parallelTargets: clampInt(c.parallelTargets, DEFAULT_COPY.parallelTargets, 1, 32),
+    parallelFiles: clampInt(c.parallelFiles, DEFAULT_COPY.parallelFiles, 1, 64),
     backupKeep: clampInt(c.backupKeep, DEFAULT_COPY.backupKeep, 0, 1000),
     backupFolderName: String(c.backupFolderName || DEFAULT_COPY.backupFolderName).replace(/[\\/]/g, ''),
     verify: !!c.verify,

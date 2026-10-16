@@ -9,7 +9,7 @@ export const DEFAULT_SEND_OPTIONS: SendOptions = {
   verify: false,
   excludeFiles: [],
   excludeDirs: [],
-  parallelTargets: 4,
+  parallelTargets: 8,
   propagateDeletes: true,
   runPostCommand: true,
   notify: true,

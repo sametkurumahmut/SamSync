@@ -19,6 +19,8 @@ export interface ExecOp {
   mtimeMs?: number;
   src?: SrcRef;
   replaceType?: boolean;
+  /** Whether the target held something at this path when the plan was made (false lets the run skip a look). */
+  dstExists?: boolean;
 }
 
 export interface ExecGroup {
@@ -230,7 +232,23 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return true;
     };
 
+    /** Nothing keeps the old file: no backup, no trash. Then a plain remove or a rename over it is enough. */
+    const nothingToKeep = !backup && !g.trash;
+
     const backupOrRemove = async (rel: string, isDir: boolean): Promise<boolean> => {
+      if (nothingToKeep) {
+        // a missing path is not an error for remove, so no look first; a folder where the plan saw a file is
+        try {
+          await tgt.remove(rel, isDir);
+          return false;
+        } catch (e) {
+          const cur = await tgt.stat(rel);
+          if (!cur) return false;
+          if (cur.isDir === isDir) throw e;
+          await tgt.remove(rel, cur.isDir);
+          return false;
+        }
+      }
       const cur = await tgt.stat(rel);
       if (!cur) return false;
       if (await keepOld(rel)) return true;
@@ -266,11 +284,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       try {
         const src = op.src!;
         const mtime = op.mtimeMs ?? (src.kind === 'git' ? Date.now() : undefined);
-        if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
-        else await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress });
-        const written = await tgt.stat(tmp);
-        if (!written) throw new Error(t('Yazılan geçici dosya bulunamadı'));
-        if (written.size !== op.size) throw new Error(t('Boyut tutmuyor: {written} ≠ {expected}', { written: written.size, expected: op.size }));
+        // the writer reports what it wrote; a file that changed size since the plan is caught here
+        let written: number;
+        if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
+        else written = await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress });
+        if (written !== op.size) throw new Error(t('Boyut tutmuyor: {written} ≠ {expected}', { written, expected: op.size }));
         if (s.verify) {
           const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(tmp))]);
           if (a !== b) throw new Error(t('Doğrulama başarısız: içerik özeti tutmuyor'));
@@ -286,6 +304,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     const backupOrRemoveForReplace = async (op: ExecOp): Promise<boolean> => {
+      // a file is replaced by the rename itself; only something to keep, or a folder in the way, needs a look first
+      if (!op.replaceType && (nothingToKeep || op.dstExists === false)) return false;
       const cur = await tgt.stat(op.rel);
       if (!cur) return false;
       if (cur.isDir || op.replaceType) return backupOrRemove(op.rel, cur.isDir);
@@ -306,8 +326,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           let backedUp = false;
           if (op.kind === 'copy') backedUp = await doCopy(op);
           else if (op.kind === 'mkdir') {
-            const cur = await tgt.stat(op.rel);
-            if (cur && !cur.isDir) backedUp = await backupOrRemove(op.rel, false);
+            if (op.dstExists !== false || op.replaceType) {
+              const cur = await tgt.stat(op.rel);
+              if (cur && !cur.isDir) backedUp = await backupOrRemove(op.rel, false);
+            }
             await tgt.mkdirp(op.rel);
           } else backedUp = await backupOrRemove(op.rel, op.isDir);
           record(op, true, undefined, backedUp);
@@ -334,6 +356,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       const levels = new Map<number, ExecOp[]>();
       for (const m of mkdirs) levels.set(relDepth(m.rel), [...(levels.get(relDepth(m.rel)) ?? []), m]);
       for (const lvl of [...levels.keys()].sort((a, b) => a - b)) await mapLimit(levels.get(lvl)!, s.parallelFiles, runOp);
+      // folders the plan saw on the target need no look before the first file goes into them
+      if (tgt.assumeDir) for (const op of copies) if (op.dstExists) tgt.assumeDir(relParent(op.rel));
       await mapLimit(copies, s.parallelFiles, runOp);
       await mapLimit(delFiles, s.parallelFiles, runOp);
       for (const d of delDirs) await runOp(d);
@@ -392,8 +416,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
  * first) is merged into it, as a folder cannot be renamed onto one that is not empty.
  */
 async function moveInto(tgt: Transport, from: string, to: string): Promise<void> {
-  const dst = await tgt.stat(to);
-  if (!dst?.isDir || !(await tgt.stat(from))?.isDir) return tgt.rename(from, to);
+  // the usual case, a file or a folder with nothing in its way, is one rename
+  try {
+    await tgt.rename(from, to);
+    return;
+  } catch (e) {
+    const dst = await tgt.stat(to);
+    if (!dst?.isDir || !(await tgt.stat(from))?.isDir) throw e;
+  }
   for (const c of await tgt.list(from)) await moveInto(tgt, c.rel, relJoin(to, relBase(c.rel)));
   await tgt.remove(from, true);
 }

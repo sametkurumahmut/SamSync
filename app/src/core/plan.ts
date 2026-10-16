@@ -228,7 +228,7 @@ async function planTarget(
     counts: emptyCounts(),
     bytes: 0,
   };
-  const probe = await probeNode(ctx.config, node);
+  const probe = await probeNode(ctx.config, node, 1500, false);
   if (!probe.ok) return { ...base, reachable: false, error: probe.detail };
 
   let tgt: Transport;
@@ -237,6 +237,8 @@ async function planTarget(
   } catch (e) {
     return { ...base, reachable: false, error: errMessage(e) };
   }
+  // asked now and read at the end: on a slow network it overlaps with the comparison below
+  const freeSpace = tgt.freeSpace().catch(() => undefined);
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
 
@@ -318,6 +320,7 @@ async function planTarget(
       }
     });
   } catch (e) {
+    await freeSpace;
     await tgt.close();
     if (cancel.cancelled) throw e;
     return { ...base, reachable: false, failed: true, error: errMessage(e), counts: b.counts, ops: b.ops };
@@ -326,7 +329,7 @@ async function planTarget(
   b.ops.sort((x, y) => x.rel.localeCompare(y.rel));
   b.ops.forEach((op, i) => (op.id = String(i)));
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
-  const freeBytes = await tgt.freeSpace();
+  const freeBytes = await freeSpace;
   await tgt.close();
   return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes };
 }

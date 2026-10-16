@@ -128,7 +128,7 @@ function convertSettings(s: StoredSettings, cfg: AppConfig, unknown: Set<string>
   if (dirs.length) options.excludeDirs = [...new Set([...cfg.copy.excludeDirs, ...dirs])];
   if (g.notify != null) options.notify = !!g.notify;
   const parallel = Number(g.parallelTargets);
-  if (Number.isFinite(parallel) && parallel >= 1) options.parallelTargets = Math.min(16, Math.round(parallel));
+  if (Number.isFinite(parallel) && parallel >= 1) options.parallelTargets = Math.min(32, Math.round(parallel));
   return { targetIds: chosen.map((r) => r.id), options };
 }
 

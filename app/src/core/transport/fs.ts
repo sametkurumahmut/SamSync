@@ -34,6 +34,11 @@ export function progressCounter(onProgress?: (n: number) => void): Transform {
 export class FsTransport implements Transport {
   readonly kind = 'fs' as const;
   readonly caseInsensitive: boolean;
+  /**
+   * Folders this transport created or saw, so a send of many files into one folder asks the file system
+   * for the folder once, not once per file (every such question is a round trip on a share).
+   */
+  private knownDirs = new Set<string>();
 
   constructor(readonly root: string) {
     this.caseInsensitive = isWin || process.platform === 'darwin';
@@ -41,6 +46,47 @@ export class FsTransport implements Transport {
 
   localPath(rel: string): string {
     return joinRoot(this.root, rel);
+  }
+
+  private dirKey(abs: string): string {
+    return this.caseInsensitive ? abs.toLowerCase() : abs;
+  }
+
+  /** Creates a folder (and its parents) unless it is known to exist already. */
+  private async ensureDir(abs: string): Promise<void> {
+    const key = this.dirKey(abs);
+    if (this.knownDirs.has(key)) return;
+    await fsp.mkdir(abs, { recursive: true });
+    // the parents exist too now
+    this.assumeDir('');
+    let p = abs;
+    while (true) {
+      const k = this.dirKey(p);
+      if (this.knownDirs.has(k)) break;
+      this.knownDirs.add(k);
+      const parent = path.dirname(p);
+      if (parent === p) break;
+      p = parent;
+    }
+  }
+
+  assumeDir(rel: string): void {
+    let p = this.localPath(rel);
+    while (true) {
+      const k = this.dirKey(p);
+      if (this.knownDirs.has(k)) break;
+      this.knownDirs.add(k);
+      const parent = path.dirname(p);
+      if (parent === p) break;
+      p = parent;
+    }
+  }
+
+  /** A folder went away (removed or renamed): forget it and everything below it. */
+  private forgetDir(abs: string): void {
+    const key = this.dirKey(abs);
+    const prefix = key.endsWith(path.sep) ? key : key + path.sep;
+    for (const k of this.knownDirs) if (k === key || k.startsWith(prefix)) this.knownDirs.delete(k);
   }
 
   async stat(rel: string): Promise<Entry | null> {
@@ -82,7 +128,7 @@ export class FsTransport implements Transport {
 
   async writeStream(rel: string, data: Readable, opts: WriteOptions = {}): Promise<number> {
     const p = this.localPath(rel);
-    await fsp.mkdir(path.dirname(p), { recursive: true });
+    await this.ensureDir(path.dirname(p));
     let written = 0;
     await pipeline(
       data,
@@ -98,31 +144,36 @@ export class FsTransport implements Transport {
 
   async copyFromLocal(abs: string, rel: string, opts: WriteOptions = {}): Promise<number> {
     const p = this.localPath(rel);
-    await fsp.mkdir(path.dirname(p), { recursive: true });
+    await this.ensureDir(path.dirname(p));
     const st = await fsp.stat(abs);
+    const mtime = opts.mtimeMs ?? st.mtimeMs;
     if (st.size < STREAM_THRESHOLD || !opts.onProgress) {
       await fsp.copyFile(abs, p);
       opts.onProgress?.(st.size);
+      // Windows copies the modification time along with the file (CopyFile), so it is set again only when
+      // another one is wanted; elsewhere it is set every time
+      if (!isWin || Math.abs(mtime - st.mtimeMs) >= 1) await this.setMtime(rel, mtime);
     } else {
       await pipeline(fs.createReadStream(abs, { highWaterMark: 1024 * 1024 }), progressCounter(opts.onProgress), fs.createWriteStream(p, { highWaterMark: 1024 * 1024 }));
+      await this.setMtime(rel, mtime);
     }
-    await this.setMtime(rel, opts.mtimeMs ?? st.mtimeMs);
     return st.size;
   }
 
   async copyWithin(fromRel: string, toRel: string): Promise<void> {
     const from = this.localPath(fromRel);
     const to = this.localPath(toRel);
-    await fsp.mkdir(path.dirname(to), { recursive: true });
+    await this.ensureDir(path.dirname(to));
     await fsp.cp(from, to, { recursive: true, preserveTimestamps: true, force: true });
   }
 
   async mkdirp(rel: string): Promise<void> {
-    await fsp.mkdir(this.localPath(rel), { recursive: true });
+    await this.ensureDir(this.localPath(rel));
   }
 
   async remove(rel: string, isDir: boolean): Promise<void> {
     const p = this.localPath(rel);
+    if (isDir) this.forgetDir(p);
     try {
       await fsp.rm(p, { recursive: isDir, force: true, maxRetries: 2 });
     } catch (e) {
@@ -135,7 +186,8 @@ export class FsTransport implements Transport {
   async rename(fromRel: string, toRel: string): Promise<void> {
     const from = this.localPath(fromRel);
     const to = this.localPath(toRel);
-    await fsp.mkdir(path.dirname(to), { recursive: true });
+    await this.ensureDir(path.dirname(to));
+    this.forgetDir(from);
     try {
       await fsp.rename(from, to);
     } catch (e) {

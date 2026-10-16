@@ -41,5 +41,7 @@ export interface Transport {
   copyFromLocal?(abs: string, rel: string, opts?: WriteOptions): Promise<number>;
   /** Absolute OS path of a rel path when the transport is backed by the file system. */
   localPath?(rel: string): string;
+  /** Tells the transport a folder exists (the plan saw it), so writes below it do not ask again. */
+  assumeDir?(rel: string): void;
   close(): Promise<void>;
 }

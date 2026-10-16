@@ -11,6 +11,8 @@ const d: Dict = {
   Uygulama: 'App',
   Config: 'Config',
   Plan: 'Plan',
+  Başlatma: 'Launch',
+  'Menü bağlantısı dinlenemiyor: {error}': 'Cannot listen for the menu connection: {error}',
   Geçmiş: 'History',
   Senkron: 'Sync',
   Kopyala: 'Copy',
@@ -137,7 +139,6 @@ const d: Dict = {
   'Kaynak uç bulunamadı: {key}': 'Source endpoint not found: {key}',
   '→ {root} ({n} işlem, yedekli)': pl('→ {root} ({n} operation, with backup)', '→ {root} ({n} operations, with backup)'),
   '→ {root} ({n} işlem)': pl('→ {root} ({n} operation)', '→ {root} ({n} operations)'),
-  'Yazılan geçici dosya bulunamadı': 'The written temporary file was not found',
   'Boyut tutmuyor: {written} ≠ {expected}': 'Size mismatch: {written} ≠ {expected}',
   'Doğrulama başarısız: içerik özeti tutmuyor': 'Verification failed: the content hash does not match',
   '{path}: {error} — yeniden denenecek ({attempt}/{max})': '{path}: {error} — will retry ({attempt}/{max})',
@@ -199,6 +200,9 @@ const d: Dict = {
   'SMB yanıt verdi ({ms} ms), bağlama noktası erişilebilir': 'SMB responded ({ms} ms), mount point reachable',
   'SMB yanıt verdi ama {path} bağlı değil': 'SMB responded but {path} is not mounted',
   'SMB (445) yanıt verdi ({ms} ms)': 'SMB (445) responded ({ms} ms)',
+  'Paylaşım erişilebilir ({ms} ms)': 'Share reachable ({ms} ms)',
+  '{path} bir klasör değil': '{path} is not a folder',
+  'SMB yanıt verdi ama {path} açılamadı: {error}': 'SMB responded but {path} could not be opened: {error}',
 
   // Folder sync
   'Bir tarafta klasör, öbür tarafta dosya': 'A folder on one side, a file on the other',

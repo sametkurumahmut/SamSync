@@ -155,7 +155,8 @@ Kurulu uygulama eski aracın sağ tık menülerini geri getirir ve bu menüler *
 - **Ayırıcılar** menüyü bölümlere ayırır: tümü | incele ve son ayar | geri al | profiller | gruplar | tek makineler.
 - **Menünün sığması:** Windows sabit bir alt menüyü 16 girdiye kadar rahat gösterir. Önce bu makinenin kendi grubu açılır. Diğer gruplar ancak hepsi birlikte sığarsa açılır; sığmazsa her biri tek girdi olur. Bu davranış eski araçtaki gibi `config.json` içindeki `menuShowNodes` ile değiştirilebilir (`auto`, `always`, `never`); aynı ayar Ayarlar sayfasında da var.
 - **Tek tıkla gönderimler** Gönder sayfasındaki listeye dokunmaz. Hedefte silme yapacak bir gönderim (profilden ya da son ayardan gelen ayna kipi) doğrudan gönderilmez, inceleme açılır.
-- **Büyük seçimler:** 100 öğeye kadar seçim desteklenir. Explorer her öğe için uygulamayı bir kez başlatır ve gelen istekler tek gönderimde birleşir. Birleştirme 400 ms sessizlik bekler; ikinci öğe gelince bu süre 1,2 sn olur, en çok 30 sn sürer.
+- **Menünün başlattığı program:** `SamSync.exe`'nin yanındaki küçük `SamSyncSend.exe` (kurulum ve zip sürümlerinde). Komut satırını çalışan SamSync'e adlandırılmış boru üzerinden birkaç milisaniyede verir; uygulama çalışmıyorsa `SamSync.exe`'yi başlatır. Tek dosyalı taşınabilir sürümün böyle bir komşusu yoktur, kendisini başlatır; ikinci bir `SamSync.exe` de çalışanı bulup ağır hiçbir şey yüklemeden çıkar.
+- **Büyük seçimler:** 100 öğeye kadar seçim desteklenir. Explorer her öğe için programı bir kez başlatır ve gelen istekler tek gönderimde birleşir. Birleştirme boru üzerinden 150 ms (ikinci bir süreçle 400 ms) sessizlik bekler; ikinci öğe gelince bu süre 0,4 / 1,2 sn olur, en çok 30 sn sürer.
 
 **Notepad++**'ta (8.4.8 ve üzeri; standart kurulum ya da `doLocalConf.xml` ile taşınabilir kurulum):
 - **Sekme menüsü:** sekmeye sağ tıklayınca bir **SamSync** klasörü çıkar. Klasörde aynı girdiler düz bir liste hâlinde durur; her bölümün ve her grubun arasında bir ayırıcı vardır.
@@ -260,7 +261,9 @@ npm test             # çekirdek testleri (gerçek dosya sistemi, git ve dosya i
 npm run typecheck
 npm run demo -- .demo     # sahte hedef klasörleriyle demo ortamı + config (.demo/ git'e girmez)
 npm run web -- --user-data .demo/userdata   # çekirdek + arayüz tarayıcıda (http://localhost:5198)
-npm run dist:win     # kurulum + taşınabilir exe
+npm run dist:win     # kurulum + taşınabilir exe + zip
 ```
+
+`dist:win` ayrıca `resources/launcher/SamSyncSend.c` dosyasını (Explorer menüsünün başlattığı program) `vswhere` ile bulduğu Visual C++ derleyicisiyle derler; derleyici yoksa paket onsuz çıkar ve menüler doğrudan `SamSync.exe`'yi başlatır.
 
 Katmanlar: `src/core` (Electron'dan bağımsız motor: yapılandırma, makine tanıma, aktarım katmanları, planlayıcı, yürütücü, git, senkron, otomasyon, yedekler), `src/main` (pencere, IPC, tepsi, komut satırı, Explorer ve Notepad++ entegrasyonu, güncelleyici), `src/preload`, `src/renderer` (React arayüzü), `src/shared` (ortak tipler, API sözleşmesi, menü girdileri ve `i18n`). `i18n` içinde Türkçe metin anahtardır; İngilizceler `i18n/en/*.ts` dosyalarındadır. Bir metnin İngilizcesi yoksa ya da `t()` dışında Türkçe metin kalmışsa `tests/i18n.test.ts` başarısız olur.

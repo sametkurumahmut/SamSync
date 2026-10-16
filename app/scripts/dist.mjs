@@ -4,6 +4,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildLauncher } from './build-launcher.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bin = (name) => path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? `${name}.cmd` : name);
@@ -35,4 +36,6 @@ const run = (cmd, a) => {
   if (r.status !== 0) process.exit(r.status ?? 1);
 };
 run(bin('electron-vite'), ['build']);
+// the small program the Windows menus start (needs the Visual C++ compiler; skipped without it)
+buildLauncher();
 run(bin('electron-builder'), args);
