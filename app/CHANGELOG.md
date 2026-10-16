@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.0.1 — 2026-10-16
 
 - **Röle (bir makine üzerinden dağıtım):** Hedefler'de bir makine **röle** olarak işaretlenince, onunla birlikte seçilen grup makinelerine dosyalar önce yalnızca ona gider (kendi, çoğu zaman yavaş, bağlantınızdan tek kopya); oradaki SamSync işi paylaşımdaki `_SamSyncRelay` klasöründen alıp dosyaları kendi diskinden grubun ağı üzerinden dağıtır ve sonucu yazar. İnceleme, çalıştırma paneli ve geçmiş her makineyi "X üzerinden" rozetiyle, röleden gelen sonucuyla gösterir. Röle 60 sn içinde işi almazsa (orada SamSync çalışmıyorsa) o makinelere buradan doğrudan ayrı bir gönderim başlar. Tek başına seçilen bir grup makinesi röleye uğramaz; Karşılaştır sayfası ve `--check-only` her makineye doğrudan bakar. `copy.relayAckSeconds` ve `copy.relayTimeoutMinutes` süreleri ayarlar.
 - **Hız:** gönderim her dosya için hedefte 8 yerine 3 işlem yapıyor (kopyala, yeniden adlandır; Windows'ta değişiklik zamanı kopyayla geliyor); klasörler bir kez soruluyor; boş alan sorgusu karşılaştırmayla aynı anda yapılıyor. Varsayılan eşzamanlılık: 16 dosya, 8 hedef (en çok 64 / 32); Node dosya iş parçacığı havuzu 32. Yeni izlemelerin bekleme süresi 0,8 sn (en az 0,2 sn).

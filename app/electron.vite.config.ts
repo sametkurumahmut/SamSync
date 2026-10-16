@@ -6,7 +6,9 @@ const alias = { '@shared': resolve('src/shared'), '@': resolve('src/renderer/src
 
 export default defineConfig({
   main: {
-    build: { externalizeDeps: true, rollupOptions: { input: { index: resolve('src/main/index.ts') } } },
+    // app.ts is loaded by index.ts with a dynamic import, so it becomes a chunk of its own: it must stay next
+    // to index.js (not in chunks/), because it finds the preload, the renderer and the resources from __dirname
+    build: { externalizeDeps: true, rollupOptions: { input: { index: resolve('src/main/index.ts') }, output: { chunkFileNames: '[name]-[hash].js' } } },
     resolve: { alias },
   },
   preload: {
