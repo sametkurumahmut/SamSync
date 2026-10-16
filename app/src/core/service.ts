@@ -45,7 +45,7 @@ import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
 import crypto from 'node:crypto';
-import { CancelToken, errMessage, newId, withTimeout } from './util';
+import { CancelToken, errMessage, newId, stamp, withTimeout } from './util';
 import { RelayService } from './relay';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
@@ -60,6 +60,8 @@ export interface HostAdapter {
   initialTargets?: string[];
   /** The computer's preferred language tags, most preferred first ("tr-TR", "en-US"). */
   systemLanguages?: string[];
+  /** The GitHub repository the app updates from, for the release notes link. */
+  repositoryUrl?: string;
   emit(e: AppEvent): void;
   pick?(opts: PickOptions): Promise<string[]>;
   /** A save dialog; null when cancelled. */
@@ -249,6 +251,7 @@ export class Service implements Api {
       initialTargets: this.host.initialTargets?.splice(0) ?? [],
       userDataPath: this.host.userDataPath,
       isElectron: this.host.isElectron,
+      repositoryUrl: this.host.repositoryUrl,
       systemLang: this.systemLang,
       gitAvailable: !!this.gitVersion,
       gitVersion: this.gitVersion ?? undefined,
@@ -974,6 +977,40 @@ export class Service implements Api {
   }
   async openLog() {
     await this.host.openPath?.(this.log.file);
+  }
+
+  /**
+   * Everything that helps to look into a problem, in one folder the user picks: the logs, the configuration,
+   * the settings, and a summary of this machine, the machines' reachability, the relay and the last runs.
+   * The secrets file (SFTP passwords) is never included.
+   */
+  async exportDiagnostics(): Promise<string | null> {
+    const picked = (await this.host.pick?.({ folders: true, title: t('Tanılama klasörü nereye yazılsın?') })) ?? [];
+    if (!picked.length) return null;
+    const dir = path.join(picked[0], `SamSync-tanilama-${stamp()}`);
+    await fsp.mkdir(dir, { recursive: true });
+    const logDir = path.dirname(this.log.file);
+    for (const name of await fsp.readdir(logDir).catch(() => [] as string[])) {
+      if (/\.log(\.\d+)?$/.test(name)) await fsp.copyFile(path.join(logDir, name), path.join(dir, name)).catch(() => undefined);
+    }
+    await fsp.copyFile(this.configPath, path.join(dir, 'config.json')).catch(() => undefined);
+    await fsp.copyFile(this.settingsFile, path.join(dir, 'settings.json')).catch(() => undefined);
+    const about = {
+      version: this.host.appVersion,
+      platform: process.platform,
+      hostname: os.hostname(),
+      exportedAt: new Date().toISOString(),
+      configPath: this.configPath,
+      identity: { node: this.identity.node?.id, method: this.identity.method, reason: this.identity.reason },
+      relay: this.relay?.state() ?? { active: false, jobs: 0 },
+      probes: [...this.lastProbes.values()],
+      automation: this.automation?.snapshot(),
+      lastRuns: (await this.runs()).slice(0, 20),
+    };
+    await fsp.writeFile(path.join(dir, 'about.json'), JSON.stringify(about, null, 2));
+    this.log.info(t('Tanılama'), t('Tanılama klasörü yazıldı: {dir}', { dir }));
+    await this.host.showInFolder?.(dir).catch(() => undefined);
+    return dir;
   }
   async statFile(p: string) {
     const st = await fsp.stat(p).catch(() => null);

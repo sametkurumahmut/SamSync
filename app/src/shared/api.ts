@@ -148,6 +148,8 @@ export interface Api {
   showInFolder(p: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   openLog(): Promise<void>;
+  /** Copies the logs, the configuration, the settings (no secrets) and a summary into a folder the user picks; null when cancelled. */
+  exportDiagnostics(): Promise<string | null>;
   statFile(p: string): Promise<FileMeta | null>;
 
   integrationStatus(): Promise<IntegrationStatus | null>;
@@ -226,6 +228,7 @@ export const API_METHODS = {
   showInFolder: true,
   openExternal: true,
   openLog: true,
+  exportDiagnostics: true,
   statFile: true,
   integrationStatus: true,
   integrationSet: true,

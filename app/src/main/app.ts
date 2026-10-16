@@ -157,10 +157,22 @@ if (launch.removeIntegrations) {
 
   const updater = new Updater((state) => emit({ type: 'update', state }));
 
+  /** electron-builder writes the update source next to the app: the release notes live in that repository. */
+  const repositoryUrl = (() => {
+    try {
+      const y = fs.readFileSync(path.join(process.resourcesPath, 'app-update.yml'), 'utf8');
+      const owner = /^owner:\s*(\S+)/m.exec(y)?.[1];
+      const repo = /^repo:\s*(\S+)/m.exec(y)?.[1];
+      return owner && repo && owner !== 'none' ? `https://github.com/${owner}/${repo}` : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
   const host: HostAdapter = {
     isElectron: true,
     appVersion: app.getVersion(),
     userDataPath: app.getPath('userData'),
+    repositoryUrl,
     // launches go through the queue and the 'open' event, so a big Explorer selection merges with the first item
     initialPaths: [],
     initialTargets: [],

@@ -390,6 +390,8 @@ export interface Bootstrap {
   systemLang: Lang;
   gitAvailable: boolean;
   gitVersion?: string;
+  /** The GitHub repository the installed app updates from (https://github.com/owner/repo), when known. */
+  repositoryUrl?: string;
 }
 
 export interface ProbeResult {

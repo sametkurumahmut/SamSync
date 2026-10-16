@@ -289,6 +289,10 @@ const d: Dict = {
 
   'Bu makineye son gönderim': 'The last send to this machine',
   'Hız sınanamadı': 'Speed could not be measured',
+  'Sürüm notları': 'Release notes',
+  'Günlükler, yapılandırma, ayarlar ve bir özet tek klasörde (parolalar hariç); bir sorunu anlatırken paylaşın': 'The logs, the configuration, the settings and a summary in one folder (no passwords); share it when describing a problem',
+  'Tanılama klasörü hazır': 'Diagnostics folder ready',
+  'Tanılama klasörü oluştur…': 'Create a diagnostics folder…',
   'Bu makine {group} grubunun rölesi': 'This machine is the relay of group {group}',
   '{n} iş alındı, son {ago}{ok}': pl('{n} job taken, last {ago}{ok}', '{n} jobs taken, last {ago}{ok}'),
   'henüz iş gelmedi': 'no job yet',

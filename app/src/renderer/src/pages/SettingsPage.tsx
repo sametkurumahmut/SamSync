@@ -31,6 +31,17 @@ function Section({ id, icon, title, desc, children, action }: { id: string; icon
   );
 }
 
+/** The releases page of the repository the app updates from: what changed in each version. */
+function ReleaseNotesButton() {
+  const url = useApp((s) => s.boot?.repositoryUrl);
+  if (!url) return null;
+  return (
+    <Button size="sm" variant="ghost" icon={<ExternalLink size={13} />} onClick={() => void api.openExternal(`${url}/releases`)}>
+      {t('Sürüm notları')}
+    </Button>
+  );
+}
+
 export function SettingsPage() {
   const boot = useApp((s) => s.boot!);
   const s = boot.settings;
@@ -493,6 +504,17 @@ export function SettingsPage() {
               <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => void api.openPath(boot.userDataPath)}>
                 {t('Veri klasörü')}
               </Button>
+              <Button
+                size="sm"
+                icon={<Save size={13} />}
+                data-tip={t('Günlükler, yapılandırma, ayarlar ve bir özet tek klasörde (parolalar hariç); bir sorunu anlatırken paylaşın')}
+                onClick={async () => {
+                  const dir = await api.exportDiagnostics();
+                  if (dir) useApp.getState().toast('ok', t('Tanılama klasörü hazır'), dir);
+                }}
+              >
+                {t('Tanılama klasörü oluştur…')}
+              </Button>
               <Button size="sm" variant="ghost" onClick={() => void api.windowControl('devtools')}>
                 {t('Geliştirici araçları')}
               </Button>
@@ -564,6 +586,7 @@ function UpdateStatus() {
             {t('Yeniden başlat ve kur')}
           </Button>
         )}
+        <ReleaseNotesButton />
       </div>
       {p === 'downloading' && (
         <div style={{ marginTop: 10 }}>
