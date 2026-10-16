@@ -6,6 +6,7 @@ import type {
   LocalSettings,
   ProbeResult,
   QuickSend,
+  RelayState,
   RunLogLine,
   RunSummary,
   RunTargetState,
@@ -64,6 +65,8 @@ interface State {
   collapsed: boolean;
   dark: boolean;
   probes: Record<string, ProbeResult>;
+  /** What the relay service on this machine is doing, when this machine is a relay. */
+  relayState?: RelayState;
   probing: boolean;
   update: UpdateState | null;
   automation: AutomationState | null;
@@ -197,6 +200,7 @@ export const useApp = create<State>((set, get) => ({
       const active = tabs?.list.find((w) => w.id === tabs.active) ?? tabs?.list[0];
       const targets = active?.targets ?? s.lastTargets;
       set({ boot, options, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
+      void api.relayState().then((relayState) => set({ relayState })).catch(() => undefined);
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
@@ -463,6 +467,9 @@ const MAX_LOG = 4000;
 function handleEvent(e: AppEvent) {
   const st = useApp.getState();
   switch (e.type) {
+    case 'relay':
+      useApp.setState({ relayState: e.state });
+      break;
     case 'run-start':
       useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false } } }));
       break;

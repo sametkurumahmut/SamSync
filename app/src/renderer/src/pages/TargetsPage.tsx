@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge } from 'lucide-react';
-import type { NodeConfig, RunSummary, TransportKind } from '@shared/types';
+import type { NodeConfig, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
@@ -22,6 +22,19 @@ export function TargetsPage() {
   const [editingJson, setEditingJson] = useState(false);
   const cfg = boot.config;
   const probes = useApp((s) => s.probes);
+  const relayState = useApp((s) => s.relayState);
+  // a few MB written and read back on request: the pace of the link, as a number
+  const [speed, setSpeed] = useState<Record<string, SpeedTestResult | 'running' | undefined>>({});
+  const testSpeed = async (n: NodeConfig) => {
+    setSpeed((s) => ({ ...s, [n.id]: 'running' }));
+    try {
+      const r = await api.speedTest(n.id);
+      setSpeed((s) => ({ ...s, [n.id]: r }));
+    } catch (e) {
+      setSpeed((s) => ({ ...s, [n.id]: undefined }));
+      toast('error', t('Hız sınanamadı'), (e as Error).message);
+    }
+  };
   // what the last send to each machine looked like: pace and time, from the history
   const liveRuns = useApp((s) => s.runs);
   const doneCount = Object.values(liveRuns).filter((r) => r.done).length;
@@ -119,6 +132,15 @@ export function TargetsPage() {
               </div>
               {id.node && (
                 <>
+                  {relayState?.active && (
+                    <div className="row" style={{ gap: 6, marginTop: 10, fontSize: 12.5 }} data-tip={relayState.dir}>
+                      <Share2 size={13} color="var(--accent)" />
+                      <span>
+                        {t('Bu makine {group} grubunun rölesi', { group: relayState.group ?? '-' })} •{' '}
+                        {relayState.jobs ? t('{n} iş alındı, son {ago}{ok}', { n: relayState.jobs, ago: ago(relayState.lastJobAt), ok: relayState.lastOk === false ? ` (${t('hatalı')})` : '' }) : t('henüz iş gelmedi')}
+                      </span>
+                    </div>
+                  )}
                   <div className="section-title" style={{ marginTop: 14 }}>
                     {t('Yerel kökler')}
                   </div>
@@ -232,7 +254,15 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
+                        {!isLocal && speed[n.id] && speed[n.id] !== 'running' && (
+                          <span className="faint tabular" style={{ fontSize: 11.5 }} data-tip={t('Yazma / okuma hızı ve gecikme (3 MB ile ölçüldü)')}>
+                            ↑{(speed[n.id] as SpeedTestResult).writeMBps.toFixed(1)} ↓{(speed[n.id] as SpeedTestResult).readMBps.toFixed(1)} MB/sn • {(speed[n.id] as SpeedTestResult).latencyMs} ms
+                          </span>
+                        )}
                         <span className="spacer" />
+                        {!isLocal && (
+                          <Button size="sm" variant="ghost" iconOnly icon={<Gauge size={13} />} tip={t('Hız sına: 3 MB yazar, geri okur, siler')} loading={speed[n.id] === 'running'} disabled={!p?.ok} onClick={() => void testSpeed(n)} />
+                        )}
                         {n.relay && (
                           <span
                             className={cls('badge', p?.relayAlive === false ? 'red' : 'violet')}

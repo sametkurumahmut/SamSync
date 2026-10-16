@@ -288,6 +288,12 @@ const d: Dict = {
   'röle açık': 'relay on',
 
   'Bu makineye son gönderim': 'The last send to this machine',
+  'Hız sınanamadı': 'Speed could not be measured',
+  'Bu makine {group} grubunun rölesi': 'This machine is the relay of group {group}',
+  '{n} iş alındı, son {ago}{ok}': pl('{n} job taken, last {ago}{ok}', '{n} jobs taken, last {ago}{ok}'),
+  'henüz iş gelmedi': 'no job yet',
+  'Yazma / okuma hızı ve gecikme (3 MB ile ölçüldü)': 'Write / read speed and latency (measured with 3 MB)',
+  'Hız sına: 3 MB yazar, geri okur, siler': 'Speed test: writes 3 MB, reads them back, removes them',
   'Röle işi alma süresi (sn)': 'Relay pick-up time (s)',
   'Röle bu sürede işi almazsa doğrudan gönderilir': 'If the relay does not pick the job up within this time, the send goes directly',
   'Röle bitirme süresi (dk)': 'Relay finish time (min)',

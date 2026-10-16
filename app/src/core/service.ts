@@ -15,6 +15,8 @@ import type {
   SendRequest,
   RunDetail,
   ProbeResult,
+  SpeedTestResult,
+  RelayState,
   SourceSpec,
   SyncAction,
   SyncJob,
@@ -42,7 +44,8 @@ import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } f
 import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
-import { CancelToken, errMessage, newId } from './util';
+import crypto from 'node:crypto';
+import { CancelToken, errMessage, newId, withTimeout } from './util';
 import { RelayService } from './relay';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
@@ -367,6 +370,41 @@ export class Service implements Api {
   }
 
   // ------------------------------------------------------------ targets & sources
+
+  /** A few MB written to the machine and read back, then removed: what the link really does. */
+  async speedTest(nodeId: string): Promise<SpeedTestResult> {
+    const node = findNode(this.config, nodeId);
+    if (!node) throw new Error(t('Hedef bulunamadı: {id}', { id: nodeId }));
+    const tgt = await transportForNode(this.ctx(), node);
+    const rel = `.samsync-speedtest-${newId()}.tmp`;
+    // random bytes: a compressing link cannot shrink them, so the number is the link's own
+    const size = 3 * 1024 * 1024;
+    const data = crypto.randomBytes(size);
+    const { Readable } = await import('node:stream');
+    try {
+      const t0 = Date.now();
+      await withTimeout(tgt.stat(''), 15000);
+      const latencyMs = Date.now() - t0;
+      const t1 = Date.now();
+      await withTimeout(tgt.writeStream(rel, Readable.from([data])), 120000);
+      const writeMs = Date.now() - t1;
+      const t2 = Date.now();
+      let got = 0;
+      for await (const c of await withTimeout(tgt.readStream(rel), 15000)) got += (c as Buffer).length;
+      const readMs = Date.now() - t2;
+      if (got !== size) throw new Error(t('Okunan boyut tutmuyor'));
+      const r: SpeedTestResult = { nodeId, bytes: size, writeMBps: (size / 1048576 / Math.max(writeMs, 1)) * 1000, readMBps: (size / 1048576 / Math.max(readMs, 1)) * 1000, latencyMs, at: Date.now() };
+      this.log.info(t('Hız sınaması'), t('{name}: yazma {w} MB/sn, okuma {r} MB/sn, gecikme {ms} ms', { name: node.name, w: r.writeMBps.toFixed(2), r: r.readMBps.toFixed(2), ms: latencyMs }));
+      return r;
+    } finally {
+      await tgt.remove(rel, false).catch(() => undefined);
+      await tgt.close().catch(() => undefined);
+    }
+  }
+
+  async relayState(): Promise<RelayState> {
+    return this.relay?.state() ?? { active: false, jobs: 0 };
+  }
 
   async probe(nodeIds?: string[]) {
     const nodes = this.config.nodes.filter((n) => n.enabled && n.id !== this.identity.node?.id && (!nodeIds || nodeIds.includes(n.id)));

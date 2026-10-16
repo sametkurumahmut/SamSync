@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { NodeConfig, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { NodeConfig, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
@@ -144,8 +144,18 @@ export class RelayService {
   private watcher: fs.FSWatcher | null = null;
   private busy = new Set<string>();
   private lastPrune = 0;
+  private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
   readonly resultsDir: string;
+
+  /** What this relay has done since it started (for this machine's card). */
+  state(): RelayState {
+    return { ...this.stats };
+  }
+
+  private tell(): void {
+    this.host.ctx().emit({ type: 'relay', state: this.state() });
+  }
 
   constructor(
     private host: RelayHost,
@@ -172,6 +182,8 @@ export class RelayService {
     this.timer = setInterval(() => void this.poll(), this.pollMs);
     this.beat = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
     this.host.ctx().log.info(t('Röle'), t('Bu makine {group} grubuna röle: {dir} izleniyor', { group: this.node.group ?? '-', dir: this.jobsDir }));
+    this.stats = { ...this.stats, active: true, group: this.node.group, dir: this.jobsDir };
+    this.tell();
     void this.heartbeat();
     void this.poll();
   }
@@ -185,6 +197,10 @@ export class RelayService {
     this.watcher = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
     fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
+    if (this.stats.active) {
+      this.stats = { ...this.stats, active: false };
+      this.tell();
+    }
   }
 
   /** Tells senders this machine is here (they read the file through the share). */
@@ -270,6 +286,8 @@ export class RelayService {
       }
     }
     result.finishedAt = Date.now();
+    this.stats = { ...this.stats, jobs: this.stats.jobs + 1, lastJobAt: result.finishedAt, lastOk: result.targets.every((x) => x.status === 'ok'), lastLabel: job.label };
+    this.tell();
     try {
       const tmp = path.join(this.resultsDir, `${id}.${newId()}.tmp`);
       await fsp.writeFile(tmp, JSON.stringify(result, null, 1));

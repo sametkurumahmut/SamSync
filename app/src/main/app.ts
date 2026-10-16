@@ -2,7 +2,7 @@
 // headless run that needs no window).
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
 import type { AppEvent, LocalSettings, OpenRequest, QuickSend } from '../shared/types';
 import { isApiMethod, type PickOptions } from '../shared/api';
@@ -75,8 +75,21 @@ if (launch.removeIntegrations) {
   let rendererReady = false;
   const waiting: OpenRequest[] = [];
 
+  // a send over a slow link can take minutes: the computer must not go to sleep in the middle of it
+  const activeRuns = new Set<string>();
+  let awake: number | null = null;
+  const keepAwake = () => {
+    if (activeRuns.size && awake == null) awake = powerSaveBlocker.start('prevent-app-suspension');
+    if (!activeRuns.size && awake != null) {
+      powerSaveBlocker.stop(awake);
+      awake = null;
+    }
+  };
   const emit = (e: AppEvent) => {
     if (e.type === 'config-changed') integrations.refresh();
+    if (e.type === 'run-start') activeRuns.add(e.run.id);
+    if (e.type === 'run-done') activeRuns.delete(e.run.id);
+    if (e.type === 'run-start' || e.type === 'run-done') keepAwake();
     if (win && !win.isDestroyed()) win.webContents.send('samsync:event', e);
   };
   const deliver = (r: OpenRequest) => {

@@ -404,6 +404,31 @@ export interface ProbeResult {
   relaySeenAt?: number;
 }
 
+/** A quick measurement of the link to a machine: a few MB written and read back. */
+export interface SpeedTestResult {
+  nodeId: string;
+  /** Bytes used for the test. */
+  bytes: number;
+  writeMBps: number;
+  readMBps: number;
+  /** One small round trip (a stat of the root). */
+  latencyMs: number;
+  at: number;
+}
+
+/** What the relay service on this machine is doing (shown on this machine's card). */
+export interface RelayState {
+  /** SamSync here is the relay of its group. */
+  active: boolean;
+  group?: string;
+  dir?: string;
+  /** Jobs taken since the app started, and the last one. */
+  jobs: number;
+  lastJobAt?: number;
+  lastOk?: boolean;
+  lastLabel?: string;
+}
+
 // ---------------------------------------------------------------- sources & plans
 
 export type SourceSpec =
@@ -573,6 +598,7 @@ export type AppEvent =
   | { type: 'integration'; status: IntegrationStatus }
   | { type: 'config-changed'; config: AppConfig }
   | { type: 'probe'; results: ProbeResult[] }
+  | { type: 'relay'; state: RelayState }
   | { type: 'update'; state: UpdateState }
   | { type: 'automation'; state: AutomationState };
 

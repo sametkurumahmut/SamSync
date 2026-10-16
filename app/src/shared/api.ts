@@ -12,6 +12,8 @@ import type {
   LocalIdentity,
   LocalSettings,
   ProbeResult,
+  SpeedTestResult,
+  RelayState,
   RunDetail,
   RunSummary,
   SendPlan,
@@ -92,6 +94,10 @@ export interface Api {
   setSecret(nodeId: string, secret: string | null): Promise<boolean>;
 
   probe(nodeIds?: string[]): Promise<ProbeResult[]>;
+  /** Writes a few MB to the machine and reads them back: the pace of the link, as a number. */
+  speedTest(nodeId: string): Promise<SpeedTestResult>;
+  /** What the relay service on this machine is doing. */
+  relayState(): Promise<RelayState>;
   describeSources(paths: string[], count?: boolean): Promise<SourceInfo[]>;
   mapPath(abs: string): Promise<{ rel: string; root?: string; outside: boolean }>;
 
@@ -233,6 +239,8 @@ export const API_METHODS = {
   watchRemove: true,
   watchRunNow: true,
   automationPause: true,
+  speedTest: true,
+  relayState: true,
   scheduleRunNow: true,
   windowControl: true,
   setChrome: true,

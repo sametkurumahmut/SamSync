@@ -107,9 +107,12 @@ describe('relay end to end', () => {
       expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
       expect(rows.T.done).toBe(rows.T.total);
       expect(fs.existsSync(path.join(s.trainer, '_SamSyncRelay', 'jobs', `${d.id}.pack`))).toBe(false);
-      // the relay's own history shows the apply
+      // the relay's own history shows the apply, and its card state counts the job
       const relayRuns = await s.relay!.runs();
       expect(relayRuns.some((r) => /^Paket: |^Pack: /.test(r.label))).toBe(true);
+      const state = await s.relay!.relayState();
+      expect(state).toMatchObject({ active: true, group: 'G', jobs: 1, lastOk: true, lastLabel: 'deneme' });
+      expect(await s.me.relayState()).toMatchObject({ active: false, jobs: 0 });
     } finally {
       s.stop();
     }
