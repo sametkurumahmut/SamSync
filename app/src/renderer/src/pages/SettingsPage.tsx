@@ -239,6 +239,12 @@ export function SettingsPage() {
               <Field label={t('Bant genişliği (MB/sn)')} help={t('Hedef başına; 0 = sınırsız')}>
                 {num('bandwidthMBps', 0, 10000)}
               </Field>
+              <Field label={t('Röle işi alma süresi (sn)')} help={t('Röle bu sürede işi almazsa doğrudan gönderilir')}>
+                {num('relayAckSeconds', 5, 3600)}
+              </Field>
+              <Field label={t('Röle bitirme süresi (dk)')} help={t('Rölenin dağıtımı bu sürede bitmezse hata sayılır')}>
+                {num('relayTimeoutMinutes', 1, 1440)}
+              </Field>
             </div>
             <Field label={t('Yedek klasörü')} help={t('Hedef kökünün altında; yedek alınan dosyaların eski hâlleri burada tarih klasörlerinde durur. Değiştirirseniz eski addaki yedekler listelenmez.')} style={{ marginTop: 12 }}>
               <input

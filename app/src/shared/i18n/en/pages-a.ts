@@ -288,6 +288,10 @@ const d: Dict = {
   'röle açık': 'relay on',
 
   'Bu makineye son gönderim': 'The last send to this machine',
+  'Röle işi alma süresi (sn)': 'Relay pick-up time (s)',
+  'Röle bu sürede işi almazsa doğrudan gönderilir': 'If the relay does not pick the job up within this time, the send goes directly',
+  'Röle bitirme süresi (dk)': 'Relay finish time (min)',
+  'Rölenin dağıtımı bu sürede bitmezse hata sayılır': 'If the relay has not finished passing on within this time, it counts as failed',
   'son gönderim': 'last send',
 
   // quick sends
