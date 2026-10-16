@@ -43,5 +43,7 @@ export interface Transport {
   localPath?(rel: string): string;
   /** Tells the transport a folder exists (the plan saw it), so writes below it do not ask again. */
   assumeDir?(rel: string): void;
+  /** Throws when the file at rel cannot be replaced (a program holds it open); a missing file is fine. */
+  checkReplaceable?(rel: string): Promise<void>;
   close(): Promise<void>;
 }

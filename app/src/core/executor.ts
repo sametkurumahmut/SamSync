@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
 import type { CoreContext } from './context';
-import type { Transport } from './transport';
+import { InUseError, type Transport } from './transport';
 import { blobStream } from './git';
 import { hashStream } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
@@ -70,6 +70,8 @@ export interface RunHandle {
 }
 
 const TMP_SUFFIX = '.samsync-tmp';
+/** Files at least this big are checked for being in use on the target before they are carried over. */
+const IN_USE_CHECK_MIN = 1024 * 1024;
 
 function tmpRelFor(rel: string): string {
   const parent = relParent(rel);
@@ -284,6 +286,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       try {
         const src = op.src!;
         const mtime = op.mtimeMs ?? (src.kind === 'git' ? Date.now() : undefined);
+        // a big file that a program on the target holds open would fail at the rename, after the whole copy
+        if (op.dstExists && op.size >= IN_USE_CHECK_MIN && tgt.checkReplaceable) await tgt.checkReplaceable(op.rel);
         // the writer reports what it wrote; a file that changed size since the plan is caught here
         let written: number;
         if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
@@ -336,6 +340,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           return;
         } catch (e) {
           lastErr = e;
+          // a file in use stays in use for the retry period: say so at once
+          if (e instanceof InUseError) break;
           if (attempt < s.retryCount && !cancel.cancelled) {
             log('warn', t('{path}: {error} — yeniden denenecek ({attempt}/{max})', { path: op.rel, error: errMessage(e), attempt: attempt + 1, max: s.retryCount }), g.key);
             await sleep(s.waitSeconds * 1000);

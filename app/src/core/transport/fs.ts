@@ -20,6 +20,18 @@ function isPerm(e: unknown): boolean {
   return code === 'EPERM' || code === 'EACCES';
 }
 
+function isBusy(e: unknown): boolean {
+  return (e as NodeJS.ErrnoException)?.code === 'EBUSY' || isPerm(e);
+}
+
+/** The file on the target cannot be replaced: a program holds it open (a loaded DLL, an open document) or it is not writable. */
+export class InUseError extends Error {
+  constructor(p: string) {
+    super(t('{path} değiştirilemedi: dosya kullanımda (bir program açık tutuyor) ya da yazma izni yok', { path: p }));
+    this.name = 'InUseError';
+  }
+}
+
 export function progressCounter(onProgress?: (n: number) => void): Transform {
   let n = 0;
   return new Transform({
@@ -198,10 +210,26 @@ export class FsTransport implements Transport {
       try {
         await fsp.rename(from, to);
       } catch (e2) {
-        if (!isPerm(e2)) throw e2;
+        if (!isBusy(e2)) throw e2;
         // still refused: a program on the target holds the file (a loaded DLL, an open document), or no write right
-        throw new Error(t('{path} değiştirilemedi: dosya kullanımda (bir program açık tutuyor) ya da yazma izni yok', { path: to }));
+        throw new InUseError(to);
       }
+    }
+  }
+
+  /**
+   * Opens the file for writing and closes it again: what a running program holds (a loaded DLL) refuses that.
+   * One round trip, so a big file is not carried over the network only to fail at the end.
+   */
+  async checkReplaceable(rel: string): Promise<void> {
+    const p = this.localPath(rel);
+    try {
+      const h = await fsp.open(p, 'r+');
+      await h.close();
+    } catch (e) {
+      if (isMissing(e)) return;
+      if (isBusy(e)) throw new InUseError(p);
+      throw e;
     }
   }
 

@@ -6,7 +6,7 @@
 - **Sağ tık menüsü:** menü artık **SamSyncSend.exe** adlı küçük bir programı başlatıyor; o da komutu çalışan uygulamaya bir boru üzerinden birkaç milisaniyede veriyor (eskiden her tıklama ikinci bir Electron süreci açıyordu, ~1 sn). Uygulama kapalıysa SamSync.exe'yi başlatıyor. Kurulumla ve zip'le gelir; tek dosyalı taşınabilir sürüm kendisini başlatmaya devam eder. İkinci bir SamSync.exe de artık ağır modülleri yüklemeden çıkıyor.
 - **Erişim denetimi:** pencere açıkken yapılan düzenli denetim Windows'ta paylaşımın kendisine de bakıyor: 445'e yanıt veren ama paylaşımı vermeyen makine "erişilemiyor" görünüyor ve SMB oturumu açık kalıyor, sonraki gönderim oturum kurmakla vakit kaybetmiyor.
 - **Çalıştırma paneli:** gönderim sırasında hız (MB/sn) ve kalan süre; her hedefin yanında kendi hızı, bitince ortalaması. Günlüğe hedef başına boyut, süre ve hız yazılıyor.
-- **Kullanımdaki dosya:** hedefteki dosya bir programca açık tutulduğu için değiştirilemeyince hata artık bunu söylüyor ("dosya kullanımda… ya da yazma izni yok"), ham EPERM yerine.
+- **Kullanımdaki dosya:** 1 MB ve üstü bir dosya hedefte değiştirilecekse önce hedefteki dosya yazma için açılıp deneniyor; bir program (ör. yüklü DLL) tutuyorsa dosya ağ üzerinden hiç taşınmadan, yeniden denemeden "dosya kullanımda… ya da yazma izni yok" hatası veriliyor. Yeniden adlandırmada da aynı açık mesaj (ham EPERM yerine).
 - **Otomasyon:** izleme kartlarında **Şimdi gönder** düğmesi. İzlenen yollarda hedeften farklı olanları beklemeden gönderir, izleme kapalıyken de; senkron işi çalıştıran izlemede işi çalıştırır. Yalnızca farklar gider, hedefte bir şey silinmez.
 
 ## 2.0.0 — SamSync

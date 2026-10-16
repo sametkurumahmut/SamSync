@@ -6,7 +6,7 @@ import { joinRoot, toPosix } from '../paths';
 import { t } from '../../shared/i18n';
 
 export type { Transport, Entry } from './types';
-export { FsTransport } from './fs';
+export { FsTransport, InUseError } from './fs';
 export { SftpTransport } from './sftp';
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
