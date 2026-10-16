@@ -99,6 +99,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     if (n.path) node.path = String(n.path).trim();
     if (n.color) node.color = String(n.color);
     if (n.notes) node.notes = String(n.notes);
+    if (n.relay === true) node.relay = true;
     if (n.sftp && typeof n.sftp === 'object') {
       node.sftp = {
         host: n.sftp.host ? String(n.sftp.host) : undefined,
@@ -127,6 +128,8 @@ export function normalizeConfig(raw: unknown): AppConfig {
     verify: !!c.verify,
     timeToleranceSec: clampInt(c.timeToleranceSec, DEFAULT_COPY.timeToleranceSec, 0, 3600),
     ignoreDstShift: c.ignoreDstShift !== false,
+    relayAckSeconds: clampInt(c.relayAckSeconds, 60, 5, 3600),
+    relayTimeoutMinutes: clampInt(c.relayTimeoutMinutes, 15, 1, 24 * 60),
     postCommand: c.postCommand ? String(c.postCommand) : '',
     postCommandTimeoutSeconds: clampInt(c.postCommandTimeoutSeconds, 60, 1, 3600),
     bandwidthMBps: Math.max(0, Math.min(10000, Number(c.bandwidthMBps) || 0)),
@@ -202,6 +205,7 @@ export function serializeConfig(cfg: AppConfig): AppConfig {
     o.networkRoot = n.networkRoot;
     if (n.transport && n.transport !== 'smb') o.transport = n.transport;
     if (n.path) o.path = n.path;
+    if (n.relay) o.relay = true;
     if (n.sftp) {
       const { hasPassword: _h, ...rest } = n.sftp;
       o.sftp = rest;

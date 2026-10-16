@@ -15,6 +15,7 @@ import { IGNORE_FILE, ignoreExcludes, readLocalIgnore } from './ignore';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
 import { t } from '../shared/i18n';
 import { targetOptions } from '../shared/options';
+import { RELAY_FOLDER, relayRouting } from '../shared/relay';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -38,7 +39,7 @@ export function sendFilter(ctx: CoreContext, req: SendRequest, ignored: readonly
   return makeFilter({
     excludeFiles: [...req.options.excludeFiles, ...extra.excludeFiles, IGNORE_FILE],
     excludeDirs: [...req.options.excludeDirs, ...extra.excludeDirs],
-    alwaysExcludeDirs: [ctx.config.copy.backupFolderName],
+    alwaysExcludeDirs: [ctx.config.copy.backupFolderName, RELAY_FOLDER],
   });
 }
 
@@ -337,7 +338,7 @@ async function planTarget(
 export async function buildSendPlan(
   ctx: CoreContext,
   req: SendRequest,
-  opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void } = {},
+  opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void; /** false: write to every machine yourself, even where a relay would take over (comparisons, a relay that did not answer) */ relay?: boolean } = {},
 ): Promise<SendPlan> {
   const started = Date.now();
   const cancel = opts.cancel ?? new CancelToken();
@@ -346,18 +347,32 @@ export async function buildSendPlan(
   const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress);
 
   const requested = req.targetIds;
-  const nodes = expandTargetIds(ctx.config, requested, ctx.localNodeId);
+  const all = expandTargetIds(ctx.config, requested, ctx.localNodeId);
   if (ctx.localNodeId && requested.some((id) => id.toLowerCase() === ctx.localNodeId!.toLowerCase()))
     warnings.push(t('Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).'));
-  if (!nodes.length) warnings.push(t('Gönderilecek etkin hedef yok.'));
+  if (!all.length) warnings.push(t('Gönderilecek etkin hedef yok.'));
+  // a relay among the targets takes the other machines of its group: they are not looked at from here
+  const routing = opts.relay === false || req.direct ? { direct: all, via: new Map<string, NodeConfig[]>() } : relayRouting(all);
+  const nodes = routing.direct;
 
   let done = 0;
   progress({ message: t('Hedefler inceleniyor'), done, total: nodes.length });
-  const targets = await mapLimit(nodes, 6, async (n) => {
+  const planned = await mapLimit(nodes, 6, async (n) => {
     const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m));
     progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
     return tp;
   });
+  // the relayed machines follow their relay in the list, reachable as far as the relay is
+  const targets: TargetPlan[] = [];
+  for (const tp of planned) {
+    targets.push(tp);
+    for (const n of routing.via.get(tp.targetId) ?? []) {
+      const opt = targetOptions(req.options, n.id);
+      const base = { targetId: n.id, targetName: n.name, root: nodeRootLabel(ctx.config, n), mode: opt.mode, backup: opt.backup, ops: [], counts: emptyCounts(), bytes: 0, via: tp.targetId };
+      targets.push(tp.reachable ? { ...base, reachable: true } : { ...base, reachable: false, error: t('Röle {name} erişilemedi', { name: tp.targetName }) });
+    }
+  }
+  if (routing.via.size) warnings.push(t('{names} dosyaları {relays} üzerinden alacak: önce oraya gider, oradaki SamSync dağıtır.', { names: [...routing.via.values()].flat().map((n) => n.name).join(', '), relays: [...routing.via.keys()].map((id) => planned.find((p) => p.targetId === id)?.targetName ?? id).join(', ') }));
 
   for (const tp of targets) {
     if (tp.freeBytes != null && tp.bytes > tp.freeBytes)

@@ -13,6 +13,7 @@ import type {
   LocalSettings,
   SendPlan,
   SendRequest,
+  RunDetail,
   SourceSpec,
   SyncAction,
   SyncJob,
@@ -40,7 +41,9 @@ import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } f
 import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
-import { CancelToken, errMessage } from './util';
+import { CancelToken, errMessage, newId } from './util';
+import { RelayService } from './relay';
+import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
 import { convertWizardState, findWizardStates, isWizardState } from './wizardImport';
 import { resolveLang, setLang, systemLang, t, type Lang } from '../shared/i18n';
@@ -110,6 +113,8 @@ export class Service implements Api {
   private tasks = new Map<string, CancelToken>();
   private gitVersion: string | null = null;
   automation: Automation | null = null;
+  /** Runs when this machine's node is a relay: hands sends on to the other machines of its group. */
+  relay: RelayService | null = null;
 
   constructor(private host: HostAdapter) {
     this.settingsFile = path.join(host.userDataPath, 'settings.json');
@@ -171,6 +176,7 @@ export class Service implements Api {
       },
     });
     this.automation.start();
+    this.syncRelay();
   }
 
   private async loadConfigFrom(file: string) {
@@ -251,6 +257,7 @@ export class Service implements Api {
     this.host.emit({ type: 'config-changed', config: this.config });
     this.host.updater?.configure(this.config.update, this.settings);
     this.automation?.emit();
+    this.syncRelay();
     this.log.info(t('Config'), t('Yapılandırma kaydedildi ({n} node)', { n: this.config.nodes.length }));
     return { config: this.config, identity: this.identity };
   }
@@ -282,6 +289,7 @@ export class Service implements Api {
     this.host.emit({ type: 'config-changed', config: this.config });
     this.host.updater?.configure(this.config.update, this.settings);
     this.automation?.emit();
+    this.syncRelay();
     this.log.info(t('Config'), t('Yapılandırma metin olarak kaydedildi ({n} node)', { n: this.config.nodes.length }));
     return this.bootstrap();
   }
@@ -305,6 +313,7 @@ export class Service implements Api {
     await this.persistSettings();
     await this.loadConfigFrom(p || path.join(this.host.userDataPath, 'config.json'));
     this.host.updater?.configure(this.config.update, this.settings);
+    this.syncRelay();
     return this.bootstrap();
   }
 
@@ -312,7 +321,10 @@ export class Service implements Api {
     const pinChanged = 'localNodeId' in patch && patch.localNodeId !== this.settings.localNodeId;
     this.settings = { ...this.settings, ...patch };
     await this.persistSettings();
-    if (pinChanged) this.identity = detectIdentity(this.config, this.settings.localNodeId);
+    if (pinChanged) {
+      this.identity = detectIdentity(this.config, this.settings.localNodeId);
+      this.syncRelay();
+    }
     if ('updateAutoCheck' in patch || 'updateAutoDownload' in patch) this.host.updater?.configure(this.config.update, this.settings);
     if ('automationPaused' in patch || 'automation' in patch) this.automation?.setPaused();
     if ('language' in patch) setLang(this.uiLang());
@@ -407,6 +419,8 @@ export class Service implements Api {
       waitSeconds: c.waitSeconds,
       parallelGroups: o.parallelTargets ?? c.parallelTargets,
       parallelFiles: c.parallelFiles,
+      relayAckMs: (c.relayAckSeconds ?? 60) * 1000,
+      relayDoneMs: (c.relayTimeoutMinutes ?? 15) * 60_000,
       postCommand: o.runPostCommand ? c.postCommand : undefined,
       postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
       bandwidthMBps: c.bandwidthMBps,
@@ -446,7 +460,30 @@ export class Service implements Api {
     // targets outside the configuration (a watch's plain folders) come with the plan
     const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
     const groups: ExecGroup[] = [];
+    const req = plan.request;
+    // the machines behind a relay: they ride on the relay's group
+    const relayed = new Map<string, NodeConfig[]>();
     for (const tp of plan.targets) {
+      if (!tp.via) continue;
+      const n = nodeOf(tp.targetId);
+      if (n && tp.reachable) relayed.set(tp.via, [...(relayed.get(tp.via) ?? []), n]);
+      else if (overrides.unreachableFails) {
+        const why = tp.error || t('Hedefe erişilemiyor');
+        groups.push({ key: tp.targetId, title: tp.targetName, rootLabel: tp.root, open: () => Promise.reject(new Error(why)), node: n, ops: [] });
+      }
+    }
+    const relayJob = (relayId: string): RelayJob => ({
+      id: newId('relay-'),
+      createdAt: Date.now(),
+      label: req.label || t('Gönderim'),
+      from: ctx.localNodeId,
+      // the sources by their path on the share; a source that is gone is a deletion on the relayed machines too
+      sources: plan.sources.filter((s) => s.exists || !s.error).map((s) => ({ rel: s.rel, kind: s.exists ? ('fs' as const) : ('delete' as const) })),
+      targetIds: relayed.get(relayId)!.map((n) => n.id),
+      options: { ...req.options, dryRun: false, notify: false, runPostCommand: req.options.runPostCommand },
+    });
+    for (const tp of plan.targets) {
+      if (tp.via) continue;
       if (!tp.reachable) {
         // a machine that was off counts as failed, so "select the failed ones" and "resend to failed" include it
         if (overrides.unreachableFails) {
@@ -457,7 +494,9 @@ export class Service implements Api {
       }
       const ids = selected === 'default' ? new Set(tp.ops.filter((o) => o.selected).map((o) => o.id)) : new Set(selected[tp.targetId] ?? []);
       const ops = tp.ops.filter((o) => ids.has(o.id));
-      if (!ops.length) continue;
+      const behind = relayed.get(tp.targetId);
+      // a relay with nothing to copy itself still hands the job on: the machines behind it may be behind
+      if (!ops.length && !behind) continue;
       const node = nodeOf(tp.targetId)!;
       groups.push({
         key: tp.targetId,
@@ -467,10 +506,10 @@ export class Service implements Api {
         node,
         backup: tp.backup,
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
+        relay: behind ? { targets: behind, job: relayJob(tp.targetId) } : undefined,
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));
-    const req = plan.request;
     const opts = { ...req.options, ...(overrides.dryRun != null ? { dryRun: overrides.dryRun } : {}) };
     const label = req.label || (req.origin === 'git' ? t('Git gönderimi') : t('Gönderim'));
     const last = plan.sources[plan.sources.length - 1];
@@ -480,8 +519,49 @@ export class Service implements Api {
       targetIds: plan.targets.map((tp) => tp.targetId),
     });
     const handle = startRun(ctx, groups, s);
-    this.track(handle, overrides.notify ?? opts.notify !== false);
+    this.track(handle, overrides.notify ?? opts.notify !== false, (d) => this.relayFallback(plan, d, overrides));
     return handle;
+  }
+
+  /** A relay that never picked the job up: send to the machines behind it from here, as a run of its own. */
+  private async relayFallback(plan: SendPlan, d: RunDetail, overrides: { notify?: boolean; nodes?: NodeConfig[] }): Promise<void> {
+    const ids = d.targets.filter((x) => x.via && x.relayUnanswered).map((x) => x.key);
+    if (!ids.length || plan.request.options.dryRun) return;
+    this.log.warn(t('Röle'), t('Röle yanıt vermedi; {targets} için doğrudan gönderim başlıyor', { targets: ids.join(', ') }));
+    const req: SendRequest = { ...plan.request, targetIds: ids, direct: true, label: t('{label} (doğrudan, röle yanıt vermedi)', { label: plan.request.label || t('Gönderim') }) };
+    const direct = await buildSendPlan(this.ctx(), req);
+    this.plans.set(direct.id, direct);
+    try {
+      this.runPlan(direct, 'default', { notify: overrides.notify, nodes: overrides.nodes, unreachableFails: true });
+    } catch (e) {
+      this.log.info(t('Röle'), errMessage(e));
+    }
+  }
+
+  /** Starts or stops the relay service as this machine's node says. */
+  private syncRelay(): void {
+    const node = this.identity.node;
+    const root = node?.relay ? node.localRoots[0] : undefined;
+    if (this.relay && (this.relay.node.id !== node?.id || this.relay.localRoot !== root)) {
+      this.relay.stop();
+      this.relay = null;
+    }
+    if (!root || this.relay) return;
+    this.relay = new RelayService(
+      {
+        ctx: () => this.ctx(),
+        runPlan: (plan, label) => {
+          try {
+            return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true });
+          } catch {
+            return null; // nothing to do on any machine
+          }
+        },
+      },
+      root,
+      node!,
+    );
+    this.relay.start();
   }
 
   /** remember: false for the one-click menu sends, so "send with last settings" keeps what was last reviewed. */

@@ -260,7 +260,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
               <div className="grow" style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 580 }}>{tg.title}</div>
                 <div className="faint mono ellipsis selectable" style={{ fontSize: 11.5 }}>
-                  {tg.root}
+                  {tg.via ? t('{relay} üzerinden', { relay: summary.targets.find((y) => y.key === tg.via && !y.via)?.title ?? tg.via }) : tg.root}
                 </div>
                 {tg.error && <div style={{ color: 'var(--red)', fontSize: 12 }}>{tg.error}</div>}
                 {tg.backupPath && <div className="faint" style={{ fontSize: 11.5 }}>{t('yedek: {path}', { path: tg.backupPath })}</div>}

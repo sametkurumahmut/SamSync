@@ -111,6 +111,7 @@ Karşılaştırma sonucu ızgarada görünür; her satırın işlemi tıklanarak
 Otomasyon uygulama açıkken çalışır. Ayarlar → *Arka plan ve başlangıç*: **Kapatınca sistem tepsisinde çalışmaya devam et** ve **Windows açılışında başlat** (tepside gizli başlar) ile sürekli çalışabilir. Otomatik çalışmalar da Geçmiş'e yazılır.
 
 ### Hedefler, Yedekler, Geçmiş, Ayarlar
+- **Röle** — bir gruptaki bir makine kartında grubun rölesi olarak işaretlenebilir. Röleyle birlikte grubun başka makinelerini de içeren bir gönderim yalnızca röleye yazar (kendi, çoğu zaman yavaş, bağlantınızdan — örn. Wi‑Fi — tek kopya); röledeki SamSync işi paylaşımındaki `_SamSyncRelay\jobs` klasöründen alır, dosyaları kendi diskinden grubun ağı üzerinden dağıtır ve sonucu yazar; inceleme, çalıştırma paneli ve geçmiş her makineyi "X üzerinden" olarak sonucuyla gösterir. Röle 60 sn içinde işi almazsa (orada SamSync çalışmıyorsa) o makinelere buradan doğrudan ayrı bir gönderim başlar. Tek başına seçilen bir grup makinesine doğrudan yazılır; Karşılaştır sayfası ve `--check-only` her makineye doğrudan bakar. Rölenin ilk yerel kökü paylaşımının gösterdiği klasör olmalıdır; `copy.relayAckSeconds` ve `copy.relayTimeoutMinutes` bekleme sürelerini ayarlar.
 - **Hedefler** — makine kartları, erişim durumu (45 sn'de bir yenilenir), ekleme/düzenleme. **JSON olarak düzenle** bütün yapılandırma dosyasını metin olarak açar:
   - siz yazarken denetler ve hatanın satırını ve sütununu gösterir; kaydederken yapılandırma olarak bir kez daha denetler;
   - metni yazdığınız gibi kaydeder, eski aracın alanları korunur;

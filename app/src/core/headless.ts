@@ -259,7 +259,7 @@ export async function runHeadless(
 
   let plan;
   try {
-    plan = await buildSendPlan(ctx, { sources: paths.map((p) => ({ kind: 'fs', path: p })), targetIds: to.nodes.map((n) => n.id), options, origin: 'send' });
+    plan = await buildSendPlan(ctx, { sources: paths.map((p) => ({ kind: 'fs', path: p })), targetIds: to.nodes.map((n) => n.id), options, origin: 'send', direct: true });
   } catch (e) {
     return fail(errMessage(e));
   }

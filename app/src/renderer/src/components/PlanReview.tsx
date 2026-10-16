@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2 } from 'lucide-react';
 import type { PlanCategory, PlanOp, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
@@ -229,7 +229,11 @@ export function PlanReview() {
                       {tp.backup !== plan.request.options.backup && <span className={cls('badge', tp.backup ? 'blue' : 'outline')}>{tp.backup ? t('yedekli') : t('yedeksiz')}</span>}
                     </div>
                   )}
-                  {tp.reachable ? (
+                  {tp.via && tp.reachable ? (
+                    <div className="row" style={{ gap: 4, marginTop: 6 }}>
+                      <span className="badge violet">{t('{relay} üzerinden', { relay: targets.find((x) => x.targetId === tp.via)?.targetName ?? tp.via })}</span>
+                    </div>
+                  ) : tp.reachable ? (
                     <div className="row" style={{ gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                       {tp.counts.new > 0 && <span className="badge green">+{tp.counts.new}</span>}
                       {tp.counts.changed > 0 && <span className="badge blue">~{tp.counts.changed}</span>}
@@ -285,6 +289,21 @@ function TargetOps({
   const rows = useMemo(() => plan.ops.filter((o) => f.match(o) && (!ql || o.rel.toLowerCase().includes(ql))), [plan.ops, f, ql]);
   const v = useVirtualizer({ count: rows.length, getScrollElement: () => parent.current, estimateSize: () => 34, overscan: 20 });
 
+  if (plan.via && plan.reachable)
+    return (
+      <div className="plan-ops">
+        <div className="empty" style={{ flex: 1 }}>
+          <div className="empty-icon">
+            <Share2 size={22} />
+          </div>
+          <h3>{t('{name} dosyaları röle üzerinden alacak', { name: plan.targetName })}</h3>
+          <p>{t('Dosyalar önce röle makinesine gider; oradaki SamSync karşılaştırıp bu makineye dağıtır. Sonuç gönderim bitince burada görünür.')}</p>
+          <p className="faint mono" style={{ fontSize: 11.5 }}>
+            {plan.root}
+          </p>
+        </div>
+      </div>
+    );
   if (!plan.reachable)
     return (
       <div className="plan-ops">

@@ -33,6 +33,11 @@ export interface NodeConfig {
   sftp?: SftpConfig;
   color?: string;
   notes?: string;
+  /**
+   * This machine passes sends on to the other machines of its group: a send that includes it and them
+   * writes to it only, and SamSync running there sends the files on over the group's own network.
+   */
+  relay?: boolean;
 }
 
 export type CompareMethod = 'timeSize' | 'content' | 'size';
@@ -48,6 +53,10 @@ export interface CopySettings {
   verify: boolean;
   timeToleranceSec: number;
   ignoreDstShift: boolean;
+  /** How long a relay may take to pick a job up before the sender gives up on it (and sends directly). */
+  relayAckSeconds?: number;
+  /** How long a relay may take to finish a job. */
+  relayTimeoutMinutes?: number;
   postCommand?: string;
   postCommandTimeoutSeconds: number;
   /** Upper bound per transfer in MB/s (0 = unlimited), like robocopy /IPG in the PowerShell tool. */
@@ -405,6 +414,8 @@ export interface SendRequest {
   options: SendOptions;
   label?: string;
   origin: 'send' | 'git' | 'restore' | 'sync';
+  /** Look at and write to every machine from here, even where a relay would take over (comparisons, checks). */
+  direct?: boolean;
 }
 
 export type PlanCategory = 'new' | 'changed' | 'targetNewer' | 'extra' | 'deleted' | 'same';
@@ -450,6 +461,8 @@ export interface TargetPlan {
   bytes: number;
   freeBytes?: number;
   truncated?: boolean;
+  /** The files reach this target through that relay machine (no plan of its own: the relay compares and sends). */
+  via?: string;
 }
 
 export interface SendPlan {
@@ -481,6 +494,10 @@ export interface RunTargetState {
   startedAt?: number;
   finishedAt?: number;
   backupPath?: string;
+  /** The files went through that relay machine. */
+  via?: string;
+  /** The relay never picked the job up (SamSync not running there): the sender may send directly instead. */
+  relayUnanswered?: boolean;
 }
 
 export interface RunOpResult {

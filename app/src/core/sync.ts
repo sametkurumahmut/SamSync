@@ -12,6 +12,7 @@ import { IGNORE_FILE, readIgnore } from './ignore';
 import { CancelToken, errMessage, mapLimit, newId } from './util';
 import { joinRoot } from './paths';
 import { t } from '../shared/i18n';
+import { RELAY_FOLDER } from '../shared/relay';
 
 export const VARIANT_ACTIONS: Record<Exclude<SyncVariant, 'twoWay' | 'custom'>, CustomActions> = {
   mirror: { leftOnly: 'copyRight', rightOnly: 'deleteRight', leftNewer: 'copyRight', rightNewer: 'copyRight', different: 'copyRight' },
@@ -159,7 +160,7 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
       minSize: f.minSizeKb != null ? f.minSizeKb * 1024 : undefined,
       maxSize: f.maxSizeKb != null ? f.maxSizeKb * 1024 : undefined,
       newerThan: f.newerThanDays ? Date.now() - f.newerThanDays * 86400_000 : undefined,
-      alwaysExcludeDirs: [ctx.config.copy.backupFolderName],
+      alwaysExcludeDirs: [ctx.config.copy.backupFolderName, RELAY_FOLDER],
       caseInsensitive: ci,
     });
     // an older backup folder at either root (a machine root kept by the PowerShell tool) is left out on both sides

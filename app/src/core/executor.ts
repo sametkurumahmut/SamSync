@@ -4,6 +4,8 @@ import type { Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
+import { RelayError, submitRelayJob, waitRelayResult } from './relay';
+import type { RelayJob } from '../shared/relay';
 import { blobStream } from './git';
 import { hashStream } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
@@ -36,6 +38,8 @@ export interface ExecGroup {
   backup?: boolean;
   /** A local folder side of a sync job that sends replaced and deleted items to the operating system's trash. */
   trash?: (absPath: string) => Promise<void>;
+  /** This target is a relay: once its own copy is done, the job goes to it and these machines get the files from it. */
+  relay?: { targets: NodeConfig[]; job: RelayJob };
 }
 
 export interface ExecSettings {
@@ -56,6 +60,9 @@ export interface ExecSettings {
   postCommandTimeoutSeconds: number;
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
   bandwidthMBps?: number;
+  /** Relay: how long it may take to pick a job up, and to finish it. */
+  relayAckMs?: number;
+  relayDoneMs?: number;
   sources: string[];
   /** Last source item and its target relative path: {source} and {destination} of the post-copy command. */
   postSource?: { path: string; rel: string };
@@ -83,17 +90,28 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   const cancel = new CancelToken();
   const runStamp = stamp();
   const startedAt = Date.now();
-  const states: RunTargetState[] = groups.map((g) => ({
-    key: g.key,
-    title: g.title,
-    root: g.rootLabel,
-    total: g.ops.length,
-    done: 0,
-    failed: 0,
-    bytesTotal: g.ops.filter((o) => o.kind === 'copy').reduce((a, o) => a + o.size, 0),
-    bytesDone: 0,
-    status: 'queued',
-  }));
+  const states: RunTargetState[] = [];
+  /** group key -> the states of the machines that get the files from that relay */
+  const relayed = new Map<string, RunTargetState[]>();
+  for (const g of groups) {
+    states.push({
+      key: g.key,
+      title: g.title,
+      root: g.rootLabel,
+      total: g.ops.length,
+      done: 0,
+      failed: 0,
+      bytesTotal: g.ops.filter((o) => o.kind === 'copy').reduce((a, o) => a + o.size, 0),
+      bytesDone: 0,
+      status: 'queued',
+    });
+    if (g.relay) {
+      // the same work again on each relayed machine, done by the relay; the counts come with its result
+      const list = g.relay.targets.map((n): RunTargetState => ({ key: n.id, title: n.name, root: t('{relay} üzerinden', { relay: g.title }), total: g.ops.length, done: 0, failed: 0, bytesTotal: 0, bytesDone: 0, status: 'queued', via: g.key }));
+      relayed.set(g.key, list);
+      states.push(...list);
+    }
+  }
   const results: RunOpResult[] = [];
   const logLines: RunLogLine[] = [];
   let pendingLog: RunLogLine[] = [];
@@ -146,7 +164,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         ? t('{label} başladı: {targets} hedef, {ops} işlem (deneme çalıştırması, hiçbir şey yazılmayacak)', startParams)
         : t('{label} başladı: {targets} hedef, {ops} işlem', startParams),
     );
-    await mapLimit(groups, Math.max(1, s.parallelGroups), (g, gi) => runGroup(g, states[gi]));
+    await mapLimit(groups, Math.max(1, s.parallelGroups), (g) => runGroup(g, states.find((x) => x.key === g.key && !x.via)!));
     emitProgress.flush();
     emitLog.flush();
     const sum = summary();
@@ -184,6 +202,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       log('error', t('Hedefe bağlanılamadı: {error}', { error: st.error }), g.key);
       for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
       st.failed = g.ops.length;
+      failRelayed(g, t('Röle {name} erişilemedi', { name: g.title }));
       emitProgress();
       return;
     }
@@ -403,11 +422,17 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
           await runPostCommand(s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
         }
+        if (g.relay) {
+          if (s.dryRun) for (const r of relayed.get(g.key) ?? []) Object.assign(r, { status: 'ok', done: r.total, startedAt: Date.now(), finishedAt: Date.now() });
+          else if (st.status === 'ok') await runRelay(g, tgt);
+          else failRelayed(g, t('Röle {name} üzerindeki kopya tamamlanmadı; dağıtım yapılmadı', { name: g.title }));
+        }
       }
     } catch (e) {
       st.status = 'failed';
       st.error = errMessage(e);
       log('error', st.error, g.key);
+      failRelayed(g, st.error);
     } finally {
       st.current = undefined;
       st.finishedAt = Date.now();
@@ -415,6 +440,50 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       await tgt.close().catch(() => undefined);
       for (const p of endpointCache.values()) await p.then((x) => x.close()).catch(() => undefined);
     }
+  }
+
+  /** The machines behind a relay get no files when the relay's own copy did not happen. */
+  function failRelayed(g: ExecGroup, why: string) {
+    for (const r of relayed.get(g.key) ?? []) {
+      if (r.status !== 'queued') continue;
+      Object.assign(r, { status: 'failed', error: why, failed: r.total, done: r.total, startedAt: Date.now(), finishedAt: Date.now() });
+    }
+  }
+
+  /** Hands the job to the relay and waits for its result; each relayed machine's row follows what it reports. */
+  async function runRelay(g: ExecGroup, tgt: Transport) {
+    const rows = relayed.get(g.key) ?? [];
+    const job = g.relay!.job;
+    const now = Date.now();
+    for (const r of rows) Object.assign(r, { status: 'running', startedAt: now });
+    emitProgress();
+    try {
+      await submitRelayJob(tgt, job);
+      log('info', t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }), g.key);
+      const result = await waitRelayResult(tgt, job.id, {
+        cancel,
+        ackMs: s.relayAckMs ?? 60_000,
+        doneMs: s.relayDoneMs ?? 15 * 60_000,
+        onAck: () => log('info', t('Röle işi aldı, dağıtıyor'), g.key),
+      });
+      for (const r of rows) {
+        const got = result.targets.find((x) => x.targetId === r.key);
+        if (!got) {
+          Object.assign(r, { status: 'failed', error: t('Röle bu makine için sonuç bildirmedi'), failed: r.total, done: r.total });
+        } else {
+          Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error });
+          if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
+          else log('ok', t('{name}: röle dağıttı ({ok} işlem, {size})', { name: r.title, ok: got.opsOk, size: formatBytes(got.bytes) }), r.key);
+        }
+        r.finishedAt = Date.now();
+      }
+    } catch (e) {
+      const unanswered = e instanceof RelayError && e.unanswered;
+      const why = cancel.cancelled ? t('İptal edildi') : errMessage(e);
+      for (const r of rows) Object.assign(r, { status: cancel.cancelled ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
+      log(cancel.cancelled ? 'warn' : 'error', why, g.key);
+    }
+    emitProgress();
   }
 
   return { id, cancel, done };

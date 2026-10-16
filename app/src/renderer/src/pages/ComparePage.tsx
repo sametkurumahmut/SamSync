@@ -52,7 +52,7 @@ export function ComparePage() {
     const taskId = newTaskId();
     useApp.setState({ planning: { taskId, message: t('Karşılaştırılıyor…') } });
     try {
-      const p = await api.planSend({ sources: sendPaths.map((path) => ({ kind: 'fs', path })), targetIds: targets, options: { ...options, dryRun: true }, origin: 'send', label: t('Karşılaştırma') }, taskId);
+      const p = await api.planSend({ sources: sendPaths.map((path) => ({ kind: 'fs', path })), targetIds: targets, options: { ...options, dryRun: true }, origin: 'send', label: t('Karşılaştırma'), direct: true }, taskId);
       if (useApp.getState().planning?.taskId !== taskId) return; // cancelled
       setPlan(p);
       setTargetId((cur) => (cur && p.targets.some((x) => x.targetId === cur) ? cur : p.targets[0]?.targetId ?? null));

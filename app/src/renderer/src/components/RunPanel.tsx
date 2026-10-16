@@ -186,7 +186,7 @@ export function RunPanel() {
                     <Progress value={x.status === 'queued' ? 0 : pct} state={x.status === 'ok' ? 'ok' : x.status === 'failed' || x.status === 'partial' ? 'bad' : undefined} />
                   </div>
                   <div className="faint mono ellipsis" style={{ fontSize: 11 }}>
-                    {x.error ? <span style={{ color: 'var(--red)' }}>{x.error}</span> : x.current ? x.current : x.backupPath ? t('yedek: {path}', { path: x.backupPath }) : x.root}
+                    {x.error ? <span style={{ color: 'var(--red)' }}>{x.error}</span> : x.current ? x.current : x.backupPath ? t('yedek: {path}', { path: x.backupPath }) : x.via ? t('{relay} üzerinden', { relay: run.targets.find((y) => y.key === x.via && !y.via)?.title ?? x.via }) : x.root}
                   </div>
                 </div>
               </div>

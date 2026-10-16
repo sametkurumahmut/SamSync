@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink } from 'lucide-react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2 } from 'lucide-react';
 import type { NodeConfig, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
-import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput } from '../components/ui';
+import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls } from '../lib/format';
 import { t } from '@shared/i18n';
 import { ConfigEditor } from '../components/ConfigEditor';
@@ -195,6 +195,11 @@ export function TargetsPage() {
                             </span>
                           ))}
                         <span className="spacer" />
+                        {n.relay && (
+                          <span className="badge violet" data-tip={t('Grubundaki diğer makinelere dosyaları bu makine iletir')}>
+                            {t('röle')}
+                          </span>
+                        )}
                         <span className="badge">{t('{n} kök', { n: n.localRoots.length })}</span>
                         <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => setEditing(n)} disabled={!boot.configWritable} />
                       </div>
@@ -316,6 +321,16 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
           <input className="input mono" value={n.address} onChange={(e) => set({ address: e.target.value.trim() })} placeholder="10.10.1.11" />
         </Field>
       </div>
+      {transport !== 'sftp' && (
+        <ToggleRow
+          icon={<Share2 size={16} className="faint" />}
+          title={t('Röle: grubundaki diğer makinelere bu makine iletir')}
+          desc={t('Bu makineyle birlikte seçilen grup makinelerine dosyalar önce buraya, buradaki SamSync tarafından oradan gider. Bu makinede SamSync çalışmalı; ilk yerel kökü paylaşımın klasörü olmalı.')}
+          on={!!n.relay}
+          onChange={(v) => set({ relay: v || undefined })}
+          disabled={!n.group}
+        />
+      )}
 
       <div className="divider" />
       <Field label={t('Bağlantı türü')}>

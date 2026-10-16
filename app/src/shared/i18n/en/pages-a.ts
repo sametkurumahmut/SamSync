@@ -275,6 +275,16 @@ const d: Dict = {
   Hatalar: 'Errors',
   '{n} kaynak: {names}…': pl('{n} source: {names}…', '{n} sources: {names}…'),
   'Hata yok': 'No errors',
+
+  // relay (Targets page, review)
+  röle: 'relay',
+  'Grubundaki diğer makinelere dosyaları bu makine iletir': 'This machine passes files on to the other machines of its group',
+  'Röle: grubundaki diğer makinelere bu makine iletir': 'Relay: this machine passes sends on to the rest of its group',
+  'Bu makineyle birlikte seçilen grup makinelerine dosyalar önce buraya, buradaki SamSync tarafından oradan gider. Bu makinede SamSync çalışmalı; ilk yerel kökü paylaşımın klasörü olmalı.':
+    'Group machines chosen together with this one get the files from here: they go here first, and SamSync running here sends them on. SamSync must run on this machine; its first local root must be the folder of its share.',
+  '{name} dosyaları röle üzerinden alacak': '{name} gets the files through the relay',
+  'Dosyalar önce röle makinesine gider; oradaki SamSync karşılaştırıp bu makineye dağıtır. Sonuç gönderim bitince burada görünür.':
+    'The files go to the relay machine first; SamSync there compares and sends them on to this machine. The result shows here once the send is done.',
 };
 
 export default d;
