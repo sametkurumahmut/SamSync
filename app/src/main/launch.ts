@@ -6,6 +6,7 @@
 //   --plan-only   print where the items would go on each target, no window (exit code 0, 1 on an error)
 //   --check-only  print whether each target holds the same items, no window (exit code 0 = all the same, else 1)
 //   --sync <job>  compare and run a sync job (id or name) with its default actions, no window (exit code 0 = all done)
+//   --quick <name>  run a saved send (Send page → Hızlı gönderimler) by its name or id
 //   --hidden  started at login: stay in the tray when that is enabled
 //   --remove-integrations  take the Explorer menu and the Notepad++ entries out, then quit (used by the uninstaller)
 import fs from 'node:fs';
@@ -19,6 +20,8 @@ export interface Launch extends OpenRequest {
   headless?: 'plan' | 'check' | 'sync';
   /** --sync: the job's id or name. */
   syncJob?: string;
+  /** --quick: the name (or id) of a saved send to run. */
+  quick?: string;
   /** Arguments that looked like paths but do not exist (reported by the headless modes). */
   missing: string[];
 }
@@ -40,6 +43,8 @@ export function parseLaunch(args: string[], appPath?: string, cwd?: string): Lau
     else if (a === '--sync' || a.startsWith('--sync=')) {
       out.headless = 'sync';
       out.syncJob = (a === '--sync' ? args[++i] ?? '' : a.slice(7)).trim();
+    } else if (a === '--quick' || a.startsWith('--quick=')) {
+      out.quick = (a === '--quick' ? args[++i] ?? '' : a.slice(8)).trim();
     } else if (a && !a.startsWith('-')) {
       try {
         const p = cwd ? path.resolve(cwd, a) : path.resolve(a);
@@ -81,7 +86,7 @@ export class LaunchQueue {
   /** `quick`: the items come through the pipe from SamSyncSend.exe, which Explorer starts within a few ms of each other. */
   add(r: OpenRequest, quick = false): void {
     if (!r.paths.length && !r.targets?.length) return;
-    const key = JSON.stringify([r.targets ?? [], !!r.send, !!r.restore]);
+    const key = JSON.stringify([r.targets ?? [], !!r.send, !!r.restore, r.label ?? '']);
     let b = this.batches.get(key);
     if (!b) {
       b = { req: { ...r, paths: [] }, count: 0, first: this.now(), timer: null };

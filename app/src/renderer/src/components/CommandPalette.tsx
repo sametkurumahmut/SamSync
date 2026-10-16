@@ -130,6 +130,16 @@ export function CommandPalette() {
           st.setPage('git');
         },
       },
+      ...(st.boot.settings.quickSends ?? []).map(
+        (q): Cmd => ({
+          id: `q-${q.id}`,
+          group: t('Hızlı gönderimler'),
+          label: q.name,
+          hint: q.review ? t('inceleyerek') : t('tek tıkla'),
+          icon: <Send size={15} />,
+          run: () => st.runQuickSend(q),
+        }),
+      ),
       { id: 'a-probe', group: actions, label: t('Hedeflere erişimi sına'), icon: <Wifi size={15} />, run: () => void st.probe() },
       { id: 'a-theme', group: actions, label: st.dark ? t('Açık temaya geç') : t('Koyu temaya geç'), icon: <Moon size={15} />, run: () => void st.saveSettings({ theme: st.dark ? 'light' : 'dark' }) },
       { id: 'a-log', group: actions, label: t('Günlük dosyasını aç'), icon: <FileText size={15} />, run: () => void api.openLog() },

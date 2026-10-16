@@ -175,7 +175,10 @@ Eski aracın menüleri hâlâ duran bir makinede onları `legacy\Uninstall-Conte
 SamSync.exe "C:\Sim\ActiveRelease\Data\x.entity" "C:\Sim\ActiveRelease\Models"
 SamSync.exe --to group:Unit1,Arsiv "C:\...\Data"
 SamSync.exe --to last --yes "C:\...\Data\x.entity"
+SamSync.exe --quick "DLL → Dozer"
 ```
+
+`--quick <ad>`, Gönder sayfasında kaydedilen bir **hızlı gönderimi** (bir ad altında kaynaklar, hedefler ve seçenekler) çalıştırır; aynı gönderimler tepsi menüsünde ve komut paletinde de durur. "Önce incele" ile kaydedilen bir hızlı gönderim inceleme açar.
 
 | Argüman | Anlamı |
 | --- | --- |

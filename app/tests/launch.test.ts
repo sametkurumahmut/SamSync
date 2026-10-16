@@ -12,6 +12,8 @@ describe('command line', () => {
     expect(l).toMatchObject({ targets: ['group:Unit1', 'IG2'], send: true, paths: [path.resolve(here)] });
     expect(parseLaunch(['--to=last', '--restore', '--hidden', other])).toMatchObject({ targets: ['last'], restore: true, hidden: true, paths: [path.resolve(other)] });
     expect(parseLaunch(['--remove-integrations']).removeIntegrations).toBe(true);
+    expect(parseLaunch(['--quick', 'DLL → Dozer']).quick).toBe('DLL → Dozer');
+    expect(parseLaunch(['--quick=gece']).quick).toBe('gece');
   });
 
   it('does not take the app folder for a path when running unpackaged', () => {

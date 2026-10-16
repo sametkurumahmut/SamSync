@@ -5,6 +5,7 @@ import type {
   Bootstrap,
   LocalSettings,
   ProbeResult,
+  QuickSend,
   RunLogLine,
   RunSummary,
   RunTargetState,
@@ -107,6 +108,10 @@ interface State {
   probe(ids?: string[]): Promise<void>;
 
   addSendPaths(paths: string[]): Promise<void>;
+  /** Saved sends: run one, save the current list under a name, remove one. */
+  runQuickSend(q: QuickSend): void;
+  saveQuickSend(name: string, review: boolean): Promise<void>;
+  removeQuickSend(id: string): Promise<void>;
   removeSendPath(p: string): void;
   clearSendPaths(): void;
   setTargets(ids: string[]): void;
@@ -276,6 +281,21 @@ export const useApp = create<State>((set, get) => ({
     set({ sendPaths: next });
     const infos = await api.describeSources(next);
     if (get().sendPaths === next) set({ sendInfos: infos });
+  },
+  runQuickSend(q) {
+    void handleOpen({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
+  },
+  async saveQuickSend(name, review) {
+    const st = get();
+    const { dryRun: _d, ...options } = st.options;
+    const existing = (st.boot?.settings.quickSends ?? []).filter((q) => q.name.toLowerCase() !== name.toLowerCase());
+    const q: QuickSend = { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review };
+    await st.saveSettings({ quickSends: [...existing, q] });
+    st.toast('ok', t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
+  },
+  async removeQuickSend(id) {
+    const st = get();
+    await st.saveSettings({ quickSends: (st.boot?.settings.quickSends ?? []).filter((q) => q.id !== id) });
   },
   removeSendPath(p) {
     set((s) => ({ sendPaths: s.sendPaths.filter((x) => x !== p), sendInfos: s.sendInfos.filter((x) => x.path !== p) }));
@@ -593,6 +613,9 @@ async function handleOpen(r: OpenRequest) {
   }
   const to = resolveTargets(r.targets);
   if (!to || !r.paths.length) return;
+  // a quick send brings its own options and name
+  if (r.options) to.options = { ...(to.options ?? {}), ...r.options };
+  if (r.label) to.label = r.label;
   if (r.send) return sendNow(r.paths, to);
   st.setPage('send');
   // a launch with --to is its own send in its own tab

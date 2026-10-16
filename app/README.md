@@ -169,7 +169,10 @@ On a machine that still has the old tool's menus, remove those with `legacy\Unin
 SamSync.exe "C:\Sim\ActiveRelease\Data\x.entity" "C:\Sim\ActiveRelease\Models"
 SamSync.exe --to group:Unit1,Arsiv "C:\...\Data"
 SamSync.exe --to last --yes "C:\...\Data\x.entity"
+SamSync.exe --quick "DLL → Dozer"
 ```
+
+`--quick <name>` runs a **quick send** saved on the Send page (sources, targets and options under a name); the same sends sit in the tray menu and the command palette. A quick send saved with "Önce incele" opens the review instead.
 
 | Argument | Meaning |
 | --- | --- |

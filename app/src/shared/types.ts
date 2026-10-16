@@ -217,6 +217,8 @@ export interface LocalSettings {
   notepadPlusPlus?: boolean;
   /** When the old wizard's profiles and last selection were imported, and from which file. */
   wizardImport?: { at: number; file: string };
+  /** Saved sends, run with one click from the Send page, the tray, the command palette or `--quick <name>`. */
+  quickSends?: QuickSend[];
 }
 
 /** What the import of the old wizard's state did. */
@@ -353,6 +355,20 @@ export interface OpenRequest {
   send?: boolean;
   /** --restore: show the backups of these items. */
   restore?: boolean;
+  /** A quick send: its options and name come along. */
+  options?: Partial<SendOptions>;
+  label?: string;
+}
+
+/** A saved send: sources, targets and options under a name, run with one click (this machine only). */
+export interface QuickSend {
+  id: string;
+  name: string;
+  paths: string[];
+  targetIds: string[];
+  options?: Partial<SendOptions>;
+  /** Open the review instead of sending at once. */
+  review?: boolean;
 }
 
 export interface Bootstrap {

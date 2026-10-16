@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
-import type { AppEvent, LocalSettings, OpenRequest } from '../shared/types';
+import type { AppEvent, LocalSettings, OpenRequest, QuickSend } from '../shared/types';
 import { isApiMethod, type PickOptions } from '../shared/api';
 import { getLang, t } from '../shared/i18n';
 import { Updater } from './updater';
@@ -87,7 +87,28 @@ if (launch.removeIntegrations) {
     while (waiting.length && rendererReady) emit({ type: 'open', request: waiting.shift()! });
   };
   const launches = new LaunchQueue(deliver);
-  launches.add(launch);
+  /** --quick <name>: a saved send; its settings are known once the service is up, so early ones wait. */
+  let settingsReady = false;
+  const pendingQuick: string[] = [];
+  const runQuickByName = (name: string) => {
+    const want = name.toLowerCase();
+    const q = (service.settings.quickSends ?? []).find((x) => x.name.toLowerCase() === want || x.id === name);
+    if (!q) {
+      service.log.warn(t('Başlatma'), t('Hızlı gönderim bulunamadı: {name}', { name }));
+      return;
+    }
+    showWindow();
+    launches.add(quickRequest(q), true);
+  };
+  const addLaunch = (l: ReturnType<typeof parseLaunch>, quick = false) => {
+    if (l.quick) {
+      if (settingsReady) runQuickByName(l.quick);
+      else pendingQuick.push(l.quick);
+      return;
+    }
+    launches.add(l, quick);
+  };
+  addLaunch(launch);
 
   // --hidden: started at login; stay in the tray when that is enabled
   const startHidden = launch.hidden;
@@ -104,12 +125,19 @@ if (launch.removeIntegrations) {
     win.show();
     win.focus();
   };
+  /** A saved send as a launch: the window shows it being sent (or its review). */
+  const quickRequest = (q: QuickSend): OpenRequest => ({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
   const trayMgr = new TrayManager(iconPath, {
     show: showWindow,
     setPaused: (p) => void service.automationPause(p),
     quit: () => {
       quitting = true;
       app.quit();
+    },
+    quickSends: () => service.settings.quickSends ?? [],
+    runQuick: (q) => {
+      showWindow();
+      launches.add(quickRequest(q), true);
     },
   });
 
@@ -216,7 +244,7 @@ if (launch.removeIntegrations) {
   try {
     startLaunchPipe((m) => {
       showWindow();
-      launches.add(parseLaunch(m.args, undefined, m.cwd), true);
+      addLaunch(parseLaunch(m.args, undefined, m.cwd), true);
     }, pipeWarn);
   } catch (e) {
     pipeWarn(e as Error);
@@ -337,7 +365,7 @@ if (launch.removeIntegrations) {
 
   app.on('second-instance', (_e, argv) => {
     showWindow();
-    launches.add(launchOf(argv));
+    addLaunch(launchOf(argv));
   });
 
   app.on('open-file', (e, p) => {
@@ -352,6 +380,8 @@ if (launch.removeIntegrations) {
       );
     } else Menu.setApplicationMenu(null);
     await service.init();
+    settingsReady = true;
+    for (const name of pendingQuick.splice(0)) runQuickByName(name);
     nativeTheme.themeSource = service.settings.theme;
     createWindow();
     app.on('activate', () => {

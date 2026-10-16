@@ -286,6 +286,23 @@ const d: Dict = {
   'Röle olarak işaretli ama orada SamSync çalışmıyor; gönderimler doğrudan yapılır': 'Marked as relay, but no SamSync runs there; sends go directly',
   'röle kapalı': 'relay off',
   'röle açık': 'relay on',
+
+  // quick sends
+  'Hızlı gönderimler': 'Quick sends',
+  'Hızlı gönder': 'Quick send',
+  inceleyerek: 'with review',
+  'tek tıkla': 'one click',
+  '{n} kaynak → {targets} hedef{review}': pl('{n} source → {targets} targets{review}', '{n} sources → {targets} targets{review}'),
+  '“{name}” hızlı gönderimi kaldırılsın mı?': 'Remove the quick send “{name}”?',
+  'Bu listeyi kaydet': 'Save this list',
+  'Hızlı gönderim kaydet': 'Save a quick send',
+  'Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür': 'Shown under this name in the tray, the command palette and on the command line (--quick "name")',
+  'DLL → Dozer': 'DLL → Dozer',
+  'Önce incele': 'Review first',
+  'Kapalıyken plan hesaplanır hesaplanmaz gönderilir; hedefte silme olacaksa yine inceleme açılır': 'When off, the send starts as soon as the plan is ready; a plan that would delete on a target still opens the review',
+  'Hızlı gönderim kaydedildi': 'Quick send saved',
+  '{name}: {n} kaynak → {targets} hedef': pl('{name}: {n} source → {targets} targets', '{name}: {n} sources → {targets} targets'),
+  'Hızlı gönderim bulunamadı: {name}': 'Quick send not found: {name}',
   'Dosyalar önce röle makinesine gider; oradaki SamSync karşılaştırıp bu makineye dağıtır. Sonuç gönderim bitince burada görünür.':
     'The files go to the relay machine first; SamSync there compares and sends them on to this machine. The result shows here once the send is done.',
 };

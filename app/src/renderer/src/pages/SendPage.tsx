@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye } from 'lucide-react';
+import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
-import { Button, Segmented, TagInput, ToggleRow, Field } from '../components/ui';
+import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
-import type { SendMode, CompareMethod } from '@shared/types';
+import type { SendMode, CompareMethod, QuickSend } from '@shared/types';
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
@@ -82,6 +82,7 @@ export function SendPage() {
       </div>
       <div className="page-body fill" style={{ display: 'flex', flexDirection: 'column' }}>
         <WorkspaceTabs />
+        <QuickSendsBar canSave={paths.length > 0 && targets.length > 0} />
         <div className="send-grid" style={{ flex: 1, minHeight: 0 }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
             <div className="card sources-card">
@@ -239,6 +240,82 @@ export function SendPage() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Saved sends: the current sources, targets and options under a name, run again with one click here, from
+ * the tray, the command palette or `--quick <name>`.
+ */
+const NO_QUICK: QuickSend[] = [];
+
+function QuickSendsBar({ canSave }: { canSave: boolean }) {
+  // the selector must return the same value while nothing changed, or the store rerenders without end
+  const quick = useApp((s) => s.boot?.settings.quickSends) ?? NO_QUICK;
+  const run = useApp((s) => s.runQuickSend);
+  const save = useApp((s) => s.saveQuickSend);
+  const remove = useApp((s) => s.removeQuickSend);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  const [review, setReview] = useState(false);
+  if (!quick.length && !canSave) return null;
+  return (
+    <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+      <span className="faint row" style={{ fontSize: 12, gap: 4 }}>
+        <Zap size={13} /> {t('Hızlı gönderimler')}
+      </span>
+      {quick.map((q) => (
+        <span key={q.id} className="chip row" style={{ gap: 4 }} data-tip={t('{n} kaynak → {targets} hedef{review}', { n: q.paths.length, targets: q.targetIds.length, review: q.review ? ` • ${t('inceleyerek')}` : '' })}>
+          <button className="chip-btn" onClick={() => run(q)}>
+            <Send size={12} /> {q.name}
+          </button>
+          <button
+            className="chip-x"
+            aria-label={t('Kaldır')}
+            onClick={async () => {
+              if (!confirm(t('“{name}” hızlı gönderimi kaldırılsın mı?', { name: q.name }))) return;
+              await remove(q.id);
+            }}
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ))}
+      {canSave && (
+        <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={() => setNaming(true)}>
+          {t('Bu listeyi kaydet')}
+        </Button>
+      )}
+      {naming && (
+        <Modal
+          title={t('Hızlı gönderim kaydet')}
+          icon={<Zap size={16} />}
+          onClose={() => setNaming(false)}
+          footer={
+            <>
+              <span className="spacer" />
+              <Button onClick={() => setNaming(false)}>{t('Vazgeç')}</Button>
+              <Button
+                variant="primary"
+                disabled={!name.trim()}
+                onClick={async () => {
+                  await save(name.trim(), review);
+                  setNaming(false);
+                  setName('');
+                }}
+              >
+                {t('Kaydet')}
+              </Button>
+            </>
+          }
+        >
+          <Field label={t('Ad')} help={t('Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür')}>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && void save(name.trim(), review).then(() => setNaming(false))} />
+          </Field>
+          <ToggleRow icon={<Eye size={16} className="faint" />} title={t('Önce incele')} desc={t('Kapalıyken plan hesaplanır hesaplanmaz gönderilir; hedefte silme olacaksa yine inceleme açılır')} on={review} onChange={setReview} />
+        </Modal>
+      )}
     </div>
   );
 }
