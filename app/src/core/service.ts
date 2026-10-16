@@ -683,6 +683,10 @@ export class Service implements Api {
     return this.automation!.updateWatch(id, patch);
   }
 
+  async watchRunNow(id: string): Promise<void> {
+    this.automation!.runWatch(id);
+  }
+
   async watchRemove(id: string): Promise<AutomationState> {
     return this.automation!.removeWatch(id);
   }

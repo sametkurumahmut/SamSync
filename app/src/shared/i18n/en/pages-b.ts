@@ -45,6 +45,9 @@ const d: Dict = {
   Kaldır: 'Remove',
   '“{name}” izlemesi kaldırılsın mı?': 'Remove the watch “{name}”?',
   'İzleme kaldırıldı': 'Watch removed',
+  'Şimdi gönder: izlenen dosya ve klasörlerde hedeften farklı olanları hemen gönderir': 'Send now: sends what differs from the targets in the watched files and folders right away',
+  'Şimdi çalıştır: senkron işini hemen çalıştırır': 'Run now: runs the sync job right away',
+  Gönderilemedi: 'Could not send',
   'Zamanlanmış senkron': 'Scheduled sync',
   'Senkron işleri seçtiğiniz aralıkta ya da saatlerde karşılaştırılıp önerilen işlemlerle eşitlenir; çakışmalara dokunulmaz.':
     'Sync jobs are compared at the interval or times you choose and synced with the suggested actions; conflicts are left alone.',

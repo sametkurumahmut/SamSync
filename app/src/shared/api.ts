@@ -156,6 +156,8 @@ export interface Api {
   watchAdd(cfg: Omit<WatchConfig, 'id'>): Promise<AutomationState>;
   watchUpdate(id: string, patch: Partial<WatchConfig>): Promise<AutomationState>;
   watchRemove(id: string): Promise<AutomationState>;
+  /** Sends what differs between a watch's paths and its destinations now (or runs its sync job). */
+  watchRunNow(id: string): Promise<void>;
   automationPause(paused: boolean): Promise<AutomationState>;
   scheduleRunNow(jobId: string): Promise<void>;
 
@@ -229,6 +231,7 @@ export const API_METHODS = {
   watchAdd: true,
   watchUpdate: true,
   watchRemove: true,
+  watchRunNow: true,
   automationPause: true,
   scheduleRunNow: true,
   windowControl: true,

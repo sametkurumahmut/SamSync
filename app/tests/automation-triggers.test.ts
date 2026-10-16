@@ -117,6 +117,33 @@ describe('watch destinations and triggers', () => {
     }
   });
 
+  it('sends what differs on "send now", also while the watch is off', async () => {
+    const s = await setup([]);
+    const src = path.join(s.base, 'src');
+    const dst = path.join(s.base, 'out');
+    await write(path.join(src, 'a.txt'), 'a');
+    await write(path.join(src, 'sub', 'b.txt'), 'b');
+    const last = async () => (await s.svc.automationState()).watches[0];
+    try {
+      await s.watch({ paths: [src], folders: [dst], enabled: false, options: { ...defaultOptions, notify: false, propagateDeletes: true } });
+      const id = (await last()).id;
+      await s.svc.watchRunNow(id);
+      await until(async () => (await last()).lastStatus === 'ok');
+      expect(read(path.join(dst, 'a.txt'))).toBe('a');
+      expect(read(path.join(dst, 'sub', 'b.txt'))).toBe('b');
+      // a second click finds nothing to send
+      await s.svc.watchRunNow(id);
+      await until(async () => (await last()).lastStatus === 'nothing');
+      // a missing watched folder is reported, never deleted on the target
+      await fsp.rm(src, { recursive: true, force: true });
+      await s.svc.watchRunNow(id);
+      await until(async () => (await last()).lastStatus === 'failed');
+      expect(read(path.join(dst, 'a.txt'))).toBe('a');
+    } finally {
+      s.svc.automation?.stop();
+    }
+  });
+
   it('sends what a commit changed and leaves a branch switch alone', async () => {
     const repo = path.join((await tmpDir()), 'repo');
     await fsp.mkdir(repo, { recursive: true });

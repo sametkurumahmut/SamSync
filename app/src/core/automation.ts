@@ -163,6 +163,8 @@ class WatchRunner {
   private reflog: ReflogWatcher | null = null;
   /** path -> saw a create/rename */
   private queue = new Map<string, boolean>();
+  /** "Send now" (or the start with syncOnStart) asked for the differences of the whole watched paths. */
+  private fullPending = false;
   private busy = false;
   private deferred = new Map<string, Set<string>>();
   private retryTimer: NodeJS.Timeout | null = null;
@@ -231,7 +233,16 @@ class WatchRunner {
     else this.deferred.clear();
     this.state.deferredTargets = [...this.deferred.keys()];
     // the differences that are already there go first
-    if (this.cfg.syncOnStart) this.enqueue(roots, new Set());
+    if (this.cfg.syncOnStart) this.runNow();
+  }
+
+  /**
+   * Sends what differs between the watched paths and the destinations now (or runs the sync job), whether
+   * the watch is on or paused. Only differences go: equal files are skipped, nothing is deleted.
+   */
+  runNow(): void {
+    this.fullPending = true;
+    void this.drain();
   }
 
   /** Test hook: read the reflog now instead of waiting for the poll. */
@@ -277,10 +288,15 @@ class WatchRunner {
   }
 
   private async drain(): Promise<void> {
-    if (this.busy || !this.queue.size) return;
+    if (this.busy || (!this.queue.size && !this.fullPending)) return;
     this.busy = true;
     try {
-      while (this.queue.size) {
+      while (this.queue.size || this.fullPending) {
+        if (this.fullPending) {
+          this.fullPending = false;
+          await this.send(this.roots(), this.destinations(), new Set(), true);
+          continue;
+        }
         const batch = [...this.queue.keys()];
         const contentOnly = new Set([...this.queue].filter(([, renamed]) => !renamed).map(([p]) => p));
         this.queue.clear();
@@ -305,13 +321,20 @@ class WatchRunner {
     this.host.notify(`${status === 'ok' ? '✓' : '✕'} ${this.cfg.name}`, body);
   }
 
-  private async send(changed: string[], targetIds: string[], contentOnly: Set<string> = new Set()): Promise<void> {
+  /** `full`: `changed` are the watched paths themselves, sent whole; a missing one is never deleted on the targets. */
+  private async send(changed: string[], targetIds: string[], contentOnly: Set<string> = new Set(), full = false): Promise<void> {
     const ctx = this.host.ctx();
     const settings = this.host.settings();
     const roots = this.roots();
-    const sources = await changesToSources(changed, roots, this.filter(), this.cfg.options.propagateDeletes, contentOnly);
-    if (!sources.length) return;
-    if (settings.maxFilesPerSend && sources.length > settings.maxFilesPerSend) {
+    const sources = await changesToSources(changed, roots, this.filter(), !full && this.cfg.options.propagateDeletes, contentOnly);
+    if (!sources.length) {
+      if (!full) return;
+      this.state.lastRunAt = Date.now();
+      this.state.lastStatus = 'failed';
+      this.state.lastSummary = t('İzlenen dosya ve klasörler bulunamadı');
+      return;
+    }
+    if (!full && settings.maxFilesPerSend && sources.length > settings.maxFilesPerSend) {
       // a branch switch or a mass rename seen as file changes should not go out on its own
       this.state.lastRunAt = Date.now();
       this.state.lastStatus = 'cancelled';
@@ -358,7 +381,7 @@ class WatchRunner {
       const ops = plans.reduce((s, { plan }) => s + plan.targets.reduce((a, tp) => a + (tp.reachable ? tp.ops.filter((o) => o.selected).length : 0), 0), 0);
       if (!ops) {
         this.state.lastStatus = 'nothing';
-        this.state.lastSummary = t('{n} değişiklik, hedefler zaten güncel', { n: files });
+        this.state.lastSummary = full ? t('Hedefler zaten güncel') : t('{n} değişiklik, hedefler zaten güncel', { n: files });
         return;
       }
       let ok = 0;
@@ -431,6 +454,8 @@ class WatchRunner {
     } finally {
       this.busy = false;
       this.settle();
+      // what arrived meanwhile
+      void this.drain();
     }
   }
 }
@@ -567,6 +592,14 @@ export class Automation {
     this.syncRunners();
     this.emit();
     return this.snapshot();
+  }
+
+  /** "Send now" on a watch card. */
+  runWatch(id: string): void {
+    const r = this.runners.get(id);
+    if (!r) throw new Error(t('İzleme bulunamadı'));
+    r.runNow();
+    this.emit();
   }
 
   async removeWatch(id: string): Promise<AutomationState> {

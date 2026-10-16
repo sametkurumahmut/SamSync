@@ -7,6 +7,9 @@ const d: Dict = {
   '{name}: {events} → {n} dosya': pl('{name}: {events} → {n} file', '{name}: {events} → {n} files'),
   '{n} değişiklik birden geldi; sınır {max}, gönderilmedi': pl('{n} change came at once; the limit is {max}, not sent', '{n} changes came at once; the limit is {max}, not sent'),
   'Senkron işi bulunamadı: {id}': 'Sync job not found: {id}',
+  'İzlenen dosya ve klasörler bulunamadı': 'The watched files and folders were not found',
+  'Hedefler zaten güncel': 'Targets already up to date',
+  'İzleme bulunamadı': 'Watch not found',
   '{name}: senkron başarısız': '{name}: sync failed',
   '{path} bir Git deposunda değil.': '{path} is not in a Git repository.',
   'Dosya kaydedildiğinde ya da Git’te commit veya pull olduğunda birkaç saniye bekler, sonra yalnızca değişenleri seçili makinelere ya da klasörlere gönderir; istenirse bir senkron işini çalıştırır.':

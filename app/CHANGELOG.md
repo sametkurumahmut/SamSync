@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Otomasyon:** izleme kartlarında **Şimdi gönder** düğmesi. İzlenen yollarda hedeften farklı olanları beklemeden gönderir, izleme kapalıyken de; senkron işi çalıştıran izlemede işi çalıştırır. Yalnızca farklar gider, hedefte bir şey silinmez.
+
 ## 2.0.0 — SamSync
 
 Eski PowerShell aracının (1.x) yerine sıfırdan yazılmış, çapraz platform bir masaüstü uygulaması (Electron + React + TypeScript). Eski aracın menüleri, tek tıkla gönderimi ve sihirbaz özellikleri de içindedir.

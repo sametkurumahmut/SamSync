@@ -27,6 +27,7 @@ import {
   GitBranch,
   Settings2,
   Workflow,
+  Send,
 } from 'lucide-react';
 import type { AutomationSettings, GitEvent, SendOptions, WatchConfig, WatchState, ScheduleState, SyncSchedule } from '@shared/types';
 import { automationSettings, DEFAULT_GIT_EVENTS } from '@shared/automation';
@@ -231,6 +232,15 @@ export function AutomationPage() {
                       {w.lastRunAt ? `${ago(w.lastRunAt)} • ${w.lastSummary ?? ''}` : w.pendingFiles ? t('{n} değişiklik bekliyor', { n: w.pendingFiles }) : t('Henüz değişiklik olmadı')}
                     </span>
                     {w.runs > 0 && <span className="badge">{t('{n} işlem', { n: num(w.sentFiles) })}</span>}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      iconOnly
+                      icon={<Send size={13} />}
+                      disabled={w.status === 'sending'}
+                      tip={w.syncJobId ? t('Şimdi çalıştır: senkron işini hemen çalıştırır') : t('Şimdi gönder: izlenen dosya ve klasörlerde hedeften farklı olanları hemen gönderir')}
+                      onClick={() => void api.watchRunNow(w.id).catch((e) => toast('error', t('Gönderilemedi'), (e as Error).message))}
+                    />
                     <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip={t('Geçmiş')} onClick={() => setPage('history')} />
                     <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => cfg && setEditing(cfg)} />
                     <Button
