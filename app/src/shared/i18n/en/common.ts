@@ -156,6 +156,8 @@ const d: Dict = {
   Tamamlandı: 'Completed',
   Bitti: 'Finished',
   'Gönderiliyor %{pct}': 'Sending {pct}%',
+  '{speed}/sn': '{speed}/s',
+  'kalan {time}': '{time} left',
   'Günlük panoya kopyalandı': 'Log copied to clipboard',
   deneme: 'dry run',
   'Başarıyla tamamlandı': 'Completed successfully',

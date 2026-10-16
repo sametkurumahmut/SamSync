@@ -27,6 +27,15 @@ function useNow(active: boolean) {
   return now;
 }
 
+/** Bytes per second over a span, once enough has gone by to mean something. */
+function rate(bytesDone: number, ms: number): number | undefined {
+  return ms >= 800 && bytesDone > 0 ? (bytesDone / ms) * 1000 : undefined;
+}
+
+function speedText(bps: number | undefined): string {
+  return bps == null ? '' : t('{speed}/sn', { speed: bytes(bps) });
+}
+
 function totals(run: LiveRun) {
   let total = 0;
   let done = 0;
@@ -84,6 +93,9 @@ export function RunPanel() {
   const s = run.summary;
   const tot = totals(run);
   const elapsed = (run.done ? s.finishedAt ?? now : now) - s.startedAt;
+  // the pace so far and what it leaves: the network to the machines is often the slow part
+  const pace = rate(tot.bd, elapsed);
+  const remaining = !run.done && pace && tot.bt > tot.bd ? ((tot.bt - tot.bd) / pace) * 1000 : undefined;
   const log = logFilter === 'errors' ? run.log.filter((l) => l.level === 'error' || l.level === 'warn') : run.log;
   const titleFor = (key?: string) => (key ? run.targets.find((x) => x.key === key)?.title ?? key : '');
 
@@ -124,6 +136,8 @@ export function RunPanel() {
               <span className="row" style={{ gap: 4 }}>
                 <Clock size={12} /> {duration(elapsed)}
               </span>
+              {pace != null && <span className="tabular">{speedText(pace)}</span>}
+              {remaining != null && <span className="tabular">{t('kalan {time}', { time: duration(Math.round(remaining)) })}</span>}
             </div>
           </div>
           <Button variant="ghost" iconOnly size="sm" icon={<Minimize2 size={15} />} tip={t('Küçült')} onClick={() => useApp.setState({ runPanel: false })} />
@@ -151,6 +165,8 @@ export function RunPanel() {
         <div className="drawer-targets">
           {run.targets.map((x) => {
             const pct = x.bytesTotal > 0 ? (x.bytesDone / x.bytesTotal) * 100 : x.total ? (x.done / x.total) * 100 : x.status === 'ok' ? 100 : 0;
+            // a running target shows its pace; a finished one its average, so a slow machine stands out
+            const own = x.startedAt ? rate(x.bytesDone, (x.finishedAt ?? now) - x.startedAt) : undefined;
             return (
               <div key={x.key} className="run-target">
                 <StatusIcon status={x.status} />
@@ -162,6 +178,7 @@ export function RunPanel() {
                     <span className="spacer" />
                     <span className="faint tabular" style={{ fontSize: 11.5 }}>
                       {x.done}/{x.total}
+                      {own != null && x.status !== 'queued' && ` • ${speedText(own)}`}
                       {x.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: x.failed })}</span>}
                     </span>
                   </div>

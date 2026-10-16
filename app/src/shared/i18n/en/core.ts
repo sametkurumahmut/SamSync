@@ -146,6 +146,8 @@ const d: Dict = {
   'Eski hâller yedeklendi: {path}': 'Previous versions backed up: {path}',
   'Başarılı: {ok}/{n} işlem (deneme)': pl('Succeeded: {ok}/{n} operation (dry run)', 'Succeeded: {ok}/{n} operations (dry run)'),
   'Başarılı: {ok}/{n} işlem': pl('Succeeded: {ok}/{n} operation', 'Succeeded: {ok}/{n} operations'),
+  '{size} • {s} sn • {speed}/sn': '{size} • {s} s • {speed}/s',
+  '{path} değiştirilemedi: dosya kullanımda (bir program açık tutuyor) ya da yazma izni yok': '{path} could not be replaced: the file is in use (a program holds it open) or there is no write permission',
   'Hatalı: {ok}/{n} işlem (deneme)': pl('Failed: {ok}/{n} operation succeeded (dry run)', 'Failed: {ok}/{n} operations succeeded (dry run)'),
   'Hatalı: {ok}/{n} işlem': pl('Failed: {ok}/{n} operation succeeded', 'Failed: {ok}/{n} operations succeeded'),
   Kopyalama: 'Copy',

@@ -391,6 +391,9 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
               ? t('Hatalı: {ok}/{n} işlem (deneme)', doneParams)
               : t('Hatalı: {ok}/{n} işlem', doneParams);
         log(st.status === 'ok' ? 'ok' : 'error', doneMsg, g.key);
+        // how fast this machine took the data: a slow one stands out in the log and in the history
+        const took = Date.now() - (st.startedAt ?? startedAt);
+        if (st.bytesDone > 0 && took >= 500 && !s.dryRun) log('info', t('{size} • {s} sn • {speed}/sn', { size: formatBytes(st.bytesDone), s: (took / 1000).toFixed(1), speed: formatBytes((st.bytesDone / took) * 1000) }), g.key);
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
           await runPostCommand(s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
         }

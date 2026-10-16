@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import type { Entry, Transport, WriteOptions } from './types';
 import { joinRoot } from '../paths';
 import { isWin, mapLimit } from '../util';
+import { t } from '../../shared/i18n';
 
 const STREAM_THRESHOLD = 16 * 1024 * 1024;
 
@@ -194,7 +195,13 @@ export class FsTransport implements Transport {
       if (!isPerm(e)) throw e;
       // A read-only destination blocks the replace on Windows.
       await fsp.chmod(to, 0o666).catch(() => undefined);
-      await fsp.rename(from, to);
+      try {
+        await fsp.rename(from, to);
+      } catch (e2) {
+        if (!isPerm(e2)) throw e2;
+        // still refused: a program on the target holds the file (a loaded DLL, an open document), or no write right
+        throw new Error(t('{path} değiştirilemedi: dosya kullanımda (bir program açık tutuyor) ya da yazma izni yok', { path: to }));
+      }
     }
   }
 
