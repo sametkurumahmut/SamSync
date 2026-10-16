@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2 } from 'lucide-react';
-import type { NodeConfig, TransportKind } from '@shared/types';
+import { useEffect, useMemo, useState } from 'react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge } from 'lucide-react';
+import type { NodeConfig, RunSummary, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
-import { ago, cls } from '../lib/format';
+import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
 import { ConfigEditor } from '../components/ConfigEditor';
 
@@ -22,6 +22,30 @@ export function TargetsPage() {
   const [editingJson, setEditingJson] = useState(false);
   const cfg = boot.config;
   const probes = useApp((s) => s.probes);
+  // what the last send to each machine looked like: pace and time, from the history
+  const liveRuns = useApp((s) => s.runs);
+  const doneCount = Object.values(liveRuns).filter((r) => r.done).length;
+  const [history, setHistory] = useState<RunSummary[]>([]);
+  useEffect(() => {
+    let alive = true;
+    api
+      .runs()
+      .then((r) => alive && setHistory(r))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [doneCount]);
+  const lastSend = useMemo(() => {
+    const out = new Map<string, { at: number; ms: number; bytes: number; status: string; via?: string }>();
+    for (const r of history) {
+      for (const tg of r.targets) {
+        if (out.has(tg.key) || !tg.startedAt || !tg.finishedAt || tg.status === 'queued') continue;
+        out.set(tg.key, { at: tg.finishedAt, ms: tg.finishedAt - tg.startedAt, bytes: tg.bytesDone, status: tg.status, via: tg.via });
+      }
+    }
+    return out;
+  }, [history]);
   const probing = useApp((s) => s.probing);
   const probe = useApp((s) => s.probe);
   const saveConfig = useApp((s) => s.saveConfig);
@@ -182,6 +206,20 @@ export function TargetsPage() {
                         {n.transport === 'sftp' ? <KeyRound size={12} /> : n.transport === 'path' ? <HardDrive size={12} /> : <Network size={12} />}
                         <span className="ellipsis">{rootPreview(n, boot.platform)}</span>
                       </div>
+                      {!isLocal && lastSend.get(n.id) && (() => {
+                        const l = lastSend.get(n.id)!;
+                        const pace = l.bytes > 0 && l.ms >= 500 ? t('{speed}/sn', { speed: bytes((l.bytes / l.ms) * 1000) }) : null;
+                        return (
+                          <div className="row faint" style={{ fontSize: 11.5, gap: 5 }} data-tip={t('Bu makineye son gönderim')}>
+                            <Gauge size={12} color={l.status === 'ok' ? 'var(--green)' : l.status === 'cancelled' ? undefined : 'var(--red)'} />
+                            <span className="ellipsis">
+                              {t('son gönderim')}: {pace ? `${pace} • ` : ''}
+                              {duration(l.ms)} • {ago(l.at)}
+                              {l.via ? ` • ${t('{relay} üzerinden', { relay: l.via })}` : ''}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       <div className="row" style={{ gap: 6 }}>
                         {!isLocal &&
                           (p ? (

@@ -287,6 +287,9 @@ const d: Dict = {
   'röle kapalı': 'relay off',
   'röle açık': 'relay on',
 
+  'Bu makineye son gönderim': 'The last send to this machine',
+  'son gönderim': 'last send',
+
   // quick sends
   'Hızlı gönderimler': 'Quick sends',
   'Hızlı gönder': 'Quick send',
