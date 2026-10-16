@@ -16,6 +16,7 @@ import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
 import { t } from '../shared/i18n';
 import { targetOptions } from '../shared/options';
 import { RELAY_FOLDER, relayRouting } from '../shared/relay';
+import { heartbeatFresh, readHeartbeat } from './relay';
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -247,6 +248,8 @@ async function planTarget(
   }
   // asked now and read at the end: on a slow network it overlaps with the comparison below
   const freeSpace = tgt.freeSpace().catch(() => undefined);
+  // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
+  const heartbeat = node.relay && node.transport !== 'sftp' && !req.direct ? readHeartbeat(tgt).then((h) => heartbeatFresh(h)) : Promise.resolve(true);
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
 
@@ -328,7 +331,7 @@ async function planTarget(
       }
     });
   } catch (e) {
-    await freeSpace;
+    await Promise.all([freeSpace, heartbeat]);
     await tgt.close();
     if (cancel.cancelled) throw e;
     return { ...base, reachable: false, failed: true, error: errMessage(e), counts: b.counts, ops: b.ops };
@@ -338,8 +341,9 @@ async function planTarget(
   b.ops.forEach((op, i) => (op.id = String(i)));
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
   const freeBytes = await freeSpace;
+  const alive = await heartbeat;
   await tgt.close();
-  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes };
+  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true };
 }
 
 export async function buildSendPlan(
@@ -369,10 +373,27 @@ export async function buildSendPlan(
     progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
     return tp;
   });
+  // a relay whose SamSync is not running: the machines behind it are looked at and written to from here
+  const behindDown = new Map<string, NodeConfig[]>();
+  for (const tp of planned) {
+    if (!tp.relayDown || !routing.via.has(tp.targetId)) continue;
+    const behind = routing.via.get(tp.targetId) ?? [];
+    behindDown.set(tp.targetId, behind);
+    routing.via.delete(tp.targetId);
+    warnings.push(t('{name} röle olarak işaretli ama orada SamSync çalışmıyor; {names} doğrudan gönderilecek.', { name: tp.targetName, names: behind.map((n) => n.name).join(', ') }));
+  }
+  const directPlanned = new Map<string, TargetPlan>();
+  await mapLimit([...behindDown.values()].flat(), 6, async (n) => {
+    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m)));
+  });
   // the relayed machines follow their relay in the list, reachable as far as the relay is
   const targets: TargetPlan[] = [];
   for (const tp of planned) {
     targets.push(tp);
+    for (const n of behindDown.get(tp.targetId) ?? []) {
+      const d = directPlanned.get(n.id);
+      if (d) targets.push(d);
+    }
     for (const n of routing.via.get(tp.targetId) ?? []) {
       const opt = targetOptions(req.options, n.id);
       const base = { targetId: n.id, targetName: n.name, root: nodeRootLabel(ctx.config, n), mode: opt.mode, backup: opt.backup, ops: [], counts: emptyCounts(), bytes: 0, via: tp.targetId };

@@ -1,7 +1,9 @@
 import net from 'node:net';
 import fsp from 'node:fs/promises';
+import path from 'node:path';
 import type { AppConfig, NodeConfig, ProbeResult } from '../shared/types';
 import { nodeRootLabel, smbRoot } from './transport';
+import { ALIVE_FILE, heartbeatFresh, type Heartbeat } from './relay';
 import { mapLimit, withTimeout, errMessage } from './util';
 import { t } from '../shared/i18n';
 
@@ -40,7 +42,8 @@ export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 15
     const start = Date.now();
     try {
       const st = await withTimeout(fsp.stat(p), timeoutMs * 2);
-      return { ...base, ok: st.isDirectory(), latencyMs: Date.now() - start, detail: st.isDirectory() ? t('Klasör erişilebilir') : t('Yol bir klasör değil') };
+      const r: ProbeResult = { ...base, ok: st.isDirectory(), latencyMs: Date.now() - start, detail: st.isDirectory() ? t('Klasör erişilebilir') : t('Yol bir klasör değil') };
+      return deep && r.ok ? withRelayAlive(r, p, node) : r;
     } catch (e) {
       return { ...base, ok: false, detail: t('Klasöre erişilemedi: {error}', { error: errMessage(e) }) };
     }
@@ -61,12 +64,31 @@ export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 15
     try {
       const st = await withTimeout(fsp.stat(smbRoot(cfg, node)), Math.max(timeoutMs * 4, 6000));
       if (!st.isDirectory()) return { ...base, ok: false, latencyMs: r.ms, detail: t('{path} bir klasör değil', { path: smbRoot(cfg, node) }) };
-      return { ...base, ok: true, latencyMs: Date.now() - start, detail: t('Paylaşım erişilebilir ({ms} ms)', { ms: Date.now() - start }) };
+      const ok: ProbeResult = { ...base, ok: true, latencyMs: Date.now() - start, detail: t('Paylaşım erişilebilir ({ms} ms)', { ms: Date.now() - start }) };
+      return withRelayAlive(ok, smbRoot(cfg, node), node);
     } catch (e) {
       return { ...base, ok: false, latencyMs: r.ms, detail: t('SMB yanıt verdi ama {path} açılamadı: {error}', { path: smbRoot(cfg, node), error: errMessage(e) }) };
     }
   }
   return { ...base, ok: true, latencyMs: r.ms, detail: t('SMB (445) yanıt verdi ({ms} ms)', { ms: r.ms }) };
+}
+
+/** For a machine marked as relay: reads the heartbeat SamSync there writes, so the window can say whether it runs. */
+async function withRelayAlive(r: ProbeResult, root: string, node: NodeConfig): Promise<ProbeResult> {
+  if (!node.relay) return r;
+  try {
+    const raw = await withTimeout(fsp.readFile(path.join(root, ...ALIVE_FILE.split('/')), 'utf8'), 4000);
+    const h = JSON.parse(raw) as Heartbeat;
+    const alive = heartbeatFresh(h);
+    return { ...r, relayAlive: alive, relaySeenAt: h.at, detail: alive ? t('{detail}; röle çalışıyor', { detail: r.detail }) : t('{detail}; röle yanıt vermiyor (son {ago})', { detail: r.detail, ago: agoText(h.at) }) };
+  } catch {
+    return { ...r, relayAlive: false, detail: t('{detail}; rölede SamSync çalışmıyor', { detail: r.detail }) };
+  }
+}
+
+function agoText(at: number): string {
+  const m = Math.round((Date.now() - at) / 60000);
+  return m < 60 ? t('{n} dk önce', { n: Math.max(1, m) }) : t('{n} sa önce', { n: Math.round(m / 60) });
 }
 
 export async function probeNodes(cfg: AppConfig, nodes: NodeConfig[], timeoutMs = 1500, deep = true): Promise<ProbeResult[]> {

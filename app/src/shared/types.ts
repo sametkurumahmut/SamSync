@@ -383,6 +383,9 @@ export interface ProbeResult {
   detail: string;
   root: string;
   checkedAt: number;
+  /** For a machine marked as relay: whether SamSync there wrote its heartbeat lately, and when. */
+  relayAlive?: boolean;
+  relaySeenAt?: number;
 }
 
 // ---------------------------------------------------------------- sources & plans
@@ -465,6 +468,8 @@ export interface TargetPlan {
   truncated?: boolean;
   /** The files reach this target through that relay machine (no plan of its own: the relay compares and sends). */
   via?: string;
+  /** This machine is marked as relay but no SamSync answers there (stale heartbeat): it is written to directly. */
+  relayDown?: boolean;
 }
 
 export interface SendPlan {

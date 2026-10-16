@@ -283,6 +283,9 @@ const d: Dict = {
   'Bu makineyle birlikte seçilen grup makinelerine dosyalar önce buraya, buradaki SamSync tarafından oradan gider. Bu makinede SamSync çalışmalı; ilk yerel kökü paylaşımın klasörü olmalı.':
     'Group machines chosen together with this one get the files from here: they go here first, and SamSync running here sends them on. SamSync must run on this machine; its first local root must be the folder of its share.',
   '{name} dosyaları röle üzerinden alacak': '{name} gets the files through the relay',
+  'Röle olarak işaretli ama orada SamSync çalışmıyor; gönderimler doğrudan yapılır': 'Marked as relay, but no SamSync runs there; sends go directly',
+  'röle kapalı': 'relay off',
+  'röle açık': 'relay on',
   'Dosyalar önce röle makinesine gider; oradaki SamSync karşılaştırıp bu makineye dağıtır. Sonuç gönderim bitince burada görünür.':
     'The files go to the relay machine first; SamSync there compares and sends them on to this machine. The result shows here once the send is done.',
 };

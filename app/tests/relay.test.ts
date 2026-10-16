@@ -130,9 +130,34 @@ describe('relay end to end', () => {
     }
   }, 30000);
 
-  it('falls back to a direct send when no SamSync runs on the relay', async () => {
+  it('writes directly, without waiting, when the relay has no fresh heartbeat', async () => {
+    const s = await setup({ relayRunning: false });
+    try {
+      await write(path.join(s.src, 'h.txt'), 'H');
+      const started = Date.now();
+      const plan = await s.me.planSend(req(s.src), 't-down');
+      expect(plan.targets.find((tp) => tp.targetId === 'T')!.relayDown).toBe(true);
+      expect(plan.targets.map((tp) => [tp.targetId, tp.via ?? '-'])).toEqual([
+        ['T', '-'],
+        ['IG1', '-'],
+        ['IG2', '-'],
+      ]);
+      expect(plan.warnings.some((w) => /SamSync çalışmıyor|no SamSync runs/.test(w))).toBe(true);
+      const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      expect(Date.now() - started).toBeLessThan(5000);
+      for (const dir of [s.trainer, s.ig1, s.ig2]) expect(read(path.join(dir, 'Data', 'h.txt'))).toBe('H');
+      expect(fs.existsSync(path.join(s.trainer, '_SamSyncRelay', 'jobs'))).toBe(false);
+    } finally {
+      s.stop();
+    }
+  });
+
+  it('falls back to a direct send when the relay stops answering after a fresh heartbeat', async () => {
     const s = await setup({ relayRunning: false, ackSeconds: 5 });
     try {
+      // a heartbeat from a SamSync that has just died: the plan still trusts it
+      await write(path.join(s.trainer, '_SamSyncRelay', 'alive.json'), JSON.stringify({ at: Date.now(), node: 'T' }));
       await write(path.join(s.src, 'c.txt'), 'C');
       const plan = await s.me.planSend(req(s.src), 't2');
       const d = await s.me.runPlan(plan, 'default', { notify: false }).done;

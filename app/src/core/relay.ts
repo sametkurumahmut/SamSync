@@ -17,8 +17,33 @@ import { t } from '../shared/i18n';
 
 const JOBS = relJoin(RELAY_FOLDER, 'jobs');
 const RESULTS = relJoin(RELAY_FOLDER, 'results');
+/** The relay writes this every half minute while it runs; senders read it to know it is alive. */
+export const ALIVE_FILE = relJoin(RELAY_FOLDER, 'alive.json');
+export const HEARTBEAT_MS = 30_000;
+/** A heartbeat older than this means no SamSync runs on the relay. */
+export const ALIVE_STALE_MS = 90_000;
 /** Results older than this are removed by the relay. */
 const RESULT_KEEP_MS = 2 * 86400_000;
+
+export interface Heartbeat {
+  at: number;
+  node: string;
+  version?: string;
+}
+
+/** Reads the relay's heartbeat through a transport; null when there is none or it cannot be read. */
+export async function readHeartbeat(tgt: Transport): Promise<Heartbeat | null> {
+  try {
+    const h = await readJson<Heartbeat>(tgt, ALIVE_FILE);
+    return h && typeof h.at === 'number' ? h : null;
+  } catch {
+    return null;
+  }
+}
+
+export function heartbeatFresh(h: Heartbeat | null, now = Date.now()): boolean {
+  return !!h && now - h.at < ALIVE_STALE_MS;
+}
 
 export class RelayError extends Error {
   constructor(
@@ -115,6 +140,7 @@ export interface RelayHost {
  */
 export class RelayService {
   private timer: NodeJS.Timeout | null = null;
+  private beat: NodeJS.Timeout | null = null;
   private watcher: fs.FSWatcher | null = null;
   private busy = new Set<string>();
   private lastPrune = 0;
@@ -127,6 +153,7 @@ export class RelayService {
     readonly localRoot: string,
     readonly node: NodeConfig,
     private pollMs = 2000,
+    private version?: string,
   ) {
     this.jobsDir = path.join(localRoot, RELAY_FOLDER, 'jobs');
     this.resultsDir = path.join(localRoot, RELAY_FOLDER, 'results');
@@ -143,15 +170,33 @@ export class RelayService {
       this.host.ctx().log.warn(t('Röle'), t('Röle klasörü açılamadı: {error}', { error: errMessage(e) }));
     }
     this.timer = setInterval(() => void this.poll(), this.pollMs);
+    this.beat = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
     this.host.ctx().log.info(t('Röle'), t('Bu makine {group} grubuna röle: {dir} izleniyor', { group: this.node.group ?? '-', dir: this.jobsDir }));
+    void this.heartbeat();
     void this.poll();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.beat) clearInterval(this.beat);
+    this.beat = null;
     this.watcher?.close();
     this.watcher = null;
+    // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
+    fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
+  }
+
+  /** Tells senders this machine is here (they read the file through the share). */
+  async heartbeat(): Promise<void> {
+    const file = path.join(this.localRoot, ALIVE_FILE);
+    const h: Heartbeat = { at: Date.now(), node: this.node.id, version: this.version };
+    try {
+      await fsp.writeFile(`${file}.tmp`, JSON.stringify(h));
+      await fsp.rename(`${file}.tmp`, file);
+    } catch {
+      /* the share folder may be read-only for a moment */
+    }
   }
 
   /** Test hook and timer body: looks for jobs once. */

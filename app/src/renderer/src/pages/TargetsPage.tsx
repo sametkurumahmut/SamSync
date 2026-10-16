@@ -196,8 +196,11 @@ export function TargetsPage() {
                           ))}
                         <span className="spacer" />
                         {n.relay && (
-                          <span className="badge violet" data-tip={t('Grubundaki diğer makinelere dosyaları bu makine iletir')}>
-                            {t('röle')}
+                          <span
+                            className={cls('badge', p?.relayAlive === false ? 'red' : 'violet')}
+                            data-tip={p?.relayAlive === false ? t('Röle olarak işaretli ama orada SamSync çalışmıyor; gönderimler doğrudan yapılır') : t('Grubundaki diğer makinelere dosyaları bu makine iletir')}
+                          >
+                            {p?.relayAlive === false ? t('röle kapalı') : p?.relayAlive ? t('röle açık') : t('röle')}
                           </span>
                         )}
                         <span className="badge">{t('{n} kök', { n: n.localRoots.length })}</span>

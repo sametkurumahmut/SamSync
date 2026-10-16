@@ -504,7 +504,7 @@ export class Service implements Api {
       if (!ops.length && !behind) continue;
       const node = nodeOf(tp.targetId)!;
       // a machine running SamSync takes its changes as a pack, whether or not others are behind it
-      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct;
+      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct && !tp.relayDown;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,
@@ -574,6 +574,8 @@ export class Service implements Api {
       },
       root,
       node!,
+      2000,
+      this.host.appVersion,
     );
     this.relay.start();
   }
