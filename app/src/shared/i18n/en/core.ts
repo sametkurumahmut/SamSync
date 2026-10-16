@@ -286,6 +286,7 @@ const d: Dict = {
   '{n} sa önce': pl('{n} hour ago', '{n} hours ago'),
   'Okunan boyut tutmuyor': 'The size read back does not match',
   'Hız sınaması': 'Speed test',
+  'röle: {n} iş': pl('relay: {n} job', 'relay: {n} jobs'),
   '{name}: yazma {w} MB/sn, okuma {r} MB/sn, gecikme {ms} ms': '{name}: write {w} MB/s, read {r} MB/s, latency {ms} ms',
   'Bu pakette GitHub güncelleme adresi yok.': 'This package has no GitHub update address.',
   'latest.yml içinde version/path yok': 'latest.yml has no version/path',

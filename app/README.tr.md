@@ -14,7 +14,7 @@ Arayüz Türkçe ve İngilizcedir. Ayarlar → **Dil** altında bir dil seçilme
 | --- | --- |
 | ![Gönder](../docs/screenshots/tr-send.png) | ![Karşılaştır](../docs/screenshots/tr-compare.png) |
 | ![Git](../docs/screenshots/tr-git.png) | ![Senkron](../docs/screenshots/tr-sync.png) |
-| ![Otomasyon](../docs/screenshots/tr-automation.png) | |
+| ![Otomasyon](../docs/screenshots/tr-automation.png) | ![Hedefler](../docs/screenshots/tr-targets.png) |
 
 ## Kurulum
 
@@ -264,6 +264,7 @@ npm run dev          # Electron, sıcak yenilemeli
 npm test             # çekirdek testleri (gerçek dosya sistemi, git ve dosya izleme ile)
 npm run typecheck
 npm run demo -- .demo     # sahte hedef klasörleriyle demo ortamı + config (.demo/ git'e girmez)
+npm run screenshots       # README ekran görüntüleri, demodan, iki dilde (docs/screenshots)
 npm run web -- --user-data .demo/userdata   # çekirdek + arayüz tarayıcıda (http://localhost:5198)
 npm run dist:win     # kurulum + taşınabilir exe + zip
 ```

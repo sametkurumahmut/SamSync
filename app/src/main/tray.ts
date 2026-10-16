@@ -1,5 +1,5 @@
 import { Menu, Tray, nativeImage } from 'electron';
-import type { AutomationState, QuickSend } from '../shared/types';
+import type { AutomationState, QuickSend, RelayState } from '../shared/types';
 import { getLang, t } from '../shared/i18n';
 
 export interface TrayActions {
@@ -9,6 +9,8 @@ export interface TrayActions {
   /** The saved sends of this machine, for the "Hızlı gönder" submenu. */
   quickSends(): QuickSend[];
   runQuick(q: QuickSend): void;
+  /** The relay service here, when this machine is one (for the tooltip). */
+  relayState(): RelayState;
 }
 
 /** Notification area icon, shown while "keep running in the tray" is on. */
@@ -39,10 +41,12 @@ export class TrayManager {
     const busy = state.watches.some((w) => w.status === 'sending') || state.schedules.some((s) => s.running);
     const summary = t('{watches} izleme • {schedules} zamanlanmış iş', { watches, schedules });
     const quick = this.actions.quickSends();
-    const key = `${getLang()}|${state.paused}|${busy}|${summary}|${quick.map((q) => q.id + q.name).join(',')}`;
+    const relay = this.actions.relayState();
+    const relayText = relay.active ? ` • ${t('röle: {n} iş', { n: relay.jobs })}` : '';
+    const key = `${getLang()}|${state.paused}|${busy}|${summary}|${quick.map((q) => q.id + q.name).join(',')}|${relayText}`;
     if (key === this.lastKey) return;
     this.lastKey = key;
-    this.tray.setToolTip(`SamSync — ${state.paused ? t('otomasyon duraklatıldı') : busy ? t('gönderiliyor…') : summary}`);
+    this.tray.setToolTip(`SamSync — ${state.paused ? t('otomasyon duraklatıldı') : busy ? t('gönderiliyor…') : summary}${relayText}`);
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: t('SamSync’i aç'), click: () => this.actions.show() },

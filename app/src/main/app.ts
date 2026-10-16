@@ -152,6 +152,7 @@ if (launch.removeIntegrations) {
       showWindow();
       launches.add(quickRequest(q), true);
     },
+    relayState: () => service.relay?.state() ?? { active: false, jobs: 0 },
   });
 
   const updater = new Updater((state) => emit({ type: 'update', state }));

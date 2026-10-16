@@ -14,7 +14,7 @@ The user interface is in Turkish and English. It follows the computer's display 
 | --- | --- |
 | ![Send](../docs/screenshots/en-send.png) | ![Compare](../docs/screenshots/en-compare.png) |
 | ![Git](../docs/screenshots/en-git.png) | ![Sync](../docs/screenshots/en-sync.png) |
-| ![Automation](../docs/screenshots/en-automation.png) | |
+| ![Automation](../docs/screenshots/en-automation.png) | ![Targets](../docs/screenshots/en-targets.png) |
 
 ## Installation
 
@@ -258,6 +258,7 @@ npm run dev          # Electron with hot reload
 npm test             # core tests (real file system, git and file watching)
 npm run typecheck
 npm run demo -- .demo     # demo environment with fake target folders + config (.demo/ is not committed)
+npm run screenshots       # the README screenshots from the demo, both languages (docs/screenshots)
 npm run web -- --user-data .demo/userdata   # core + UI in a browser (http://localhost:5198)
 npm run dist:win     # installer + portable exe + zip
 ```

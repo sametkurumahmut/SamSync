@@ -22,6 +22,7 @@
     "dist:linux": "node scripts/dist.mjs --linux --publish never",
     "release:folder": "node scripts/release-folder.mjs",
     "demo": "node scripts/demo-env.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "release:github": "node scripts/dist.mjs --win --publish always"
   },
   "dependencies": {
