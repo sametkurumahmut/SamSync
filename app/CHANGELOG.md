@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **İnceleme: klasör ağacı.** Gönderim planı artık klasör klasör görünüyor: her klasör satırında dalın sayıları (+yeni ~değişen !hedef daha yeni −silinecek), işlem sayısı ve boyutu; tek çocuklu klasör zincirleri tek satırda ("SimFrameworkModels/ModelHeavyIndustry"); ilk düzey açık gelir, tümünü aç/kapat düğmeleri var; klasörün onay kutusu bütün dalı seçer ya da bırakır; arama yaparken eşleşenler hep görünür. Düz liste de duruyor, aradaki geçiş hatırlanıyor.
+
 ## 2.0.2 — 2026-10-17
 
 - **Sıkıştırılmış paket:** röle olarak işaretlenen (SamSync çalışan) bir makineye dosyalar artık tek tek kopyalanmıyor; gönderimin değişiklikleri tek bir sıkıştırılmış paket olarak (`_SamSyncRelay\jobs\<id>.pack`, dosya başına gzip; zip/png/mp4 gibi zaten sıkışık olanlar olduğu gibi) yazılıyor, oradaki SamSync paketi kendi diskine uyguluyor (yedek, kullanımdaki dosya denetimi, doğrulama aynı), sonra grubundakilere dağıtıyor. Ağ üzerinden dosya başına birkaç tur yerine tek akış; bir DLL ~%40, PDB ~%23 boyuta iniyor. Grubunda kimse olmayan bir röle de paketi kendisi için alır. Çalıştırma günlüğünde "Paket: 6,5 MB → 2,6 MB (%40)". Makine yanıt vermezse paket geri alınır ve röle dahil hepsine doğrudan gönderilir.

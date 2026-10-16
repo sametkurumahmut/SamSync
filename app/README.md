@@ -54,7 +54,7 @@ Drag files/folders onto the window, pick them, or paste a path; then choose targ
 | `!` | the file on the target is **newer** (written in *Üzerine yaz* / overwrite mode, skipped in *Yalnızca yeni* / update-only mode) |
 | `−` | extra on the target (deleted only in *Ayna* / mirror mode) / deleted in Git |
 
-Any row can be unticked, `⇄` opens the line diff between source and target, and **Seçimi tüm hedeflere uygula** (apply selection to all targets) copies the choices made for one target to the others. **İzle** (watch) puts the chosen sources under watch (see *Automation*).
+The list is a **folder tree** by default (each folder row carries its branch's counts and size, single-child chains show as one row, the first level opens by itself; a folder's checkbox takes the whole branch) or a flat list, as you prefer. Any row can be unticked, `⇄` opens the line diff between source and target, and **Seçimi tüm hedeflere uygula** (apply selection to all targets) copies the choices made for one target to the others. **İzle** (watch) puts the chosen sources under watch (see *Automation*).
 
 Options: mode (overwrite / update only / mirror), comparison (date+size / content / size), **yedek al** (keep a backup: old versions are moved into the backup folder on the target under a `<timestamp>` folder), verification (content hash), excluded file/folder patterns, number of parallel targets, dry run, notification when done, post-copy command.
 

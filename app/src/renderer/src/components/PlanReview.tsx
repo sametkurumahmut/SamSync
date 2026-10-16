@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2 } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical } from 'lucide-react';
 import type { PlanCategory, PlanOp, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
 import { api } from '../lib/api';
 import { bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
+import { allFolders, buildOpTree, defaultExpanded, flattenTree, type TreeNode, type TreeRow } from '../lib/optree';
+import { readStored, writeStored } from '../lib/persist';
 import { tx } from '../lib/i18n';
 import { t, tk } from '@shared/i18n';
 import { MODE_OPTIONS } from '../pages/SendPage';
@@ -283,11 +285,33 @@ function TargetOps({
   const [q, setQ] = useState('');
   const [diffOp, setDiffOp] = useState<PlanOp | null>(null);
   const parent = useRef<HTMLDivElement>(null);
+  // the list as a folder tree or flat; the choice is kept
+  const [view, setViewState] = useState<'tree' | 'flat'>(() => (readStored<string>('samsync.review.view', 'tree') === 'flat' ? 'flat' : 'tree'));
+  const setView = (val: 'tree' | 'flat') => {
+    setViewState(val);
+    writeStored('samsync.review.view', val);
+  };
+  /** Folders the user unfolded; null until touched, then the first level opens by itself. */
+  const [expanded, setExpanded] = useState<Set<string> | null>(null);
 
   const ql = q.trim().toLowerCase();
   const f = FILTERS.find((x) => x.id === filter)!;
   const rows = useMemo(() => plan.ops.filter((o) => f.match(o) && (!ql || o.rel.toLowerCase().includes(ql))), [plan.ops, f, ql]);
-  const v = useVirtualizer({ count: rows.length, getScrollElement: () => parent.current, estimateSize: () => 34, overscan: 20 });
+  const tree = useMemo(() => (view === 'tree' ? buildOpTree(rows) : null), [rows, view]);
+  const open = useMemo(() => expanded ?? new Set(tree ? defaultExpanded(tree) : []), [expanded, tree]);
+  // while searching, every match stays in sight
+  const isOpen = (p: string) => !!ql || open.has(p);
+  const items = useMemo<TreeRow[]>(() => (tree ? flattenTree(tree, isOpen) : rows.map((op) => ({ kind: 'op', op, depth: 0 }))), [tree, rows, open, ql]); // eslint-disable-line react-hooks/exhaustive-deps
+  const v = useVirtualizer({ count: items.length, getScrollElement: () => parent.current, estimateSize: () => 34, overscan: 20 });
+  const toggleFolder = (p: string) => {
+    const next = new Set(open);
+    next.has(p) ? next.delete(p) : next.add(p);
+    setExpanded(next);
+  };
+  const branchState = (n: TreeNode) => {
+    const sel = n.all.filter((o) => selected.has(o.id)).length;
+    return { all: sel === n.all.length && sel > 0, some: sel > 0 && sel < n.all.length, sel };
+  };
 
   if (plan.via && plan.reachable)
     return (
@@ -334,6 +358,11 @@ function TargetOps({
     for (const o of rows) on ? next.add(o.id) : next.delete(o.id);
     onChange(next);
   };
+  const toggleBranch = (n: TreeNode, on: boolean) => {
+    const next = new Set(selected);
+    for (const o of n.all) on ? next.add(o.id) : next.delete(o.id);
+    onChange(next);
+  };
 
   const srcFor = (op: PlanOp): SourceSpec | null => {
     if (!op.src) return null;
@@ -374,6 +403,20 @@ function TargetOps({
           );
         })}
         <span className="spacer" />
+        {view === 'tree' && tree && (
+          <>
+            <Button size="sm" variant="ghost" iconOnly icon={<UnfoldVertical size={13} />} tip={t('Tümünü aç')} onClick={() => setExpanded(new Set(allFolders(tree)))} />
+            <Button size="sm" variant="ghost" iconOnly icon={<FoldVertical size={13} />} tip={t('Tümünü kapat')} onClick={() => setExpanded(new Set())} />
+          </>
+        )}
+        <span className="segmented sm" role="group">
+          <button className={cls(view === 'tree' && 'on')} data-tip={t('Klasör ağacı')} onClick={() => setView('tree')}>
+            <ListTree size={13} />
+          </button>
+          <button className={cls(view === 'flat' && 'on')} data-tip={t('Düz liste')} onClick={() => setView('flat')}>
+            <List size={13} />
+          </button>
+        </span>
         <SearchInput value={q} onChange={setQ} placeholder={t('Yolda ara')} style={{ width: 200 }} />
       </div>
       {rows.length === 0 ? (
@@ -390,36 +433,69 @@ function TargetOps({
             <Checkbox checked={visSel === rows.length} mixed={visSel > 0 && visSel < rows.length} onChange={setAll} />
             <span style={{ width: 20 }} />
             <span className="grow">{t('Göreli yol')}</span>
-            <span style={{ width: 210 }}>{t('Durum')}</span>
+            <span style={{ width: 180 }}>{t('Durum')}</span>
             <span style={{ width: 80, textAlign: 'right' }}>{t('Boyut')}</span>
-            <span style={{ width: 170 }}>{t('Kaynak → hedef tarihi')}</span>
+            <span style={{ width: 150 }}>{t('Kaynak → hedef tarihi')}</span>
             <span style={{ width: 28 }} />
           </div>
           <div ref={parent} className="plan-ops-scroll">
             <div style={{ height: v.getTotalSize(), position: 'relative' }}>
               {v.getVirtualItems().map((vi) => {
-                const o = rows[vi.index];
+                const item = items[vi.index];
+                const place = { position: 'absolute' as const, top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`, height: vi.size };
+                if (item.kind === 'folder') {
+                  const n = item.node;
+                  const st = branchState(n);
+                  const isOn = isOpen(n.path);
+                  return (
+                    <div key={`d:${n.path}`} className={cls('list-row', 'op-row', 'tree-row', !st.all && !st.some && 'off')} style={{ ...place, paddingLeft: 12 + (n.depth - 1) * 18 }} onClick={() => toggleFolder(n.path)}>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={st.all} mixed={st.some} onChange={(val) => toggleBranch(n, val)} />
+                      </span>
+                      <span className="tree-chevron">{isOn ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+                      <Folder size={13} className="tree-folder-icon" />
+                      <span className="path grow" title={n.path}>
+                        <span className="name">{n.label}</span>
+                      </span>
+                      <span className="row tree-counts" style={{ gap: 4 }}>
+                        {n.counts.new > 0 && <span className="badge green">+{num(n.counts.new)}</span>}
+                        {n.counts.changed > 0 && <span className="badge blue">~{num(n.counts.changed)}</span>}
+                        {n.counts.targetNewer > 0 && <span className="badge amber">!{num(n.counts.targetNewer)}</span>}
+                        {n.counts.remove > 0 && <span className="badge violet">{'\u2212' + num(n.counts.remove)}</span>}
+                        <span className="faint tabular" style={{ fontSize: 11.5, marginLeft: 4 }}>
+                          {st.sel === n.counts.ops ? num(n.counts.ops) : `${num(st.sel)}/${num(n.counts.ops)}`}
+                        </span>
+                      </span>
+                      <span className="faint tabular" style={{ width: 80, textAlign: 'right' }}>
+                        {n.counts.bytes ? bytes(n.counts.bytes) : ''}
+                      </span>
+                      <span style={{ width: 150 }} />
+                      <span style={{ width: 28 }} />
+                    </div>
+                  );
+                }
+                const o = item.op;
                 const on = selected.has(o.id);
                 const { dir, name } = splitPath(o.rel);
                 const canDiff = o.kind === 'copy' && !o.isDir && o.dstSize != null;
                 return (
-                  <div key={o.id} className={cls('list-row', 'op-row', !on && 'off')} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`, height: vi.size }} onClick={() => toggle(o, !on)}>
+                  <div key={o.id} className={cls('list-row', 'op-row', !on && 'off')} style={{ ...place, paddingLeft: view === 'tree' ? 12 + item.depth * 18 + 20 : undefined }} onClick={() => toggle(o, !on)}>
                     <Checkbox checked={on} onChange={(val) => toggle(o, val)} />
                     <span className={cls('sign', o.category)}>{o.isDir && o.category === 'new' ? <FolderPlus size={12} /> : SIGN[o.category]}</span>
                     <span className="path grow" title={o.note ? `${o.rel}\n${o.note}` : o.rel}>
-                      {dir && <span className="dir">{'\u200e' + dir + '\u200e'}</span>}
+                      {view === 'flat' && dir && <span className="dir">{'\u200e' + dir + '\u200e'}</span>}
                       <span className="name">
                         {name}
                         {o.isDir ? '/' : ''}
                       </span>
                     </span>
-                    <span className={cls('op-status', o.category)} style={{ width: 210 }}>
+                    <span className={cls('op-status', o.category)} style={{ width: 180 }}>
                       {opStatus(o, on)}
                     </span>
                     <span className="faint tabular" style={{ width: 80, textAlign: 'right' }}>
                       {o.isDir ? '' : bytes(o.kind === 'delete' ? o.dstSize ?? o.size : o.size)}
                     </span>
-                    <span className="faint tabular nowrap" style={{ width: 170, fontSize: 11.5 }}>
+                    <span className="faint tabular nowrap" style={{ width: 150, fontSize: 11.5 }}>
                       {o.srcMtime ? shortDateTime(o.srcMtime) : '–'} → {o.dstMtime ? shortDateTime(o.dstMtime) : '–'}
                     </span>
                     <span style={{ width: 28 }}>
