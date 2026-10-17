@@ -23,6 +23,7 @@ import {
   GitCompare,
   Keyboard,
   Package,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useApp, PAGES, type Page } from '../store/app';
 import { MOD } from './Shortcuts';
@@ -71,6 +72,7 @@ export function CommandPalette() {
     const actions = t('Eylemler');
     const key = (p: Page) => `${MOD} ${PAGES.indexOf(p) + 1}`;
     const list: Cmd[] = [
+      { id: 'p-overview', group: pages, label: t('Genel bakış'), hint: key('overview'), icon: <LayoutDashboard size={15} />, run: go('overview') },
       { id: 'p-send', group: pages, label: t('Gönder'), hint: key('send'), icon: <Send size={15} />, run: go('send') },
       { id: 'p-compare', group: pages, label: t('Karşılaştır'), hint: key('compare'), icon: <GitCompare size={15} />, run: go('compare') },
       { id: 'p-git', group: pages, label: 'Git', hint: key('git'), icon: <GitBranch size={15} />, run: go('git') },

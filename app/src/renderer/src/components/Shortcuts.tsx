@@ -5,6 +5,7 @@ import { useApp, PAGES } from '../store/app';
 import { t, tk } from '@shared/i18n';
 
 const PAGE_LABELS: Record<string, string> = {
+  overview: tk('Genel bakış'),
   send: tk('Gönder'),
   compare: tk('Karşılaştır'),
   git: 'Git',

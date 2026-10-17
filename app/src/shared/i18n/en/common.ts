@@ -292,6 +292,13 @@ const d: Dict = {
   'daha eski bir gönderim': 'an older send',
   'hiç gönderilmemiş': 'never sent',
   'Diskle verilen sürümler de paket olarak uygulanınca burada görünür.': 'Releases delivered on a disk show here too once applied as a pack.',
+  'Genel bakış': 'Overview',
+  'Makineler, son gönderimler ve otomasyon bir bakışta': 'Machines, recent sends and automation at a glance',
+  'Yapılandırma salt okunur': 'The configuration is read-only',
+  '{name} makinesi {group} grubuna taşınsın mı?': 'Move {name} to the group {group}?',
+  '{name} makinesi gruptan çıkarılsın mı?': 'Take {name} out of its group?',
+  '{name} → {group}': '{name} → {group}',
+  '{name} gruptan çıkarıldı': '{name} was taken out of its group',
 };
 
 export default d;

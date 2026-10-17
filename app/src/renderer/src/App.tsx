@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Zap,
   GitCompare,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
 import { ShortcutsModal } from './components/Shortcuts';
@@ -28,6 +29,7 @@ import { Toasts } from './components/Toasts';
 import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
 import { CommandPalette } from './components/CommandPalette';
+import { OverviewPage } from './pages/OverviewPage';
 import { SendPage } from './pages/SendPage';
 import { ComparePage } from './pages/ComparePage';
 import { GitPage } from './pages/GitPage';
@@ -42,6 +44,7 @@ import iconUrl from '../../../resources/icon.png';
 import { t, tk } from '@shared/i18n';
 
 const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
+  { id: 'overview', label: tk('Genel bakış'), icon: LayoutDashboard, hint: tk('Makineler, son gönderimler ve otomasyon bir bakışta') },
   { id: 'send', label: tk('Gönder'), icon: Send, hint: tk('Dosya ve klasörleri makinelere gönder') },
   { id: 'compare', label: tk('Karşılaştır'), icon: GitCompare, hint: tk('Kaynakları hedeflerle karşılaştır, farklara bak') },
   { id: 'git', label: 'Git', icon: GitBranch, hint: tk('Commit ve yerel değişiklikleri gönder') },
@@ -53,6 +56,7 @@ const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
 ];
 
 const TITLES: Record<Page, string> = {
+  overview: tk('Genel bakış'),
   send: tk('Gönder'),
   compare: tk('Karşılaştır'),
   git: 'Git',
@@ -270,6 +274,7 @@ function Shell() {
           <Welcome />
         ) : (
           <>
+            {page === 'overview' && <OverviewPage />}
             {page === 'send' && <SendPage />}
             {page === 'compare' && <ComparePage />}
             {page === 'git' && <GitPage />}

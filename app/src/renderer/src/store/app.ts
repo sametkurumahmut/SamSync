@@ -26,8 +26,8 @@ import { bytes as bytesText } from '../lib/format';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
-export type Page = 'send' | 'compare' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
-export const PAGES: Page[] = ['send', 'compare', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
+export type Page = 'overview' | 'send' | 'compare' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
+export const PAGES: Page[] = ['overview', 'send', 'compare', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
 
 export interface Toast {
   id: number;
@@ -586,7 +586,7 @@ function initialPage(): Page {
   const fromHash = location.hash.replace('#', '') as Page;
   if (PAGES.includes(fromHash)) return fromHash;
   const kept = readStored<Page | null>('samsync.page', null);
-  return kept && PAGES.includes(kept) ? kept : 'send';
+  return kept && PAGES.includes(kept) ? kept : 'overview';
 }
 
 /** A tab named after what came from the menu: the first item, and how many more. */
