@@ -19,7 +19,8 @@ import {
   Zap,
   GitCompare,
 } from 'lucide-react';
-import { useApp, PAGES, type Page } from './store/app';
+import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
+import { ShortcutsModal } from './components/Shortcuts';
 import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
 import { Button } from './components/ui';
@@ -88,13 +89,36 @@ function Shell() {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === 'k') {
         e.preventDefault();
         useApp.setState((s) => ({ palette: !s.palette }));
-      }
-      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key)) {
+      } else if (key === '/' || (key === '?' && e.shiftKey)) {
         e.preventDefault();
-        setPage(PAGES[Number(e.key) - 1]);
+        useApp.setState((s) => ({ shortcuts: !s.shortcuts }));
+      } else if (key === ',') {
+        e.preventDefault();
+        setPage('settings');
+      } else if (/^[1-9]$/.test(key) && !e.shiftKey) {
+        e.preventDefault();
+        const p = PAGES[Number(key) - 1];
+        if (p) setPage(p);
+      } else if (key === '=' || key === '+' || key === '-' || key === '0') {
+        // UI scale, like a browser's zoom; the value is saved so it survives a restart
+        e.preventDefault();
+        const st = useApp.getState();
+        const cur = uiScaleOf(st.boot?.settings);
+        const next = stepUiScale(cur, key === '0' ? 0 : key === '-' ? -1 : 1);
+        if (next !== cur) void st.saveSettings({ uiScale: next });
+      } else if (key === 'enter' && !e.shiftKey) {
+        // Send page: review what is on it (the review itself handles Ctrl Enter while open)
+        const st = useApp.getState();
+        if (st.page === 'send' && !st.review && !st.planning && st.sendPaths.length && st.targets.length) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('samsync:review'));
+        }
       }
     };
     window.addEventListener('keydown', k);
@@ -273,6 +297,7 @@ function Shell() {
       <PlanReview />
       <RunPanel />
       <CommandPalette />
+      <ShortcutsModal />
       <Toasts />
     </div>
   );

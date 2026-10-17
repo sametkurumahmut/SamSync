@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
@@ -63,6 +63,14 @@ export function SendPage() {
   const missing = infos.filter((i) => !i.exists).length;
 
   const review = () => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
+  // Ctrl Enter from the app shell
+  useEffect(() => {
+    const h = () => {
+      if (paths.length && targets.length) void review();
+    };
+    window.addEventListener('samsync:review', h);
+    return () => window.removeEventListener('samsync:review', h);
+  });
   const modeLabel = MODE_OPTIONS.find((m) => m.value === options.mode)?.label;
   const ownSettings = pickOverrides(options.perTarget, targets);
 

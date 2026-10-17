@@ -197,6 +197,8 @@ export interface LocalSettings {
   lastOptions?: Partial<SendOptions>;
   sendDefaults?: Partial<SendOptions>;
   density: 'comfortable' | 'compact';
+  /** UI scale in percent (100 = normal); Ctrl + / − / 0 change it. */
+  uiScale?: number;
   gitLogPageSize: number;
   probeIntervalSec: number;
   confirmBeforeRun: boolean;

@@ -346,6 +346,11 @@ const d: Dict = {
   'Şimdi denetle': 'Check now',
   İndir: 'Download',
   'Yeniden başlat ve kur': 'Restart and install',
+  'Arayüz ölçeği': 'UI scale',
+  'Ctrl + ve Ctrl − ile de değişir; Ctrl 0 sıfırlar.': 'Ctrl + and Ctrl − change it too; Ctrl 0 resets.',
+  'Ölçeği küçült': 'Smaller',
+  'Ölçeği büyüt': 'Larger',
+  'Sıfırla': 'Reset',
 };
 
 export default d;

@@ -170,8 +170,10 @@ export interface Api {
   scheduleRunNow(jobId: string): Promise<void>;
 
   windowControl(action: 'minimize' | 'maximize' | 'close' | 'devtools' | 'reload'): Promise<void>;
-  /** Native theme + title bar overlay colours, so the window buttons match the app theme. */
-  setChrome(opts: { theme: ThemePref; bg: string; fg: string }): Promise<void>;
+  /** Native theme + title bar overlay colours, so the window buttons match the app theme; zoom is the UI scale (1 = 100%). */
+  setChrome(opts: { theme: ThemePref; bg: string; fg: string; zoom?: number }): Promise<void>;
+  /** An error the window caught (a page that failed to render): goes to the log so it ends up in the diagnostics folder. */
+  clientError(message: string): Promise<void>;
 }
 
 export type ApiMethod = keyof Api;
@@ -247,6 +249,7 @@ export const API_METHODS = {
   scheduleRunNow: true,
   windowControl: true,
   setChrome: true,
+  clientError: true,
 } satisfies Record<ApiMethod, true>;
 
 export function isApiMethod(m: string): m is ApiMethod {

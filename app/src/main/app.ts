@@ -2,7 +2,7 @@
 // headless run that needs no window).
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, shell, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, screen, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
 import type { AppEvent, LocalSettings, OpenRequest, QuickSend } from '../shared/types';
 import { isApiMethod, type PickOptions } from '../shared/api';
@@ -18,6 +18,48 @@ import { headlessFromDisk } from '../core/headless';
 
 const isMac = process.platform === 'darwin';
 const iconPath = path.join(__dirname, '../../resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+/** Height of the page's own title bar in CSS px (global.css --titlebar-h); the native overlay buttons match it. */
+const TITLEBAR_H = 44;
+
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  maximized?: boolean;
+}
+const windowStateFile = () => path.join(app.getPath('userData'), 'window.json');
+/** The last size and position, when they still land on a screen that is connected now. */
+function readWindowState(): WindowState | null {
+  try {
+    const s = JSON.parse(fs.readFileSync(windowStateFile(), 'utf8')) as Partial<WindowState>;
+    if (typeof s.width !== 'number' || typeof s.height !== 'number') return null;
+    const st: WindowState = { width: Math.max(980, Math.round(s.width)), height: Math.max(620, Math.round(s.height)), maximized: !!s.maximized };
+    if (typeof s.x === 'number' && typeof s.y === 'number') {
+      // at least a 200×150 corner of the window must be visible on some display, or it opens centred
+      const visible = screen.getAllDisplays().some((d) => {
+        const a = d.workArea;
+        const w = Math.min(s.x! + st.width, a.x + a.width) - Math.max(s.x!, a.x);
+        const h = Math.min(s.y! + st.height, a.y + a.height) - Math.max(s.y!, a.y);
+        return w >= 200 && h >= 150;
+      });
+      if (visible) {
+        st.x = Math.round(s.x);
+        st.y = Math.round(s.y);
+      }
+    }
+    return st;
+  } catch {
+    return null;
+  }
+}
+function writeWindowState(s: WindowState) {
+  try {
+    fs.writeFileSync(windowStateFile(), JSON.stringify(s));
+  } catch {
+    /* not remembered */
+  }
+}
 
 if (process.env.SAMSYNC_USER_DATA) app.setPath('userData', process.env.SAMSYNC_USER_DATA);
 else {
@@ -71,6 +113,8 @@ if (launch.removeIntegrations) {
 } else {
   // index.ts took the single instance lock before loading this file
   let win: BrowserWindow | null = null;
+  /** A window that starts hidden (tray) was maximized last time: maximize it when it is first shown. */
+  let pendingMaximize = false;
   /** The renderer has asked for its bootstrap, so it listens to events; false again on every (re)load. */
   let rendererReady = false;
   const waiting: OpenRequest[] = [];
@@ -135,6 +179,10 @@ if (launch.removeIntegrations) {
     if (!win) createWindow(true);
     if (!win) return;
     if (win.isMinimized()) win.restore();
+    if (pendingMaximize) {
+      pendingMaximize = false;
+      win.maximize();
+    }
     win.show();
     win.focus();
   };
@@ -261,16 +309,21 @@ if (launch.removeIntegrations) {
       else if (action === 'devtools') win.webContents.toggleDevTools();
       else if (action === 'reload') win.webContents.reload();
     },
-    setChrome({ theme, bg, fg }) {
+    setChrome({ theme, bg, fg, zoom }) {
       nativeTheme.themeSource = theme;
-      if (win && !isMac) {
-        try {
-          win.setTitleBarOverlay({ color: bg, symbolColor: fg, height: 44 });
-        } catch {
-          /* overlay not enabled */
+      const z = zoom && zoom > 0.4 && zoom < 3 ? zoom : 1;
+      if (win && !win.isDestroyed()) {
+        if (win.webContents.getZoomFactor() !== z) win.webContents.setZoomFactor(z);
+        if (!isMac) {
+          try {
+            // the page's title bar is 44 CSS px, which the zoom scales; the native buttons must be as tall
+            win.setTitleBarOverlay({ color: bg, symbolColor: fg, height: Math.round(TITLEBAR_H * z) });
+          } catch {
+            /* overlay not enabled */
+          }
         }
+        win.setBackgroundColor(bg);
       }
-      win?.setBackgroundColor(bg);
     },
     applySettings(s, state) {
       currentSettings = s;
@@ -327,9 +380,11 @@ if (launch.removeIntegrations) {
 
   const createWindow = (forceShow = false) => {
     const dark = nativeTheme.shouldUseDarkColors;
+    const saved = readWindowState();
     win = new BrowserWindow({
-      width: 1360,
-      height: 880,
+      width: saved?.width ?? 1360,
+      height: saved?.height ?? 880,
+      ...(saved && saved.x != null && saved.y != null ? { x: saved.x, y: saved.y } : {}),
       minWidth: 980,
       minHeight: 620,
       show: false,
@@ -337,7 +392,7 @@ if (launch.removeIntegrations) {
       icon: iconPath,
       backgroundColor: dark ? '#0d0f14' : '#f5f6f8',
       titleBarStyle: 'hidden',
-      ...(isMac ? { trafficLightPosition: { x: 16, y: 15 } } : { titleBarOverlay: { color: dark ? '#0d0f14' : '#f5f6f8', symbolColor: dark ? '#c9ced8' : '#3b414d', height: 44 } }),
+      ...(isMac ? { trafficLightPosition: { x: 16, y: 15 } } : { titleBarOverlay: { color: dark ? '#0d0f14' : '#f5f6f8', symbolColor: dark ? '#c9ced8' : '#3b414d', height: TITLEBAR_H } }),
       webPreferences: {
         preload: path.join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -347,9 +402,25 @@ if (launch.removeIntegrations) {
       },
     });
     win.once('ready-to-show', () => {
-      if (forceShow || !(startHidden && currentSettings?.closeToTray)) win?.show();
+      if (forceShow || !(startHidden && currentSettings?.closeToTray)) {
+        if (saved?.maximized) win?.maximize();
+        win?.show();
+      } else pendingMaximize = !!saved?.maximized;
     });
+    // the size, the position and the maximized state come back on the next start
+    const remember = () => {
+      if (!win || win.isDestroyed()) return;
+      const b = win.getNormalBounds();
+      writeWindowState({ x: b.x, y: b.y, width: b.width, height: b.height, maximized: win.isMaximized() });
+    };
+    let rememberTimer: ReturnType<typeof setTimeout> | null = null;
+    const rememberSoon = () => {
+      if (rememberTimer) clearTimeout(rememberTimer);
+      rememberTimer = setTimeout(remember, 400);
+    };
+    for (const ev of ['resize', 'move', 'maximize', 'unmaximize'] as const) win.on(ev as 'resize', rememberSoon);
     win.on('close', (e) => {
+      remember();
       if (quitting || !currentSettings?.closeToTray) return;
       // keep the automation running: hide to the tray instead of quitting
       e.preventDefault();

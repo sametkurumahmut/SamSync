@@ -1500,3 +1500,86 @@ a {
   text-transform: none !important;
   letter-spacing: 0.02em !important;
 }
+
+/* ---- crash screen (ErrorScreen.tsx) ---- */
+.crash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  z-index: 100;
+}
+.crash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(760px, 100%);
+  padding: 24px 26px;
+  border-radius: 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg, 0 20px 50px rgb(0 0 0 / 30%));
+}
+.crash-card h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+.crash-card p {
+  margin: 0;
+}
+.crash-trace {
+  width: 100%;
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  font: 11.5px/1.5 var(--mono);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- keyboard shortcuts (Shortcuts.tsx) ---- */
+.shortcut-groups {
+  display: grid;
+  gap: 18px;
+}
+.shortcut-groups h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.shortcut-row:first-of-type {
+  border-top: 0;
+}
+.shortcut-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.shortcut-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}

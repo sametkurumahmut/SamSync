@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages } from 'lucide-react';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus } from 'lucide-react';
 import type { CopySettings, UpdateConfig, UpdateSource } from '@shared/types';
-import { useApp } from '../store/app';
+import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls, dateTime } from '../lib/format';
@@ -194,6 +194,20 @@ export function SettingsPage() {
                   { value: 'compact', label: t('Sıkı') },
                 ]}
               />
+            </Field>
+            <Field label={t('Arayüz ölçeği')} help={t('Ctrl + ve Ctrl − ile de değişir; Ctrl 0 sıfırlar.')} style={{ marginTop: 14 }}>
+              <div className="row" style={{ gap: 6 }}>
+                <Button size="sm" iconOnly icon={<Minus size={14} />} tip={t('Ölçeği küçült')} disabled={uiScaleOf(s) <= UI_SCALES[0]} onClick={() => void saveSettings({ uiScale: stepUiScale(uiScaleOf(s), -1) })} />
+                <span className="tabular" style={{ minWidth: 44, textAlign: 'center', fontWeight: 600 }}>
+                  %{uiScaleOf(s)}
+                </span>
+                <Button size="sm" iconOnly icon={<Plus size={14} />} tip={t('Ölçeği büyüt')} disabled={uiScaleOf(s) >= UI_SCALES[UI_SCALES.length - 1]} onClick={() => void saveSettings({ uiScale: stepUiScale(uiScaleOf(s), 1) })} />
+                {uiScaleOf(s) !== 100 && (
+                  <Button size="sm" variant="ghost" onClick={() => void saveSettings({ uiScale: 100 })}>
+                    {t('Sıfırla')}
+                  </Button>
+                )}
+              </div>
             </Field>
             <div className="divider" />
             <ToggleRow title={t('Başarılı gönderimden sonra paneli kapat')} on={s.closeRunPanelOnSuccess} onChange={(v) => void saveSettings({ closeRunPanelOnSuccess: v })} />

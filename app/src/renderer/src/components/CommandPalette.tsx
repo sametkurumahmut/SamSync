@@ -20,8 +20,11 @@ import {
   Search,
   RotateCcw,
   Zap,
+  GitCompare,
+  Keyboard,
 } from 'lucide-react';
-import { useApp } from '../store/app';
+import { useApp, PAGES, type Page } from '../store/app';
+import { MOD } from './Shortcuts';
 import { useGit } from '../store/git';
 import { api } from '../lib/api';
 import { cls } from '../lib/format';
@@ -65,15 +68,18 @@ export function CommandPalette() {
     const go = (p: Parameters<typeof st.setPage>[0]) => () => st.setPage(p);
     const pages = t('Sayfalar');
     const actions = t('Eylemler');
+    const key = (p: Page) => `${MOD} ${PAGES.indexOf(p) + 1}`;
     const list: Cmd[] = [
-      { id: 'p-send', group: pages, label: t('Gönder'), hint: 'Ctrl 1', icon: <Send size={15} />, run: go('send') },
-      { id: 'p-git', group: pages, label: 'Git', hint: 'Ctrl 2', icon: <GitBranch size={15} />, run: go('git') },
-      { id: 'p-sync', group: pages, label: t('Senkron'), hint: 'Ctrl 3', icon: <ArrowLeftRight size={15} />, run: go('sync') },
-      { id: 'p-automation', group: pages, label: t('Otomasyon'), hint: 'Ctrl 4', icon: <Zap size={15} />, run: go('automation') },
-      { id: 'p-targets', group: pages, label: t('Hedefler'), hint: 'Ctrl 5', icon: <Server size={15} />, run: go('targets') },
-      { id: 'p-backups', group: pages, label: t('Yedekler'), hint: 'Ctrl 6', icon: <ArchiveRestore size={15} />, run: go('backups') },
-      { id: 'p-history', group: pages, label: t('Geçmiş'), hint: 'Ctrl 7', icon: <History size={15} />, run: go('history') },
-      { id: 'p-settings', group: pages, label: t('Ayarlar'), hint: 'Ctrl 8', icon: <Settings size={15} />, run: go('settings') },
+      { id: 'p-send', group: pages, label: t('Gönder'), hint: key('send'), icon: <Send size={15} />, run: go('send') },
+      { id: 'p-compare', group: pages, label: t('Karşılaştır'), hint: key('compare'), icon: <GitCompare size={15} />, run: go('compare') },
+      { id: 'p-git', group: pages, label: 'Git', hint: key('git'), icon: <GitBranch size={15} />, run: go('git') },
+      { id: 'p-sync', group: pages, label: t('Senkron'), hint: key('sync'), icon: <ArrowLeftRight size={15} />, run: go('sync') },
+      { id: 'p-automation', group: pages, label: t('Otomasyon'), hint: key('automation'), icon: <Zap size={15} />, run: go('automation') },
+      { id: 'p-targets', group: pages, label: t('Hedefler'), hint: key('targets'), icon: <Server size={15} />, run: go('targets') },
+      { id: 'p-backups', group: pages, label: t('Yedekler'), hint: key('backups'), icon: <ArchiveRestore size={15} />, run: go('backups') },
+      { id: 'p-history', group: pages, label: t('Geçmiş'), hint: key('history'), icon: <History size={15} />, run: go('history') },
+      { id: 'p-settings', group: pages, label: t('Ayarlar'), hint: key('settings'), icon: <Settings size={15} />, run: go('settings') },
+      { id: 'a-shortcuts', group: actions, label: t('Klavye kısayolları'), hint: `${MOD} /`, icon: <Keyboard size={15} />, run: () => useApp.setState({ shortcuts: true }) },
       {
         id: 'a-pause',
         group: actions,

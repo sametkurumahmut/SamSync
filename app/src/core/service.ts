@@ -84,7 +84,7 @@ export interface HostAdapter {
     install(): void;
   };
   windowControl?(action: 'minimize' | 'maximize' | 'close' | 'devtools' | 'reload'): void;
-  setChrome?(opts: { theme: 'system' | 'light' | 'dark'; bg: string; fg: string }): void;
+  setChrome?(opts: { theme: 'system' | 'light' | 'dark'; bg: string; fg: string; zoom?: number }): void;
   /** Tray, close-to-tray and launch-at-login follow these settings. */
   applySettings?(s: LocalSettings, automation: AutomationState): void;
 }
@@ -1000,6 +1000,8 @@ export class Service implements Api {
     if (!picked.length) return null;
     const dir = path.join(picked[0], `SamSync-tanilama-${stamp()}`);
     await fsp.mkdir(dir, { recursive: true });
+    // the log is written in the background: the lines of this very session must be on disk before the copy
+    await this.log.drain?.();
     const logDir = path.dirname(this.log.file);
     for (const name of await fsp.readdir(logDir).catch(() => [] as string[])) {
       if (/\.log(\.\d+)?$/.test(name)) await fsp.copyFile(path.join(logDir, name), path.join(dir, name)).catch(() => undefined);
@@ -1060,6 +1062,10 @@ export class Service implements Api {
 
   async setChrome(opts: Parameters<Api['setChrome']>[0]) {
     this.host.setChrome?.(opts);
+  }
+
+  async clientError(message: string) {
+    this.log.error(t('Arayüz'), String(message).slice(0, 8000));
   }
 
   rootLabel(nodeId: string) {

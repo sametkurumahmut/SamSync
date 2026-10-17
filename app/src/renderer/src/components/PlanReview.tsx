@@ -5,6 +5,7 @@ import type { PlanCategory, PlanOp, TargetPlan, DiffResult, SourceSpec } from '@
 import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
+import { MOD } from './Shortcuts';
 import { api } from '../lib/api';
 import { ago, bytes, cls, duration, num, shortDateTime, splitPath } from '../lib/format';
 import { allFolders, buildOpTree, defaultExpanded, flattenTree, type TreeNode, type TreeRow } from '../lib/optree';
@@ -91,6 +92,18 @@ export function PlanReview() {
   const selected = review?.selected ?? {};
   const targets = plan?.targets ?? [];
   useEffect(() => setActive(null), [plan?.id]);
+  // Ctrl Enter sends, Ctrl Shift Enter runs it as a dry run
+  const runRef = useRef<((asDry: boolean) => Promise<void>) | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    const k = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') return;
+      e.preventDefault();
+      void runRef.current?.(e.shiftKey);
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [plan]);
   const current =
     targets.find((tp) => tp.targetId === active) ?? targets.find((tp) => tp.reachable && tp.ops.length) ?? targets.find((tp) => tp.reachable) ?? targets[0];
 
@@ -121,6 +134,14 @@ export function PlanReview() {
 
   if (!review || !plan) return null;
   const dryRun = dry ?? plan.request.options.dryRun;
+  const run = async (asDry: boolean) => {
+    if (busy || !totals.ops) return;
+    setBusy(true);
+    await execute(asDry);
+    setBusy(false);
+    setDry(null);
+  };
+  runRef.current = run;
 
   const applyToAll = () => {
     if (!current) return;
@@ -175,12 +196,8 @@ export function PlanReview() {
             icon={<Send size={15} />}
             disabled={!totals.ops}
             loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              await execute(dryRun);
-              setBusy(false);
-              setDry(null);
-            }}
+            tip={`${MOD} Enter`}
+            onClick={() => void run(dryRun)}
           >
             {dryRun ? t('Denemeyi başlat') : t('Gönder')}
           </Button>

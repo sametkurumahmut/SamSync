@@ -72,6 +72,8 @@ interface State {
   automation: AutomationState | null;
   toasts: Toast[];
   palette: boolean;
+  /** The keyboard shortcuts list is open. */
+  shortcuts: boolean;
   /** UI language in effect; App re-mounts when it changes so every t() runs again. */
   lang: Lang;
   /** Explorer menu and Notepad++ integration (Windows). */
@@ -132,6 +134,19 @@ interface State {
   setBoot(b: Bootstrap): void;
 }
 
+/** The UI scale steps Ctrl + / − walk through (percent). */
+export const UI_SCALES = [70, 80, 90, 100, 110, 125, 150, 175];
+export const uiScaleOf = (s?: { uiScale?: number } | null) => {
+  const v = Number(s?.uiScale);
+  return Number.isFinite(v) && v >= 50 && v <= 250 ? Math.round(v) : 100;
+};
+/** The next step up or down from the current scale, or 100 for a reset. */
+export function stepUiScale(current: number, dir: 1 | -1 | 0): number {
+  if (dir === 0) return 100;
+  const next = dir > 0 ? UI_SCALES.find((v) => v > current) : [...UI_SCALES].reverse().find((v) => v < current);
+  return next ?? current;
+}
+
 let toastSeq = 1;
 let lastProbe = 0;
 let optionsSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -152,6 +167,7 @@ export const useApp = create<State>((set, get) => ({
   automation: null,
   toasts: [],
   palette: false,
+  shortcuts: false,
   lang: firstLang,
   integration: null,
   restoreRequest: null,
@@ -255,8 +271,11 @@ export const useApp = create<State>((set, get) => ({
     const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(accent);
     if (m) root.style.setProperty('--accent-rgb', `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}`);
     set({ dark });
+    const zoom = uiScaleOf(s) / 100;
+    // Electron scales the whole page (the title bar overlay follows in the main process); the web preview uses CSS zoom
+    if (!window.samsync) root.style.zoom = zoom === 1 ? '' : String(zoom);
     const cs = getComputedStyle(root);
-    void api.setChrome({ theme: pref, bg: cs.getPropertyValue('--bg').trim() || (dark ? '#0c0e13' : '#f4f5f8'), fg: dark ? '#c9ced8' : '#3b414d' }).catch(() => undefined);
+    void api.setChrome({ theme: pref, bg: cs.getPropertyValue('--bg').trim() || (dark ? '#0c0e13' : '#f4f5f8'), fg: dark ? '#c9ced8' : '#3b414d', zoom }).catch(() => undefined);
   },
 
   async probe(ids) {
@@ -435,7 +454,7 @@ export const useApp = create<State>((set, get) => ({
     const settings = await api.saveSettings(patch);
     const boot = get().boot;
     if (boot) set({ boot: { ...boot, settings } });
-    if ('theme' in patch || 'accent' in patch || 'density' in patch) get().applyTheme();
+    if ('theme' in patch || 'accent' in patch || 'density' in patch || 'uiScale' in patch) get().applyTheme();
     if ('localNodeId' in patch) {
       const b = await api.bootstrap();
       set({ boot: { ...b, initialPaths: [] } });

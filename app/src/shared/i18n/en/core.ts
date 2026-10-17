@@ -302,6 +302,7 @@ const d: Dict = {
   'Bu pakette GitHub güncelleme adresi yok.': 'This package has no GitHub update address.',
   'latest.yml içinde version/path yok': 'latest.yml has no version/path',
   'Kurulum dosyasının özeti latest.yml ile tutmuyor': 'The installer hash does not match latest.yml',
+  'Arayüz': 'UI',
 };
 
 export default d;
