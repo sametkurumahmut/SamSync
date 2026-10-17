@@ -87,10 +87,36 @@ export interface RunHandle {
 const TMP_SUFFIX = '.samsync-tmp';
 /** Files at least this big are checked for being in use on the target before they are carried over. */
 const IN_USE_CHECK_MIN = 1024 * 1024;
+/**
+ * Files at least this big are written under a fixed temporary name, so a copy that broke off (cancel, a dropped
+ * link, the app closed) continues from where it stopped the next time instead of starting over.
+ */
+export const RESUME_MIN = 8 * 1024 * 1024;
+/** The target's tail that is compared with the source before a partial file is continued. */
+const RESUME_TAIL = 256 * 1024;
+/** A partial file nobody continued for this long is thrown away. */
+const RESUME_MAX_AGE_MS = 14 * 86400_000;
 
 function tmpRelFor(rel: string): string {
   const parent = relParent(rel);
   return relJoin(parent, `.${relBase(rel)}.${Math.random().toString(36).slice(2, 8)}${TMP_SUFFIX}`);
+}
+function partRelFor(rel: string): string {
+  return relJoin(relParent(rel), `.${relBase(rel)}.resume${TMP_SUFFIX}`);
+}
+
+async function readAll(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of stream as AsyncIterable<Buffer>) chunks.push(c);
+  return Buffer.concat(chunks);
+}
+
+/** True when the last bytes of the partial file on the target are the same bytes of the source, so it is a prefix of it. */
+async function tailMatches(srcAbs: string, tgt: Transport, partRel: string, partSize: number): Promise<boolean> {
+  const start = Math.max(0, partSize - RESUME_TAIL);
+  const range = { start, end: partSize - 1 };
+  const [a, b] = await Promise.all([readAll(fs.createReadStream(srcAbs, range)), readAll(await tgt.readStream(partRel, range))]);
+  return a.length === partSize - start && a.equals(b);
 }
 
 export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings): RunHandle {
@@ -309,8 +335,20 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return et.readStream(src.rel);
     };
 
+    /** A partial file from an earlier attempt that can be continued: its size, or 0 to start from the beginning. */
+    const resumePoint = async (op: ExecOp, partRel: string): Promise<number> => {
+      const src = op.src!;
+      const part = await tgt.stat(partRel).catch(() => null);
+      if (!part) return 0;
+      const usable = !part.isDir && part.size > 0 && part.size < op.size && src.kind === 'fs' && !!tgt.appendStream && Date.now() - part.mtimeMs < RESUME_MAX_AGE_MS;
+      if (usable && (await tailMatches(src.abs as string, tgt, partRel, part.size).catch(() => false))) return part.size;
+      await tgt.remove(partRel, false).catch(() => undefined);
+      return 0;
+    };
+
     const doCopy = async (op: ExecOp): Promise<boolean> => {
-      const tmp = tmpRelFor(op.rel);
+      const big = op.size >= RESUME_MIN;
+      const tmp = big ? partRelFor(op.rel) : tmpRelFor(op.rel);
       let base = 0;
       const onProgress = (n: number) => {
         st.bytesDone += n - base;
@@ -318,15 +356,26 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         st.current = op.rel;
         emitProgress();
       };
+      // the partial file is kept only when the copy itself broke off, not when what was written turned out wrong
+      let keepPartial = false;
       try {
         const src = op.src!;
         const mtime = op.mtimeMs ?? (src.kind === 'git' ? Date.now() : undefined);
         // a big file that a program on the target holds open would fail at the rename, after the whole copy
         if (op.dstExists && op.size >= IN_USE_CHECK_MIN && tgt.checkReplaceable) await tgt.checkReplaceable(op.rel);
+        const from = big ? await resumePoint(op, tmp) : 0;
         // the writer reports what it wrote; a file that changed size since the plan is caught here
         let written: number;
-        if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress });
-        else written = await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress });
+        keepPartial = big;
+        const signal = cancel.signal;
+        if (from > 0 && src.kind === 'fs') {
+          log('info', t('{path}: kaldığı yerden sürüyor ({done} / {size})', { path: op.rel, done: formatBytes(from), size: formatBytes(op.size) }), g.key);
+          onProgress(from);
+          const rest = fs.createReadStream(src.abs, { start: from, highWaterMark: limiter ? 256 * 1024 : 1024 * 1024 });
+          written = await tgt.appendStream!(tmp, limited(rest), { mtimeMs: mtime ?? fs.statSync(src.abs).mtimeMs, onProgress, signal });
+        } else if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress, signal });
+        else written = await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress, signal });
+        keepPartial = false;
         if (written !== op.size) throw new Error(t('Boyut tutmuyor: {written} ≠ {expected}', { written, expected: op.size }));
         if (s.verify) {
           const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(tmp))]);
@@ -337,7 +386,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         return backedUp;
       } catch (e) {
         st.bytesDone -= base;
-        await tgt.remove(tmp, false).catch(() => undefined);
+        if (!keepPartial || e instanceof InUseError) await tgt.remove(tmp, false).catch(() => undefined);
         throw e;
       }
     };

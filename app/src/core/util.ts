@@ -134,9 +134,15 @@ export class RateLimiter {
 export class CancelToken {
   cancelled = false;
   private listeners: (() => void)[] = [];
+  private controller = new AbortController();
+  /** Aborts on cancel: hand it to streams and pipelines so a copy in flight stops at once. */
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
   cancel() {
     if (this.cancelled) return;
     this.cancelled = true;
+    this.controller.abort(new CancelledError());
     for (const l of this.listeners.splice(0)) l();
   }
   onCancel(fn: () => void) {

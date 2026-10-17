@@ -11,6 +11,14 @@ export interface WriteOptions {
   mtimeMs?: number;
   size?: number;
   onProgress?: (bytes: number) => void;
+  /** Aborting it stops the write where it is (the partial file stays for a resume). */
+  signal?: AbortSignal;
+}
+
+/** A byte range of a file: start inclusive, end inclusive (as fs.createReadStream takes them). */
+export interface ReadRange {
+  start: number;
+  end?: number;
 }
 
 /**
@@ -25,9 +33,11 @@ export interface Transport {
   stat(rel: string): Promise<Entry | null>;
   /** Direct children of a folder. */
   list(rel: string): Promise<Entry[]>;
-  readStream(rel: string): Promise<Readable>;
+  readStream(rel: string, range?: ReadRange): Promise<Readable>;
   /** Writes a whole file from a stream (no atomicity, see writeAtomic). */
   writeStream(rel: string, data: Readable, opts?: WriteOptions): Promise<number>;
+  /** Appends to an existing file (a resumed copy); resolves to the file's size afterwards, onProgress counts from the old size. */
+  appendStream?(rel: string, data: Readable, opts?: WriteOptions): Promise<number>;
   /** Copies a file inside this transport (backups, restores). */
   copyWithin(fromRel: string, toRel: string): Promise<void>;
   mkdirp(rel: string): Promise<void>;

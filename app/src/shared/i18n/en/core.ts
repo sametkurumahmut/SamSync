@@ -303,6 +303,7 @@ const d: Dict = {
   'latest.yml içinde version/path yok': 'latest.yml has no version/path',
   'Kurulum dosyasının özeti latest.yml ile tutmuyor': 'The installer hash does not match latest.yml',
   'Arayüz': 'UI',
+  '{path}: kaldığı yerden sürüyor ({done} / {size})': '{path}: continuing from where it stopped ({done} / {size})',
 };
 
 export default d;

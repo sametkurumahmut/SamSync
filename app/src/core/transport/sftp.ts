@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Client, type SFTPWrapper, type ConnectConfig } from 'ssh2';
-import type { Entry, Transport, WriteOptions } from './types';
+import type { Entry, ReadRange, Transport, WriteOptions } from './types';
 import { progressCounter } from './fs';
 import { mapLimit } from '../util';
 import { t } from '../../shared/i18n';
@@ -121,9 +121,9 @@ export class SftpTransport implements Transport {
     return out.filter((x): x is Entry => !!x);
   }
 
-  async readStream(rel: string): Promise<Readable> {
+  async readStream(rel: string, range?: ReadRange): Promise<Readable> {
     const s = await this.conn();
-    return s.createReadStream(this.abs(rel));
+    return s.createReadStream(this.abs(rel), range ? { start: range.start, end: range.end } : undefined);
   }
 
   async writeStream(rel: string, data: Readable, opts: WriteOptions = {}): Promise<number> {
@@ -138,9 +138,27 @@ export class SftpTransport implements Transport {
         opts.onProgress?.(n);
       }),
       s.createWriteStream(this.abs(rel)),
+      { signal: opts.signal },
     );
     if (opts.mtimeMs != null) await this.setMtime(rel, opts.mtimeMs);
     return written;
+  }
+
+  async appendStream(rel: string, data: Readable, opts: WriteOptions = {}): Promise<number> {
+    const s = await this.conn();
+    const before = (await this.stat(rel))?.size ?? 0;
+    let written = 0;
+    await pipeline(
+      data,
+      progressCounter((n) => {
+        written = n;
+        opts.onProgress?.(before + n);
+      }),
+      s.createWriteStream(this.abs(rel), { flags: 'a' }),
+      { signal: opts.signal },
+    );
+    if (opts.mtimeMs != null) await this.setMtime(rel, opts.mtimeMs);
+    return before + written;
   }
 
   async copyFromLocal(abs: string, rel: string, opts: WriteOptions = {}): Promise<number> {

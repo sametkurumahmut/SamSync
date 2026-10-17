@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { Entry, Transport, WriteOptions } from './types';
+import type { Entry, ReadRange, Transport, WriteOptions } from './types';
 import { joinRoot } from '../paths';
 import { isWin, mapLimit } from '../util';
 import { t } from '../../shared/i18n';
@@ -133,10 +133,10 @@ export class FsTransport implements Transport {
     return out.filter((x): x is Entry => !!x);
   }
 
-  async readStream(rel: string): Promise<Readable> {
+  async readStream(rel: string, range?: ReadRange): Promise<Readable> {
     const p = this.localPath(rel);
     await fsp.access(p, fs.constants.R_OK);
-    return fs.createReadStream(p, { highWaterMark: 1024 * 1024 });
+    return fs.createReadStream(p, { highWaterMark: 1024 * 1024, ...(range ? { start: range.start, end: range.end } : {}) });
   }
 
   async writeStream(rel: string, data: Readable, opts: WriteOptions = {}): Promise<number> {
@@ -150,9 +150,27 @@ export class FsTransport implements Transport {
         opts.onProgress?.(n);
       }),
       fs.createWriteStream(p, { highWaterMark: 1024 * 1024 }),
+      { signal: opts.signal },
     );
     if (opts.mtimeMs != null) await this.setMtime(rel, opts.mtimeMs);
     return written;
+  }
+
+  async appendStream(rel: string, data: Readable, opts: WriteOptions = {}): Promise<number> {
+    const p = this.localPath(rel);
+    const before = (await fsp.stat(p)).size;
+    let written = 0;
+    await pipeline(
+      data,
+      progressCounter((n) => {
+        written = n;
+        opts.onProgress?.(before + n);
+      }),
+      fs.createWriteStream(p, { flags: 'a', highWaterMark: 1024 * 1024 }),
+      { signal: opts.signal },
+    );
+    if (opts.mtimeMs != null) await this.setMtime(rel, opts.mtimeMs);
+    return before + written;
   }
 
   async copyFromLocal(abs: string, rel: string, opts: WriteOptions = {}): Promise<number> {
@@ -167,7 +185,7 @@ export class FsTransport implements Transport {
       // another one is wanted; elsewhere it is set every time
       if (!isWin || Math.abs(mtime - st.mtimeMs) >= 1) await this.setMtime(rel, mtime);
     } else {
-      await pipeline(fs.createReadStream(abs, { highWaterMark: 1024 * 1024 }), progressCounter(opts.onProgress), fs.createWriteStream(p, { highWaterMark: 1024 * 1024 }));
+      await pipeline(fs.createReadStream(abs, { highWaterMark: 1024 * 1024 }), progressCounter(opts.onProgress), fs.createWriteStream(p, { highWaterMark: 1024 * 1024 }), { signal: opts.signal });
       await this.setMtime(rel, mtime);
     }
     return st.size;
