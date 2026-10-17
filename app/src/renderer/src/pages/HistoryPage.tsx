@@ -6,6 +6,7 @@ import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, SearchInput, Segmented } from '../components/ui';
 import { StatusIcon } from '../components/RunPanel';
+import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
 import { locale, t, tk } from '@shared/i18n';
 
@@ -23,12 +24,14 @@ export function HistoryPage() {
   const [origin, setOrigin] = useState<'all' | RunSummary['origin']>('all');
   const [q, setQ] = useState('');
   const [active, setActive] = useState<string | null>(null);
+  /** A day picked on the chart: only its runs are listed. */
+  const [day, setDay] = useState<number | null>(null);
 
   const load = () => void api.runs().then(setRuns);
   useEffect(load, [version]);
 
   const ql = q.trim().toLowerCase();
-  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
+  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && (day == null || (r.startedAt >= day && r.startedAt < day + 86400_000)) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
   const current = list.find((r) => r.id === active) ?? list[0];
 
   return (
@@ -54,6 +57,7 @@ export function HistoryPage() {
         )}
       </div>
       <div className="page-body fill">
+        {runs && <HistoryStats runs={runs} day={day} onDay={setDay} />}
         <div className="history-layout">
           <div className="card history-list">
             <div className="pane-head" style={{ flexDirection: 'column', alignItems: 'stretch', height: 'auto', padding: 10, gap: 8 }}>

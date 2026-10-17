@@ -388,6 +388,15 @@ const d: Dict = {
   'sıradaki': 'next',
   'bu makinede değil': 'not on this machine',
   'İzleme ya da zamanlanmış iş yok.': 'No watches or scheduled jobs.',
+  'Son {n} gün': 'Last {n} days',
+  'gönderim': 'sends',
+  'ort. {speed}/sn': 'avg. {speed}/s',
+  'Hatalı': 'Failed',
+  'Gün gün aktarılan veri': 'Data transferred per day',
+  '{n} gönderim': '{n} sends',
+  '{n} hatalı': '{n} failed',
+  'gönderim yok': 'no sends',
+  'En çok alan makineler': 'Machines that received the most',
 };
 
 export default d;

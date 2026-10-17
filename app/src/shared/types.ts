@@ -221,6 +221,16 @@ export interface LocalSettings {
   wizardImport?: { at: number; file: string };
   /** Saved sends, run with one click from the Send page, the tray, the command palette or `--quick <name>`. */
   quickSends?: QuickSend[];
+  /** The version whose "what's new" card was shown (or that was installed first). */
+  lastSeenVersion?: string;
+}
+
+/** One version's section of the changelog, for the card after an update. */
+export interface ChangelogSection {
+  version: string;
+  date?: string;
+  /** The section's bullet items, markdown as written (bold and code spans). */
+  items: string[];
 }
 
 /** What the import of the old wizard's state did. */

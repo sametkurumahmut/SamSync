@@ -2,6 +2,7 @@ import type {
   AppConfig,
   BackupLookup,
   BackupSet,
+  ChangelogSection,
   Bootstrap,
   CompareResult,
   DiffResult,
@@ -156,6 +157,8 @@ export interface Api {
   openLog(): Promise<void>;
   /** Copies the logs, the configuration, the settings (no secrets) and a summary into a folder the user picks; null when cancelled. */
   exportDiagnostics(): Promise<string | null>;
+  /** This version's changelog section: after an update once (null when it was shown), or always with `force`. */
+  whatsNew(force?: boolean): Promise<ChangelogSection | null>;
   statFile(p: string): Promise<FileMeta | null>;
 
   integrationStatus(): Promise<IntegrationStatus | null>;
@@ -238,6 +241,7 @@ export const API_METHODS = {
   openExternal: true,
   openLog: true,
   exportDiagnostics: true,
+  whatsNew: true,
   statFile: true,
   integrationStatus: true,
   integrationSet: true,

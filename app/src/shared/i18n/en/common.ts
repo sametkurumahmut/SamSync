@@ -299,6 +299,9 @@ const d: Dict = {
   '{name} makinesi gruptan çıkarılsın mı?': 'Take {name} out of its group?',
   '{name} → {group}': '{name} → {group}',
   '{name} gruptan çıkarıldı': '{name} was taken out of its group',
+  'Bu sürümdeki yenilikler': 'What\'s new in this version',
+  'Bu sürümde yeni': 'New in this version',
+  Tamam: 'OK',
 };
 
 export default d;

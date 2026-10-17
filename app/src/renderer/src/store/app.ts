@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   AppConfig,
+  ChangelogSection,
   AppEvent,
   Bootstrap,
   LocalSettings,
@@ -78,6 +79,8 @@ interface State {
   palette: boolean;
   /** The keyboard shortcuts list is open. */
   shortcuts: boolean;
+  /** The "what's new" card for the version that just started. */
+  whatsNew: ChangelogSection | null;
   /** UI language in effect; App re-mounts when it changes so every t() runs again. */
   lang: Lang;
   /** Explorer menu and Notepad++ integration (Windows). */
@@ -174,6 +177,7 @@ export const useApp = create<State>((set, get) => ({
   toasts: [],
   palette: false,
   shortcuts: false,
+  whatsNew: null,
   lang: firstLang,
   integration: null,
   restoreRequest: null,
@@ -236,6 +240,7 @@ export const useApp = create<State>((set, get) => ({
         if (document.visibilityState === 'visible' && !st.probing && Date.now() - lastProbe >= every) void st.probe();
       }, 5000);
       void api.updateState().then((u) => set({ update: u }));
+      void api.whatsNew().then((w) => w && set({ whatsNew: w })).catch(() => undefined);
       void api.automationState().then((a) => set({ automation: a }));
     } catch (e) {
       set({ bootError: (e as Error).message });

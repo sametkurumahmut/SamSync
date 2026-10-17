@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
 import { ShortcutsModal } from './components/Shortcuts';
+import { WhatsNewModal } from './components/WhatsNew';
 import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
 import { Button } from './components/ui';
@@ -303,6 +304,7 @@ function Shell() {
       <RunPanel />
       <CommandPalette />
       <ShortcutsModal />
+      <WhatsNewModal />
       <Toasts />
     </div>
   );

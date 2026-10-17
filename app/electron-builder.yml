@@ -66,3 +66,8 @@ publish:
   - provider: github
     owner: ${env.SAMSYNC_GH_OWNER}
     repo: ${env.SAMSYNC_GH_REPO}
+
+# the changelog ships with the app: the "what's new" card after an update reads this version's section
+extraResources:
+  - from: CHANGELOG.md
+    to: CHANGELOG.md

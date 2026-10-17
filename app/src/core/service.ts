@@ -5,6 +5,7 @@ import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
 import type {
   AppConfig,
+  ChangelogSection,
   AppEvent,
   Bootstrap,
   CompareResult,
@@ -37,6 +38,7 @@ import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
 import { packFileName } from './packfile';
+import { readChangelogSection } from './changelog';
 import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
@@ -66,6 +68,8 @@ export interface HostAdapter {
   systemLanguages?: string[];
   /** The GitHub repository the app updates from, for the release notes link. */
   repositoryUrl?: string;
+  /** CHANGELOG.md as shipped with the app, for the "what's new" card. */
+  changelogPath?: string;
   emit(e: AppEvent): void;
   pick?(opts: PickOptions): Promise<string[]>;
   /** A save dialog; null when cancelled. */
@@ -1056,6 +1060,23 @@ export class Service implements Api {
    * the settings, and a summary of this machine, the machines' reachability, the relay and the last runs.
    * The secrets file (SFTP passwords) is never included.
    */
+  async whatsNew(force = false): Promise<ChangelogSection | null> {
+    if (!this.host.changelogPath) return null;
+    const version = this.host.appVersion;
+    if (!force) {
+      const seen = this.settings.lastSeenVersion;
+      if (seen === version) return null;
+      if (!seen) {
+        // a first start: nothing to tell yet, remember the version so the next update gets its card
+        this.settings.lastSeenVersion = version;
+        void this.persistSettings();
+        return null;
+      }
+    }
+    const section = await readChangelogSection(this.host.changelogPath, version);
+    return section && section.items.length ? section : null;
+  }
+
   async exportDiagnostics(): Promise<string | null> {
     const picked = (await this.host.pick?.({ folders: true, title: t('Tanılama klasörü nereye yazılsın?') })) ?? [];
     if (!picked.length) return null;

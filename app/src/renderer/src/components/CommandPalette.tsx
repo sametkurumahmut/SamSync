@@ -24,6 +24,7 @@ import {
   Keyboard,
   Package,
   LayoutDashboard,
+  Sparkles,
 } from 'lucide-react';
 import { useApp, PAGES, type Page } from '../store/app';
 import { MOD } from './Shortcuts';
@@ -105,6 +106,13 @@ export function CommandPalette() {
             await st.addSendPaths(p);
           }
         },
+      },
+      {
+        id: 'a-whatsnew',
+        group: actions,
+        label: t('Bu sürümdeki yenilikler'),
+        icon: <Sparkles size={15} />,
+        run: async () => useApp.setState({ whatsNew: await api.whatsNew(true) }),
       },
       {
         id: 'a-pack',

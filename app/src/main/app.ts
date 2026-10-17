@@ -276,6 +276,7 @@ if (launch.removeIntegrations) {
     appVersion: app.getVersion(),
     userDataPath: app.getPath('userData'),
     repositoryUrl,
+    changelogPath: app.isPackaged ? path.join(process.resourcesPath, 'CHANGELOG.md') : path.join(app.getAppPath(), 'CHANGELOG.md'),
     // launches go through the queue and the 'open' event, so a big Explorer selection merges with the first item
     initialPaths: [],
     initialTargets: [],

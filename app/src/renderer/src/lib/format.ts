@@ -71,3 +71,9 @@ export function plural(n: number, word: string): string {
 export function cls(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
 }
+
+/** Day and month only ("17 Eki"), for chart labels. */
+export function shortDate(t: number | undefined): string {
+  if (!t) return '–';
+  return new Date(t).toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
+}

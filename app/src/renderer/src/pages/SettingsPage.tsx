@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus } from 'lucide-react';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles } from 'lucide-react';
 import type { CopySettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
@@ -528,6 +528,9 @@ export function SettingsPage() {
                 }}
               >
                 {t('Tanılama klasörü oluştur…')}
+              </Button>
+              <Button size="sm" icon={<Sparkles size={13} />} onClick={async () => useApp.setState({ whatsNew: await api.whatsNew(true) })}>
+                {t('Bu sürümdeki yenilikler')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => void api.windowControl('devtools')}>
                 {t('Geliştirici araçları')}
