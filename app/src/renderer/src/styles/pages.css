@@ -426,7 +426,9 @@
 }
 .drawer {
   position: absolute;
-  top: 8px;
+  /* below the title bar: on Windows the native minimize / maximize / close buttons sit over its right end,
+     and a drawer that starts at the top loses its own buttons under them */
+  top: calc(var(--titlebar-h) + 8px);
   right: 8px;
   bottom: 8px;
   width: min(600px, calc(100vw - 32px));

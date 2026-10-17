@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Düzeltme:** yardım botu ve çalıştırma paneli çekmeceleri başlık çubuğunun altından başlıyor; Windows'ta pencerenin küçült/büyüt/kapat düğmeleri çekmecenin kendi düğmelerini örtüyordu.
+
 ## 2.1.0 — 2026-10-17
 
 - **Yardım botu ve SSS:** başlık çubuğundaki bot düğmesi ya da **F1** bir sohbet çekmecesi açar; "nasıl gönderirim", "röle nedir", "sürümü USB ile götüreceğim" gibi soruları yanıtlar, yanıtın geldiği SSS maddesini ya da README bölümünü gösterir ve ilgili sayfayı açar. Çevrimdışı çalışır: 40 maddelik iki dilli SSS ve uygulamayla gelen README üzerinde Türkçe/İngilizce gövde bulma ve eş anlamlı sözlüğüyle arama. Ayarlar › **Yardım botu**'na bir Claude API anahtarı girilirse (bu makinede şifreli saklanır) serbest sorular belgelerle birlikte Claude'a gider; anahtar yokken ya da hata olursa çevrimdışı yanıt gösterilir. Yeni **Yardım** sayfası: arama kutusu, konu konu açılır SSS, README'den eşleşen bölümler. Komut paletinde *Yardım botuna sor…*.
