@@ -15,6 +15,7 @@ The user interface is in Turkish and English. It follows the computer's display 
 | ![Send](../docs/screenshots/en-send.png) | ![Compare](../docs/screenshots/en-compare.png) |
 | ![Git](../docs/screenshots/en-git.png) | ![Sync](../docs/screenshots/en-sync.png) |
 | ![Automation](../docs/screenshots/en-automation.png) | ![Targets](../docs/screenshots/en-targets.png) |
+| ![Overview](../docs/screenshots/en-overview.png) | ![History](../docs/screenshots/en-history.png) |
 
 ## Installation
 
@@ -44,6 +45,9 @@ Node ids and group names may only contain letters, digits, dots, underscores and
 
 ## Pages
 
+### Genel bakış (Overview)
+The first page (Ctrl 1): tiles for the machines (reachable / total, who is down), today's volume with a 14-day sparkline, the week's failed sends, the automation, the inventory and, when there is one, the relay and a pending update; below them the recent sends, the quick sends, the watches and the scheduled jobs. The **network view** draws this computer on the left and the groups on the right: a line to each group coloured by how many of its machines answer, the relay marked with dashed lines to the machines it distributes to. Click a machine to pick it as a send target, drag it into another group to move it there.
+
 ### Gönder (Send)
 Drag files/folders onto the window, pick them, or paste a path; then choose targets (groups, search, reachability dots, profiles, "failed in the last run"). **İncele ve gönder** (review and send) shows, file by file, what will happen on each target:
 
@@ -65,10 +69,14 @@ Options: mode (overwrite / update only / mirror), comparison (date+size / conten
 
 **Tabs.** The Send page has tabs, each with its own sources and targets (**+** opens one, a double click renames it). An Explorer or Notepad++ *İncele ve gönder* (review and send) opens a tab of its own, so items from the menu never mix with a list being put together by hand.
 
-Writes are atomic: a file is first written under a temporary name, its size (and optionally its hash) is checked, then it is moved into place. An interrupted copy never leaves a broken file on the target.
+Writes are atomic: a file is first written under a temporary name, its size (and optionally its hash) is checked, then it is moved into place. An interrupted copy never leaves a broken file on the target. Files of 8 MB and more are written under a fixed temporary name, so a copy that broke off (cancel, a dropped link, the app closed) **continues from where it stopped** on the next send, after the tail of the partial file is checked against the source. Cancel stops the copy at once instead of waiting for the file.
+
+**Pack files.** **Paket yaz** (write pack) writes the sources, with the send's exclusions and ignore files applied, into one compressed `.samsync-pack` file instead of to machines — for a release that travels on a USB stick. On the receiving machine the file is added to the Send list like a folder: the plan compares its contents with the target, only what differs is written, mirror deletes extras, and the manifest is left behind as after a network send, so the next network send is fast again. When every source is a pack, **this machine** can be a target too (its own disk, directly). The source row shows a "paket" badge with the label, file count, size, who made it and when.
 
 ### Karşılaştır (Compare)
 Compares the Send page's sources with the targets **without sending anything**. Each target gets a tab with its counts; the list on the left shows the new, changed, newer-on-target and extra files (with a filter and a search), and the file you pick shows its line diff on the right, as on the Git page. **Bu farkları gönder…** (send these differences) opens the usual review.
+
+**Makine ↔ makine** (machine ↔ machine) compares the same folder on two machines instead: what only one of them has, what differs and which side is newer, with the line diff of the file you pick — for simulators that should be identical (IG1 ↔ IG2). Nothing is written; the Sync page makes them equal.
 
 ### Git
 The repository is found automatically from the local roots (or added by hand).
@@ -98,6 +106,7 @@ The comparison is shown in a grid; click a row's action to change it, double-cli
   - *By hand:* the send button on a watch card sends what differs between the watched paths and the targets right away, also while the watch is off; a watch that runs a sync job runs it. Only differences go, nothing is deleted on the targets.
   - *Also:* send the existing differences once when the watch starts; temporary files (`~$…`, `.tmp`, `.swp`) and `.git` are ignored; deleting on the targets is optional.
 - **Zamanlanmış senkron** (scheduled sync) — sync jobs are compared every N minutes or at set times (e.g. 09:00, 18:30) and synchronized with the suggested actions; conflicts are left alone. Because the configuration is shared by all machines, each job is marked to run on **one machine only**. A time missed while the app was closed runs when it starts again.
+- **Zamanlanmış hızlı gönderim** (scheduled quick send) — a quick send saved on the Send page can run by itself at set times or every N minutes on this machine, without a review (nothing happens when nothing changed). The pencil on its chip edits the name, the key and the schedule; it is listed here with the scheduled jobs, with *Şimdi çalıştır* (run now).
 - **Hepsini duraklat** (pause all) — stops watching and scheduling together (also from the tray menu).
 - **Otomasyon ayarları** (automation settings, per computer):
   - retry unreachable machines — off by default: an unreachable machine misses those changes; when on, they are kept and sent again every N minutes;
@@ -109,10 +118,13 @@ Automation runs while the app is running. Under Ayarlar (Settings) → *Arka pla
 
 ### Hedefler (Targets), Yedekler (Backups), Geçmiş (History), Ayarlar (Settings)
 - **Röle** (relay) — a machine of a group can be marked as its relay on its card. A send that includes the relay and other machines of its group writes to the relay only (one copy over your own, often slow, link, e.g. Wi‑Fi); SamSync running on the relay picks the job up from `_SamSyncRelay\jobs` on its share, sends the files on from its local disk over the group's own network and writes the result, which the review, the run panel and the history show per machine as "via X". The relay's own changes travel as **one compressed pack** (`_SamSyncRelay\jobs\<id>.pack`, gzip per file; formats that are compressed already go in as they are) instead of one network copy per file, and SamSync there applies the pack to its disk (backup, in-use check and verification as usual) before sending on; a DLL shrinks to about 40%, a PDB to about 23%. A machine marked as relay takes its changes as a pack even when nothing is behind it. SamSync on the relay writes a heartbeat (`_SamSyncRelay\alive.json`) every half minute: the machine card says **röle açık / röle kapalı** (relay on / off), and when the heartbeat is stale or missing the plan writes to the relay and the machines behind it directly, without waiting. If a relay with a fresh heartbeat still does not pick the job up within 60 s, the pack is taken back and a separate direct send to those machines, the relay included, starts from here. A group machine chosen on its own is written to directly; the Compare page and `--check-only` look at every machine directly. The relay's first local root must be the folder its share points to; `copy.relayAckSeconds` and `copy.relayTimeoutMinutes` set the waits.
+- **Makine envanteri** (machine inventory) — on the Targets page, which release each machine holds: one row per sent folder, one column per machine, with the label, time and size from the manifest SamSync left there. The newest state of a folder is the reference; machines behind it are marked "geride" (behind), machines without the folder "eksik" (missing), unreachable ones in red. Refreshed after every run and on demand; releases applied from a pack show here too.
 - **Hedefler** — machine cards with reachability (refreshed every 45 s), the last send's pace and time, a **speed test** (3 MB written, read back and removed: write/read MB/s and latency) and, on a relay, whether SamSync runs there; this machine's card shows its own relay state (jobs taken, last one). Adding and editing machines; **JSON olarak düzenle** (edit as JSON) opens the whole configuration file as text, checks it as you type (line and column of a mistake) and again as a configuration on save, writes it exactly as typed (the old tool's fields stay), loads another file into the editor for review and exports a copy. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
 - **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first). Older backup folders at a target root are searched too (see below); their versions show the folder name.
-- **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones).
-- **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates (with a link to the release notes); **Tanılama klasörü oluştur…** (create a diagnostics folder: the logs, the configuration, the settings and a summary, no passwords, to share when describing a problem).
+- **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones). A strip at the top shows the last 30 days: sends, data and average pace, failures, a bar per day (red when a send failed; click one to list that day) and the machines that received the most. **Geri al** (undo) brings the files a send replaced or deleted back from that run's backups and removes the files it created — only for sends made with backups on. A run's log goes to `history/<id>.log` as it runs. While a run goes on, the run panel draws the last minute of throughput (now, peak, average, a stall), per-group chips ("Unit1 3/5"), and the Windows taskbar button fills with the progress and blinks when a send finishes in the background.
+- **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates (with a link to the release notes); **Tanılama klasörü oluştur…** (create a diagnostics folder: the logs, the configuration, the settings and a summary, no passwords, to share when describing a problem); **Bildirimler** (notifications: a webhook URL that gets a JSON POST and/or a Telegram bot and chat that get a message when a run ends — always on failure, optionally on success — with the failed machines and why; a test button); **arayüz ölçeği** (UI scale 70–175%, also Ctrl + / Ctrl − / Ctrl 0); **Bu sürümdeki yenilikler** (what's new: the changelog section of the version that just started, shown once after an update). The window's size, position and maximized state come back on the next start. If the window ever hits an error it shows the error with *Yeniden yükle* (reload), a diagnostics folder and a copy button instead of going blank.
+
+**Keyboard:** Ctrl K command palette, Ctrl / the list of every shortcut, Ctrl , Settings, Ctrl 1…9 the pages (Overview is 1), Ctrl Enter reviews on the Send page and sends from the review (Shift for a dry run), Esc closes what is open.
 
 The backup folder is `_SamSyncYedek` under each target root by default; its name can be changed in Settings → Kopyalama (Copy).
 
@@ -185,7 +197,7 @@ SamSync.exe --quick "DLL → Dozer"
 | `--plan-only` | prints where each item would go on each target, without a window (the old `-PlanOnly`) |
 | `--check-only` | prints whether each target holds the same items, without a window (the old `-CheckOnly`) |
 
-Shortcuts: `Ctrl+K` command palette, `Ctrl+1…9` pages, `F12` developer tools.
+Shortcuts: `Ctrl+K` command palette, `Ctrl+/` every shortcut, `Ctrl+,` Settings, `Ctrl+1…9` pages, `Ctrl+Enter` review / send, `Ctrl` `+`/`−`/`0` UI scale, `F12` developer tools.
 
 ### Plan and equality check without a window
 

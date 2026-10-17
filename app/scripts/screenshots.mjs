@@ -13,7 +13,7 @@ const userData = path.join(demo, 'userdata');
 const out = path.resolve(root, '..', 'docs', 'screenshots');
 const bin = (name) => path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? `${name}.cmd` : name);
 
-const pages = ['send', 'targets', 'compare', 'git', 'sync', 'automation'];
+const pages = ['overview', 'send', 'targets', 'compare', 'git', 'sync', 'automation', 'history'];
 const langs = ['en', 'tr'];
 
 function run(cmd, args, env = {}) {
@@ -55,7 +55,7 @@ for (const lang of langs) {
       SAMSYNC_ROUTE: page,
       SAMSYNC_SCREENSHOT: file,
       SAMSYNC_SCREENSHOT_EXIT: '1',
-      SAMSYNC_SCREENSHOT_DELAY: page === 'targets' ? '5000' : '3000',
+      SAMSYNC_SCREENSHOT_DELAY: page === 'targets' || page === 'overview' ? '5000' : '3000',
     });
     console.log(`${file}: ${fs.existsSync(file) ? fs.statSync(file).size : 'MISSING'} bytes`);
   }

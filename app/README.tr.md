@@ -15,6 +15,7 @@ Arayüz Türkçe ve İngilizcedir. Ayarlar → **Dil** altında bir dil seçilme
 | ![Gönder](../docs/screenshots/tr-send.png) | ![Karşılaştır](../docs/screenshots/tr-compare.png) |
 | ![Git](../docs/screenshots/tr-git.png) | ![Senkron](../docs/screenshots/tr-sync.png) |
 | ![Otomasyon](../docs/screenshots/tr-automation.png) | ![Hedefler](../docs/screenshots/tr-targets.png) |
+| ![Genel bakış](../docs/screenshots/tr-overview.png) | ![Geçmiş](../docs/screenshots/tr-history.png) |
 
 ## Kurulum
 
@@ -44,6 +45,9 @@ Node kimlikleri ve grup adları yalnızca harf, rakam, nokta, alt çizgi ve tire
 
 ## Sayfalar
 
+### Genel bakış
+İlk sayfa (Ctrl 1): kutularda makineler (erişilen / toplam, erişilemeyenler), bugün aktarılan veri ve 14 günlük küçük grafik, haftanın hatalı gönderimleri, otomasyon, envanter ve varsa röle ile bekleyen güncelleme; altında son gönderimler, hızlı gönderimler, izlemeler ve zamanlanmış işler. **Ağ görünümü** bu bilgisayarı solda, grupları sağda çizer: her gruba giden çizgi kaç makinesinin yanıt verdiğine göre renkli, röle işaretli ve dağıttığı makinelere kesikli çizgiler. Bir makineye tıklamak onu gönderim hedefi yapar, başka bir grubun kutusuna sürüklemek grubunu değiştirir.
+
 ### Gönder
 Dosya/klasörleri pencereye sürükleyin, seçin ya da yolu yapıştırın; hedefleri seçin (gruplar, arama, erişim noktası, profiller, “son çalıştırmada hatalılar”). **İncele ve gönder** her hedefte ne olacağını dosya dosya gösterir:
 
@@ -65,10 +69,14 @@ Seçenekler: kip (Üzerine yaz / Yalnızca yeni / Ayna), karşılaştırma (tari
 
 **Sekmeler.** Gönder sayfasında her biri kendi kaynaklarını ve hedeflerini tutan sekmeler var (**+** yeni sekme açar, çift tık yeniden adlandırır). Explorer'dan ya da Notepad++'tan gelen *İncele ve gönder* kendi sekmesinde açılır; menüden gelen öğeler elle hazırladığınız listeye hiç karışmaz.
 
-Yazma atomiktir: dosya önce geçici adla yazılır, boyutu (ve istenirse özeti) doğrulanır, sonra yerine konur. Yarım kalan kopya hedefi bozmaz.
+Yazma atomiktir: dosya önce geçici adla yazılır, boyutu (ve istenirse özeti) doğrulanır, sonra yerine konur. Yarım kalan kopya hedefi bozmaz. 8 MB ve üstü dosyalar sabit adlı bir geçici dosyaya yazılır; iptal, kopan bağlantı ya da kapanan uygulama yüzünden yarım kalan kopya bir sonraki gönderimde **kaldığı yerden sürer** (önce hedefteki parçanın kuyruğu kaynakla karşılaştırılır). İptal artık dosyanın bitmesini beklemez, kopyayı anında keser.
+
+**Paket dosyası.** **Paket yaz**, kaynakları (gönderimin dışlamaları ve ignore dosyalarıyla) makineler yerine tek bir sıkıştırılmış `.samsync-pack` dosyasına yazar — USB ile götürülen sürüm için. Alan makinede dosya Gönder listesine bir klasör gibi eklenir: plan içindekileri hedefle karşılaştırır, yalnızca farklı olanlar yazılır, ayna fazlalıkları siler, bitince ağ gönderimindeki gibi manifest kalır; sonraki ağ gönderimi yine hızlı başlar. Bütün kaynaklar paketse **bu makine** de hedef olabilir (kendi diskine, doğrudan). Kaynak satırında "paket" rozeti: etiket, dosya sayısı, boyut, kim yaptı, ne zaman.
 
 ### Karşılaştır
 Gönder sayfasındaki kaynakları hedeflerle **hiçbir şey göndermeden** karşılaştırır. Her hedefin sayılarıyla bir sekmesi olur. Soldaki listede yeni, değişen, hedefte daha yeni ve fazla dosyalar süzgeç ve aramayla görünür; seçtiğiniz dosyanın satır farkı, Git sayfasındaki gibi sağda açılır. **Bu farkları gönder…** her zamanki incelemeyi açar.
+
+**Makine ↔ makine** kipi aynı klasörü iki makinede karşılaştırır: yalnız birinde olanlar, farklı olanlar, hangisinin daha yeni olduğu ve seçilen dosyanın satır farkı — aynı olması gereken simülatörler (IG1 ↔ IG2) için. Hiçbir şey yazılmaz; eşitlemek için Senkron sayfası.
 
 ### Git
 Depo, yerel köklerden otomatik bulunur (ya da eklenir).
@@ -101,6 +109,7 @@ Karşılaştırma sonucu ızgarada görünür; her satırın işlemi tıklanarak
   - *Elle:* izleme kartındaki gönder düğmesi, izlenen yollarda hedeften farklı olanları beklemeden gönderir; izleme kapalıyken de çalışır. Senkron işi çalıştıran izlemede işi çalıştırır. Yalnızca farklar gider, hedefte bir şey silinmez.
   - *Ayrıca:* izleme başlarken mevcut farklar bir kez gönderilebilir. Geçici dosyalar (`~$…`, `.tmp`, `.swp`) ve `.git` yok sayılır; hedefte silme isteğe bağlıdır.
 - **Zamanlanmış senkron** — senkron işleri her N dakikada bir ya da belirli saatlerde (örn. 09:00, 18:30) karşılaştırılıp önerilen işlemlerle eşitlenir; çakışmalara dokunulmaz. Yapılandırma bütün makinelerde ortak olduğu için her iş **tek bir makinede** çalışacak şekilde işaretlenir. Uygulama kapalıyken kaçırılan saat, açılınca çalıştırılır.
+- **Zamanlanmış hızlı gönderim** — Gönder sayfasında kaydedilmiş bir hızlı gönderim belirli saatlerde ya da her N dakikada bir bu makinede kendi kendine gider, inceleme açılmadan (değişiklik yoksa bir şey olmaz). Çipteki kalem adı, kısayolu ve zamanlamayı düzenler; burada zamanlanmış işlerle birlikte listelenir, *Şimdi çalıştır* var.
 - **Hepsini duraklat** — izleme ve zamanlamayı birlikte durdurur (tepsi menüsünden de).
 - **Otomasyon ayarları** (bilgisayar başına):
   - erişilemeyen makinelere yeniden deneme: varsayılan olarak kapalı. Kapalıyken erişilemeyen makine o değişiklikleri almaz; açıkken değişiklikler saklanır ve N dakikada bir yeniden gönderilir;
@@ -112,13 +121,16 @@ Otomasyon uygulama açıkken çalışır. Ayarlar → *Arka plan ve başlangıç
 
 ### Hedefler, Yedekler, Geçmiş, Ayarlar
 - **Röle** — bir gruptaki bir makine kartında grubun rölesi olarak işaretlenebilir. Röleyle birlikte grubun başka makinelerini de içeren bir gönderim yalnızca röleye yazar (kendi, çoğu zaman yavaş, bağlantınızdan — örn. Wi‑Fi — tek kopya); röledeki SamSync işi paylaşımındaki `_SamSyncRelay\jobs` klasöründen alır, dosyaları kendi diskinden grubun ağı üzerinden dağıtır ve sonucu yazar; inceleme, çalıştırma paneli ve geçmiş her makineyi "X üzerinden" olarak sonucuyla gösterir. Rölenin kendi değişiklikleri dosya dosya ağ kopyası yerine **tek bir sıkıştırılmış paket** olarak gider (`_SamSyncRelay\jobs\<id>.pack`, dosya başına gzip; zaten sıkışık biçimler olduğu gibi); oradaki SamSync paketi diskine uygular (yedek, kullanımdaki dosya denetimi ve doğrulama her zamanki gibi), sonra dağıtır. Bir DLL yaklaşık %40'a, bir PDB %23'e iner. Röle olarak işaretlenen makine, arkasında kimse olmasa da değişikliklerini paket olarak alır. Röledeki SamSync yarım dakikada bir kalp atışı yazar (`_SamSyncRelay\alive.json`): makine kartındaki rozet **röle açık / röle kapalı** der; kalp atışı eski ya da yoksa plan röleye ve arkasındakilere beklemeden doğrudan yazar. Kalp atışı taze olduğu hâlde röle 60 sn içinde işi almazsa paket geri alınır ve o makinelere, röle dahil, buradan doğrudan ayrı bir gönderim başlar. Tek başına seçilen bir grup makinesine doğrudan yazılır; Karşılaştır sayfası ve `--check-only` her makineye doğrudan bakar. Rölenin ilk yerel kökü paylaşımının gösterdiği klasör olmalıdır; `copy.relayAckSeconds` ve `copy.relayTimeoutMinutes` bekleme sürelerini ayarlar.
+- **Makine envanteri** — Hedefler sayfasında hangi makinede hangi sürüm olduğu: satırlar gönderilen klasörler, sütunlar makineler; hücrede SamSync'in bıraktığı manifestten etiket, zaman ve boyut. Bir klasörün en yeni hâli ölçüttür; ondan geride olanlar "geride", klasörü hiç almamış olanlar "eksik", erişilemeyen makine kırmızı. Her çalıştırmadan sonra ve istenince yenilenir; paketten uygulanan sürümler de burada görünür.
 - **Hedefler** — makine kartlarında erişim durumu (45 sn'de bir yenilenir), son gönderimin hızı ve süresi, **hız sınaması** (3 MB yazılır, geri okunur, silinir: yazma/okuma MB/sn ve gecikme) ve rölede SamSync'in çalışıp çalışmadığı; "Bu makine" kartı rölenin kendi durumunu gösterir (alınan iş, son iş). Ekleme/düzenleme. **JSON olarak düzenle** bütün yapılandırma dosyasını metin olarak açar:
   - siz yazarken denetler ve hatanın satırını ve sütununu gösterir; kaydederken yapılandırma olarak bir kez daha denetler;
   - metni yazdığınız gibi kaydeder, eski aracın alanları korunur;
   - başka bir dosyayı gözden geçirmek için düzenleyiciye yükleyebilir ve bir kopyasını dışa aktarabilir. Bağlantı türleri: Windows paylaşımı (SMB, `\\adres\networkRoot`), klasör/bağlı sürücü, **SFTP** (anahtar, agent ya da işletim sisteminin şifreli deposunda saklanan parola).
 - **Yedekler** — bir öğenin hedeflerdeki yedeklerini bulur, tarih seçip geri yazar (önce şu anki hâli yedekleyerek). Hedef kökündeki eski yedek klasörleri de taranır (aşağıya bakın); onların sürümlerinde klasör adı görünür.
-- **Geçmiş** — son 300 çalıştırma: hedef bazında sonuç, hatalar, günlük, CSV rapor, *yeniden gönder* / *hatalılara yeniden gönder*.
-- **Ayarlar** — dil (Sistemle eşle / Türkçe / English; varsayılan sistemle eşle), tema (Koyu / Açık / Sistemle eşle; varsayılan koyu), vurgu rengi, yoğunluk; kopyalama varsayılanları (yeniden deneme, eşzamanlılık, **hedef başına bant genişliği sınırı** — eski aracın `/IPG` karşılığı, yedek klasörü adı); yapılandırma dosyası; sağ tık menüleri (Explorer, Notepad++); arka plan ve başlangıç; güncellemeler (sürüm notları bağlantısıyla); **Tanılama klasörü oluştur…** (günlükler, yapılandırma, ayarlar ve bir özet tek klasörde, parolalar hariç; bir sorunu anlatırken paylaşın).
+- **Geçmiş** — son 300 çalıştırma: hedef bazında sonuç, hatalar, günlük, CSV rapor, *yeniden gönder* / *hatalılara yeniden gönder*. Üstteki şerit son 30 günü gösterir: gönderim sayısı, veri ve ortalama hız, hatalılar, gün gün çubuk (hatalı gün kırmızı; tıklayınca o gün listelenir) ve en çok veri alan makineler. **Geri al**, yedek alınarak yapılmış bir gönderimin değiştirdiği ve sildiği dosyaları o çalıştırmanın yedeklerinden geri getirir, eklediklerini siler. Çalıştırma günlüğü çalışırken `history/<id>.log` dosyasına akar. Gönderim sürerken çalıştırma paneli son bir dakikanın hız grafiğini (anlık, tepe, ortalama, duraklama), grup çiplerini ("Unit1 3/5") çizer; Windows görev çubuğundaki düğme ilerlemeyle dolar ve arkada biten gönderimde yanıp söner.
+- **Ayarlar** — dil (Sistemle eşle / Türkçe / English; varsayılan sistemle eşle), tema (Koyu / Açık / Sistemle eşle; varsayılan koyu), vurgu rengi, yoğunluk; kopyalama varsayılanları (yeniden deneme, eşzamanlılık, **hedef başına bant genişliği sınırı** — eski aracın `/IPG` karşılığı, yedek klasörü adı); yapılandırma dosyası; sağ tık menüleri (Explorer, Notepad++); arka plan ve başlangıç; güncellemeler (sürüm notları bağlantısıyla); **Tanılama klasörü oluştur…** (günlükler, yapılandırma, ayarlar ve bir özet tek klasörde, parolalar hariç; bir sorunu anlatırken paylaşın); **Bildirimler** (gönderim bitince JSON alan bir web kancası ve/veya mesaj alan bir Telegram botu ve sohbeti — hatada her zaman, başarıda isteğe bağlı — başarısız makineler nedenleriyle; sınama düğmesi); **arayüz ölçeği** (%70–175; Ctrl + / Ctrl − / Ctrl 0 ile de); **Bu sürümdeki yenilikler** (güncellemeden sonra bir kez gösterilen sürüm notu). Pencerenin boyutu, yeri ve ekranı kaplama durumu bir sonraki açılışta geri gelir. Arayüz bir hata verirse boş pencere yerine hatanın metni, *Yeniden yükle*, tanı klasörü ve kopyalama düğmeleri çıkar.
+
+**Klavye:** Ctrl K komut paleti, Ctrl / bütün kısayolların listesi, Ctrl , Ayarlar, Ctrl 1…9 sayfalar (Genel bakış 1), Ctrl Enter Gönder sayfasında inceleme açar ve incelemede gönderir (Shift ile deneme), Esc açık olanı kapatır.
 
 Yedek klasörü varsayılan olarak hedef kökündeki `_SamSyncYedek` klasörüdür; adı Ayarlar → Kopyalama’dan değiştirilebilir.
 
@@ -191,7 +203,7 @@ SamSync.exe --quick "DLL → Dozer"
 | `--plan-only` | her öğenin her hedefte nereye gideceğini pencere açmadan yazar (eski `-PlanOnly`) |
 | `--check-only` | her hedefte öğelerin aynı olup olmadığını pencere açmadan yazar (eski `-CheckOnly`) |
 
-Kısayollar: `Ctrl+K` komut paleti, `Ctrl+1…9` sayfalar, `F12` geliştirici araçları.
+Kısayollar: `Ctrl+K` komut paleti, `Ctrl+/` bütün kısayollar, `Ctrl+,` Ayarlar, `Ctrl+1…9` sayfalar, `Ctrl+Enter` incele / gönder, `Ctrl` `+`/`−`/`0` arayüz ölçeği, `F12` geliştirici araçları.
 
 ### Pencere açmadan plan ve eşitlik denetimi
 
