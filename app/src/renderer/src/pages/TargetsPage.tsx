@@ -7,6 +7,7 @@ import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, 
 import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
 import { ConfigEditor } from '../components/ConfigEditor';
+import { Inventory } from '../components/Inventory';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -189,6 +190,7 @@ export function TargetsPage() {
           </div>
         </div>
 
+        {cfg.nodes.length > 0 && <Inventory />}
         {!cfg.nodes.length ? (
           <div className="card" style={{ marginTop: 16 }}>
             <Empty icon={<Server size={22} />} title={t('Henüz hedef yok')} action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İlk hedefi ekle')}</Button>}>

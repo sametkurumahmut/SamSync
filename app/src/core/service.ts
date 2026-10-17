@@ -9,6 +9,7 @@ import type {
   Bootstrap,
   CompareResult,
   DiffResult,
+  InventoryRow,
   LocalIdentity,
   LocalSettings,
   PackWriteResult,
@@ -36,9 +37,10 @@ import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
 import { packFileName } from './packfile';
+import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
-import { transportForNode, transportForEndpoint, nodeRootLabel } from './transport';
+import { transportForNode, transportForEndpoint, nodeRootLabel, type Transport } from './transport';
 import { mapToRel, normalizeAbs, pathKey } from './paths';
 import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
@@ -47,7 +49,7 @@ import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
 import crypto from 'node:crypto';
-import { CancelToken, errMessage, formatBytes, newId, stamp, withTimeout } from './util';
+import { CancelToken, errMessage, formatBytes, mapLimit, newId, stamp, withTimeout } from './util';
 import { RelayService } from './relay';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
@@ -408,6 +410,45 @@ export class Service implements Api {
       await tgt.remove(rel, false).catch(() => undefined);
       await tgt.close().catch(() => undefined);
     }
+  }
+
+  /**
+   * Which release each machine holds: every enabled machine's manifest, read now (one small file per machine).
+   * A machine that does not answer within a few seconds is listed as unreachable rather than holding the table up.
+   */
+  async inventory(): Promise<InventoryRow[]> {
+    const ctx = this.ctx();
+    const nodes = this.config.nodes.filter((n) => n.enabled);
+    return mapLimit(nodes, 6, async (n): Promise<InventoryRow> => {
+      const row: InventoryRow = { nodeId: n.id, name: n.name, group: n.group, reachable: true, manifest: false, entries: [], checkedAt: Date.now() };
+      let tgt: Transport | null = null;
+      try {
+        tgt = await transportForNode(ctx, n);
+        const m = await withTimeout(readManifest(tgt), 8000);
+        if (!m) return row;
+        row.manifest = true;
+        for (const [rel, sub] of Object.entries(m.subtrees)) {
+          let files = 0;
+          let dirs = 0;
+          let size = 0;
+          for (const e of sub.entries ?? []) {
+            if (e[1] === 1) dirs++;
+            else {
+              files++;
+              size += e[2];
+            }
+          }
+          row.entries.push({ rel, label: sub.label, writtenAt: sub.writtenAt, by: sub.by, files, dirs, size });
+        }
+        row.entries.sort((a, b) => a.rel.localeCompare(b.rel));
+      } catch (e) {
+        row.reachable = false;
+        row.error = errMessage(e);
+      } finally {
+        await tgt?.close().catch(() => undefined);
+      }
+      return row;
+    });
   }
 
   async relayState(): Promise<RelayState> {

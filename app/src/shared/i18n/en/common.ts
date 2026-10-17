@@ -278,6 +278,20 @@ const d: Dict = {
   'Klasörde göster': 'Show in folder',
   'Paket yazılamadı': 'The pack could not be written',
   'bu makine': 'this machine',
+  'gönderen: {who}': 'sent by: {who}',
+  'Makine envanteri': 'Machine inventory',
+  'Her makinede hangi sürüm var: oraya bırakılan manifestten': 'Which release each machine holds, from the manifest left there',
+  '{n} geride': '{n} behind',
+  '{n} eksik': '{n} missing',
+  'hepsi aynı': 'all the same',
+  'Erişilebilen makinelerde manifest yok. ': 'The reachable machines have no manifest. ',
+  'Bir gönderimden ya da paketten sonra her makinenin kökünde samsync-manifest.json kalır; tablo ondan dolar.': 'After a send or a pack, samsync-manifest.json stays at each machine\'s root; the table is filled from it.',
+  'Bu klasör bu makineye hiç gönderilmemiş (ya da manifest yok)': 'This folder was never sent to this machine (or there is no manifest)',
+  '(adsız)': '(unnamed)',
+  'en yeni hâl': 'newest state',
+  'daha eski bir gönderim': 'an older send',
+  'hiç gönderilmemiş': 'never sent',
+  'Diskle verilen sürümler de paket olarak uygulanınca burada görünür.': 'Releases delivered on a disk show here too once applied as a pack.',
 };
 
 export default d;

@@ -435,6 +435,30 @@ export interface RelayState {
   lastLabel?: string;
 }
 
+/** What a machine holds under one sent folder, as its manifest says (the last send or pack that reached it). */
+export interface InventoryEntry {
+  rel: string;
+  label?: string;
+  writtenAt: number;
+  by?: { host?: string; user?: string; version?: string };
+  files: number;
+  dirs: number;
+  size: number;
+}
+
+/** One machine in the inventory: its manifest read now, or why it could not be. */
+export interface InventoryRow {
+  nodeId: string;
+  name: string;
+  group?: string;
+  reachable: boolean;
+  error?: string;
+  /** No manifest yet: nothing was ever sent there with this version, or the file was removed. */
+  manifest: boolean;
+  entries: InventoryEntry[];
+  checkedAt: number;
+}
+
 // ---------------------------------------------------------------- sources & plans
 
 export type SourceSpec =

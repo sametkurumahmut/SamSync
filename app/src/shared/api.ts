@@ -10,6 +10,7 @@ import type {
   GitLogPage,
   GitRepoInfo,
   LocalIdentity,
+  InventoryRow,
   LocalSettings,
   PackWriteResult,
   ProbeResult,
@@ -99,6 +100,8 @@ export interface Api {
   speedTest(nodeId: string): Promise<SpeedTestResult>;
   /** What the relay service on this machine is doing. */
   relayState(): Promise<RelayState>;
+  /** Every enabled machine's manifest, read now: which release each one holds under each sent folder. */
+  inventory(): Promise<InventoryRow[]>;
   describeSources(paths: string[], count?: boolean): Promise<SourceInfo[]>;
   mapPath(abs: string): Promise<{ rel: string; root?: string; outside: boolean }>;
 
@@ -250,6 +253,7 @@ export const API_METHODS = {
   automationPause: true,
   speedTest: true,
   relayState: true,
+  inventory: true,
   scheduleRunNow: true,
   windowControl: true,
   setChrome: true,
