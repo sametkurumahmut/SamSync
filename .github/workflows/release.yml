@@ -38,6 +38,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # no signing certificates in CI: macOS builds are unsigned (no auto-update there)
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # the packaged app opens once and photographs its window: a blank window (a broken bundle) fails the
+      # build, so the draft is never published
+      - name: Smoke test the packaged app (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+          xvfb-run -a --server-args="-screen 0 1400x900x24" node scripts/smoke.mjs
+      - name: Smoke test the packaged app
+        if: runner.os != 'Linux'
+        run: node scripts/smoke.mjs
+      - name: Keep the smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}
+          path: app/release/*/smoke-*.png
+          if-no-files-found: ignore
 
   publish:
     # only when all three builds above succeeded

@@ -23,7 +23,8 @@
     "release:folder": "node scripts/release-folder.mjs",
     "demo": "node scripts/demo-env.mjs",
     "screenshots": "node scripts/screenshots.mjs",
-    "release:github": "node scripts/dist.mjs --win --publish always"
+    "release:github": "node scripts/dist.mjs --win --publish always",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "diff": "^9.0.0",
