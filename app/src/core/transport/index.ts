@@ -15,7 +15,7 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   linux: '/mnt/{address}/{networkRoot}',
 };
 
-/** Where an SMB target lives for this OS: \\10.10.1.11\Sim\ActiveRelease on Windows, a mount elsewhere. */
+/** Where an SMB target lives for this OS: \\10.10.1.11\Share\Release on Windows, a mount elsewhere. */
 export function smbRoot(cfg: AppConfig, node: NodeConfig, platform = process.platform): string {
   if (node.path) return node.path;
   const tpl = cfg.smbPathTemplate?.[platform as 'win32'] || DEFAULT_TEMPLATES[platform] || DEFAULT_TEMPLATES.linux;

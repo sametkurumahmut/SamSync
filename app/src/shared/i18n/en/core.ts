@@ -80,7 +80,7 @@ const d: Dict = {
     "Node #{n}: the group may only contain letters, digits, dots, underscores and hyphens: '{group}'",
   'Node id değerleri benzersiz olmalı (büyük/küçük harf duyarsız): {id}': 'Node ids must be unique (case-insensitive): {id}',
   '{id}: address (IP veya bilgisayar adı) gerekli.': '{id}: address (IP or computer name) is required.',
-  '{id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).': '{id}: networkRoot is required (example: Sim\\ActiveRelease).',
+  '{id}: networkRoot gerekli (örnek: Share\\Release).': '{id}: networkRoot is required (example: Share\\Release).',
   '{id}: path transport için hedef klasör (path) gerekli.': '{id}: the path transport needs a target folder (path).',
   '{id}: sftp için kullanıcı adı gerekli.': '{id}: sftp needs a user name.',
   '{file} geçerli JSON değil: {error}': '{file} is not valid JSON: {error}',
@@ -101,7 +101,7 @@ const d: Dict = {
   // --plan-only / --check-only on the console
   'Kaynak bulunamadı: {path}': 'Source not found: {path}',
   '{n} kaynak bulunamadı; hiçbir şey denetlenmedi.': pl('{n} source was not found; nothing was checked.', '{n} sources were not found; nothing was checked.'),
-  'Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"': 'No source given. Example: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"',
+  'Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\Release\\Data"': 'No source given. Example: SamSync.exe --check-only --to all "C:\\Release\\Data"',
   'Bu makine yapılandırmadaki bir node ile eşleşmedi: {reason}': 'This machine did not match a node in the configuration: {reason}',
   'Bu makine: {id} ({reason})': 'This machine: {id} ({reason})',
   'Hedef bulunamadı ya da boş: {ids}': 'Target not found or empty: {ids}',

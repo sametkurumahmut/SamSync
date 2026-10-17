@@ -354,7 +354,7 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
           }
         >
           <Field label={t('Ad')} help={t('Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür')}>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && void submit()} />
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Sürüm → Lab-A')} autoFocus onKeyDown={(e) => e.key === 'Enter' && void submit()} />
           </Field>
           <Field label={t('Kısayol tuşu (isteğe bağlı)')} help={t('Her yerden çalışır, uygulama tepsideyken de; örn. Ctrl+Alt+1. Başka bir program kullanıyorsa atanamaz.')}>
             <input className="input mono" value={hotkey} onChange={(e) => setHotkey(e.target.value)} placeholder="Ctrl+Alt+1" />

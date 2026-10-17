@@ -27,10 +27,10 @@ describe('target lock', () => {
   it('warns about a fresh lock of another computer, writes its own while running and removes it after', async () => {
     const s = await setup();
     try {
-      await fsp.writeFile(path.join(s.tgt, LOCK_FILE), JSON.stringify({ host: 'PC-AHMET', user: 'ahmet', label: 'Dozer DLL', startedAt: Date.now() - 120_000, pid: 4242 }));
+      await fsp.writeFile(path.join(s.tgt, LOCK_FILE), JSON.stringify({ host: 'PC-AHMET', user: 'ahmet', label: 'Release 3.4', startedAt: Date.now() - 120_000, pid: 4242 }));
       const plan = await s.svc.planSend(s.req, 'l1');
       const tp = plan.targets[0];
-      expect(tp.lock).toMatchObject({ host: 'PC-AHMET', user: 'ahmet', label: 'Dozer DLL' });
+      expect(tp.lock).toMatchObject({ host: 'PC-AHMET', user: 'ahmet', label: 'Release 3.4' });
       expect(plan.warnings.some((w) => w.includes('ahmet'))).toBe(true);
       // the lock file itself is never part of the plan
       expect(tp.ops.some((o) => o.rel.includes(LOCK_FILE))).toBe(false);

@@ -109,21 +109,21 @@ describe('pack files', () => {
     const here = path.join(base, 'here');
     await fsp.mkdir(here, { recursive: true });
     // the machine's own node, as the identity would resolve it: its network root is not reachable in the test
-    const ctx = makeCtx({ nodes: [{ ...pathNode('IG1', path.join(base, 'nowhere')), transport: undefined, path: undefined, address: '10.0.0.9', networkRoot: 'Sim' }] }, [here], path.join(base, 'ud2'));
-    ctx.localNodeId = 'IG1';
-    const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: pack }], targetIds: ['IG1'], options: defaultOptions, origin: 'send' });
+    const ctx = makeCtx({ nodes: [{ ...pathNode('PC1', path.join(base, 'nowhere')), transport: undefined, path: undefined, address: '10.0.0.9', networkRoot: 'Sim' }] }, [here], path.join(base, 'ud2'));
+    ctx.localNodeId = 'PC1';
+    const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: pack }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
     expect(plan.warnings.some((w) => /kendisi hedef listesinden/.test(w))).toBe(false);
     expect(plan.targets).toHaveLength(1);
     expect(plan.targets[0].reachable).toBe(true);
     const tp = plan.targets[0];
     const ops = tp.ops.filter((o) => o.selected).map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, dstExists: false }));
     const node = ctx.config.nodes[0];
-    const d = await startRun(ctx, [{ key: 'IG1', title: 'IG1', rootLabel: tp.root, open: () => transportForNode(ctx, node), ops }], settings).done;
+    const d = await startRun(ctx, [{ key: 'PC1', title: 'PC1', rootLabel: tp.root, open: () => transportForNode(ctx, node), ops }], settings).done;
     expect(d.status).toBe('ok');
     expect(read(path.join(here, 'Release', 'a.txt'))).toBe('A');
 
     // a folder as a source still never targets this machine
-    const plan2 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(src, 'Release') }], targetIds: ['IG1'], options: defaultOptions, origin: 'send' });
+    const plan2 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(src, 'Release') }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
     expect(plan2.targets).toHaveLength(0);
   });
 

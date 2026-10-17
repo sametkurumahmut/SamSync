@@ -27,7 +27,7 @@ export interface ReadRange {
  */
 export interface Transport {
   readonly kind: 'fs' | 'sftp';
-  /** Human readable root (\\10.10.1.11\Sim\ActiveRelease, sftp://user@host/srv/x). */
+  /** Human readable root (\\10.10.1.11\Share\Release, sftp://user@host/srv/x). */
   readonly root: string;
   readonly caseInsensitive: boolean;
   stat(rel: string): Promise<Entry | null>;

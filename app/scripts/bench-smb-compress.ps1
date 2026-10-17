@@ -1,7 +1,7 @@
 # Measures whether SMB compression helps on this link: copies a compressible file and a random (incompressible)
 # file to a share with robocopy, once plainly and once with /COMPRESS (Windows 10 20H2+ / Server 2022 client and
 # server, SMB 3.1.1), and prints MB/s for each. Nothing is left on the share.
-#   .\bench-smb-compress.ps1 -Share \\192.168.46.101\Dsim\ActiveRelease -SizeMB 200
+#   .\bench-smb-compress.ps1 -Share \\server\Share\Release -SizeMB 200
 param(
   [Parameter(Mandatory = $true)][string]$Share,
   [int]$SizeMB = 200

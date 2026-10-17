@@ -231,7 +231,7 @@ export async function runHeadless(
   if (req.mode === 'sync') return runHeadlessSync(ctx, req.job ?? '', io);
   for (const m of req.missing) io.err(t('Kaynak bulunamadı: {path}', { path: m }));
   if (req.missing.length) return fail(t('{n} kaynak bulunamadı; hiçbir şey denetlenmedi.', { n: req.missing.length }));
-  if (!req.paths.length) return fail(t('Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\ActiveRelease\\Data"'));
+  if (!req.paths.length) return fail(t('Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\Release\\Data"'));
   if (!identity.node) return fail(t('Bu makine yapılandırmadaki bir node ile eşleşmedi: {reason}', { reason: identity.reason }));
   io.err(t('Bu makine: {id} ({reason})', { id: identity.node.id, reason: identity.reason }));
 

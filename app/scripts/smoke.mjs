@@ -146,6 +146,7 @@ async function main() {
   });
   if (!fs.existsSync(shot)) {
     console.error(`smoke: no screenshot was written (exit code ${code})`);
+    if (code === 0) console.error('smoke: an exit code of 0 without a window usually means another SamSync held the single instance lock for the same data folder');
     process.exit(1);
   }
   const img = readPng(shot);

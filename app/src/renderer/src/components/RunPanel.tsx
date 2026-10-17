@@ -105,7 +105,7 @@ function Throughput({ run, now }: { run: LiveRun; now: number }) {
   );
 }
 
-/** Per group: how many of its machines are done, so "Dozer 3/5" reads at a glance. */
+/** Per group: how many of its machines are done, so "Lab-A 3/5" reads at a glance. */
 function GroupChips({ run }: { run: LiveRun }) {
   const nodes = useApp((s) => s.boot?.config.nodes);
   const groups = useMemo(() => {

@@ -1,5 +1,5 @@
 // Two machines side by side: the same folder on A and on B, what only one of them has, what differs and
-// which side is newer, with the line diff of the file you pick. For simulators that should be identical.
+// which side is newer, with the line diff of the file you pick. For machines that should be identical.
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Play, Search, FileText, Folder, WifiOff, Equal } from 'lucide-react';
 import type { Category, CompareItem, CompareMethod, CompareResult, DiffResult, SyncJob } from '@shared/types';
@@ -152,7 +152,7 @@ export function MachineCompare() {
               </Button>
             </div>
             <div className="faint" style={{ fontSize: 11.5 }}>
-              {t('Aynı olması gereken makineler (IG1 ↔ IG2) arasındaki sapmayı gösterir; hiçbir şey yazılmaz. Eşitlemek için Senkron sayfasını kullanın.')}
+              {t('Aynı olması gereken makineler (A ↔ B) arasındaki sapmayı gösterir; hiçbir şey yazılmaz. Eşitlemek için Senkron sayfasını kullanın.')}
             </div>
           </div>
         </div>

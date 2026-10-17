@@ -41,7 +41,7 @@ Without a configuration, the welcome screen offers three ways in:
 
 The app recognises the machine it runs on with the same rules as the old tool: the `SAMSYNC_NODE_ID` environment variable, the IP address, the computer name (`address` / `localNames`, as the bare name or, on a domain, as `<name>.<USERDNSDOMAIN>`), and, when several nodes match, the one whose local root exists here. The machine can also be pinned by hand on the Targets page.
 
-Node ids and group names may only contain letters, digits, dots, underscores and hyphens (`Unit1`, no spaces), because they are used as machine ids and `group:<name>` on command lines and in the menus. As with the old tool, a config that breaks this rule is not loaded.
+Node ids and group names may only contain letters, digits, dots, underscores and hyphens (`Lab-A`, no spaces), because they are used as machine ids and `group:<name>` on command lines and in the menus. As with the old tool, a config that breaks this rule is not loaded.
 
 ## Pages
 
@@ -62,7 +62,7 @@ After a run the target root also holds `samsync-manifest.json`: everything below
 
 Options: mode (overwrite / update only / mirror), comparison (date+size / content / size), **yedek al** (keep a backup: old versions are moved into the backup folder on the target under a `<timestamp>` folder), verification (content hash), excluded file/folder patterns, number of parallel targets, dry run, notification when done, post-copy command.
 
-**Per-target settings** (the old wizard's *Yedek al* / *Yalnızca yeni* / *Ayna* columns): the slider button at the end of a machine row gives that machine its own mode and backup. For example, the trainer can mirror with a backup while the IGs take newer files only.
+**Per-target settings** (the old wizard's *Yedek al* / *Yalnızca yeni* / *Ayna* columns): the slider button at the end of a machine row gives that machine its own mode and backup. For example, the server of a lab can mirror with a backup while its other machines take newer files only.
 - The row shows the exception as a badge, the bottom bar counts them (*N hedefte özel ayar*, own settings on N targets), and the review shows them on each target card.
 - **Seç → Hedefe özel ayarları temizle** (clear per-target settings) brings every machine back to the general options.
 - They are saved with the last send, so `--to last` and *Son ayarla gönder* use them. A profile keeps the exceptions of its own machines.
@@ -76,7 +76,7 @@ Writes are atomic: a file is first written under a temporary name, its size (and
 ### Karşılaştır (Compare)
 Compares the Send page's sources with the targets **without sending anything**. Each target gets a tab with its counts; the list on the left shows the new, changed, newer-on-target and extra files (with a filter and a search), and the file you pick shows its line diff on the right, as on the Git page. **Bu farkları gönder…** (send these differences) opens the usual review.
 
-**Makine ↔ makine** (machine ↔ machine) compares the same folder on two machines instead: what only one of them has, what differs and which side is newer, with the line diff of the file you pick — for simulators that should be identical (IG1 ↔ IG2). Nothing is written; the Sync page makes them equal.
+**Makine ↔ makine** (machine ↔ machine) compares the same folder on two machines instead: what only one of them has, what differs and which side is newer, with the line diff of the file you pick — for machines that should be identical (A ↔ B). Nothing is written; the Sync page makes them equal.
 
 ### Git
 The repository is found automatically from the local roots (or added by hand).
@@ -124,7 +124,7 @@ Questions and answers about the app, and a **help bot**. The bot button in the t
 - **Makine envanteri** (machine inventory) — on the Targets page, which release each machine holds: one row per sent folder, one column per machine, with the label, time and size from the manifest SamSync left there. The newest state of a folder is the reference; machines behind it are marked "geride" (behind), machines without the folder "eksik" (missing), unreachable ones in red. Refreshed after every run and on demand; releases applied from a pack show here too.
 - **Hedefler** — machine cards with reachability (refreshed every 45 s), the last send's pace and time, a **speed test** (3 MB written, read back and removed: write/read MB/s and latency) and, on a relay, whether SamSync runs there; this machine's card shows its own relay state (jobs taken, last one). Adding and editing machines; **JSON olarak düzenle** (edit as JSON) opens the whole configuration file as text, checks it as you type (line and column of a mistake) and again as a configuration on save, writes it exactly as typed (the old tool's fields stay), loads another file into the editor for review and exports a copy. Connection types: Windows share (SMB, `\\address\networkRoot`), folder / mounted drive, **SFTP** (key, agent, or a password kept in the operating system's encrypted store).
 - **Yedekler** — finds an item's backups on the targets and writes a chosen version back (backing up the current state first). Older backup folders at a target root are searched too (see below); their versions show the folder name.
-- **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones). A strip at the top shows the last 30 days: sends, data and average pace, failures, a bar per day (red when a send failed; click one to list that day) and the machines that received the most. **Geri al** (undo) brings the files a send replaced or deleted back from that run's backups and removes the files it created — only for sends made with backups on. A run's log goes to `history/<id>.log` as it runs. While a run goes on, the run panel draws the last minute of throughput (now, peak, average, a stall), per-group chips ("Unit1 3/5"), and the Windows taskbar button fills with the progress and blinks when a send finishes in the background.
+- **Geçmiş** — the last 300 runs: result per target, errors, log, CSV report, *yeniden gönder* (send again) / *hatalılara yeniden gönder* (send again to the failed ones). A strip at the top shows the last 30 days: sends, data and average pace, failures, a bar per day (red when a send failed; click one to list that day) and the machines that received the most. **Geri al** (undo) brings the files a send replaced or deleted back from that run's backups and removes the files it created — only for sends made with backups on. A run's log goes to `history/<id>.log` as it runs. While a run goes on, the run panel draws the last minute of throughput (now, peak, average, a stall), per-group chips ("Lab-A 3/5"), and the Windows taskbar button fills with the progress and blinks when a send finishes in the background.
 - **Ayarlar** — language (Sistemle eşle / Türkçe / English, following the system by default), theme (Koyu / Açık / Sistemle eşle = dark / light / follow the system; dark by default), accent colour, density; copy defaults (retries, parallelism, **bandwidth limit per target** — the equivalent of the old tool's `/IPG` —, backup folder name); configuration file; right-click menus (Explorer, Notepad++); background and startup; updates (with a link to the release notes); **Tanılama klasörü oluştur…** (create a diagnostics folder: the logs, the configuration, the settings and a summary, no passwords, to share when describing a problem); **Bildirimler** (notifications: a webhook URL that gets a JSON POST and/or a Telegram bot and chat that get a message when a run ends — always on failure, optionally on success — with the failed machines and why; a test button); **arayüz ölçeği** (UI scale 70–175%, also Ctrl + / Ctrl − / Ctrl 0); **Bu sürümdeki yenilikler** (what's new: the changelog section of the version that just started, shown once after an update). The window's size, position and maximized state come back on the next start. If the window ever hits an error it shows the error with *Yeniden yükle* (reload), a diagnostics folder and a copy button instead of going blank.
 
 **Keyboard:** Ctrl K command palette, Ctrl / the list of every shortcut, Ctrl , Settings, Ctrl 1…9 the pages (Overview is 1), Ctrl Enter reviews on the Send page and sends from the review (Shift for a dry run), Esc closes what is open.
@@ -144,7 +144,7 @@ The same applies to an earlier SamSync backup folder after its name was changed.
 - **Profiles:** they become SamSync profiles in the config. A profile whose name already exists is left as it is.
 - **Unknown machines:** machines that are not in the config are skipped and listed.
 
-On computers where the old tool's machine id was pinned with `setx`, set the same value as `SAMSYNC_NODE_ID` (`setx SAMSYNC_NODE_ID Unit1Trainer`) or pick the machine under Targets → *Bu makine* (this machine).
+On computers where the old tool's machine id was pinned with `setx`, set the same value as `SAMSYNC_NODE_ID` (`setx SAMSYNC_NODE_ID LabA-Server`) or pick the machine under Targets → *Bu makine* (this machine).
 
 ## Explorer and Notepad++ menus
 
@@ -181,10 +181,10 @@ On a machine that still has the old tool's menus, remove those with `legacy\Unin
 ## Command line
 
 ```bat
-SamSync.exe "C:\Sim\ActiveRelease\Data\x.entity" "C:\Sim\ActiveRelease\Models"
-SamSync.exe --to group:Unit1,Arsiv "C:\...\Data"
-SamSync.exe --to last --yes "C:\...\Data\x.entity"
-SamSync.exe --quick "DLL → Dozer"
+SamSync.exe "D:\Release\Data\settings.json" "D:\Release\Models"
+SamSync.exe --to group:Lab-A,NAS "C:\...\Data"
+SamSync.exe --to last --yes "C:\...\Data\settings.json"
+SamSync.exe --quick "Release → Lab-A"
 ```
 
 `--quick <name>` runs a **quick send** saved on the Send page (sources, targets and options under a name); the same sends sit in the tray menu and the command palette, and one can get a system-wide shortcut key (e.g. `Ctrl+Alt+1`) that works while the app sits in the tray. A quick send saved with "Önce incele" opens the review instead.
@@ -205,9 +205,9 @@ Shortcuts: `Ctrl+K` command palette, `Ctrl+/` every shortcut, `Ctrl+,` Settings,
 ### Plan and equality check without a window
 
 ```bat
-start /wait SamSync.exe --check-only --to all "C:\Sim\ActiveRelease\Data"
+start /wait SamSync.exe --check-only --to all "D:\Release\Data"
 echo %ERRORLEVEL%
-SamSync.exe --plan-only --to profile:Unit1IG "C:\Sim\ActiveRelease\Data\x.entity" | more
+SamSync.exe --plan-only --to profile:Lab-A-PCs "D:\Release\Data\settings.json" | more
 ```
 
 Both modes use the same settings and config as the app, and they also run while a SamSync window is open. `--to` works as for a send: all targets when it is left out, and `last` and `profile:` bring their per-target settings. The table goes to standard output; the machine, warnings, errors and the summary go to standard error, so the table can be redirected on its own. Column names and state values are ASCII and the same as the old tool's:

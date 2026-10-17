@@ -209,7 +209,7 @@ const d: Dict = {
   Kaydet: 'Save',
   'Profil adı': 'Profile name',
   'Aynı adla kaydetmek mevcut profilin hedeflerini günceller.': 'Saving under the same name updates the targets of the existing profile.',
-  "ör. Unit1 IG'ler": 'e.g. Unit1 IGs',
+  "ör. Lab-A PC'ler": 'e.g. Lab-A PCs',
   'Kayıtlı profiller': 'Saved profiles',
   // per target exceptions in the machine list
   'Hedefe özel ayarları temizle': 'Clear per-target settings',

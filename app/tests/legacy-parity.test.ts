@@ -136,18 +136,18 @@ describe('older backup folders at a target root', () => {
 describe('per target backup / newer only / mirror', () => {
   it('keeps only real exceptions and finds them without case', () => {
     const o = { ...defaultOptions, mode: 'overwrite' as const, backup: false };
-    let per = setOverride(o, 'IG1', { mode: 'mirror', backup: true });
-    expect(per).toEqual({ IG1: { mode: 'mirror', backup: true } });
+    let per = setOverride(o, 'PC1', { mode: 'mirror', backup: true });
+    expect(per).toEqual({ PC1: { mode: 'mirror', backup: true } });
     // the general value is not an exception
-    per = setOverride({ ...o, perTarget: per }, 'ig1', { backup: false });
-    expect(per).toEqual({ ig1: { mode: 'mirror' } });
-    expect(overrideFor(per, 'IG1')).toEqual({ mode: 'mirror' });
-    expect(setOverride({ ...o, perTarget: per }, 'IG1', { mode: 'overwrite' })).toEqual({});
-    expect(setOverride({ ...o, perTarget: { IG1: { backup: true }, IG2: { mode: 'update' } } }, 'IG1', null)).toEqual({ IG2: { mode: 'update' } });
-    expect(targetOptions({ ...o, perTarget: { IG2: { mode: 'update', backup: true } } }, 'ig2')).toMatchObject({ mode: 'update', backup: true });
-    expect(targetOptions(o, 'IG3')).toBe(o);
-    expect(pickOverrides({ IG1: { backup: true }, IG2: { mode: 'update' } }, ['ig2'])).toEqual({ IG2: { mode: 'update' } });
-    expect(withoutMirror({ IG1: { mode: 'mirror' }, IG2: { mode: 'mirror', backup: true }, IG3: { mode: 'update' } })).toEqual({ IG2: { backup: true }, IG3: { mode: 'update' } });
+    per = setOverride({ ...o, perTarget: per }, 'pc1', { backup: false });
+    expect(per).toEqual({ pc1: { mode: 'mirror' } });
+    expect(overrideFor(per, 'PC1')).toEqual({ mode: 'mirror' });
+    expect(setOverride({ ...o, perTarget: per }, 'PC1', { mode: 'overwrite' })).toEqual({});
+    expect(setOverride({ ...o, perTarget: { PC1: { backup: true }, PC2: { mode: 'update' } } }, 'PC1', null)).toEqual({ PC2: { mode: 'update' } });
+    expect(targetOptions({ ...o, perTarget: { PC2: { mode: 'update', backup: true } } }, 'pc2')).toMatchObject({ mode: 'update', backup: true });
+    expect(targetOptions(o, 'PC3')).toBe(o);
+    expect(pickOverrides({ PC1: { backup: true }, PC2: { mode: 'update' } }, ['pc2'])).toEqual({ PC2: { mode: 'update' } });
+    expect(withoutMirror({ PC1: { mode: 'mirror' }, PC2: { mode: 'mirror', backup: true }, PC3: { mode: 'update' } })).toEqual({ PC2: { backup: true }, PC3: { mode: 'update' } });
   });
 
   it('plans and runs each target with its own mode and backup', async () => {
@@ -257,8 +257,8 @@ describe('--plan-only and --check-only', () => {
     const local = { ...me, localRoots: [src] };
     const ctx = makeCtx(
       {
-        nodes: [local, pathNode('IG1', path.join(t1, 'nope'), { group: 'U1' }), pathNode('IG2', t2, { group: 'U1' })],
-        profiles: [{ id: 'p', name: 'Dene', targetIds: ['IG1', 'IG2'], options: { mode: 'update', perTarget: { IG2: { mode: 'mirror', backup: true } } } }],
+        nodes: [local, pathNode('PC1', path.join(t1, 'nope'), { group: 'U1' }), pathNode('PC2', t2, { group: 'U1' })],
+        profiles: [{ id: 'p', name: 'Dene', targetIds: ['PC1', 'PC2'], options: { mode: 'update', perTarget: { PC2: { mode: 'mirror', backup: true } } } }],
       },
       [src],
       data,
@@ -269,8 +269,8 @@ describe('--plan-only and --check-only', () => {
     expect(code).toBe(0);
     const rows = rowsOf(r.out);
     expect(rows.map((x) => [x[3], x[4], x[5] ?? ''])).toEqual([
-      ['IG1', path.join(t1, 'nope', 'Data', 'x.entity'), 'OnlyNewer'],
-      ['IG2', path.join(t2, 'Data', 'x.entity'), 'Backup,Mirror'],
+      ['PC1', path.join(t1, 'nope', 'Data', 'x.entity'), 'OnlyNewer'],
+      ['PC2', path.join(t2, 'Data', 'x.entity'), 'Backup,Mirror'],
     ]);
     expect(rows[0][1]).toBe(src);
     expect(fs.existsSync(path.join(t2, 'Data'))).toBe(false);
@@ -314,7 +314,7 @@ describe('--plan-only and --check-only', () => {
 });
 
 describe('importing the old wizard state', () => {
-  const nodes = [pathNode('Me', '/x'), pathNode('IG1', '/1', { group: 'U1' }), pathNode('IG2', '/2', { group: 'U1' }), pathNode('IG3', '/3'), pathNode('Trainer', '/t')];
+  const nodes = [pathNode('Me', '/x'), pathNode('PC1', '/1', { group: 'U1' }), pathNode('PC2', '/2', { group: 'U1' }), pathNode('PC3', '/3'), pathNode('Server', '/t')];
   const cfgPath = 'C:\\Tools\\Old\\config.json';
   // the shape the PowerShell wizard wrote (ConvertTo-Json of its settings, keyed by the lower case config path)
   const state: WizardState & { version: number } = {
@@ -324,14 +324,14 @@ describe('importing the old wizard state', () => {
       [cfgPath.toLowerCase()]: {
         global: { dryRun: true, fastCopy: false, excludeFiles: '*.pdb; *.tmp', excludeDirectories: 'Logs', notify: false, parallelTargets: 6, throttleMilliseconds: 0, retryCount: -1, waitSeconds: -1 },
         targets: {
-          ig1: { selected: true, backup: true, onlyNewer: false, mirror: false },
-          IG2: { selected: true, backup: true, onlyNewer: false, mirror: true },
-          IG3: { selected: false, backup: false, onlyNewer: true, mirror: false },
-          Trainer: { selected: true, backup: true, onlyNewer: false, mirror: false },
+          pc1: { selected: true, backup: true, onlyNewer: false, mirror: false },
+          PC2: { selected: true, backup: true, onlyNewer: false, mirror: true },
+          PC3: { selected: false, backup: false, onlyNewer: true, mirror: false },
+          Server: { selected: true, backup: true, onlyNewer: false, mirror: false },
           Gone: { selected: true, backup: false, onlyNewer: false, mirror: false },
         },
         profiles: {
-          Unit1IG: { global: {}, targets: { IG1: { selected: true, onlyNewer: true }, IG2: { selected: true, onlyNewer: true }, IG3: { selected: false } } },
+          Lab1PC: { global: {}, targets: { PC1: { selected: true, onlyNewer: true }, PC2: { selected: true, onlyNewer: true }, PC3: { selected: false } } },
         },
       },
     },
@@ -341,20 +341,20 @@ describe('importing the old wizard state', () => {
     const cfg = { ...emptyConfig(), nodes };
     const c = convertWizardState(state, cfg, cfgPath)!;
     expect(c.configKey).toBe(cfgPath.toLowerCase());
-    expect(c.lastTargets).toEqual(['IG1', 'IG2', 'Trainer']);
+    expect(c.lastTargets).toEqual(['PC1', 'PC2', 'Server']);
     expect(c.unknownTargets).toEqual(['Gone']);
-    expect(c.lastOptions).toMatchObject({ mode: 'overwrite', backup: true, notify: false, parallelTargets: 6, perTarget: { IG2: { mode: 'mirror' }, IG3: { mode: 'update', backup: false } } });
+    expect(c.lastOptions).toMatchObject({ mode: 'overwrite', backup: true, notify: false, parallelTargets: 6, perTarget: { PC2: { mode: 'mirror' }, PC3: { mode: 'update', backup: false } } });
     // the wizard's lists come on top of the config's defaults
     expect(c.lastOptions.excludeFiles).toEqual(['*.pdb', '*.tmp']);
     expect(c.lastOptions.excludeDirs).toEqual([...cfg.copy.excludeDirs, 'Logs']);
     expect(c.lastOptions).not.toHaveProperty('dryRun');
     // every machine ends up with exactly the columns it had in the wizard
-    const columns = { IG1: [true, 'overwrite'], IG2: [true, 'mirror'], IG3: [false, 'update'], Trainer: [true, 'overwrite'] };
+    const columns = { PC1: [true, 'overwrite'], PC2: [true, 'mirror'], PC3: [false, 'update'], Server: [true, 'overwrite'] };
     for (const [id, want] of Object.entries(columns)) {
       const eff = targetOptions({ ...defaultOptions, ...c.lastOptions } as SendOptions, id);
       expect([eff.backup, eff.mode]).toEqual(want);
     }
-    expect(c.profiles).toEqual([{ id: 'Unit1IG', name: 'Unit1IG', targetIds: ['IG1', 'IG2'], options: { mode: 'update', backup: false, perTarget: {} } }]);
+    expect(c.profiles).toEqual([{ id: 'Lab1PC', name: 'Lab1PC', targetIds: ['PC1', 'PC2'], options: { mode: 'update', backup: false, perTarget: {} } }]);
   });
 
   it('picks the entry that knows this config\'s machines when the folder has moved', () => {
@@ -377,25 +377,25 @@ describe('importing the old wizard state', () => {
     const ud = path.join(base, 'ud');
     const cfgFile = path.join(base, 'config.json');
     await fsp.mkdir(ud, { recursive: true });
-    await fsp.writeFile(cfgFile, JSON.stringify({ schema: 2, nodes, profiles: [{ id: 'unit1ig', name: 'unit1IG', targetIds: ['IG3'] }] }));
+    await fsp.writeFile(cfgFile, JSON.stringify({ schema: 2, nodes, profiles: [{ id: 'lab1ig', name: 'lab1PC', targetIds: ['PC3'] }] }));
     await fsp.writeFile(path.join(ud, 'settings.json'), JSON.stringify({ configPath: cfgFile, localNodeId: 'Me' }));
     const file = path.join(base, 'wizard-state.json');
-    await fsp.writeFile(file, JSON.stringify({ ...state, configs: { ...state.configs, [cfgFile.toLowerCase()]: { ...state.configs[cfgPath.toLowerCase()], profiles: { ...state.configs[cfgPath.toLowerCase()].profiles, Egitmenler: { targets: { Trainer: { selected: true, backup: true } } } } } } }));
+    await fsp.writeFile(file, JSON.stringify({ ...state, configs: { ...state.configs, [cfgFile.toLowerCase()]: { ...state.configs[cfgPath.toLowerCase()], profiles: { ...state.configs[cfgPath.toLowerCase()].profiles, Sunucular: { targets: { Server: { selected: true, backup: true } } } } } } }));
     const svc = new Service({ isElectron: false, appVersion: 'test', userDataPath: ud, initialPaths: [], emit: () => undefined });
     await svc.init();
     try {
       const r = await svc.importWizardState(file);
       expect(r.configKey).toBe(cfgFile.toLowerCase());
-      expect(r.profilesAdded).toEqual(['Egitmenler']);
-      expect(r.profilesSkipped).toEqual(['Unit1IG']);
-      expect(r.settings.lastTargets).toEqual(['IG1', 'IG2', 'Trainer']);
-      expect(r.settings.lastOptions?.perTarget).toEqual({ IG2: { mode: 'mirror' }, IG3: { mode: 'update', backup: false } });
+      expect(r.profilesAdded).toEqual(['Sunucular']);
+      expect(r.profilesSkipped).toEqual(['Lab1PC']);
+      expect(r.settings.lastTargets).toEqual(['PC1', 'PC2', 'Server']);
+      expect(r.settings.lastOptions?.perTarget).toEqual({ PC2: { mode: 'mirror' }, PC3: { mode: 'update', backup: false } });
       expect(r.settings.wizardImport?.file).toBe(file);
       const saved = JSON.parse(await fsp.readFile(cfgFile, 'utf8'));
-      expect(saved.profiles.map((p: { name: string }) => p.name)).toEqual(['unit1IG', 'Egitmenler']);
-      expect(saved.profiles[1]).toMatchObject({ targetIds: ['Trainer'], options: { backup: true } });
+      expect(saved.profiles.map((p: { name: string }) => p.name)).toEqual(['lab1PC', 'Sunucular']);
+      expect(saved.profiles[1]).toMatchObject({ targetIds: ['Server'], options: { backup: true } });
       const settings = JSON.parse(await fsp.readFile(path.join(ud, 'settings.json'), 'utf8'));
-      expect(settings.lastTargets).toEqual(['IG1', 'IG2', 'Trainer']);
+      expect(settings.lastTargets).toEqual(['PC1', 'PC2', 'Server']);
       await fsp.writeFile(path.join(base, 'not-it.json'), '{"nodes": []}');
       await expect(svc.importWizardState(path.join(base, 'not-it.json'))).rejects.toThrow(/wizard|sihirbaz/);
     } finally {

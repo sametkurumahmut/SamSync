@@ -31,7 +31,7 @@ function sendRaw(name: string, data: Buffer): Promise<string> {
 
 describe('launch pipe', () => {
   it('frames and parses a message', () => {
-    const m = { cwd: 'C:\\Users\\x', args: ['--send', '--to', 'IG1,IG2', 'C:\\Dsim\\Çalışma\\a.dll'] };
+    const m = { cwd: 'C:\\Users\\x', args: ['--send', '--to', 'PC1,PC2', 'C:\\Release\\Çalışma\\a.dll'] };
     const framed = frameLaunchMessage(m);
     expect(framed.readUInt32LE(0)).toBe(framed.length - 4);
     expect(parseLaunchMessage(framed.subarray(4))).toEqual(m);
@@ -74,20 +74,27 @@ describe('launch pipe', () => {
 
   it('resolves relative paths of a pipe launch against the sender’s folder', () => {
     const cwd = path.resolve(__dirname);
-    const l = parseLaunch(['--send', '--to', 'IG1', '--yes', path.basename(__filename)], undefined, cwd);
+    const l = parseLaunch(['--send', '--to', 'PC1', '--yes', path.basename(__filename)], undefined, cwd);
     expect(l.paths).toEqual([path.join(cwd, path.basename(__filename))]);
-    expect(l.targets).toEqual(['IG1']);
+    expect(l.targets).toEqual(['PC1']);
     expect(l.send).toBe(true);
   });
 
-  it.skipIf(!win || !fs.existsSync(launcherExe))('the compiled SamSyncSend.exe hands its command line over (needs out/launcher)', async () => {
-    // the program looks for the pipe of the current user
-    const p = await listen(pipeName());
+  it.skipIf(!win || !fs.existsSync(launcherExe))('the compiled SamSyncSend.exe hands its command line over (needs out/launcher)', async (ctx) => {
+    // the program looks for the pipe of the current user: while a SamSync runs on this computer it holds that
+    // pipe, and the launcher would hand the test's command line to it instead; nothing to test then
+    let p: Awaited<ReturnType<typeof listen>>;
+    try {
+      p = await listen(pipeName());
+    } catch (e) {
+      ctx.skip(`another SamSync holds the launch pipe (${(e as Error).message})`);
+      return;
+    }
     try {
       const file = path.join(__dirname, 'helpers.ts');
-      await new Promise<void>((resolve, reject) => execFile(launcherExe, ['--send', '--to', 'group:Dozer', file], { cwd: __dirname }, (e) => (e ? reject(e) : resolve())));
+      await new Promise<void>((resolve, reject) => execFile(launcherExe, ['--send', '--to', 'group:Lab-A', file], { cwd: __dirname }, (e) => (e ? reject(e) : resolve())));
       const m = await p.next;
-      expect(m.args).toEqual(['--send', '--to', 'group:Dozer', file]);
+      expect(m.args).toEqual(['--send', '--to', 'group:Lab-A', file]);
       expect(m.cwd.toLowerCase()).toBe(__dirname.toLowerCase());
     } finally {
       p.close();

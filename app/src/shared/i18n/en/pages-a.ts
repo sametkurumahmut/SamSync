@@ -327,7 +327,7 @@ const d: Dict = {
   'Bu listeyi kaydet': 'Save this list',
   'Hızlı gönderim kaydet': 'Save a quick send',
   'Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür': 'Shown under this name in the tray, the command palette and on the command line (--quick "name")',
-  'DLL → Dozer': 'DLL → Dozer',
+  'Sürüm → Lab-A': 'Release → Lab-A',
   'Önce incele': 'Review first',
   'Kapalıyken plan hesaplanır hesaplanmaz gönderilir; hedefte silme olacaksa yine inceleme açılır': 'When off, the send starts as soon as the plan is ready; a plan that would delete on a target still opens the review',
   'Hızlı gönderim kaydedildi': 'Quick send saved',

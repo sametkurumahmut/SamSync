@@ -1,6 +1,6 @@
 // The review as a folder tree: the operations grouped by folder, with counts per folder, folded and
 // unfolded by the user. A chain of folders with one child and nothing of their own is shown as one
-// node ("SimFrameworkModels/ModelHeavyIndustry"), as code editors do.
+// node ("Models/Vehicle"), as code editors do.
 // a relative path, not the @shared alias: the tests compile this file with the node config too
 import type { PlanOp } from '../../../shared/types';
 

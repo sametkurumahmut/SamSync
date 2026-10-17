@@ -1,6 +1,6 @@
 // The entries of the right-click menus (Explorer and Notepad++), built from the machine list. Pure: no Electron,
 // no registry, so the tests can run it anywhere. The ids are the ones the PowerShell tool used, so a shared
-// config.json keeps its notepadPlusPlusShortcuts keys ("wizard:last", "group:Unit1", node ids).
+// config.json keeps its notepadPlusPlusShortcuts keys ("wizard:last", "group:Lab-A", node ids).
 import type { AppConfig } from './types';
 import { t } from './i18n';
 

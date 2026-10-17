@@ -11,15 +11,15 @@ const run = (over: Partial<RunDetail> = {}): RunDetail => ({
   status: 'partial',
   dryRun: false,
   targets: [
-    { key: 'IG1', title: 'IG1', root: '', total: 10, done: 10, failed: 0, bytesTotal: 100, bytesDone: 100, status: 'ok' },
-    { key: 'IG3', title: 'IG3', root: '', total: 10, done: 10, failed: 10, bytesTotal: 100, bytesDone: 0, status: 'failed', error: 'erişilemedi' },
+    { key: 'PC1', title: 'PC1', root: '', total: 10, done: 10, failed: 0, bytesTotal: 100, bytesDone: 100, status: 'ok' },
+    { key: 'PC3', title: 'PC3', root: '', total: 10, done: 10, failed: 10, bytesTotal: 100, bytesDone: 0, status: 'failed', error: 'erişilemedi' },
   ],
   opsTotal: 20,
   opsOk: 10,
   opsFailed: 10,
   bytes: 7_100_000_000,
   sources: ['D:\\Release'],
-  targetIds: ['IG1', 'IG3'],
+  targetIds: ['PC1', 'PC3'],
   results: [],
   log: [],
   ...over,
@@ -29,10 +29,10 @@ describe('run notifications', () => {
   it('writes one line of the result and the failed machines', () => {
     const m = runMessage(run(), { host: 'LAPTOP', version: '2.0.4' });
     expect(m.text.split('\n')[0]).toMatch(/^△ Sürüm 3\.4 — 1\/2 .* 10 .* 10 .* 2 sa 5 dk$/);
-    expect(m.text).toContain('• IG3: erişilemedi');
+    expect(m.text).toContain('• PC3: erişilemedi');
     expect(m.text).toContain('LAPTOP, SamSync 2.0.4');
     expect(m.payload.status).toBe('partial');
-    expect((m.payload.targets as { id: string }[]).map((x) => x.id)).toEqual(['IG1', 'IG3']);
+    expect((m.payload.targets as { id: string }[]).map((x) => x.id)).toEqual(['PC1', 'PC3']);
   });
 
   it('goes out only for the outcomes the settings ask for, and never for a dry run', () => {

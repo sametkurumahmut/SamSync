@@ -13,7 +13,7 @@ export interface SftpConfig {
   useAgent?: boolean;
   /** Has a password been saved (encrypted, local only) for this node? */
   hasPassword?: boolean;
-  /** Absolute remote root, e.g. /srv/sim/ActiveRelease */
+  /** Absolute remote root, e.g. /srv/release */
   root: string;
 }
 
@@ -24,7 +24,7 @@ export interface NodeConfig {
   address: string;
   localNames?: string[];
   localRoots: string[];
-  /** Share relative root: "Sim\\ActiveRelease" -> \\address\Sim\ActiveRelease */
+  /** Share relative root: "Share\\Release" -> \\address\Share\Release */
   networkRoot: string;
   enabled: boolean;
   transport?: TransportKind;
@@ -429,7 +429,7 @@ export interface Bootstrap {
   settings: LocalSettings;
   identity: LocalIdentity;
   initialPaths: string[];
-  /** --to group:Unit1,IG2 on the command line: preselect targets and open the review. */
+  /** --to group:Lab-A,PC2 on the command line: preselect targets and open the review. */
   initialTargets: string[];
   userDataPath: string;
   isElectron: boolean;

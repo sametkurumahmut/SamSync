@@ -26,7 +26,7 @@ describe('mapToRel', () => {
     expect(mapToRel('C:\\data2\\x.txt', ['C:\\data']).outside).toBe(true);
   });
   it('joins rel paths onto Windows and POSIX roots', () => {
-    expect(joinRoot('\\\\10.0.0.1\\Sim\\ActiveRelease', 'Data/x.entity')).toBe('\\\\10.0.0.1\\Sim\\ActiveRelease\\Data\\x.entity');
+    expect(joinRoot('\\\\10.0.0.1\\Share\\Release', 'Data/x.entity')).toBe('\\\\10.0.0.1\\Share\\Release\\Data\\x.entity');
     expect(joinRoot('/mnt/x/', 'a/b')).toBe('/mnt/x/a/b');
     expect(relIsWithin('Data/x', 'data', true)).toBe(true);
     expect(relIsWithin('Database/x', 'Data', true)).toBe(false);
@@ -66,8 +66,8 @@ describe('config', () => {
     notepadPlusPlusShortcuts: { 'wizard:last': 'Ctrl+Alt+W' },
     nodes: [
       { id: 'Root', name: 'Root', address: '10.0.0.5', localNames: ['MSI'], localRoots: ['C:\\E\\a', 'C:\\E\\b'], networkRoot: 'proje', enabled: true },
-      { id: 'IG1', group: 'U1', name: 'IG1', address: '10.0.0.11', localRoot: 'C:\\Sim\\ActiveRelease', networkRoot: 'Sim\\ActiveRelease', enabled: true },
-      { id: 'IG2', group: 'U1', name: 'IG2', address: '10.0.0.12', localRoot: 'C:\\Sim\\ActiveRelease', networkRoot: 'Sim\\ActiveRelease', enabled: false },
+      { id: 'PC1', group: 'U1', name: 'PC1', address: '10.0.0.11', localRoot: 'C:\\Share\\Release', networkRoot: 'Share\\Release', enabled: true },
+      { id: 'PC2', group: 'U1', name: 'PC2', address: '10.0.0.12', localRoot: 'C:\\Share\\Release', networkRoot: 'Share\\Release', enabled: false },
     ],
     copy: { retryCount: 2, waitSeconds: 1, backupKeep: 3 },
   };
@@ -75,7 +75,7 @@ describe('config', () => {
   it('reads the PowerShell config format', () => {
     const c = normalizeConfig(legacy);
     expect(c.nodes).toHaveLength(3);
-    expect(c.nodes[1].localRoots).toEqual(['C:\\Sim\\ActiveRelease']);
+    expect(c.nodes[1].localRoots).toEqual(['C:\\Share\\Release']);
     expect(c.nodes[1].group).toBe('U1');
     expect(c.copy.backupKeep).toBe(3);
     expect(c.copy.parallelTargets).toBe(DEFAULT_COPY.parallelTargets);
@@ -99,33 +99,33 @@ describe('config', () => {
     expect(raw.schema).toBe(2);
     expect(raw.nodes[0].name).toBe('Renamed');
     expect(raw.nodes[1].localRoot).toBeUndefined();
-    expect(raw.nodes[1].localRoots).toEqual(['C:\\Sim\\ActiveRelease']);
+    expect(raw.nodes[1].localRoots).toEqual(['C:\\Share\\Release']);
     expect((await loadConfig(file)).nodes).toHaveLength(3);
   });
 
   it('expands groups, profiles and all, without the local node and disabled ones', () => {
-    const c = normalizeConfig({ ...legacy, profiles: [{ name: 'p1', targetIds: ['IG1', 'Root'] }] });
-    expect(expandTargetIds(c, ['all'], 'Root').map((n) => n.id)).toEqual(['IG1']);
-    expect(expandTargetIds(c, ['group:u1']).map((n) => n.id)).toEqual(['IG1']);
-    expect(expandTargetIds(c, ['profile:p1'], 'Root').map((n) => n.id)).toEqual(['IG1']);
+    const c = normalizeConfig({ ...legacy, profiles: [{ name: 'p1', targetIds: ['PC1', 'Root'] }] });
+    expect(expandTargetIds(c, ['all'], 'Root').map((n) => n.id)).toEqual(['PC1']);
+    expect(expandTargetIds(c, ['group:u1']).map((n) => n.id)).toEqual(['PC1']);
+    expect(expandTargetIds(c, ['profile:p1'], 'Root').map((n) => n.id)).toEqual(['PC1']);
   });
 
   it('builds SMB roots per platform', () => {
     const c = normalizeConfig(legacy);
-    expect(smbRoot(c, c.nodes[1], 'win32')).toBe('\\\\10.0.0.11\\Sim\\ActiveRelease');
-    expect(smbRoot(c, c.nodes[1], 'darwin')).toBe('/Volumes/Sim/ActiveRelease');
-    expect(smbRoot(c, c.nodes[1], 'linux')).toBe('/mnt/10.0.0.11/Sim/ActiveRelease');
+    expect(smbRoot(c, c.nodes[1], 'win32')).toBe('\\\\10.0.0.11\\Share\\Release');
+    expect(smbRoot(c, c.nodes[1], 'darwin')).toBe('/Volumes/Share/Release');
+    expect(smbRoot(c, c.nodes[1], 'linux')).toBe('/mnt/10.0.0.11/Share/Release');
   });
 
   it('identifies this machine by override, env and name', () => {
     const c = normalizeConfig(legacy);
-    expect(detectIdentity(c, 'IG1').node?.id).toBe('IG1');
+    expect(detectIdentity(c, 'PC1').node?.id).toBe('PC1');
     expect(detectIdentity(c, undefined, { SAMSYNC_NODE_ID: 'root' }).node?.id).toBe('Root');
   });
 
   it('rejects group names a command line could not carry, like the PowerShell tool', () => {
     expect(() => normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: 'Unit 1' }] })).toThrow(/group/);
-    expect(() => normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: 'U1/IG' }] })).toThrow(/group/);
+    expect(() => normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: 'U1/PC' }] })).toThrow(/group/);
     expect(normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: '  Unit-1.a_b  ' }] }).nodes[0].group).toBe('Unit-1.a_b');
     expect(normalizeConfig({ nodes: [{ ...legacy.nodes[1], group: '  ' }] }).nodes[0].group).toBeUndefined();
   });

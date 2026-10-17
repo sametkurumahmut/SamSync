@@ -26,8 +26,8 @@ function fleet(): AppConfig {
   const cfg = emptyConfig();
   cfg.nodes = [
     node('Root'),
-    ...['Trainer', 'IG1', 'IG2', 'IG3', 'IG4'].map((x) => node(`Delta${x}`, 'Delta')),
-    ...[1, 2, 3].flatMap((u) => ['Trainer', 'IG1', 'IG2', 'IG3'].map((x) => node(`Unit${u}${x}`, `Unit${u}`))),
+    ...['Server', 'PC1', 'PC2', 'PC3', 'PC4'].map((x) => node(`Delta${x}`, 'Delta')),
+    ...[1, 2, 3].flatMap((u) => ['Server', 'PC1', 'PC2', 'PC3'].map((x) => node(`Lab${u}${x}`, `Lab${u}`))),
     node('Old', undefined, { enabled: false }),
   ];
   return cfg;
@@ -37,10 +37,10 @@ describe('menu entries', () => {
   it('lists aggregates, profiles, groups with their machines and the rest, without this machine or disabled ones', () => {
     const cfg = fleet();
     cfg.profiles = [{ id: 'Gece', name: 'Gece', targetIds: ['Root'] }];
-    const ids = menuEntries(cfg, 'Unit2IG1').map((e) => e.id);
+    const ids = menuEntries(cfg, 'Lab2PC1').map((e) => e.id);
     expect(ids.slice(0, 6)).toEqual(['all', 'wizard', 'wizard:last', 'restore', 'profile:Gece', 'group:Delta']);
-    expect(ids).toContain('Unit2Trainer');
-    expect(ids).not.toContain('Unit2IG1');
+    expect(ids).toContain('Lab2Server');
+    expect(ids).not.toContain('Lab2PC1');
     expect(ids).not.toContain('Old');
     expect(ids[ids.length - 1]).toBe('Root');
   });
@@ -59,17 +59,17 @@ describe('menu entries', () => {
 describe('Explorer menu plan (16 items)', () => {
   it('collapses every group on a machine outside the groups when expanding them would not fit', () => {
     const p = explorerPlan(menuEntries(fleet(), 'Root'));
-    expect(p.items.map((i) => i.entry.id)).toEqual(['all', 'wizard', 'wizard:last', 'restore', 'group:Delta', 'group:Unit1', 'group:Unit2', 'group:Unit3']);
+    expect(p.items.map((i) => i.entry.id)).toEqual(['all', 'wizard', 'wizard:last', 'restore', 'group:Delta', 'group:Lab1', 'group:Lab2', 'group:Lab3']);
     expect(p.expanded).toEqual([]);
     expect(p.items.map((i) => i.separatorBefore)).toEqual([false, true, false, true, true, false, false, false]);
   });
 
   it("expands this machine's own group first and keeps the others collapsed", () => {
-    const p = explorerPlan(menuEntries(fleet(), 'Unit2Trainer'), { localGroup: 'Unit2' });
-    expect(p.expanded).toEqual(['Unit2']);
-    const u2 = p.items.find((i) => i.entry.id === 'group:Unit2')!;
-    expect(u2.children!.map((c) => c.id)).toEqual(['group:Unit2', 'Unit2IG1', 'Unit2IG2', 'Unit2IG3']);
-    expect(u2.children![0].label).toBe('Unit2 - Tümü');
+    const p = explorerPlan(menuEntries(fleet(), 'Lab2Server'), { localGroup: 'Lab2' });
+    expect(p.expanded).toEqual(['Lab2']);
+    const u2 = p.items.find((i) => i.entry.id === 'group:Lab2')!;
+    expect(u2.children!.map((c) => c.id)).toEqual(['group:Lab2', 'Lab2PC1', 'Lab2PC2', 'Lab2PC3']);
+    expect(u2.children![0].label).toBe('Lab2 - Tümü');
     expect(p.items[p.items.length - 1].entry.id).toBe('Root');
     expect(p.overBudget).toBe(false);
   });
@@ -85,14 +85,14 @@ describe('Explorer menu plan (16 items)', () => {
   });
 
   it('writes the cascade as .reg text with separators, icons on aggregates and quoted commands', () => {
-    const plan = explorerPlan(menuEntries(fleet(), 'Unit2Trainer'), { localGroup: 'Unit2' });
+    const plan = explorerPlan(menuEntries(fleet(), 'Lab2Server'), { localGroup: 'Lab2' });
     const body = explorerRegBody({ title: 'SamSync', plan, launcher: '"C:\\Apps\\SamSync\\SamSync.exe"', icon: '"C:\\Apps\\SamSync\\SamSync.exe",0' });
     expect(body).toContain(`[${EXPLORER_ROOT}]\r\n"MUIVerb"="SamSync"`);
     expect(body).toContain(`[${EXPLORER_ROOT}\\shell\\000_all]\r\n"MUIVerb"="Tümüne gönder"\r\n"Icon"="\\"C:\\\\Apps\\\\SamSync\\\\SamSync.exe\\",0"\r\n"MultiSelectModel"="Player"`);
     expect(body).toContain(`[${EXPLORER_ROOT}\\shell\\000_all\\command]\r\n@="\\"C:\\\\Apps\\\\SamSync\\\\SamSync.exe\\" --send --to all --yes \\"%1\\""`);
     expect(body).toMatch(/\\shell\\010_wizard\]\r\n[^[]*"CommandFlags"=dword:00000020/);
-    expect(body).toMatch(/\\shell\\060_group_Unit2\]\r\n[^[]*"SubCommands"=""/);
-    expect(body).toContain('\\shell\\060_group_Unit2\\shell\\010_Unit2IG1\\command]');
+    expect(body).toMatch(/\\shell\\060_group_Lab2\]\r\n[^[]*"SubCommands"=""/);
+    expect(body).toContain('\\shell\\060_group_Lab2\\shell\\010_Lab2PC1\\command]');
     const file = explorerRegFile({ title: 'SamSync', plan, launcher: '"x.exe"', icon: 'x.exe' });
     expect(file.text.startsWith('Windows Registry Editor Version 5.00\r\n\r\n[-HKEY_CURRENT_USER')).toBe(true);
     expect(file.text).toContain(`"SamSyncMenu"="${file.hash}"`);
@@ -162,9 +162,9 @@ describe('Notepad++ files', () => {
     const plan = nppPlan(menuEntries(fleet(), 'Root'), launcher, {}, null);
     const xml = updateTabMenuXml(DEFAULT_TAB_MENU_XML, 'SamSync', plan.tabItems);
     expect(xml).toContain('<Item FolderName="SamSync" MenuEntryName="Run" MenuItemName="[SamSync] all" ItemNameAs="Tümüne gönder" />');
-    // all | review + last | restore | Delta | Unit1 | Unit2 | Unit3
+    // all | review + last | restore | Delta | Lab1 | Lab2 | Lab3
     expect(xml.match(/FolderName="SamSync" id="0"/g)).toHaveLength(6);
-    expect(xml).toContain('ItemNameAs="DeltaIG1 adı"');
+    expect(xml).toContain('ItemNameAs="DeltaPC1 adı"');
     expect(updateTabMenuXml(xml, 'SamSync', plan.tabItems)).toBe(xml);
     expect(updateTabMenuXml(xml, 'SamSync', [])).toBe(DEFAULT_TAB_MENU_XML);
   });

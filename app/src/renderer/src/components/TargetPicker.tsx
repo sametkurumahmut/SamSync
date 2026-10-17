@@ -243,7 +243,7 @@ function SaveProfileModal({ profiles, onClose, onSave, onDelete }: { profiles: P
       }
     >
       <Field label={t('Profil adı')} help={t('Aynı adla kaydetmek mevcut profilin hedeflerini günceller.')}>
-        <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("ör. Unit1 IG'ler")} onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())} />
+        <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("ör. Lab-A PC'ler")} onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())} />
       </Field>
       {profiles.length > 0 && (
         <>

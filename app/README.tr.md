@@ -41,7 +41,7 @@ Yapılandırma yoksa karşılama ekranı üç yol sunar:
 
 Uygulama çalıştığı makineyi eski araçla aynı kurallarla tanır: `SAMSYNC_NODE_ID` ortam değişkeni, IP adresi, bilgisayar adı (`address` / `localNames`; yalın ad ya da etki alanında `<ad>.<USERDNSDOMAIN>`), birden çok eşleşmede yerel kökün varlığı. Hedefler sayfasından makine elle de sabitlenebilir.
 
-Node kimlikleri ve grup adları yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir (`Unit1`; boşluk yok). Çünkü komut satırlarında ve menülerde makine kimliği ve `group:<ad>` olarak kullanılırlar. Eski araçtaki gibi, bu kurala uymayan bir yapılandırma yüklenmez.
+Node kimlikleri ve grup adları yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir (`Lab-A`; boşluk yok). Çünkü komut satırlarında ve menülerde makine kimliği ve `group:<ad>` olarak kullanılırlar. Eski araçtaki gibi, bu kurala uymayan bir yapılandırma yüklenmez.
 
 ## Sayfalar
 
@@ -62,7 +62,7 @@ Gönderimden sonra hedefin kökünde `samsync-manifest.json` da durur: gönderil
 
 Seçenekler: kip (Üzerine yaz / Yalnızca yeni / Ayna), karşılaştırma (tarih+boyut / içerik / boyut), **yedek al** (eski hâller hedefte yedek klasörüne `<tarih>` altında taşınır), doğrulama (içerik özeti), hariç dosya/klasör kalıpları, eşzamanlı hedef sayısı, deneme çalıştırması, bitince bildirim, kopyalama sonrası komut.
 
-**Hedefe özel ayar** (eski sihirbazın *Yedek al* / *Yalnızca yeni* / *Ayna* sütunları): makine satırının sonundaki ayar düğmesi o makineye kendi kipini ve yedeğini verir. Örneğin eğitmen yedekli aynalanırken IG'ler yalnızca yeni dosyaları alabilir.
+**Hedefe özel ayar** (eski sihirbazın *Yedek al* / *Yalnızca yeni* / *Ayna* sütunları): makine satırının sonundaki ayar düğmesi o makineye kendi kipini ve yedeğini verir. Örneğin bir salonun sunucusu yedekli aynalanırken öteki makineler yalnızca yeni dosyaları alabilir.
 - Satır istisnayı rozetle gösterir, alt çubuk sayar (*N hedefte özel ayar*), inceleme de her hedef kartında gösterir.
 - **Seç → Hedefe özel ayarları temizle** bütün makineleri genel seçeneklere döndürür.
 - Son gönderimle birlikte saklanır; `--to last` ve *Son ayarla gönder* bunları kullanır. Profil kendi makinelerinin istisnalarını saklar.
@@ -76,7 +76,7 @@ Yazma atomiktir: dosya önce geçici adla yazılır, boyutu (ve istenirse özeti
 ### Karşılaştır
 Gönder sayfasındaki kaynakları hedeflerle **hiçbir şey göndermeden** karşılaştırır. Her hedefin sayılarıyla bir sekmesi olur. Soldaki listede yeni, değişen, hedefte daha yeni ve fazla dosyalar süzgeç ve aramayla görünür; seçtiğiniz dosyanın satır farkı, Git sayfasındaki gibi sağda açılır. **Bu farkları gönder…** her zamanki incelemeyi açar.
 
-**Makine ↔ makine** kipi aynı klasörü iki makinede karşılaştırır: yalnız birinde olanlar, farklı olanlar, hangisinin daha yeni olduğu ve seçilen dosyanın satır farkı — aynı olması gereken simülatörler (IG1 ↔ IG2) için. Hiçbir şey yazılmaz; eşitlemek için Senkron sayfası.
+**Makine ↔ makine** kipi aynı klasörü iki makinede karşılaştırır: yalnız birinde olanlar, farklı olanlar, hangisinin daha yeni olduğu ve seçilen dosyanın satır farkı — aynı olması gereken makineler (A ↔ B) için. Hiçbir şey yazılmaz; eşitlemek için Senkron sayfası.
 
 ### Git
 Depo, yerel köklerden otomatik bulunur (ya da eklenir).
@@ -130,7 +130,7 @@ Uygulama hakkında sorular ve yanıtlar, bir de **yardım botu**. Başlık çubu
   - metni yazdığınız gibi kaydeder, eski aracın alanları korunur;
   - başka bir dosyayı gözden geçirmek için düzenleyiciye yükleyebilir ve bir kopyasını dışa aktarabilir. Bağlantı türleri: Windows paylaşımı (SMB, `\\adres\networkRoot`), klasör/bağlı sürücü, **SFTP** (anahtar, agent ya da işletim sisteminin şifreli deposunda saklanan parola).
 - **Yedekler** — bir öğenin hedeflerdeki yedeklerini bulur, tarih seçip geri yazar (önce şu anki hâli yedekleyerek). Hedef kökündeki eski yedek klasörleri de taranır (aşağıya bakın); onların sürümlerinde klasör adı görünür.
-- **Geçmiş** — son 300 çalıştırma: hedef bazında sonuç, hatalar, günlük, CSV rapor, *yeniden gönder* / *hatalılara yeniden gönder*. Üstteki şerit son 30 günü gösterir: gönderim sayısı, veri ve ortalama hız, hatalılar, gün gün çubuk (hatalı gün kırmızı; tıklayınca o gün listelenir) ve en çok veri alan makineler. **Geri al**, yedek alınarak yapılmış bir gönderimin değiştirdiği ve sildiği dosyaları o çalıştırmanın yedeklerinden geri getirir, eklediklerini siler. Çalıştırma günlüğü çalışırken `history/<id>.log` dosyasına akar. Gönderim sürerken çalıştırma paneli son bir dakikanın hız grafiğini (anlık, tepe, ortalama, duraklama), grup çiplerini ("Unit1 3/5") çizer; Windows görev çubuğundaki düğme ilerlemeyle dolar ve arkada biten gönderimde yanıp söner.
+- **Geçmiş** — son 300 çalıştırma: hedef bazında sonuç, hatalar, günlük, CSV rapor, *yeniden gönder* / *hatalılara yeniden gönder*. Üstteki şerit son 30 günü gösterir: gönderim sayısı, veri ve ortalama hız, hatalılar, gün gün çubuk (hatalı gün kırmızı; tıklayınca o gün listelenir) ve en çok veri alan makineler. **Geri al**, yedek alınarak yapılmış bir gönderimin değiştirdiği ve sildiği dosyaları o çalıştırmanın yedeklerinden geri getirir, eklediklerini siler. Çalıştırma günlüğü çalışırken `history/<id>.log` dosyasına akar. Gönderim sürerken çalıştırma paneli son bir dakikanın hız grafiğini (anlık, tepe, ortalama, duraklama), grup çiplerini ("Lab-A 3/5") çizer; Windows görev çubuğundaki düğme ilerlemeyle dolar ve arkada biten gönderimde yanıp söner.
 - **Ayarlar** — dil (Sistemle eşle / Türkçe / English; varsayılan sistemle eşle), tema (Koyu / Açık / Sistemle eşle; varsayılan koyu), vurgu rengi, yoğunluk; kopyalama varsayılanları (yeniden deneme, eşzamanlılık, **hedef başına bant genişliği sınırı** — eski aracın `/IPG` karşılığı, yedek klasörü adı); yapılandırma dosyası; sağ tık menüleri (Explorer, Notepad++); arka plan ve başlangıç; güncellemeler (sürüm notları bağlantısıyla); **Tanılama klasörü oluştur…** (günlükler, yapılandırma, ayarlar ve bir özet tek klasörde, parolalar hariç; bir sorunu anlatırken paylaşın); **Bildirimler** (gönderim bitince JSON alan bir web kancası ve/veya mesaj alan bir Telegram botu ve sohbeti — hatada her zaman, başarıda isteğe bağlı — başarısız makineler nedenleriyle; sınama düğmesi); **arayüz ölçeği** (%70–175; Ctrl + / Ctrl − / Ctrl 0 ile de); **Bu sürümdeki yenilikler** (güncellemeden sonra bir kez gösterilen sürüm notu). Pencerenin boyutu, yeri ve ekranı kaplama durumu bir sonraki açılışta geri gelir. Arayüz bir hata verirse boş pencere yerine hatanın metni, *Yeniden yükle*, tanı klasörü ve kopyalama düğmeleri çıkar.
 
 **Klavye:** Ctrl K komut paleti, Ctrl / bütün kısayolların listesi, Ctrl , Ayarlar, Ctrl 1…9 sayfalar (Genel bakış 1), Ctrl Enter Gönder sayfasında inceleme açar ve incelemede gönderir (Shift ile deneme), Esc açık olanı kapatır.
@@ -150,7 +150,7 @@ Adı değiştirilmiş eski bir SamSync yedek klasörü de aynı biçimde ele al�
 - **Profiller:** yapılandırmaya SamSync profili olarak eklenir. Aynı adlı bir profil varsa olduğu gibi kalır.
 - **Bilinmeyen makineler:** yapılandırmada olmayan makineler atlanır ve listelenir.
 
-Eski araçta makine kimliği `setx` ile sabitlenmiş bilgisayarlarda aynı değeri `SAMSYNC_NODE_ID` olarak tanımlayın (`setx SAMSYNC_NODE_ID Unit1Trainer`) ya da Hedefler → *Bu makine*’den seçin.
+Eski araçta makine kimliği `setx` ile sabitlenmiş bilgisayarlarda aynı değeri `SAMSYNC_NODE_ID` olarak tanımlayın (`setx SAMSYNC_NODE_ID LabA-Server`) ya da Hedefler → *Bu makine*’den seçin.
 
 ## Explorer ve Notepad++ menüleri
 
@@ -187,10 +187,10 @@ Eski aracın menüleri hâlâ duran bir makinede onları `legacy\Uninstall-Conte
 ## Komut satırı
 
 ```bat
-SamSync.exe "C:\Sim\ActiveRelease\Data\x.entity" "C:\Sim\ActiveRelease\Models"
-SamSync.exe --to group:Unit1,Arsiv "C:\...\Data"
-SamSync.exe --to last --yes "C:\...\Data\x.entity"
-SamSync.exe --quick "DLL → Dozer"
+SamSync.exe "D:\Release\Data\settings.json" "D:\Release\Models"
+SamSync.exe --to group:Lab-A,NAS "C:\...\Data"
+SamSync.exe --to last --yes "C:\...\Data\settings.json"
+SamSync.exe --quick "Release → Lab-A"
 ```
 
 `--quick <ad>`, Gönder sayfasında kaydedilen bir **hızlı gönderimi** (bir ad altında kaynaklar, hedefler ve seçenekler) çalıştırır; aynı gönderimler tepsi menüsünde ve komut paletinde de durur, istenirse sistem geneli bir kısayol tuşu alır (örn. `Ctrl+Alt+1`; uygulama tepsideyken de çalışır). "Önce incele" ile kaydedilen bir hızlı gönderim inceleme açar.
@@ -211,9 +211,9 @@ Kısayollar: `Ctrl+K` komut paleti, `Ctrl+/` bütün kısayollar, `Ctrl+,` Ayarl
 ### Pencere açmadan plan ve eşitlik denetimi
 
 ```bat
-start /wait SamSync.exe --check-only --to all "C:\Sim\ActiveRelease\Data"
+start /wait SamSync.exe --check-only --to all "D:\Release\Data"
 echo %ERRORLEVEL%
-SamSync.exe --plan-only --to profile:Unit1IG "C:\Sim\ActiveRelease\Data\x.entity" | more
+SamSync.exe --plan-only --to profile:Lab-A-PCs "D:\Release\Data\settings.json" | more
 ```
 
 İki kip de uygulamayla aynı ayarları ve yapılandırmayı kullanır; SamSync penceresi açıkken de çalışır. `--to` gönderimdeki gibidir: verilmezse bütün hedefler; `last` ve `profile:` kendi hedefe özel ayarlarını da getirir. Tablo standart çıktıya, makine bilgisi, uyarılar, hatalar ve özet standart hataya yazılır; böylece tablo tek başına yönlendirilebilir. Sütun adları ve durum değerleri ASCII'dir ve eski araçtakilerle aynıdır:

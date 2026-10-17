@@ -37,8 +37,8 @@ export interface HelpAnswer {
 /** Words that mean the same thing for our purposes, across both languages. */
 const SYNONYMS: string[][] = [
   ['gönder', 'gönderim', 'yolla', 'send', 'sending', 'transfer', 'kopyala', 'copy', 'at'],
-  ['hedef', 'makine', 'machine', 'target', 'node', 'bilgisayar', 'pc', 'sim', 'simülatör', 'simulator', 'ig'],
-  ['röle', 'relay', 'aktarıcı', 'dağıt', 'eğitmen', 'trainer'],
+  ['hedef', 'makine', 'machine', 'target', 'node', 'bilgisayar', 'pc', 'istasyon', 'workstation', 'sunucu', 'server'],
+  ['röle', 'relay', 'aktarıcı', 'dağıt', 'ana'],
   ['yedek', 'backup', 'geri', 'restore', 'undo', 'eski', 'hâl'],
   ['hız', 'hızlı', 'speed', 'fast', 'slow', 'yavaş', 'performans', 'performance', 'süre', 'sürer', 'uzun'],
   ['paket', 'pack', 'usb', 'disk', 'çevrimdışı', 'offline', 'taşı'],

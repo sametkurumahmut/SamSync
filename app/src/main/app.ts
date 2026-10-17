@@ -13,7 +13,6 @@ import { launcherCommand, launcherPath } from './launcher';
 import { LaunchQueue, parseLaunch } from './launch';
 import { startLaunchPipe } from './launchpipe';
 import { Integrations, removeIntegrations } from './integration';
-import { portableDataDir, portableKind } from './portable';
 import { headlessFromDisk } from '../core/headless';
 
 const isMac = process.platform === 'darwin';
@@ -61,12 +60,7 @@ function writeWindowState(s: WindowState) {
   }
 }
 
-if (process.env.SAMSYNC_USER_DATA) app.setPath('userData', process.env.SAMSYNC_USER_DATA);
-else {
-  // portable runs keep settings and history in SamSync-data next to the program
-  const dir = portableDataDir(portableKind(app.isPackaged));
-  if (dir) app.setPath('userData', dir);
-}
+// the data folder (SAMSYNC_USER_DATA / the portable folder) was chosen in index.ts, before the single instance lock
 app.setAppUserModelId('com.sametkurumahmut.samsync');
 
 async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<number> {

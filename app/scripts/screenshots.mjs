@@ -28,14 +28,14 @@ function prepareDemo() {
   const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
   // a quick send on the Send page
   const src = path.join(demo, 'src', 'Data');
-  settings.quickSends = [{ id: 'q-demo', name: 'Data → Unit1', paths: [src], targetIds: config.nodes.filter((n) => n.group === 'Unit1').map((n) => n.id), review: false }];
-  // the Unit1 trainer is the relay of its group and "runs" SamSync (a fresh heartbeat)
-  const trainer = config.nodes.find((n) => n.group === 'Unit1' && /Trainer/i.test(n.id)) ?? config.nodes.find((n) => n.group === 'Unit1');
-  if (trainer) {
-    trainer.relay = true;
-    const dir = path.join(trainer.path, '_SamSyncRelay');
+  settings.quickSends = [{ id: 'q-demo', name: 'Data → Lab-A', paths: [src], targetIds: config.nodes.filter((n) => n.group === 'Lab-A').map((n) => n.id), review: false }];
+  // the Lab-A server is the relay of its group and "runs" SamSync (a fresh heartbeat)
+  const server = config.nodes.find((n) => n.group === 'Lab-A' && /Server/i.test(n.id)) ?? config.nodes.find((n) => n.group === 'Lab-A');
+  if (server) {
+    server.relay = true;
+    const dir = path.join(server.path, '_SamSyncRelay');
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'alive.json'), JSON.stringify({ at: Date.now(), node: trainer.id }));
+    fs.writeFileSync(path.join(dir, 'alive.json'), JSON.stringify({ at: Date.now(), node: server.id }));
   }
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
   return { settingsFile, settings };
@@ -55,7 +55,8 @@ for (const lang of langs) {
       SAMSYNC_ROUTE: page,
       SAMSYNC_SCREENSHOT: file,
       SAMSYNC_SCREENSHOT_EXIT: '1',
-      SAMSYNC_SCREENSHOT_DELAY: page === 'targets' || page === 'overview' ? '5000' : '3000',
+      // pages load lazily and probe the machines: a loaded computer needs the longer waits
+      SAMSYNC_SCREENSHOT_DELAY: page === 'targets' || page === 'overview' ? '8000' : '5000',
     });
     console.log(`${file}: ${fs.existsSync(file) ? fs.statSync(file).size : 'MISSING'} bytes`);
   }

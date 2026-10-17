@@ -194,7 +194,7 @@ export function TargetsPage() {
         {!cfg.nodes.length ? (
           <div className="card" style={{ marginTop: 16 }}>
             <Empty icon={<Server size={22} />} title={t('Henüz hedef yok')} action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İlk hedefi ekle')}</Button>}>
-              {t('Eğitmen dahil bütün makineleri ekleyin. Her makinenin yerel kökü (kaynak olduğunda) ve paylaşım kökü (hedef olduğunda) ayrı tanımlanır.')}
+              {t('Bütün makineleri ekleyin. Her makinenin yerel kökü (kaynak olduğunda) ve paylaşım kökü (hedef olduğunda) ayrı tanımlanır.')}
             </Empty>
           </div>
         ) : (
@@ -295,7 +295,7 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
   const saveConfig = useApp((s) => s.saveConfig);
   const toast = useApp((s) => s.toast);
   const [n, setN] = useState<NodeConfig>(
-    node ?? { id: '', name: '', address: '', localRoots: [], networkRoot: 'Sim\\ActiveRelease', enabled: true, transport: 'smb' },
+    node ?? { id: '', name: '', address: '', localRoots: [], networkRoot: 'Share\\Release', enabled: true, transport: 'smb' },
   );
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -377,13 +377,13 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
     >
       <div className="form-grid">
         <Field label={t('Görünen ad')}>
-          <input className="input" value={n.name} onChange={(e) => set({ name: e.target.value })} placeholder="IG1 - 10.10.1.11" autoFocus />
+          <input className="input" value={n.name} onChange={(e) => set({ name: e.target.value })} placeholder="PC-1 - 10.10.1.11" autoFocus />
         </Field>
         <Field label={t('Kimlik (id)')} error={n.id ? errors.id : undefined} help={t('Komutlar ve profiller bu anahtarı kullanır')}>
-          <input className="input mono" value={n.id} onChange={(e) => set({ id: e.target.value.trim() })} placeholder="Unit1IG1" />
+          <input className="input mono" value={n.id} onChange={(e) => set({ id: e.target.value.trim() })} placeholder="LabA-PC1" />
         </Field>
         <Field label={t('Grup')} error={errors.group} help={t('Aynı gruptaki makineler birlikte seçilebilir')}>
-          <input className="input" list="samsync-groups" value={n.group ?? ''} onChange={(e) => set({ group: e.target.value.trim() || undefined })} placeholder="Unit1" />
+          <input className="input" list="samsync-groups" value={n.group ?? ''} onChange={(e) => set({ group: e.target.value.trim() || undefined })} placeholder="Lab-A" />
           <datalist id="samsync-groups">
             {groups.map((g) => (
               <option key={g} value={g} />
@@ -420,10 +420,10 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
       <div className="form-grid" style={{ marginTop: 12 }}>
         {transport === 'smb' && (
           <>
-            <Field label={t('Paylaşım kökü (networkRoot)')} error={errors.networkRoot} help={t('Paylaşım adıyla başlar: Sim\\ActiveRelease → \\\\adres\\Sim\\ActiveRelease')}>
-              <input className="input mono" value={n.networkRoot} onChange={(e) => set({ networkRoot: e.target.value })} placeholder="Sim\ActiveRelease" />
+            <Field label={t('Paylaşım kökü (networkRoot)')} error={errors.networkRoot} help={t('Paylaşım adıyla başlar: Share\\Release → \\\\adres\\Share\\Release')}>
+              <input className="input mono" value={n.networkRoot} onChange={(e) => set({ networkRoot: e.target.value })} placeholder="Share\Release" />
             </Field>
-            <Field label={t('Yol geçersiz kılma (isteğe bağlı)')} help={t('macOS/Linux’ta bağlama noktası, örn. /Volumes/Sim/ActiveRelease')}>
+            <Field label={t('Yol geçersiz kılma (isteğe bağlı)')} help={t('macOS/Linux’ta bağlama noktası, örn. /Volumes/Share/Release')}>
               <input className="input mono" value={n.path ?? ''} onChange={(e) => set({ path: e.target.value || undefined })} placeholder={t('(otomatik)')} />
             </Field>
           </>
@@ -450,7 +450,7 @@ function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () =>
               <input className="input mono" value={n.sftp?.username ?? ''} onChange={(e) => set({ sftp: { ...(n.sftp ?? { root: '/' }), username: e.target.value } as NodeConfig['sftp'] })} placeholder="sim" />
             </Field>
             <Field label={t('Uzak kök')}>
-              <input className="input mono" value={n.sftp?.root ?? ''} onChange={(e) => set({ sftp: { ...(n.sftp ?? { username: '' }), root: e.target.value } as NodeConfig['sftp'] })} placeholder="/srv/sim/ActiveRelease" />
+              <input className="input mono" value={n.sftp?.root ?? ''} onChange={(e) => set({ sftp: { ...(n.sftp ?? { username: '' }), root: e.target.value } as NodeConfig['sftp'] })} placeholder="/srv/release" />
             </Field>
             <Field label={t('Port')}>
               <input className="input" type="number" value={n.sftp?.port ?? 22} onChange={(e) => set({ sftp: { ...n.sftp!, port: Number(e.target.value) || 22 } })} />
@@ -512,7 +512,7 @@ function RootsEditor({ value, onChange }: { value: string[]; onChange: (v: strin
         <input
           className="input sm mono grow"
           value={text}
-          placeholder="C:\Sim\ActiveRelease"
+          placeholder="D:\Release"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && text.trim()) {

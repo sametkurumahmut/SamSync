@@ -8,11 +8,11 @@ const other = path.join(__dirname, 'helpers.ts');
 
 describe('command line', () => {
   it('reads targets, flags and the paths that exist', () => {
-    const l = parseLaunch(['--send', '--to', 'group:Unit1,IG2', '--yes', here, 'C:\\does\\not\\exist.txt', '--allow-file-access-from-files']);
-    expect(l).toMatchObject({ targets: ['group:Unit1', 'IG2'], send: true, paths: [path.resolve(here)] });
+    const l = parseLaunch(['--send', '--to', 'group:Lab1,PC2', '--yes', here, 'C:\\does\\not\\exist.txt', '--allow-file-access-from-files']);
+    expect(l).toMatchObject({ targets: ['group:Lab1', 'PC2'], send: true, paths: [path.resolve(here)] });
     expect(parseLaunch(['--to=last', '--restore', '--hidden', other])).toMatchObject({ targets: ['last'], restore: true, hidden: true, paths: [path.resolve(other)] });
     expect(parseLaunch(['--remove-integrations']).removeIntegrations).toBe(true);
-    expect(parseLaunch(['--quick', 'DLL → Dozer']).quick).toBe('DLL → Dozer');
+    expect(parseLaunch(['--quick', 'Release → Lab-A']).quick).toBe('Release → Lab-A');
     expect(parseLaunch(['--quick=gece']).quick).toBe('gece');
   });
 

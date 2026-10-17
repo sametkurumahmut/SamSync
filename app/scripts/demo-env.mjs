@@ -1,5 +1,6 @@
 // Creates a self-contained demo: a source tree, several "machines" (plain folders) with partly
 // diverged content, and a config.json that points at them. Nothing outside the demo folder is touched.
+// The names are deliberately generic (two labs of PCs, a NAS): the README screenshots come from here.
 //   node scripts/demo-env.mjs [folder] [extraLocalRoot]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,53 +33,58 @@ function copy(rel, target, ageDays) {
   }
 }
 
-const entity = (name, hp, extra = '') => `<?xml version="1.0" encoding="utf-8"?>\n<Entity name="${name}">\n  <Engine power="${hp}" torque="${hp * 4}" />\n  <Hydraulics pressure="320" flow="210" />\n  <Bucket capacity="1.4" />${extra}\n</Entity>\n`;
-w(path.join(src, 'Data/EntityConfigurations/ModelHeavyIndustry/Ornek300LC.entity'), entity('Ornek300LC', 245, '\n  <Camera fov="72" />'), 1);
-w(path.join(src, 'Data/EntityConfigurations/ModelHeavyIndustry/Komatsu D155.entity'), entity('Komatsu D155', 354), 3);
-w(path.join(src, 'Data/EntityConfigurations/ModelHeavyIndustry/CAT 950.entity'), entity('CAT 950', 220), 8);
-w(path.join(src, 'Data/EntityConfigurations/Vehicles/Truck_6x4.entity'), entity('Truck 6x4', 410), 2);
-w(path.join(src, 'Data/Scenarios/Egitim_01.xml'), '<Scenario id="1" weather="clear" />\n', 5);
-w(path.join(src, 'Data/Scenarios/Egitim_02.xml'), '<Scenario id="2" weather="rain" night="true" />\n', 0.2);
+const catalog = (version, items, extra = '') => `{\n  "version": "${version}",\n  "currency": "EUR",\n  "items": [\n${items.map((i) => `    { "sku": "${i[0]}", "name": "${i[1]}", "price": ${i[2]} }`).join(',\n')}\n  ]${extra}\n}\n`;
+const ITEMS = [
+  ['A-100', 'Base unit', 1290],
+  ['A-200', 'Extended unit', 1890],
+  ['B-010', 'Mounting kit', 145],
+];
+w(path.join(src, 'Data/Catalog/products.json'), catalog('3.4', ITEMS, ',\n  "updated": "2026-10-16"'), 1);
+w(path.join(src, 'Data/Catalog/prices.csv'), 'sku;price;valid_from\nA-100;1290;2026-10-01\nA-200;1890;2026-10-01\nB-010;145;2026-09-15\n', 3);
+w(path.join(src, 'Data/Catalog/regions.json'), '{ "regions": ["EU", "TR", "US"] }\n', 8);
+w(path.join(src, 'Data/Profiles/default.json'), '{ "theme": "dark", "language": "auto", "units": "metric" }\n', 2);
+w(path.join(src, 'Data/Reports/2026-09.xml'), '<Report month="2026-09" rows="1840" />\n', 5);
+w(path.join(src, 'Data/Reports/2026-10.xml'), '<Report month="2026-10" rows="2210" draft="true" />\n', 0.2);
 w(path.join(src, 'Config/settings.ini'), '[Display]\nWidth=3840\nHeight=1080\nVSync=1\n[Audio]\nVolume=80\n', 0.5);
-w(path.join(src, 'Models/Excavator/arm.fbx'), Buffer.alloc(180_000, 7), 12);
-w(path.join(src, 'Models/Excavator/bucket.fbx'), Buffer.alloc(96_000, 3), 2);
-w(path.join(src, 'Audio/engine_idle.wav'), Buffer.alloc(420_000, 1), 20);
+w(path.join(src, 'Models/Vehicle/body.obj'), Buffer.alloc(180_000, 7), 12);
+w(path.join(src, 'Models/Vehicle/wheels.obj'), Buffer.alloc(96_000, 3), 2);
+w(path.join(src, 'Audio/startup.wav'), Buffer.alloc(420_000, 1), 20);
 
 const machines = {
-  'U1-Trainer': { group: 'Unit1', name: 'Eğitmen - 10.10.1.10' },
-  'U1-IG1': { group: 'Unit1', name: 'IG1 - 10.10.1.11' },
-  'U1-IG2': { group: 'Unit1', name: 'IG2 - 10.10.1.12' },
-  'U1-IG3': { group: 'Unit1', name: 'IG3 - 10.10.1.13' },
-  'U2-Trainer': { group: 'Unit2', name: 'Eğitmen - 10.10.1.30' },
-  'U2-IG1': { group: 'Unit2', name: 'IG1 - 10.10.1.31' },
-  'U2-IG2': { group: 'Unit2', name: 'IG2 - 10.10.1.32', missing: true },
-  Arsiv: { name: 'Arşiv sunucusu' },
+  'A-Server': { group: 'Lab-A', name: 'Server - 10.10.1.10' },
+  'A-PC1': { group: 'Lab-A', name: 'PC-1 - 10.10.1.11' },
+  'A-PC2': { group: 'Lab-A', name: 'PC-2 - 10.10.1.12' },
+  'A-PC3': { group: 'Lab-A', name: 'PC-3 - 10.10.1.13' },
+  'B-Server': { group: 'Lab-B', name: 'Server - 10.10.1.30' },
+  'B-PC1': { group: 'Lab-B', name: 'PC-1 - 10.10.1.31' },
+  'B-PC2': { group: 'Lab-B', name: 'PC-2 - 10.10.1.32', missing: true },
+  NAS: { name: 'NAS - 10.10.1.5' },
 };
 for (const [id, m] of Object.entries(machines)) if (!m.missing) fs.mkdirSync(path.join(tg, id), { recursive: true });
 
-// U1-Trainer: fully in sync
-for (const rel of ['Data/EntityConfigurations/ModelHeavyIndustry/Ornek300LC.entity', 'Data/EntityConfigurations/ModelHeavyIndustry/Komatsu D155.entity', 'Data/EntityConfigurations/ModelHeavyIndustry/CAT 950.entity', 'Data/EntityConfigurations/Vehicles/Truck_6x4.entity', 'Data/Scenarios/Egitim_01.xml', 'Data/Scenarios/Egitim_02.xml', 'Config/settings.ini', 'Models/Excavator/arm.fbx', 'Models/Excavator/bucket.fbx'])
-  copy(rel, 'U1-Trainer');
-// U1-IG1: older Ornek, missing scenario 2, an extra file
-copy('Data/EntityConfigurations/ModelHeavyIndustry/Komatsu D155.entity', 'U1-IG1');
-copy('Data/EntityConfigurations/ModelHeavyIndustry/CAT 950.entity', 'U1-IG1');
-w(path.join(tg, 'U1-IG1/Data/EntityConfigurations/ModelHeavyIndustry/Ornek300LC.entity'), entity('Ornek300LC', 230), 6);
-copy('Data/Scenarios/Egitim_01.xml', 'U1-IG1');
-w(path.join(tg, 'U1-IG1/Data/Scenarios/Eski_Senaryo.xml'), '<Scenario id="0" />\n', 40);
-w(path.join(tg, 'U1-IG1/Config/settings.ini'), '[Display]\nWidth=1920\nHeight=1080\nVSync=1\n[Audio]\nVolume=80\n', 30);
-// U1-IG2: target has a newer Ornek (someone edited it there)
-copy('Data/EntityConfigurations/ModelHeavyIndustry/Komatsu D155.entity', 'U1-IG2');
-w(path.join(tg, 'U1-IG2/Data/EntityConfigurations/ModelHeavyIndustry/Ornek300LC.entity'), entity('Ornek300LC', 260, '\n  <Camera fov="80" />\n  <!-- yerinde düzenlendi -->'), 0.05);
-// U1-IG3 and others: empty (everything new)
+// A-Server: fully in sync
+for (const rel of ['Data/Catalog/products.json', 'Data/Catalog/prices.csv', 'Data/Catalog/regions.json', 'Data/Profiles/default.json', 'Data/Reports/2026-09.xml', 'Data/Reports/2026-10.xml', 'Config/settings.ini', 'Models/Vehicle/body.obj', 'Models/Vehicle/wheels.obj'])
+  copy(rel, 'A-Server');
+// A-PC1: an older catalog, no report for this month, an extra old report, older display settings
+copy('Data/Catalog/prices.csv', 'A-PC1');
+copy('Data/Catalog/regions.json', 'A-PC1');
+w(path.join(tg, 'A-PC1/Data/Catalog/products.json'), catalog('3.3', ITEMS.slice(0, 2)), 6);
+copy('Data/Reports/2026-09.xml', 'A-PC1');
+w(path.join(tg, 'A-PC1/Data/Reports/2025-12.xml'), '<Report month="2025-12" rows="990" />\n', 40);
+w(path.join(tg, 'A-PC1/Config/settings.ini'), '[Display]\nWidth=1920\nHeight=1080\nVSync=1\n[Audio]\nVolume=80\n', 30);
+// A-PC2: the catalog is newer there (someone edited it on the machine)
+copy('Data/Catalog/prices.csv', 'A-PC2');
+w(path.join(tg, 'A-PC2/Data/Catalog/products.json'), catalog('3.4', [...ITEMS, ['C-001', 'Edited locally', 99]], ',\n  "updated": "2026-10-17"'), 0.05);
+// A-PC3 and the rest: empty (everything new)
 
 const nodes = [
   {
-    id: 'Gelistirme',
-    name: 'Geliştirme makinesi',
+    id: 'Dev',
+    name: 'Dev-PC',
     address: os.hostname(),
     localNames: [os.hostname()],
     localRoots: [src, ...(extraRoot ? [extraRoot] : [])],
-    networkRoot: 'Sim\\ActiveRelease',
+    networkRoot: 'Share\\Release',
     enabled: true,
   },
   ...Object.entries(machines).map(([id, m]) => ({
@@ -86,8 +92,8 @@ const nodes = [
     name: m.name,
     ...(m.group ? { group: m.group } : {}),
     address: id.toLowerCase(),
-    localRoots: ['C:\\Sim\\ActiveRelease'],
-    networkRoot: 'Sim\\ActiveRelease',
+    localRoots: ['D:\\Release'],
+    networkRoot: 'Share\\Release',
     transport: 'path',
     path: path.join(tg, id),
     enabled: true,
@@ -98,12 +104,12 @@ const config = {
   schema: 2,
   nodes,
   copy: { retryCount: 1, waitSeconds: 1, backupKeep: 5, excludeFiles: ['*.tmp', 'Thumbs.db'], excludeDirs: ['.git', 'node_modules'] },
-  profiles: [{ id: 'U1-IG', name: "Unit1 IG'ler", targetIds: ['U1-IG1', 'U1-IG2', 'U1-IG3'] }],
+  profiles: [{ id: 'A-PCs', name: 'Lab-A PCs', targetIds: ['A-PC1', 'A-PC2', 'A-PC3'] }],
   syncJobs: [
     {
       id: 'job-data',
-      name: 'Data → Unit1 Eğitmen',
-      pairs: [{ id: 'p1', left: { kind: 'local', path: path.join(src, 'Data') }, right: { kind: 'node', nodeId: 'U1-IG1', subPath: 'Data' } }],
+      name: 'Data ⇄ Lab-A PC-1',
+      pairs: [{ id: 'p1', left: { kind: 'local', path: path.join(src, 'Data') }, right: { kind: 'node', nodeId: 'A-PC1', subPath: 'Data' } }],
       compare: 'timeSize',
       variant: 'mirror',
       filter: { include: [], exclude: [] },
@@ -114,5 +120,5 @@ const config = {
 };
 fs.mkdirSync(path.join(base, 'userdata'), { recursive: true });
 fs.writeFileSync(path.join(base, 'config.json'), JSON.stringify(config, null, 2));
-fs.writeFileSync(path.join(base, 'userdata', 'settings.json'), JSON.stringify({ configPath: path.join(base, 'config.json'), lastTargets: ['U1-IG1', 'U1-IG2', 'U1-IG3', 'U1-Trainer'] }, null, 2));
+fs.writeFileSync(path.join(base, 'userdata', 'settings.json'), JSON.stringify({ configPath: path.join(base, 'config.json'), lastTargets: ['A-PC1', 'A-PC2', 'A-PC3', 'A-Server'] }, null, 2));
 console.log(base);

@@ -111,7 +111,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
       };
     }
     if (transport === 'smb' && !node.address) throw new ConfigError(t('{id}: address (IP veya bilgisayar adı) gerekli.', { id }));
-    if (transport === 'smb' && !node.networkRoot && !node.path) throw new ConfigError(t('{id}: networkRoot gerekli (örnek: Sim\\ActiveRelease).', { id }));
+    if (transport === 'smb' && !node.networkRoot && !node.path) throw new ConfigError(t('{id}: networkRoot gerekli (örnek: Share\\Release).', { id }));
     if (transport === 'path' && !node.path) throw new ConfigError(t('{id}: path transport için hedef klasör (path) gerekli.', { id }));
     if (transport === 'sftp' && (!node.sftp || !node.sftp.username)) throw new ConfigError(t('{id}: sftp için kullanıcı adı gerekli.', { id }));
     return node;

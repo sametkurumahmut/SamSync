@@ -6,8 +6,8 @@ const op = (rel: string, extra: Partial<PlanOp> = {}): PlanOp => ({ id: rel, kin
 
 describe('review tree', () => {
   const ops = [
-    op('SimFrameworkModels/ModelHeavyIndustry/ModelHeavyIndustry.dll', { category: 'changed', size: 6_000_000 }),
-    op('SimFrameworkModels/ModelHeavyIndustry/ModelHeavyIndustry.pdb', { category: 'changed', size: 50_000_000 }),
+    op('Models/Vehicle/Vehicle.dll', { category: 'changed', size: 6_000_000 }),
+    op('Models/Vehicle/Vehicle.pdb', { category: 'changed', size: 50_000_000 }),
     op('Data/Configuration/a.xml'),
     op('Data/Configuration/b.xml', { category: 'targetNewer' }),
     op('Data/old.txt', { kind: 'delete', category: 'extra', size: 0, dstSize: 5 }),
@@ -17,9 +17,9 @@ describe('review tree', () => {
 
   it('groups operations by folder, merges single-child chains and counts per branch', () => {
     const root = buildOpTree(ops);
-    expect(root.folders.map((f) => f.label)).toEqual(['Data', 'SimFrameworkModels/ModelHeavyIndustry']);
+    expect(root.folders.map((f) => f.label)).toEqual(['Data', 'Models/Vehicle']);
     const sim = root.folders[1];
-    expect(sim.path).toBe('SimFrameworkModels/ModelHeavyIndustry');
+    expect(sim.path).toBe('Models/Vehicle');
     expect(sim.counts).toMatchObject({ changed: 2, ops: 2, bytes: 56_000_000 });
     const data = root.folders[0];
     expect(data.counts).toMatchObject({ new: 2, targetNewer: 1, remove: 1, ops: 4 });
@@ -32,7 +32,7 @@ describe('review tree', () => {
 
   it('flattens only the unfolded folders and unfolds the first level by default', () => {
     const root = buildOpTree(ops);
-    expect(defaultExpanded(root)).toEqual(['Data', 'SimFrameworkModels/ModelHeavyIndustry']);
+    expect(defaultExpanded(root)).toEqual(['Data', 'Models/Vehicle']);
     const open = new Set(defaultExpanded(root));
     const rows = flattenTree(root, (p) => open.has(p));
     expect(rows.map((r) => (r.kind === 'folder' ? `[${r.node.label}]` : r.op.rel))).toEqual([
@@ -40,13 +40,13 @@ describe('review tree', () => {
       '[Configuration]',
       'Data/NewFolder',
       'Data/old.txt',
-      '[SimFrameworkModels/ModelHeavyIndustry]',
-      'SimFrameworkModels/ModelHeavyIndustry/ModelHeavyIndustry.dll',
-      'SimFrameworkModels/ModelHeavyIndustry/ModelHeavyIndustry.pdb',
+      '[Models/Vehicle]',
+      'Models/Vehicle/Vehicle.dll',
+      'Models/Vehicle/Vehicle.pdb',
       'root.txt',
     ]);
     const everything = new Set(allFolders(root));
-    expect(everything).toEqual(new Set(['Data', 'Data/Configuration', 'SimFrameworkModels/ModelHeavyIndustry']));
+    expect(everything).toEqual(new Set(['Data', 'Data/Configuration', 'Models/Vehicle']));
     expect(flattenTree(root, () => true).filter((r) => r.kind === 'op')).toHaveLength(7);
     expect(flattenTree(root, () => false).map((r) => r.kind)).toEqual(['folder', 'folder', 'op']);
   });
