@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send } from 'lucide-react';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2 } from 'lucide-react';
 import type { CopySettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
@@ -498,6 +498,8 @@ export function SettingsPage() {
 
           <NotificationsSection />
 
+          <AssistantSection />
+
           <Section id="about" icon={<Info size={15} />} title={t('Hakkında')}>
             <div className="about-grid">
               <span className="faint">{t('Sürüm')}</span>
@@ -543,6 +545,49 @@ export function SettingsPage() {
         {update?.phase === 'error' && null}
       </div>
     </div>
+  );
+}
+
+/** The help bot's optional cloud half: a Claude API key, kept encrypted on this machine. */
+function AssistantSection() {
+  const assistant = useApp((s) => s.assistant);
+  const toast = useApp((s) => s.toast);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async (value: string | null) => {
+    setBusy(true);
+    try {
+      const ok = await api.assistantSetKey(value);
+      if (!ok) return toast('error', t('Anahtar saklanamadı'), t('Bu platformda şifreli saklama yok.'));
+      useApp.setState({ assistant: await api.assistantStatus() });
+      setKey('');
+      toast('ok', value ? t('Claude API anahtarı kaydedildi') : t('Claude API anahtarı kaldırıldı'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section id="assistant" icon={<Bot size={15} />} title={t('Yardım botu')} desc={t('F1 ile açılan bot çevrimdışı SSS ve README’den yanıtlar; bir Claude API anahtarıyla serbest sorulara yapay zekâ ile yanıt verir')}>
+      <div className="col" style={{ gap: 10 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <span className={cls('dot', assistant?.configured ? 'ok' : '')} />
+          <span style={{ fontSize: 13 }}>{assistant?.configured ? t('Claude bağlı ({model}); sorular belgelerle birlikte Claude’a gider.', { model: assistant.model }) : t('Anahtar yok: bot yalnızca çevrimdışı arama ile yanıtlıyor.')}</span>
+        </div>
+        <Field label={t('Claude API anahtarı')} help={t('console.anthropic.com’dan alınır; bu makinede işletim sisteminin şifreli deposunda saklanır, yapılandırmaya yazılmaz. Her soru kendi ücretiyle API’ye gider.')}>
+          <div className="row" style={{ gap: 8 }}>
+            <input className="input mono grow" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" spellCheck={false} />
+            <Button size="sm" variant="primary" icon={<Save size={13} />} disabled={!key.trim()} loading={busy} onClick={() => void save(key)}>
+              {t('Kaydet')}
+            </Button>
+            {assistant?.configured && (
+              <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} loading={busy} onClick={() => void save(null)}>
+                {t('Kaldır')}
+              </Button>
+            )}
+          </div>
+        </Field>
+      </div>
+    </Section>
   );
 }
 

@@ -25,6 +25,8 @@ import {
   Package,
   LayoutDashboard,
   Sparkles,
+  CircleHelp,
+  Bot,
 } from 'lucide-react';
 import { useApp, PAGES, type Page } from '../store/app';
 import { MOD } from './Shortcuts';
@@ -71,7 +73,7 @@ export function CommandPalette() {
     const go = (p: Parameters<typeof st.setPage>[0]) => () => st.setPage(p);
     const pages = t('Sayfalar');
     const actions = t('Eylemler');
-    const key = (p: Page) => `${MOD} ${PAGES.indexOf(p) + 1}`;
+    const key = (p: Page) => (PAGES.indexOf(p) < 9 ? `${MOD} ${PAGES.indexOf(p) + 1}` : '');
     const list: Cmd[] = [
       { id: 'p-overview', group: pages, label: t('Genel bakış'), hint: key('overview'), icon: <LayoutDashboard size={15} />, run: go('overview') },
       { id: 'p-send', group: pages, label: t('Gönder'), hint: key('send'), icon: <Send size={15} />, run: go('send') },
@@ -82,7 +84,9 @@ export function CommandPalette() {
       { id: 'p-targets', group: pages, label: t('Hedefler'), hint: key('targets'), icon: <Server size={15} />, run: go('targets') },
       { id: 'p-backups', group: pages, label: t('Yedekler'), hint: key('backups'), icon: <ArchiveRestore size={15} />, run: go('backups') },
       { id: 'p-history', group: pages, label: t('Geçmiş'), hint: key('history'), icon: <History size={15} />, run: go('history') },
-      { id: 'p-settings', group: pages, label: t('Ayarlar'), hint: key('settings'), icon: <Settings size={15} />, run: go('settings') },
+      { id: 'p-help', group: pages, label: t('Yardım'), hint: key('help'), icon: <CircleHelp size={15} />, run: go('help') },
+      { id: 'p-settings', group: pages, label: t('Ayarlar'), hint: '', icon: <Settings size={15} />, run: go('settings') },
+      { id: 'a-bot', group: actions, label: t('Yardım botuna sor…'), hint: 'F1', icon: <Bot size={15} />, run: () => useApp.setState({ helpBot: true }) },
       { id: 'a-shortcuts', group: actions, label: t('Klavye kısayolları'), hint: `${MOD} /`, icon: <Keyboard size={15} />, run: () => useApp.setState({ shortcuts: true }) },
       {
         id: 'a-pause',

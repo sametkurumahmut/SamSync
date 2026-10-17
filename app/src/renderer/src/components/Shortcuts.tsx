@@ -14,6 +14,7 @@ const PAGE_LABELS: Record<string, string> = {
   targets: tk('Hedefler'),
   backups: tk('Yedekler'),
   history: tk('Geçmiş'),
+  help: tk('Yardım'),
   settings: tk('Ayarlar'),
 };
 
@@ -40,13 +41,14 @@ export function ShortcutsModal() {
         { keys: [[MOD, ',']], what: t('Ayarlar') },
         { keys: [[MOD, '+'], [MOD, '−']], what: t('Arayüzü büyüt / küçült') },
         { keys: [[MOD, '0']], what: t('Arayüz ölçeğini sıfırla') },
+        { keys: [['F1']], what: t('Yardım botu') },
         { keys: [['Esc']], what: t('Açık pencereyi, paleti ya da paneli kapat') },
         { keys: [['F12']], what: t('Geliştirici araçları') },
       ],
     },
     {
       title: t('Sayfalar'),
-      rows: PAGES.map((p, i) => ({ keys: [[MOD, String(i + 1)]], what: t(PAGE_LABELS[p]) })),
+      rows: PAGES.slice(0, 9).map((p, i) => ({ keys: [[MOD, String(i + 1)]], what: t(PAGE_LABELS[p]) })),
     },
     {
       title: t('Gönderim'),

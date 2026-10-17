@@ -26,6 +26,7 @@ const host: HostAdapter = {
   appVersion: pkg.version,
   userDataPath,
   changelogPath: path.join(root, 'CHANGELOG.md'),
+  docsDir: root,
   initialPaths: (process.env.SAMSYNC_PATHS || '').split(';').filter(Boolean),
   systemLanguages: [process.env.SAMSYNC_LANG, Intl.DateTimeFormat().resolvedOptions().locale].filter((x): x is string => !!x),
   emit(e: AppEvent) {

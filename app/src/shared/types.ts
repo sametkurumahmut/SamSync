@@ -227,6 +227,25 @@ export interface LocalSettings {
   notifications?: NotificationSettings;
 }
 
+/** The help bot's conversation with Claude (the optional cloud half). */
+export interface AssistantTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AssistantReply {
+  text: string;
+  model: string;
+  /** What the call cost in tokens, for the log line. */
+  usage: { input: number; output: number; cached: number };
+}
+
+export interface AssistantStatus {
+  /** A Claude API key is set on this machine. */
+  configured: boolean;
+  model: string;
+}
+
 /** One version's section of the changelog, for the card after an update. */
 export interface ChangelogSection {
   version: string;

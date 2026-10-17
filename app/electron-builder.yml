@@ -71,3 +71,8 @@ publish:
 extraResources:
   - from: CHANGELOG.md
     to: CHANGELOG.md
+  # the help bot's knowledge (offline search in the window, and the context of the optional Claude answers)
+  - from: README.md
+    to: README.md
+  - from: README.tr.md
+    to: README.tr.md

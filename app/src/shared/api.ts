@@ -1,6 +1,9 @@
 import type {
   AppConfig,
   BackupLookup,
+  AssistantReply,
+  AssistantStatus,
+  AssistantTurn,
   BackupSet,
   ChangelogSection,
   Bootstrap,
@@ -161,6 +164,10 @@ export interface Api {
   openLog(): Promise<void>;
   /** Copies the logs, the configuration, the settings (no secrets) and a summary into a folder the user picks; null when cancelled. */
   exportDiagnostics(): Promise<string | null>;
+  /** The help bot's cloud half: whether a Claude key is set, setting it, and asking a question with the conversation so far. */
+  assistantStatus(): Promise<AssistantStatus>;
+  assistantSetKey(key: string | null): Promise<boolean>;
+  assistantAsk(turns: AssistantTurn[], lang: 'tr' | 'en'): Promise<AssistantReply>;
   /** This version's changelog section: after an update once (null when it was shown), or always with `force`. */
   whatsNew(force?: boolean): Promise<ChangelogSection | null>;
   statFile(p: string): Promise<FileMeta | null>;
@@ -250,6 +257,9 @@ export const API_METHODS = {
   openLog: true,
   exportDiagnostics: true,
   whatsNew: true,
+  assistantStatus: true,
+  assistantSetKey: true,
+  assistantAsk: true,
   statFile: true,
   integrationStatus: true,
   integrationSet: true,

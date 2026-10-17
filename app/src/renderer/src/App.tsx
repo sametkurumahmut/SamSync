@@ -19,10 +19,13 @@ import {
   Zap,
   GitCompare,
   LayoutDashboard,
+  CircleHelp,
+  Bot,
 } from 'lucide-react';
 import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
 import { ShortcutsModal } from './components/Shortcuts';
 import { WhatsNewModal } from './components/WhatsNew';
+import { HelpBot } from './components/HelpBot';
 import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
 import { Button } from './components/ui';
@@ -41,6 +44,7 @@ const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ defa
 const BackupsPage = lazy(() => import('./pages/BackupsPage').then((m) => ({ default: m.BackupsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AutomationPage = lazy(() => import('./pages/AutomationPage').then((m) => ({ default: m.AutomationPage })));
+const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
 import { Welcome } from './pages/Welcome';
 import iconUrl from '../../../resources/icon.png';
 import { t, tk } from '@shared/i18n';
@@ -55,6 +59,7 @@ const NAV: { id: Page; label: string; icon: typeof Send; hint: string }[] = [
   { id: 'targets', label: tk('Hedefler'), icon: Server, hint: tk('Makineler, gruplar, erişim') },
   { id: 'backups', label: tk('Yedekler'), icon: ArchiveRestore, hint: tk('Hedeflerdeki eski hâlleri geri al') },
   { id: 'history', label: tk('Geçmiş'), icon: History, hint: tk('Çalıştırmalar ve raporlar') },
+  { id: 'help', label: tk('Yardım'), icon: CircleHelp, hint: tk('Sık sorulan sorular ve yardım botu') },
 ];
 
 const TITLES: Record<Page, string> = {
@@ -67,6 +72,7 @@ const TITLES: Record<Page, string> = {
   targets: tk('Hedefler'),
   backups: tk('Yedekler'),
   history: tk('Geçmiş'),
+  help: tk('Yardım'),
   settings: tk('Ayarlar'),
 };
 
@@ -96,6 +102,11 @@ function Shell() {
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
+      if (e.key === 'F1') {
+        e.preventDefault();
+        useApp.setState((s) => ({ helpBot: !s.helpBot }));
+        return;
+      }
       if (!mod || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === 'k') {
@@ -215,6 +226,9 @@ function Shell() {
           <span className="kbd">Ctrl K</span>
         </button>
         <div className="spacer" />
+        <button className="titlebar-btn no-drag" data-tip={t('Yardım botu (F1)')} data-tip-pos="bottom" onClick={() => useApp.setState((s) => ({ helpBot: !s.helpBot }))}>
+          <Bot size={15} />
+        </button>
         <RunPill />
         {updateHot && (
           <Button size="sm" variant="primary" icon={update.phase === 'downloading' ? <Loader2 size={14} className="spin" /> : <Download size={14} />} onClick={() => setPage('settings')}>
@@ -291,6 +305,7 @@ function Shell() {
             {page === 'targets' && <TargetsPage />}
             {page === 'backups' && <BackupsPage />}
             {page === 'history' && <HistoryPage />}
+            {page === 'help' && <HelpPage />}
             {page === 'settings' && <SettingsPage />}
           </Suspense>
         )}
@@ -312,6 +327,7 @@ function Shell() {
       <CommandPalette />
       <ShortcutsModal />
       <WhatsNewModal />
+      <HelpBot />
       <Toasts />
     </div>
   );

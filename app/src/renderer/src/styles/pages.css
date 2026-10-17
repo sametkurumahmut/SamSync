@@ -1679,3 +1679,221 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ help bot & help page */
+.titlebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.titlebar-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.help-drawer {
+  width: min(520px, calc(100vw - 32px));
+}
+.help-messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.help-welcome {
+  padding: 8px 4px;
+  font-size: 13px;
+}
+.help-welcome p {
+  margin: 0 0 10px;
+}
+.help-starter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.help-starter:hover {
+  border-color: var(--accent);
+}
+.help-msg {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.help-msg.user {
+  justify-content: flex-end;
+}
+.help-avatar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--accent-rgb) / 15%);
+  color: var(--accent);
+  margin-top: 2px;
+}
+.help-bubble {
+  max-width: 86%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+  position: relative;
+}
+.help-msg.user .help-bubble {
+  background: rgb(var(--accent-rgb) / 14%);
+  border-color: rgb(var(--accent-rgb) / 30%);
+}
+.help-bubble p {
+  margin: 0 0 8px;
+}
+.help-bubble p:last-child {
+  margin-bottom: 0;
+}
+.help-bubble code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+.help-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--violet, #8b5cf6);
+}
+.help-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.help-source .link-btn {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.help-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+}
+.help-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.help-hit:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.help-error {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--amber);
+}
+.help-input {
+  gap: 8px;
+}
+.help-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.help-faq {
+  padding: 4px 0;
+}
+.help-faq-item {
+  border-top: 1px solid var(--border);
+}
+.help-faq-item:first-child {
+  border-top: 0;
+}
+.help-faq-q {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  text-align: left;
+  cursor: pointer;
+}
+.help-faq-q:hover {
+  background: var(--bg-hover);
+}
+.help-faq-item.open .help-faq-q {
+  color: var(--accent);
+}
+.help-faq-a {
+  padding: 0 14px 12px 36px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.help-faq-a p {
+  margin: 0 0 6px;
+}
+.help-faq-a code,
+.help-readme-hit code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}

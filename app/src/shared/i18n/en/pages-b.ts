@@ -431,6 +431,21 @@ const d: Dict = {
   'Sınama iletisi gönderilemedi': 'Test message could not be sent',
   'Sına': 'Test',
   'Deneme çalıştırmaları bildirilmez. Masaüstü bildirimi ayrıca "Bitince bildir" seçeneğine bağlıdır.': 'Dry runs are not reported. The desktop notification follows the "Notify when done" option separately.',
+  'Sık sorulan sorular ve SamSync’i anlatan bot. Her yanıt ilgili sayfayı açabilir.': 'Frequently asked questions and a bot that explains SamSync. Every answer can open the page it is about.',
+  'Bota sor': 'Ask the bot',
+  'Ara: röle, paket, yedek, zamanlama…': 'Search: relay, pack, backup, schedule…',
+  '{n} sonuç': '{n} results',
+  'README’den': 'From the README',
+  'Bu sözcüklerle bir şey bulunamadı. Bota sorabilir ya da başka bir deyişle arayabilirsin.': 'Nothing was found with these words. Ask the bot, or search with other words.',
+  'Belgelerin tamamı README dosyasındadır (uygulamayla birlikte gelir).': 'The full documentation is the README file (it ships with the app).',
+  '{n} soru': '{n} questions',
+  'Anahtar saklanamadı': 'The key could not be stored',
+  'Bu platformda şifreli saklama yok.': 'No encrypted storage on this platform.',
+  'F1 ile açılan bot çevrimdışı SSS ve README’den yanıtlar; bir Claude API anahtarıyla serbest sorulara yapay zekâ ile yanıt verir': 'The bot (F1) answers offline from the FAQ and the README; with a Claude API key it answers free-form questions with AI',
+  'Claude bağlı ({model}); sorular belgelerle birlikte Claude’a gider.': 'Claude is connected ({model}); questions go to Claude together with the documentation.',
+  'Anahtar yok: bot yalnızca çevrimdışı arama ile yanıtlıyor.': 'No key: the bot answers with the offline search only.',
+  'Claude API anahtarı': 'Claude API key',
+  'console.anthropic.com’dan alınır; bu makinede işletim sisteminin şifreli deposunda saklanır, yapılandırmaya yazılmaz. Her soru kendi ücretiyle API’ye gider.': 'From console.anthropic.com; kept in the operating system\'s encrypted store on this machine, never written to the configuration. Every question goes to the API at its own cost.',
 };
 
 export default d;

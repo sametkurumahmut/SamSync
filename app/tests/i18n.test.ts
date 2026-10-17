@@ -76,12 +76,15 @@ function scan(): Scan {
       const key = unescape(m[1] ?? m[2] ?? m[3] ?? '');
       if (!keys.has(key)) keys.set(key, `${rel}:${lineOf(m.index!)}`);
     }
-    // what is left with Turkish letters after the t()/tk() texts are blanked was not translated
+    // what is left with Turkish letters after the t()/tk() texts are blanked was not translated;
+    // a file that carries both languages as data (the FAQ, the bot's instructions) says so in its first line
     code = code.replace(CALL, (s) => s.replace(/[^\n]/g, ' '));
     const rawLines = raw.split('\n');
-    code.split('\n').forEach((line, i) => {
-      if (TURKISH.test(line) && !rawLines[i].includes('i18n-ignore')) untranslated.push(`${rel}:${i + 1}: ${rawLines[i].trim().slice(0, 120)}`);
-    });
+    const wholeFile = rawLines[0]?.includes('i18n-ignore-file');
+    if (!wholeFile)
+      code.split('\n').forEach((line, i) => {
+        if (TURKISH.test(line) && !rawLines[i].includes('i18n-ignore')) untranslated.push(`${rel}:${i + 1}: ${rawLines[i].trim().slice(0, 120)}`);
+      });
   }
   return { keys, dynamic, untranslated };
 }

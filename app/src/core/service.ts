@@ -5,6 +5,9 @@ import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
 import type {
   AppConfig,
+  AssistantReply,
+  AssistantStatus,
+  AssistantTurn,
   ChangelogSection,
   AppEvent,
   Bootstrap,
@@ -41,6 +44,7 @@ import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
 import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
+import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assistantSystem } from './assistant';
 import { HashCache } from './hashcache';
 import { runMessage, sendNotification, wantsNotification } from './notifications';
 import { quickIdOf } from './automation';
@@ -76,6 +80,8 @@ export interface HostAdapter {
   repositoryUrl?: string;
   /** CHANGELOG.md as shipped with the app, for the "what's new" card. */
   changelogPath?: string;
+  /** Where README.md and README.tr.md are (resources/ in the packaged app), for the help bot. */
+  docsDir?: string;
   emit(e: AppEvent): void;
   pick?(opts: PickOptions): Promise<string[]>;
   /** A save dialog; null when cancelled. */
@@ -1147,6 +1153,38 @@ export class Service implements Api {
    * the settings, and a summary of this machine, the machines' reachability, the relay and the last runs.
    * The secrets file (SFTP passwords) is never included.
    */
+  // ------------------------------------------------------------ help bot (Claude)
+
+  async assistantStatus(): Promise<AssistantStatus> {
+    return { configured: !!(await this.getSecret(ASSISTANT_SECRET)), model: ASSISTANT_MODEL };
+  }
+
+  async assistantSetKey(key: string | null): Promise<boolean> {
+    const ok = await this.setSecret(ASSISTANT_SECRET, key?.trim() || null);
+    if (ok) this.log.info(t('Yardım'), key ? t('Claude API anahtarı kaydedildi') : t('Claude API anahtarı kaldırıldı'));
+    return ok;
+  }
+
+  private async readme(lang: 'tr' | 'en'): Promise<string> {
+    if (!this.host.docsDir) return '';
+    return fsp.readFile(path.join(this.host.docsDir, lang === 'tr' ? 'README.tr.md' : 'README.md'), 'utf8').catch(() => '');
+  }
+
+  async assistantAsk(turns: AssistantTurn[], lang: 'tr' | 'en'): Promise<AssistantReply> {
+    const key = await this.getSecret(ASSISTANT_SECRET);
+    if (!key) throw new Error(t('Claude API anahtarı tanımlı değil (Ayarlar › Yardım botu).'));
+    const system = assistantSystem(lang, await this.readme(lang), this.host.appVersion);
+    try {
+      const r = await askAssistant(key, system, turns);
+      this.log.info(t('Yardım'), t('Claude yanıtladı: {inp} giriş ({cached} önbellekten), {out} çıkış', { inp: r.usage.input, cached: r.usage.cached, out: r.usage.output }));
+      return r;
+    } catch (e) {
+      const msg = assistantError(e);
+      this.log.warn(t('Yardım'), msg);
+      throw new Error(msg);
+    }
+  }
+
   async whatsNew(force = false): Promise<ChangelogSection | null> {
     if (!this.host.changelogPath) return null;
     const version = this.host.appVersion;

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   AppConfig,
+  AssistantStatus,
   ChangelogSection,
   AppEvent,
   Bootstrap,
@@ -24,12 +25,16 @@ import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { readStored, writeStored } from '../lib/persist';
 import { pushSample, type Sample } from '../lib/rates';
+import { APP_PAGES, type AppPage } from '@shared/pages';
+import { answer, type HelpHit } from '@shared/help/search';
+import { helpIndex, helpLang } from '../lib/help';
+import { offlineReply } from '../components/HelpBot';
 import { bytes as bytesText } from '../lib/format';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
-export type Page = 'overview' | 'send' | 'compare' | 'git' | 'sync' | 'automation' | 'targets' | 'backups' | 'history' | 'settings';
-export const PAGES: Page[] = ['overview', 'send', 'compare', 'git', 'sync', 'automation', 'targets', 'backups', 'history', 'settings'];
+export type Page = AppPage;
+export const PAGES: Page[] = APP_PAGES;
 
 export interface Toast {
   id: number;
@@ -82,6 +87,15 @@ interface State {
   shortcuts: boolean;
   /** The "what's new" card for the version that just started. */
   whatsNew: ChangelogSection | null;
+  /** The help bot drawer and its conversation (this window only). */
+  helpBot: boolean;
+  helpMessages: HelpMessage[];
+  helpBusy: boolean;
+  /** Ask Claude instead of the offline search (only when a key is set). */
+  helpAi: boolean;
+  assistant: AssistantStatus | null;
+  askHelp(question: string): Promise<void>;
+  setHelpAi(on: boolean): void;
   /** UI language in effect; App re-mounts when it changes so every t() runs again. */
   lang: Lang;
   /** Explorer menu and Notepad++ integration (Windows). */
@@ -145,6 +159,21 @@ interface State {
   setBoot(b: Bootstrap): void;
 }
 
+/** One line of the help bot's conversation. */
+export interface HelpMessage {
+  id: string;
+  role: 'user' | 'bot';
+  text: string;
+  /** The entry or README section the answer came from, and more that matched. */
+  source?: HelpHit;
+  hits?: HelpHit[];
+  /** The search was not sure (the answer is a guess) or found nothing. */
+  unsure?: boolean;
+  /** Answered by Claude. */
+  ai?: boolean;
+  error?: string;
+}
+
 /** The UI scale steps Ctrl + / − walk through (percent). */
 export const UI_SCALES = [70, 80, 90, 100, 110, 125, 150, 175];
 export const uiScaleOf = (s?: { uiScale?: number } | null) => {
@@ -180,6 +209,11 @@ export const useApp = create<State>((set, get) => ({
   palette: false,
   shortcuts: false,
   whatsNew: null,
+  helpBot: false,
+  helpMessages: [],
+  helpBusy: false,
+  helpAi: readStored<boolean>('samsync.help.ai', true),
+  assistant: null,
   lang: firstLang,
   integration: null,
   restoreRequest: null,
@@ -243,6 +277,7 @@ export const useApp = create<State>((set, get) => ({
       }, 5000);
       void api.updateState().then((u) => set({ update: u }));
       void api.whatsNew().then((w) => w && set({ whatsNew: w })).catch(() => undefined);
+      void api.assistantStatus().then((assistant) => set({ assistant })).catch(() => undefined);
       void api.automationState().then((a) => set({ automation: a }));
     } catch (e) {
       set({ bootError: (e as Error).message });
@@ -420,6 +455,35 @@ export const useApp = create<State>((set, get) => ({
       set({ planning: null });
       if (!(e as Error).message.includes(t('İptal edildi'))) st.toast('error', t('İnceleme başarısız'), (e as Error).message);
     }
+  },
+  setHelpAi(on) {
+    writeStored('samsync.help.ai', on);
+    set({ helpAi: on });
+  },
+  async askHelp(question) {
+    const q = question.trim();
+    if (!q || get().helpBusy) return;
+    const lang = helpLang();
+    const user: HelpMessage = { id: `u${Date.now().toString(36)}`, role: 'user', text: q };
+    set((s) => ({ helpMessages: [...s.helpMessages, user], helpBusy: true, helpBot: true }));
+    const st = get();
+    const useAi = st.helpAi && !!st.assistant?.configured;
+    const offline = answer(helpIndex(lang), q);
+    let reply: HelpMessage;
+    if (useAi && offline.intent === 'question') {
+      try {
+        const turns = [...st.helpMessages, user].slice(-10).map((m) => ({ role: m.role === 'user' ? ('user' as const) : ('assistant' as const), content: m.text }));
+        const r = await api.assistantAsk(turns, lang);
+        // the offline search still supplies the page to open and the related entries
+        reply = { id: `b${Date.now().toString(36)}`, role: 'bot', text: r.text, ai: true, source: offline.confidence !== 'none' ? offline.hits[0] : undefined, hits: offline.hits.slice(offline.confidence !== 'none' ? 1 : 0, 3) };
+      } catch (e) {
+        const o = offlineReply(offline, lang);
+        reply = { id: `b${Date.now().toString(36)}`, role: 'bot', ...o, error: t('Claude yanıt veremedi ({error}); çevrimdışı yanıt gösteriliyor.', { error: (e as Error).message }) };
+      }
+    } else {
+      reply = { id: `b${Date.now().toString(36)}`, role: 'bot', ...offlineReply(offline, lang) };
+    }
+    set((s) => ({ helpMessages: [...s.helpMessages, reply].slice(-60), helpBusy: false }));
   },
   async writePack() {
     const st = get();

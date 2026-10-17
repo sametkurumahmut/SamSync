@@ -322,6 +322,18 @@ const d: Dict = {
   '{ok}/{n} makine': '{ok}/{n} machines',
   '{channel} gönderilemedi: {error}': '{channel} could not be sent: {error}',
   'SamSync bildirim sınaması: {host}': 'SamSync notification test: {host}',
+  'Soru yok': 'No question',
+  'Yanıt verilmedi (içerik güvenliği).': 'No answer was given (content safety).',
+  'API anahtarı geçersiz.': 'The API key is invalid.',
+  'Hız sınırı: biraz sonra yeniden deneyin.': 'Rate limited: try again in a moment.',
+  'Bu anahtarın izni yok (kredi ya da model erişimi).': 'This key has no permission (credit or model access).',
+  'Claude’a ulaşılamadı (ağ).': 'Claude could not be reached (network).',
+  'Claude hatası': 'Claude error',
+  'Yardım': 'Help',
+  'Claude API anahtarı kaydedildi': 'Claude API key saved',
+  'Claude API anahtarı kaldırıldı': 'Claude API key removed',
+  'Claude API anahtarı tanımlı değil (Ayarlar › Yardım botu).': 'No Claude API key is set (Settings › Help bot).',
+  'Claude yanıtladı: {inp} giriş ({cached} önbellekten), {out} çıkış': 'Claude answered: {inp} input ({cached} from cache), {out} output',
 };
 
 export default d;
