@@ -11,6 +11,7 @@ import type {
   GitRepoInfo,
   LocalIdentity,
   LocalSettings,
+  PackWriteResult,
   ProbeResult,
   SpeedTestResult,
   RelayState,
@@ -102,6 +103,8 @@ export interface Api {
   mapPath(abs: string): Promise<{ rel: string; root?: string; outside: boolean }>;
 
   planSend(req: SendRequest, taskId: string): Promise<SendPlan>;
+  /** Writes the request's sources to a pack file (.samsync-pack) in `dir`, for a release that travels on a disk. */
+  writePack(req: SendRequest, dir: string, taskId: string): Promise<PackWriteResult>;
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
   executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean }): Promise<string>;
@@ -194,6 +197,7 @@ export const API_METHODS = {
   describeSources: true,
   mapPath: true,
   planSend: true,
+  writePack: true,
   cancelTask: true,
   executePlan: true,
   cancelRun: true,

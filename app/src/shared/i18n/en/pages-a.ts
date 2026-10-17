@@ -335,6 +335,10 @@ const d: Dict = {
   'Hızlı gönderim bulunamadı: {name}': 'Quick send not found: {name}',
   'Dosyalar önce röle makinesine gider; oradaki SamSync karşılaştırıp bu makineye dağıtır. Sonuç gönderim bitince burada görünür.':
     'The files go to the relay machine first; SamSync there compares and sends them on to this machine. The result shows here once the send is done.',
+  '{label} • {from} • {when}': '{label} • {from} • {when}',
+  paket: 'pack',
+  'Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır': 'Writes the sources into one pack file (.samsync-pack) instead of to machines:\na release carried on a disk, applied there with SamSync, which leaves the manifest',
+  'Paket yaz': 'Write pack',
 };
 
 export default d;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus } from 'lucide-react';
+import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
@@ -43,8 +43,11 @@ export function SendPage() {
   const setTargets = useApp((s) => s.setTargets);
   const options = useApp((s) => s.options);
   const startPlan = useApp((s) => s.startPlan);
+  const writePack = useApp((s) => s.writePack);
   const toast = useApp((s) => s.toast);
   const isElectron = useApp((s) => s.boot!.isElectron);
+  /** A pack from a disk among the sources: it may be applied to this very machine too. */
+  const hasPack = infos.some((i) => i.pack);
   const [manual, setManual] = useState('');
   const startWatch = useStartWatchFromSend();
 
@@ -163,14 +166,19 @@ export function SendPage() {
                   )}
                   {infos.map((i) => (
                     <div key={i.path} className={cls('source-row', !i.exists && 'missing')}>
-                      <div className={cls('icon-tile', i.isDir && 'accent')}>{i.isDir ? <Folder size={15} /> : <File size={15} />}</div>
+                      <div className={cls('icon-tile', (i.isDir || i.pack) && 'accent')}>{i.pack ? <Package size={15} /> : i.isDir ? <Folder size={15} /> : <File size={15} />}</div>
                       <div className="grow" style={{ minWidth: 0 }}>
                         <div className="row" style={{ gap: 6 }}>
                           <span className="ellipsis" style={{ fontWeight: 580 }}>
                             {baseName(i.path)}
                           </span>
                           {!i.exists && <span className="badge red">{t('bulunamadı')}</span>}
-                          {i.outsideRoots ? (
+                          {i.pack && (
+                            <span className="badge accent" data-tip={t('{label} • {from} • {when}', { label: i.pack.label, from: i.pack.from, when: new Date(i.pack.createdAt).toLocaleString() })}>
+                              {t('paket')}
+                            </span>
+                          )}
+                          {i.pack ? null : i.outsideRoots ? (
                             <span className="badge amber" data-tip={t('Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur')}>
                               {t('kök dışı')}
                             </span>
@@ -191,7 +199,7 @@ export function SendPage() {
                         </div>
                       </div>
                       <span className="faint tabular nowrap" style={{ fontSize: 12 }}>
-                        {i.isDir ? `${t('{n} dosya', { n: num(i.fileCount ?? 0) + (i.fileCountCapped ? '+' : '') })} • ${bytes(i.size)}` : bytes(i.size)}
+                        {i.isDir || i.pack ? `${t('{n} dosya', { n: num(i.fileCount ?? 0) + (i.fileCountCapped ? '+' : '') })} • ${bytes(i.size)}` : bytes(i.size)}
                       </span>
                       <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(i.path)} tip={t('Listeden çıkar')} />
                     </div>
@@ -215,7 +223,7 @@ export function SendPage() {
               <h2>{t('Hedefler')}</h2>
               <span className="spacer" />
             </div>
-            <TargetPicker value={targets} onChange={setTargets} overrides />
+            <TargetPicker value={targets} onChange={setTargets} overrides includeLocal={hasPack} />
           </div>
         </div>
 
@@ -239,6 +247,9 @@ export function SendPage() {
           </div>
           <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
             {t('İzle')}
+          </Button>
+          <Button size="lg" icon={<Package size={15} />} disabled={!paths.length || hasPack || !isElectron} onClick={() => void writePack()} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
+            {t('Paket yaz')}
           </Button>
           <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
             {t('Deneme')}

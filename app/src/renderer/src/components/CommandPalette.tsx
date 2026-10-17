@@ -22,6 +22,7 @@ import {
   Zap,
   GitCompare,
   Keyboard,
+  Package,
 } from 'lucide-react';
 import { useApp, PAGES, type Page } from '../store/app';
 import { MOD } from './Shortcuts';
@@ -101,6 +102,16 @@ export function CommandPalette() {
             st.setPage('send');
             await st.addSendPaths(p);
           }
+        },
+      },
+      {
+        id: 'a-pack',
+        group: actions,
+        label: t('Gönderim listesini pakete yaz…'),
+        icon: <Package size={15} />,
+        run: () => {
+          st.setPage('send');
+          void st.writePack();
         },
       },
       {

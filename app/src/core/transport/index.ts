@@ -43,9 +43,16 @@ export function nodeRootLabel(cfg: AppConfig, node: NodeConfig): string {
 export interface TransportContext {
   config: AppConfig;
   getSecret?: (nodeId: string) => Promise<string | undefined>;
+  /** This machine's node and its local roots: writing to itself goes to the disk, not over its own share. */
+  localNodeId?: string;
+  localRoots?: string[];
 }
 
 export async function transportForNode(ctx: TransportContext, node: NodeConfig, subPath = ''): Promise<Transport> {
+  if (ctx.localNodeId && node.id === ctx.localNodeId && node.transport !== 'sftp' && ctx.localRoots?.[0]) {
+    const base = ctx.localRoots[0];
+    return new FsTransport(subPath ? joinRoot(base, toPosix(subPath).replace(/^\/+|\/+$/g, '')) : base);
+  }
   if (node.transport === 'sftp') {
     if (!node.sftp) throw new Error(t('{id}: SFTP ayarları eksik.', { id: node.id }));
     const root = subPath ? `${node.sftp.root.replace(/\/+$/, '')}/${toPosix(subPath).replace(/^\/+/, '')}` : node.sftp.root;

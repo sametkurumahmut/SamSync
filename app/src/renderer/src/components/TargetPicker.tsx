@@ -16,10 +16,11 @@ interface Group {
   nodes: NodeConfig[];
 }
 
-export function useTargetNodes(): NodeConfig[] {
+/** The machines that can be sent to; `includeLocal` keeps this machine in (a pack from a disk may be applied here). */
+export function useTargetNodes(includeLocal = false): NodeConfig[] {
   const cfg = useApp((s) => s.boot!.config);
   const localId = useApp((s) => s.boot!.identity.node?.id);
-  return useMemo(() => cfg.nodes.filter((n) => n.enabled && n.id !== localId), [cfg, localId]);
+  return useMemo(() => cfg.nodes.filter((n) => n.enabled && (includeLocal || n.id !== localId)), [cfg, localId, includeLocal]);
 }
 
 function groupNodes(nodes: NodeConfig[]): Group[] {
@@ -38,8 +39,9 @@ function groupNodes(nodes: NodeConfig[]): Group[] {
  * The machine list with groups, search and the selection helpers. With `overrides` (Send and Git pages) every row
  * can also carry its own mode and backup, like the per machine columns of the old wizard.
  */
-export function TargetPicker({ value, onChange, maxHeight, overrides }: { value: string[]; onChange: (ids: string[]) => void; maxHeight?: number | string; overrides?: boolean }) {
-  const nodes = useTargetNodes();
+export function TargetPicker({ value, onChange, maxHeight, overrides, includeLocal }: { value: string[]; onChange: (ids: string[]) => void; maxHeight?: number | string; overrides?: boolean; includeLocal?: boolean }) {
+  const nodes = useTargetNodes(includeLocal);
+  const localId = useApp((s) => s.boot!.identity.node?.id);
   const probes = useApp((s) => s.probes);
   const probing = useApp((s) => s.probing);
   const probe = useApp((s) => s.probe);
@@ -154,8 +156,9 @@ export function TargetPicker({ value, onChange, maxHeight, overrides }: { value:
                       <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} />
                       <span className={cls('dot', p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
                       <div className="grow">
-                        <div className="ellipsis" style={{ fontWeight: 540 }}>
+                        <div className="ellipsis row" style={{ fontWeight: 540, gap: 6 }}>
                           {n.name}
+                          {n.id === localId && <span className="badge accent">{t('bu makine')}</span>}
                         </div>
                         <div className="faint mono ellipsis" style={{ fontSize: 11 }}>
                           {n.transport === 'sftp' ? `sftp ${n.sftp?.host || n.address}` : n.transport === 'path' ? n.path : `${n.address} • ${n.networkRoot}`}

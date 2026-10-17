@@ -22,6 +22,7 @@ import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { readStored, writeStored } from '../lib/persist';
 import { pushSample, type Sample } from '../lib/rates';
+import { bytes as bytesText } from '../lib/format';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
@@ -127,6 +128,8 @@ interface State {
 
   startPlan(req: Omit<SendRequest, 'targetIds' | 'options'> & { targetIds?: string[]; options?: Partial<SendOptions> }): Promise<void>;
   cancelPlan(): void;
+  /** Writes the Send list to a pack file in a folder the user picks (a release that travels on a disk). */
+  writePack(): Promise<void>;
   closeReview(): void;
   setReviewSelection(targetId: string, ids: Set<string>): void;
   executeReview(dryRun?: boolean): Promise<void>;
@@ -405,6 +408,25 @@ export const useApp = create<State>((set, get) => ({
     } catch (e) {
       set({ planning: null });
       if (!(e as Error).message.includes(t('İptal edildi'))) st.toast('error', t('İnceleme başarısız'), (e as Error).message);
+    }
+  },
+  async writePack() {
+    const st = get();
+    if (!st.sendPaths.length) return st.toast('warn', t('Kaynak yok'), t('Pakete yazılacak dosya veya klasör seçin.'));
+    const [dir] = await api.pick({ folders: true, title: t('Paket nereye yazılsın?') });
+    if (!dir) return;
+    const taskId = newTaskId();
+    const label = st.sendPaths.length === 1 ? st.sendPaths[0].replace(/[\\/]+$/, '').split(/[\\/]/).pop() || t('Gönderim') : t('{n} öğe', { n: st.sendPaths.length });
+    const req: SendRequest = { sources: st.sendPaths.map((p) => ({ kind: 'fs', path: p })), targetIds: [], options: { ...st.options, dryRun: false }, origin: 'send', label };
+    set({ planning: { taskId, message: t('Paket hazırlanıyor…') } });
+    try {
+      const r = await api.writePack(req, dir, taskId);
+      set({ planning: null });
+      for (const w of r.warnings) get().toast('warn', t('Paket'), w);
+      get().toast('ok', t('Paket yazıldı'), `${t('{n} dosya', { n: r.files })} • ${t('{size} → {packed}', { size: bytesText(r.size), packed: bytesText(r.packed) })}`, { label: t('Klasörde göster'), run: () => void api.showInFolder(r.file) });
+    } catch (e) {
+      set({ planning: null });
+      if (!(e as Error).message.includes(t('İptal edildi'))) get().toast('error', t('Paket yazılamadı'), (e as Error).message);
     }
   },
   cancelPlan() {

@@ -269,6 +269,15 @@ const d: Dict = {
   bekliyor: 'waiting',
   'tepe {speed}': 'peak {speed}',
   'ort. {speed}': 'avg. {speed}',
+  'Gönderim listesini pakete yaz…': 'Write the send list to a pack…',
+  'Pakete yazılacak dosya veya klasör seçin.': 'Pick the files or folders to write into the pack.',
+  'Paket nereye yazılsın?': 'Where should the pack be written?',
+  'Paket hazırlanıyor…': 'Preparing the pack…',
+  'Paket yazıldı': 'Pack written',
+  '{size} → {packed}': '{size} → {packed}',
+  'Klasörde göster': 'Show in folder',
+  'Paket yazılamadı': 'The pack could not be written',
+  'bu makine': 'this machine',
 };
 
 export default d;

@@ -9,7 +9,8 @@ let s = fs.readFileSync(p, 'utf8');
 const nl = s.includes('\r\n') ? '\r\n' : '\n';
 const marker = `};${nl}${nl}export default d;`;
 if (!s.includes(marker)) throw new Error('marker not found in ' + p);
-const q = (v) => "'" + v.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+// a single-quoted TS string: backslashes, quotes and line breaks escaped
+const q = (v) => "'" + v.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '') + "'";
 const block = entries.map(([k, v]) => `  ${/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : q(k)}: ${q(v)},`).join(nl);
 s = s.replace(marker, `${block}${nl}${marker}`);
 fs.writeFileSync(p, s);

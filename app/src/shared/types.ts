@@ -456,6 +456,8 @@ export interface SourceInfo {
   root?: string;
   outsideRoots: boolean;
   error?: string;
+  /** The source is a pack file (.samsync-pack): what it carries and where it was made. */
+  pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[] };
 }
 
 export interface SendRequest {
@@ -521,6 +523,16 @@ export interface TargetPlan {
   lock?: { host: string; user: string; label: string; startedAt: number };
   /** The target's folders came from its manifest (written then) after a check, not from a walk over the network. */
   fromManifest?: number;
+}
+
+/** What writing a pack file produced. */
+export interface PackWriteResult {
+  file: string;
+  files: number;
+  /** Original bytes, and the pack's size on disk. */
+  size: number;
+  packed: number;
+  warnings: string[];
 }
 
 export interface SendPlan {

@@ -11,6 +11,7 @@ import type {
   DiffResult,
   LocalIdentity,
   LocalSettings,
+  PackWriteResult,
   SendPlan,
   SendRequest,
   RunDetail,
@@ -33,7 +34,8 @@ import { DEFAULT_SETTINGS, automationSettings, emptyConfig, loadConfig, readJson
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
-import { buildSendPlan, describeSources, type PlanScans } from './plan';
+import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
+import { packFileName } from './packfile';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
 import { transportForNode, transportForEndpoint, nodeRootLabel } from './transport';
@@ -45,7 +47,7 @@ import { jobFileText, jobFromFile } from './jobfile';
 import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
 import { findNode } from './context';
 import crypto from 'node:crypto';
-import { CancelToken, errMessage, newId, stamp, withTimeout } from './util';
+import { CancelToken, errMessage, formatBytes, newId, stamp, withTimeout } from './util';
 import { RelayService } from './relay';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
@@ -457,6 +459,24 @@ export class Service implements Api {
     }
   }
 
+  /** The sources as one pack file in `dir` (named after the label and the time), for a release carried on a disk. */
+  async writePack(req: SendRequest, dir: string, taskId: string): Promise<PackWriteResult> {
+    const cancel = new CancelToken();
+    this.tasks.set(taskId, cancel);
+    const file = path.join(dir, packFileName(req.label || t('Gönderim')));
+    try {
+      this.log.info(t('Paket'), t('{n} kaynak → {file}', { n: req.sources.length, file }));
+      const r = await writeSendPack(this.ctx(), req, file, {
+        cancel,
+        onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total }),
+      });
+      this.log.info(t('Paket'), t('Paket yazıldı: {file} ({files} dosya, {size} → {packed})', { file, files: r.files, size: formatBytes(r.size), packed: formatBytes(r.packed) }));
+      return r;
+    } finally {
+      this.tasks.delete(taskId);
+    }
+  }
+
   async cancelTask(taskId: string) {
     this.tasks.get(taskId)?.cancel();
   }
@@ -555,7 +575,7 @@ export class Service implements Api {
       if (!ops.length && !behind) continue;
       const node = nodeOf(tp.targetId)!;
       // a machine running SamSync takes its changes as a pack, whether or not others are behind it
-      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct && !tp.relayDown;
+      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct && !tp.relayDown && node.id !== ctx.localNodeId;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,

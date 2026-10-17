@@ -304,6 +304,15 @@ const d: Dict = {
   'Kurulum dosyasının özeti latest.yml ile tutmuyor': 'The installer hash does not match latest.yml',
   'Arayüz': 'UI',
   '{path}: kaldığı yerden sürüyor ({done} / {size})': '{path}: continuing from where it stopped ({done} / {size})',
+  'Paket okunuyor: {path}': 'Reading pack: {path}',
+  'Paket okunamadı: {path} ({error})': 'The pack could not be read: {path} ({error})',
+  '{path} silme olarak işaretli; paket silme taşımaz, atlandı.': '{path} is marked as a deletion; a pack carries no deletions, skipped.',
+  'Pakete yazılacak bir şey yok.': 'There is nothing to write into the pack.',
+  'Paket yazılıyor': 'Writing the pack',
+  'Paket yazılıyor: {done}/{total} dosya, {size}': 'Writing the pack: {done}/{total} files, {size}',
+  Paket: 'Pack',
+  '{n} kaynak → {file}': '{n} sources → {file}',
+  'Paket yazıldı: {file} ({files} dosya, {size} → {packed})': 'Pack written: {file} ({files} files, {size} → {packed})',
 };
 
 export default d;
