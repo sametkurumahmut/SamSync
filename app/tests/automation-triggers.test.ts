@@ -110,8 +110,9 @@ describe('watch destinations and triggers', () => {
       await s.watch({ paths: [src], folders: [dst] });
       await sleep(100);
       await write(path.join(src, 'sub', 'a.txt'), 'v1');
-      await until(() => read(path.join(dst, 'sub', 'a.txt')) === 'v1');
-      expect((await s.svc.automationState()).watches[0].lastStatus).toBe('ok');
+      // the file lands before the run is over and its status recorded: wait for the status, then read the file
+      await until(async () => (await s.svc.automationState()).watches[0].lastStatus === 'ok');
+      expect(read(path.join(dst, 'sub', 'a.txt'))).toBe('v1');
     } finally {
       s.svc.automation?.stop();
     }
