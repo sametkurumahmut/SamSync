@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Readable } from 'node:stream';
+import { Transform, type Readable } from 'node:stream';
 import type { CompareMethod } from '../shared/types';
 
 export type MetaVerdict = 'equal' | 'srcNewer' | 'dstNewer' | 'different';
@@ -83,4 +83,21 @@ export async function hashStream(stream: Readable, algo = 'sha256'): Promise<str
   const h = createHash(algo);
   for await (const c of stream) h.update(c as Buffer);
   return h.digest('hex');
+}
+
+/** A pass-through that hashes what flows through it; `digest()` is valid once the stream has ended. */
+export function hashing(algo = 'sha256'): { stream: Transform; digest: () => string } {
+  const h = createHash(algo);
+  let out: string | null = null;
+  const stream = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      h.update(chunk);
+      cb(null, chunk);
+    },
+    flush(cb) {
+      out = h.digest('hex');
+      cb();
+    },
+  });
+  return { stream, digest: () => out ?? h.digest('hex') };
 }

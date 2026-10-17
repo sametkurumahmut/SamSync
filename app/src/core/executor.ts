@@ -8,7 +8,7 @@ import { RelayError, submitRelayJob, submitRelayPack, waitRelayResult } from './
 import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
 import type { PackOp, RelayJob } from '../shared/relay';
 import { blobStream } from './git';
-import { hashStream } from './compare';
+import { hashStream, hashing } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
 import { myLock, otherLock, removeLock, writeLock } from './lock';
@@ -96,6 +96,10 @@ export const RESUME_MIN = 8 * 1024 * 1024;
 const RESUME_TAIL = 256 * 1024;
 /** A partial file nobody continued for this long is thrown away. */
 const RESUME_MAX_AGE_MS = 14 * 86400_000;
+/** Local files at least this big are streamed (and hashed on the way) instead of copied by the OS, when a hash cache is on. */
+const HASH_WHILE_COPY_MIN = 256 * 1024;
+/** A run keeps this many of its latest log lines in memory once the rest went to its log file. */
+const LOG_KEEP = 2000;
 
 function tmpRelFor(rel: string): string {
   const parent = relParent(rel);
@@ -171,15 +175,19 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   };
 
   const emitProgress = throttle(() => ctx.emit({ type: 'run-progress', runId: id, targets: states.map((x) => ({ ...x })) }), 150);
+  // the lines go to the run's log file as they come; memory keeps only the tail of a big run
+  const sink = ctx.runLog?.(id);
   const emitLog = throttle(() => {
     if (!pendingLog.length) return;
     const lines = pendingLog;
     pendingLog = [];
+    sink?.write(lines);
     ctx.emit({ type: 'run-log', runId: id, lines });
   }, 200);
   const log = (level: RunLogLine['level'], message: string, key?: string) => {
     const line: RunLogLine = { t: Date.now(), level, message, key };
     logLines.push(line);
+    if (sink && logLines.length > LOG_KEEP * 1.5) logLines.splice(0, logLines.length - LOG_KEEP);
     pendingLog.push(line);
     const comp = t('Kopyala');
     const msg = key ? `[${key}] ${message}` : message;
@@ -212,6 +220,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       t('Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn', { ok: sum.opsOk, failed: sum.opsFailed, size: formatBytes(sum.bytes), s: secs }),
     );
     emitLog.flush();
+    await sink?.close();
     const detail: RunDetail = { ...sum, results, log: logLines };
     ctx.emit({ type: 'run-done', run: sum });
     return detail;
@@ -368,21 +377,33 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         let written: number;
         keepPartial = big;
         const signal = cancel.signal;
+        const finalMtime = mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined);
+        // a send compared by content hashes the bytes on their way through (streamed copies of the bigger files),
+        // so the next content comparison can skip the read; other sends keep the operating system's copy
+        const hashOnCopy = !!ctx.hashCache && s.options?.compare === 'content' && op.size >= HASH_WHILE_COPY_MIN;
+        let hashed: { digest: () => string } | null = null;
         if (from > 0 && src.kind === 'fs') {
           log('info', t('{path}: kaldığı yerden sürüyor ({done} / {size})', { path: op.rel, done: formatBytes(from), size: formatBytes(op.size) }), g.key);
           onProgress(from);
           const rest = fs.createReadStream(src.abs, { start: from, highWaterMark: limiter ? 256 * 1024 : 1024 * 1024 });
-          written = await tgt.appendStream!(tmp, limited(rest), { mtimeMs: mtime ?? fs.statSync(src.abs).mtimeMs, onProgress, signal });
-        } else if (src.kind === 'fs' && tgt.copyFromLocal && !limiter) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress, signal });
-        else written = await tgt.writeStream(tmp, limited(await openSource(op)), { mtimeMs: mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined), onProgress, signal });
+          written = await tgt.appendStream!(tmp, limited(rest), { mtimeMs: finalMtime, onProgress, signal });
+        } else if (src.kind === 'fs' && tgt.copyFromLocal && !limiter && !hashOnCopy) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress, signal });
+        else {
+          const h = hashOnCopy ? hashing() : null;
+          hashed = h;
+          const data = limited(await openSource(op));
+          written = await tgt.writeStream(tmp, h ? data.pipe(h.stream) : data, { mtimeMs: finalMtime, onProgress, signal });
+        }
         keepPartial = false;
         if (written !== op.size) throw new Error(t('Boyut tutmuyor: {written} ≠ {expected}', { written, expected: op.size }));
         if (s.verify) {
           const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(tmp))]);
           if (a !== b) throw new Error(t('Doğrulama başarısız: içerik özeti tutmuyor'));
+          hashed = { digest: () => a };
         }
         const backedUp = await backupOrRemoveForReplace(op);
         await tgt.rename(tmp, op.rel);
+        if (hashed && ctx.hashCache && finalMtime != null) ctx.hashCache.set(tgt.root, op.rel, op.size, finalMtime, hashed.digest());
         return backedUp;
       } catch (e) {
         st.bytesDone -= base;

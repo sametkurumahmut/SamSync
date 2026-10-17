@@ -39,6 +39,7 @@ import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
 import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
+import { HashCache } from './hashcache';
 import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
@@ -121,6 +122,8 @@ export class Service implements Api {
   identity!: LocalIdentity;
   readonly log: Logger;
   readonly history: History;
+  /** Content hashes remembered across runs (userData/hashcache.json). */
+  readonly hashCache: HashCache;
   private plans = new Map<string, SendPlan>();
   /** What each plan saw on each target (kept here, not sent to the window): the run writes the manifest from it. */
   private planScans = new Map<string, PlanScans>();
@@ -141,6 +144,8 @@ export class Service implements Api {
     const logDir = logEnv ? path.dirname(logEnv) : path.join(host.userDataPath, 'log');
     this.log = createLogger(logDir);
     this.history = new History(host.userDataPath);
+    this.hashCache = new HashCache(path.join(host.userDataPath, 'hashcache.json'));
+    void this.hashCache.load();
   }
 
   async init(): Promise<void> {
@@ -221,6 +226,8 @@ export class Service implements Api {
       getSecret: (id) => this.getSecret(id),
       trash: this.host.trash ? (p) => this.host.trash!(p) : undefined,
       recentProbe: (id) => this.lastProbes.get(id),
+      hashCache: this.hashCache,
+      runLog: (id) => this.history.openLog(id),
       emit: (e) => this.host.emit(e),
       log: this.log,
     };
@@ -557,6 +564,7 @@ export class Service implements Api {
     handle.done
       .then(async (detail) => {
         await this.history.save(detail).catch((e) => this.log.error(t('Geçmiş'), t('Kaydedilemedi'), e));
+        void this.hashCache.flush();
         // a CSV report for every run, as the old tool wrote one for every copy
         await this.history
           .exportCsv(detail.id, this.reportsDir())

@@ -1,10 +1,13 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { RunDetail, RunSummary } from '../shared/types';
+import type { RunDetail, RunLogLine, RunSummary } from '../shared/types';
+import type { RunLogWriter } from './context';
 import { stamp } from './util';
 import { locale, t } from '../shared/i18n';
 
 const MAX_RUNS = 300;
+/** More lines than this of a run's log are not loaded back (the file keeps them all). */
+const MAX_LOG_LINES = 50_000;
 
 export class History {
   private dir: string;
@@ -12,6 +15,43 @@ export class History {
 
   constructor(userData: string) {
     this.dir = path.join(userData, 'history');
+  }
+
+  private logFile(id: string): string {
+    return path.join(this.dir, `${id}.log`);
+  }
+
+  /** A writer that appends a run's log lines to <id>.log as JSON lines, in order, while the run goes on. */
+  openLog(id: string): RunLogWriter {
+    const file = this.logFile(id);
+    let chain: Promise<void> = fsp.mkdir(this.dir, { recursive: true }).then(() => undefined, () => undefined);
+    return {
+      write: (lines) => {
+        if (!lines.length) return;
+        const text = lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+        chain = chain.then(() => fsp.appendFile(file, text, 'utf8')).catch(() => undefined);
+      },
+      close: () => chain,
+    };
+  }
+
+  private async readLog(id: string): Promise<RunLogLine[] | null> {
+    try {
+      const text = await fsp.readFile(this.logFile(id), 'utf8');
+      const lines = text.split('\n').filter(Boolean);
+      const tail = lines.length > MAX_LOG_LINES ? lines.slice(-MAX_LOG_LINES) : lines;
+      const out: RunLogLine[] = [];
+      for (const l of tail) {
+        try {
+          out.push(JSON.parse(l) as RunLogLine);
+        } catch {
+          /* a line cut by a crash */
+        }
+      }
+      return out;
+    } catch {
+      return null;
+    }
   }
 
   private async load(): Promise<RunSummary[]> {
@@ -31,7 +71,12 @@ export class History {
 
   async save(run: RunDetail): Promise<void> {
     await fsp.mkdir(this.dir, { recursive: true });
-    await fsp.writeFile(path.join(this.dir, `${run.id}.json`), JSON.stringify(run), 'utf8');
+    // a run whose log went to its own file as it ran keeps only that file; the JSON holds the rest
+    const hasLogFile = await fsp
+      .stat(this.logFile(run.id))
+      .then((s) => s.size > 0)
+      .catch(() => false);
+    await fsp.writeFile(path.join(this.dir, `${run.id}.json`), JSON.stringify(hasLogFile ? { ...run, log: [] } : run), 'utf8');
     const idx = await this.load();
     const { results: _r, log: _l, ...summary } = run;
     const i = idx.findIndex((x) => x.id === run.id);
@@ -39,14 +84,19 @@ export class History {
     else idx.push(summary);
     idx.sort((a, b) => b.startedAt - a.startedAt);
     const removed = idx.splice(MAX_RUNS);
-    for (const r of removed) await fsp.rm(path.join(this.dir, `${r.id}.json`), { force: true }).catch(() => undefined);
+    for (const r of removed) {
+      await fsp.rm(path.join(this.dir, `${r.id}.json`), { force: true }).catch(() => undefined);
+      await fsp.rm(this.logFile(r.id), { force: true }).catch(() => undefined);
+    }
     await fsp.writeFile(path.join(this.dir, 'index.json'), JSON.stringify(idx), 'utf8');
   }
 
   async get(id: string): Promise<RunDetail | null> {
     if (!/^[\w.-]+$/.test(id)) return null;
     try {
-      return JSON.parse(await fsp.readFile(path.join(this.dir, `${id}.json`), 'utf8')) as RunDetail;
+      const run = JSON.parse(await fsp.readFile(path.join(this.dir, `${id}.json`), 'utf8')) as RunDetail;
+      if (!run.log?.length) run.log = (await this.readLog(id)) ?? [];
+      return run;
     } catch {
       return null;
     }
@@ -57,6 +107,7 @@ export class History {
     const i = idx.findIndex((x) => x.id === id);
     if (i >= 0) idx.splice(i, 1);
     await fsp.rm(path.join(this.dir, `${id}.json`), { force: true }).catch(() => undefined);
+    await fsp.rm(this.logFile(id), { force: true }).catch(() => undefined);
     await fsp.mkdir(this.dir, { recursive: true });
     await fsp.writeFile(path.join(this.dir, 'index.json'), JSON.stringify(idx), 'utf8');
   }

@@ -7,7 +7,7 @@ import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
 import { mapToRel, normalizeAbs, relKey, relIsWithin, relJoin } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
-import { compareMeta, gitBlobId, streamsEqual } from './compare';
+import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
 import { blobInfo, blobStream } from './git';
 import { openPackEntry, type PackEntry, type PackSource } from './pack';
 import { isPackFile, packFileEntry, packSubtreeEntries, readPackIndex, writePackFile, type PackIndex, type PackSubtree } from './packfile';
@@ -327,10 +327,26 @@ async function planTarget(
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
 
-  const classify = async (src: { size: number; mtimeMs: number }, dst: Entry, readSrc: () => Promise<NodeJS.ReadableStream>, rel: string): Promise<PlanCategory> => {
+  const classify = async (src: { size: number; mtimeMs: number }, dst: Entry, readSrc: () => Promise<NodeJS.ReadableStream>, rel: string, srcId: string): Promise<PlanCategory> => {
     const v = compareMeta(src, dst, opt.compare, time);
     if (v === 'equal') return 'same';
-    if (v === 'needsContent') return (await streamsEqual((await readSrc()) as any, await tgt.readStream(rel))) ? 'same' : 'changed';
+    if (v === 'needsContent') {
+      // hashes remembered from an earlier comparison or copy spare the read over the network
+      const cache = ctx.hashCache;
+      if (!cache) return (await streamsEqual((await readSrc()) as any, await tgt.readStream(rel))) ? 'same' : 'changed';
+      const dh = cache.get(tgt.root, rel, dst.size, dst.mtimeMs);
+      const sh = cache.get('src', srcId, src.size, src.mtimeMs);
+      if (dh && sh) return dh === sh ? 'same' : 'changed';
+      if (dh) {
+        const h = await hashStream((await readSrc()) as any);
+        cache.set('src', srcId, src.size, src.mtimeMs, h);
+        return h === dh ? 'same' : 'changed';
+      }
+      const [a, b] = await Promise.all([hashStream((await readSrc()) as any), hashStream(await tgt.readStream(rel))]);
+      cache.set('src', srcId, src.size, src.mtimeMs, a);
+      cache.set(tgt.root, rel, dst.size, dst.mtimeMs, b);
+      return a === b ? 'same' : 'changed';
+    }
     if (v === 'dstNewer') return 'targetNewer';
     return 'changed';
   };
@@ -356,9 +372,9 @@ async function planTarget(
           if (dst.size !== u.size) cat = 'changed';
           else cat = (await gitBlobId(await tgt.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
         } else if (u.kind === 'packfile') {
-          cat = await classify(u, dst, async () => openPackEntry(u.file, u.member), u.rel);
+          cat = await classify(u, dst, async () => openPackEntry(u.file, u.member), u.rel, `${u.file}#${u.member.offset}`);
         } else {
-          cat = await classify(u, dst, async () => fs.createReadStream(u.abs), u.rel);
+          cat = await classify(u, dst, async () => fs.createReadStream(u.abs), u.rel, u.abs);
         }
         return push(b, { ...common, category: cat, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       }
@@ -405,7 +421,7 @@ async function planTarget(
         const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
         if (!d) return push(b, { ...common, category: 'new', selected: true });
         if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
-        const cat = await classify(e, d, () => readSrc(e), rel);
+        const cat = await classify(e, d, () => readSrc(e), rel, local ? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
         push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       });
       // extras: on the target but not in the source

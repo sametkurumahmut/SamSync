@@ -1,5 +1,6 @@
-import type { AppConfig, AppEvent, NodeConfig } from '../shared/types';
+import type { AppConfig, AppEvent, NodeConfig, RunLogLine } from '../shared/types';
 import type { Logger } from './logger';
+import type { HashCache } from './hashcache';
 
 export interface CoreContext {
   config: AppConfig;
@@ -14,8 +15,18 @@ export interface CoreContext {
   trash?: (absPath: string) => Promise<void>;
   /** The last reachability check of a machine (the window's periodic one), so a plan can skip its own. */
   recentProbe?: (nodeId: string) => { ok: boolean; checkedAt: number } | undefined;
+  /** Content hashes by (place, path, size, time): comparisons and copies fill it, comparisons use it. */
+  hashCache?: HashCache;
+  /** Where a run's log lines go as they come (a file per run), so a big run keeps only its tail in memory. */
+  runLog?: (runId: string) => RunLogWriter;
   emit: (e: AppEvent) => void;
   log: Logger;
+}
+
+export interface RunLogWriter {
+  write(lines: RunLogLine[]): void;
+  /** Resolves once every line is on disk. */
+  close(): Promise<void>;
 }
 
 export function findNode(cfg: AppConfig, id: string): NodeConfig | undefined {

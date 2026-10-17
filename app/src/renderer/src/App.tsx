@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Send,
   GitBranch,
@@ -31,15 +31,16 @@ import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { OverviewPage } from './pages/OverviewPage';
-import { SendPage } from './pages/SendPage';
-import { ComparePage } from './pages/ComparePage';
-import { GitPage } from './pages/GitPage';
-import { SyncPage } from './pages/SyncPage';
-import { TargetsPage } from './pages/TargetsPage';
-import { HistoryPage } from './pages/HistoryPage';
-import { BackupsPage } from './pages/BackupsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { AutomationPage } from './pages/AutomationPage';
+// the other pages load when first opened, so the first screen is up sooner
+const SendPage = lazy(() => import('./pages/SendPage').then((m) => ({ default: m.SendPage })));
+const ComparePage = lazy(() => import('./pages/ComparePage').then((m) => ({ default: m.ComparePage })));
+const GitPage = lazy(() => import('./pages/GitPage').then((m) => ({ default: m.GitPage })));
+const SyncPage = lazy(() => import('./pages/SyncPage').then((m) => ({ default: m.SyncPage })));
+const TargetsPage = lazy(() => import('./pages/TargetsPage').then((m) => ({ default: m.TargetsPage })));
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const BackupsPage = lazy(() => import('./pages/BackupsPage').then((m) => ({ default: m.BackupsPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AutomationPage = lazy(() => import('./pages/AutomationPage').then((m) => ({ default: m.AutomationPage })));
 import { Welcome } from './pages/Welcome';
 import iconUrl from '../../../resources/icon.png';
 import { t, tk } from '@shared/i18n';
@@ -274,7 +275,13 @@ function Shell() {
         {needsSetup && page !== 'settings' && page !== 'targets' ? (
           <Welcome />
         ) : (
-          <>
+          <Suspense
+            fallback={
+              <div className="empty" style={{ flex: 1 }}>
+                <div className="spinner" />
+              </div>
+            }
+          >
             {page === 'overview' && <OverviewPage />}
             {page === 'send' && <SendPage />}
             {page === 'compare' && <ComparePage />}
@@ -285,7 +292,7 @@ function Shell() {
             {page === 'backups' && <BackupsPage />}
             {page === 'history' && <HistoryPage />}
             {page === 'settings' && <SettingsPage />}
-          </>
+          </Suspense>
         )}
       </main>
 
