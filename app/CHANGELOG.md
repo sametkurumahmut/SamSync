@@ -1,8 +1,9 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.1.1 — 2026-10-17
 
 - **Düzeltme:** veri klasörü (`SAMSYNC_USER_DATA`, taşınabilir sürümün yanındaki `SamSync-data`) tek-örnek kilidinden önce seçiliyor; eskiden kurulu uygulama açıkken başlatılan taşınabilir kopya ya da ekran görüntüsü/duman testi çalıştırması kendini ikinci örnek sanıp pencere açmadan kapanıyordu.
+- **Genel adlar:** SSS, yardım botu, yer tutucular, belgeler ve demo artık herhangi bir kuruma özgü ad taşımıyor; örnekler `Lab-A`, `PC-1`, `NAS`, `ShareRelease` gibi genel adlarla yazıldı; ekran görüntüleri yenilendi.
 - **Düzeltme:** yardım botu ve çalıştırma paneli çekmeceleri başlık çubuğunun altından başlıyor; Windows'ta pencerenin küçült/büyüt/kapat düğmeleri çekmecenin kendi düğmelerini örtüyordu.
 
 ## 2.1.0 — 2026-10-17
