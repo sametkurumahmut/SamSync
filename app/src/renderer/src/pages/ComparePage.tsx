@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GitCompare, Play, Send, Search, WifiOff, Folder, FileText } from 'lucide-react';
+import { GitCompare, Play, Send, Search, WifiOff, Folder, FileText, ArrowLeftRight } from 'lucide-react';
 import type { DiffResult, PlanCategory, PlanOp, SendPlan, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
 import { Button, Empty, Segmented } from '../components/ui';
 import { TargetPicker } from '../components/TargetPicker';
 import { DiffView } from '../components/DiffView';
+import { MachineCompare } from '../components/MachineCompare';
+import { readStored, writeStored } from '../lib/persist';
 import { SIGN, opStatus } from '../components/PlanReview';
 import { compareOptions } from './SendPage';
 import { bytes, cls } from '../lib/format';
@@ -47,6 +49,9 @@ export function ComparePage() {
   const [query, setQuery] = useState('');
   const [opId, setOpId] = useState<string | null>(null);
   const [diff, setDiff] = useState<{ diff: DiffResult | null; loading: boolean; error?: string }>({ diff: null, loading: false });
+  /** Sources against targets, or two machines against each other. */
+  const [mode, setMode] = useState<'sources' | 'machines'>(() => readStored<'sources' | 'machines'>('samsync.compare.mode', 'sources'));
+  useEffect(() => writeStored('samsync.compare.mode', mode), [mode]);
 
   const run = async () => {
     const taskId = newTaskId();
@@ -99,14 +104,29 @@ export function ComparePage() {
       <div className="page-head">
         <div className="grow">
           <h1>{t('Karşılaştır')}</h1>
-          <div className="sub">{t('Gönder sayfasındaki kaynakları hedeflerle karşılaştırın ve dosya dosya farklara bakın. Hiçbir şey gönderilmez.')}</div>
+          <div className="sub">{mode === 'machines' ? t('İki makinedeki aynı klasörü karşılaştırın: sapan dosyalar ve farkları. Hiçbir şey yazılmaz.') : t('Gönder sayfasındaki kaynakları hedeflerle karşılaştırın ve dosya dosya farklara bakın. Hiçbir şey gönderilmez.')}</div>
         </div>
-        <Segmented value={options.compare} onChange={(compare) => setOptions({ compare })} options={compareOptions()} />
-        <Button size="lg" variant="primary" icon={<Play size={15} />} disabled={!sendPaths.length || !targets.length} onClick={() => void run()}>
-          {plan ? t('Yeniden karşılaştır') : t('Karşılaştır')}
-        </Button>
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'sources', label: t('Kaynaklar → hedefler'), icon: <GitCompare size={14} /> },
+            { value: 'machines', label: t('Makine ↔ makine'), icon: <ArrowLeftRight size={14} /> },
+          ]}
+        />
+        {mode === 'sources' && (
+          <>
+            <Segmented value={options.compare} onChange={(compare) => setOptions({ compare })} options={compareOptions()} />
+            <Button size="lg" variant="primary" icon={<Play size={15} />} disabled={!sendPaths.length || !targets.length} onClick={() => void run()}>
+              {plan ? t('Yeniden karşılaştır') : t('Karşılaştır')}
+            </Button>
+          </>
+        )}
       </div>
       <div className="page-body fill">
+        {mode === 'machines' ? (
+          <MachineCompare />
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 32%) minmax(0, 1fr)', gap: 14, minHeight: 0, height: '100%' }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
             <div className="card">
@@ -228,6 +248,7 @@ export function ComparePage() {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

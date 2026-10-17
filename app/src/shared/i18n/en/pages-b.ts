@@ -397,6 +397,23 @@ const d: Dict = {
   '{n} hatalı': '{n} failed',
   'gönderim yok': 'no sends',
   'En çok alan makineler': 'Machines that received the most',
+  'yalnız {name}': 'only {name}',
+  'farklı': 'different',
+  '{name} daha yeni': '{name} newer',
+  'İki farklı makine seçin': 'Pick two different machines',
+  '{a} ⇄ {b}': '{a} ⇄ {b}',
+  'İki makine': 'Two machines',
+  'Klasör (köke göre; boş: kökün tamamı)': 'Folder (relative to the root; empty: the whole root)',
+  'Aynı olması gereken makineler (IG1 ↔ IG2) arasındaki sapmayı gösterir; hiçbir şey yazılmaz. Eşitlemek için Senkron sayfasını kullanın.': 'Shows the drift between machines that should be identical (IG1 ↔ IG2); nothing is written. Use the Sync page to make them equal.',
+  'İki makine ve bir klasör seçip Karşılaştır’a basın.': 'Pick two machines and a folder, then press Compare.',
+  'İki makine bu klasörde aynı.': 'The two machines are the same in this folder.',
+  'Soldaki listeden bir dosyaya tıklayınca iki makinedeki hâlinin farkı burada görünür.': 'Click a file in the list to see how it differs between the two machines.',
+  'İki makinedeki aynı klasörü karşılaştırın: sapan dosyalar ve farkları. Hiçbir şey yazılmaz.': 'Compare the same folder on two machines: the files that drifted and their differences. Nothing is written.',
+  'Kaynaklar → hedefler': 'Sources → targets',
+  'Makine ↔ makine': 'Machine ↔ machine',
+  '{n} makinede bu gönderimin değiştirdiği ve sildiği dosyalar yedeklerinden geri gelecek, eklediği yeni dosyalar silinecek. Şimdiki hâlleri de yedeklenir. Devam edilsin mi?': 'On {n} machines the files this send changed or deleted come back from its backups and the files it added are removed. The current versions are backed up too. Continue?',
+  'Geri alınamadı': 'Could not undo',
+  'Bu gönderimi yedeklerinden geri al': 'Undo this send from its backups',
 };
 
 export default d;

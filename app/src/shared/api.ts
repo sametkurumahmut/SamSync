@@ -145,6 +145,10 @@ export interface Api {
   backupSets(targetIds: string[]): Promise<BackupSet[]>;
   browseBackup(targetId: string, stamp: string, relDir: string, folder?: string): Promise<BrowseEntry[]>;
   restore(rel: string, picks: { targetId: string; stamp: string; folder?: string }[], backupCurrent: boolean): Promise<string>;
+  /** Undoes a whole run from its backups (replaced and deleted files come back, created ones go); the run id of the restore. */
+  restoreRun(runId: string, backupCurrent: boolean): Promise<string>;
+  /** The text difference of the same file on two machines. */
+  diffNodes(leftId: string, rightId: string, rel: string): Promise<DiffResult>;
 
   /** The old wizard's state file on this computer, if there is one. */
   findWizardState(): Promise<string | null>;
@@ -233,6 +237,8 @@ export const API_METHODS = {
   backupSets: true,
   browseBackup: true,
   restore: true,
+  restoreRun: true,
+  diffNodes: true,
   findWizardState: true,
   importWizardState: true,
   pick: true,

@@ -313,6 +313,11 @@ const d: Dict = {
   Paket: 'Pack',
   '{n} kaynak → {file}': '{n} sources → {file}',
   'Paket yazıldı: {file} ({files} dosya, {size} → {packed})': 'Pack written: {file} ({files} files, {size} → {packed})',
+  'Çalıştırma bulunamadı.': 'Run not found.',
+  'Bu gönderim yedek almadan yapılmış; geri alınamaz.': 'This send was made without backups; it cannot be undone.',
+  'Deneme çalıştırması hiçbir şey yazmadı.': 'A dry run wrote nothing.',
+  'Geri alınacak bir şey bulunamadı (yedekler silinmiş olabilir).': 'Nothing to undo was found (the backups may have been removed).',
+  'Geri alma: {label}': 'Undo: {label}',
 };
 
 export default d;

@@ -1,4 +1,4 @@
-import type { BackupLookup, BackupVersion, BackupSet } from '../shared/types';
+import type { BackupLookup, BackupVersion, BackupSet, RunDetail } from '../shared/types';
 import type { CoreContext } from './context';
 import { findNode } from './context';
 import { transportForNode, nodeRootLabel, type Entry, type Transport } from './transport';
@@ -152,6 +152,52 @@ export async function restoreGroups(ctx: CoreContext, rel: string, picks: { targ
       await tgt.close();
     }
     groups.push({ key: node.id, title: node.name, rootLabel: nodeRootLabel(ctx.config, node), open, ops, node, endpoints: { self: open } });
+  }
+  return groups;
+}
+
+/**
+ * Undoing a whole run: on every machine it wrote to, the files it replaced or deleted come back from that run's
+ * backup folder, and the files it created go. Only a run made with backups on can be undone (what it replaced
+ * without a backup is gone).
+ */
+export async function restoreRunGroups(ctx: CoreContext, run: RunDetail): Promise<ExecGroup[]> {
+  const groups: ExecGroup[] = [];
+  for (const ts of run.targets) {
+    const node = findNode(ctx.config, ts.key);
+    if (!node) continue;
+    const done = run.results.filter((r) => r.key === ts.key && r.ok && r.kind !== 'mkdir');
+    if (!done.length) continue;
+    const open = () => transportForNode(ctx, node);
+    const tgt = await open();
+    const ops: ExecOp[] = [];
+    let i = 0;
+    try {
+      for (const r of done) {
+        if (r.backedUp && ts.backupPath) {
+          const from = relJoin(ts.backupPath, r.rel);
+          const st = await tgt.stat(from);
+          if (!st) continue;
+          if (!st.isDir) {
+            ops.push({ id: String(i++), kind: 'copy', rel: r.rel, isDir: false, size: st.size, mtimeMs: st.mtimeMs, src: { kind: 'endpoint', key: 'self', rel: from } });
+          } else {
+            ops.push({ id: String(i++), kind: 'mkdir', rel: r.rel, isDir: true, size: 0 });
+            const scan = await scanTree(tgt, from, { caseInsensitive: tgt.caseInsensitive });
+            for (const e of scan.entries.values()) {
+              const target = relJoin(r.rel, e.rel);
+              if (e.isDir) ops.push({ id: String(i++), kind: 'mkdir', rel: target, isDir: true, size: 0 });
+              else ops.push({ id: String(i++), kind: 'copy', rel: target, isDir: false, size: e.size, mtimeMs: e.mtimeMs, src: { kind: 'endpoint', key: 'self', rel: relJoin(from, e.rel) } });
+            }
+          }
+        } else if (r.kind === 'copy') {
+          // nothing was kept, so the run created it: it goes
+          ops.push({ id: String(i++), kind: 'delete', rel: r.rel, isDir: false, size: 0 });
+        }
+      }
+    } finally {
+      await tgt.close();
+    }
+    if (ops.length) groups.push({ key: node.id, title: node.name, rootLabel: nodeRootLabel(ctx.config, node), open, ops, node, endpoints: { self: open } });
   }
   return groups;
 }

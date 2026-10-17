@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { History, FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser } from 'lucide-react';
+import { History, FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2 } from 'lucide-react';
 import type { RunDetail, RunSummary } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
@@ -140,6 +140,18 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
   const failedTargets = summary.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => x.key);
   const O = ORIGIN[summary.origin];
 
+  // undo: only a run that kept backups can be taken back (what it replaced is otherwise gone)
+  const canUndo = !!summary.options?.backup && !summary.dryRun && summary.origin !== 'restore' && summary.opsOk > 0;
+  const undo = async () => {
+    const n = summary.targets.filter((x) => x.status === 'ok' || x.status === 'partial').length;
+    if (!confirm(t('{n} makinede bu gönderimin değiştirdiği ve sildiği dosyalar yedeklerinden geri gelecek, eklediği yeni dosyalar silinecek. Şimdiki hâlleri de yedeklenir. Devam edilsin mi?', { n }))) return;
+    try {
+      const id = await api.restoreRun(summary.id, true);
+      st.watchRun(id);
+    } catch (e) {
+      toast('error', t('Geri alınamadı'), (e as Error).message);
+    }
+  };
   const resend = async (onlyFailed: boolean) => {
     st.clearSendPaths();
     st.setTargets(onlyFailed ? failedTargets : summary.targetIds);
@@ -183,6 +195,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
               {t('Yeniden gönder')}
             </Button>
           </>
+        )}
+        {canUndo && (
+          <Button size="sm" icon={<Undo2 size={13} />} tip={t('Bu gönderimi yedeklerinden geri al')} onClick={() => void undo()}>
+            {t('Geri al')}
+          </Button>
         )}
         <Button
           size="sm"

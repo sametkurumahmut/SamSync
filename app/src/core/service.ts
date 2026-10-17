@@ -49,7 +49,7 @@ import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } from './sync';
 import { jobFileText, jobFromFile } from './jobfile';
-import { findBackups, listBackupSets, browseBackup, restoreGroups } from './backups';
+import { findBackups, listBackupSets, browseBackup, restoreGroups, restoreRunGroups } from './backups';
 import { findNode } from './context';
 import crypto from 'node:crypto';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId, stamp, withTimeout } from './util';
@@ -986,6 +986,42 @@ export class Service implements Api {
   }
   browseBackup(targetId: string, stamp: string, relDir: string, folder?: string) {
     return browseBackup(this.ctx(), targetId, stamp, relDir, folder);
+  }
+
+  /** Undoes a run: what it replaced or deleted comes back from its backups, what it created goes. */
+  async restoreRun(runId: string, backupCurrent: boolean): Promise<string> {
+    const run = await this.history.get(runId);
+    if (!run) throw new Error(t('Çalıştırma bulunamadı.'));
+    if (!run.options?.backup) throw new Error(t('Bu gönderim yedek almadan yapılmış; geri alınamaz.'));
+    if (run.dryRun) throw new Error(t('Deneme çalıştırması hiçbir şey yazmadı.'));
+    const ctx = this.ctx();
+    const groups = await restoreRunGroups(ctx, run);
+    if (!groups.length) throw new Error(t('Geri alınacak bir şey bulunamadı (yedekler silinmiş olabilir).'));
+    const s = this.execSettings(t('Geri alma: {label}', { label: run.label }), 'restore', { backup: backupCurrent, notify: true }, { sources: run.sources, targetIds: groups.map((g) => g.key) });
+    const handle = startRun(ctx, groups, s);
+    this.track(handle, true);
+    return handle.id;
+  }
+
+  /** The text difference of the same file on two machines (the Compare page's machine mode). */
+  async diffNodes(leftId: string, rightId: string, rel: string): Promise<DiffResult> {
+    const ln = findNode(this.config, leftId);
+    const rn = findNode(this.config, rightId);
+    if (!ln || !rn) throw new Error(t('Hedef bulunamadı'));
+    const ctx = this.ctx();
+    const [lt, rt] = await Promise.all([transportForNode(ctx, ln), transportForNode(ctx, rn)]);
+    const read = async (tg: Transport) => {
+      const st = await tg.stat(rel);
+      if (!st || st.isDir) return { buf: null as Buffer | null, info: { size: 0, exists: false } };
+      return { buf: await readCapped(await tg.readStream(rel)), info: { size: st.size, mtimeMs: st.mtimeMs, exists: true } };
+    };
+    try {
+      const [l, r] = await Promise.all([read(lt), read(rt)]);
+      const d = textDiff(l.buf ?? Buffer.alloc(0), r.buf ?? Buffer.alloc(0), { leftLabel: ln.name, rightLabel: rn.name });
+      return { ...d, leftInfo: l.info, rightInfo: r.info, leftLabel: ln.name, rightLabel: rn.name };
+    } finally {
+      await Promise.all([lt.close().catch(() => undefined), rt.close().catch(() => undefined)]);
+    }
   }
 
   async restore(rel: string, picks: { targetId: string; stamp: string; folder?: string }[], backupCurrent: boolean): Promise<string> {
