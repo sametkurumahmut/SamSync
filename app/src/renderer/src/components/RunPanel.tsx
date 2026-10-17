@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity } from 'lucide-react';
 import type { RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, Segmented, useEscapeLayer } from './ui';
+import { Sparkline } from './charts';
 import { api } from '../lib/api';
+import { ratesPerSecond } from '../lib/rates';
 import { bytes, cls, duration, num } from '../lib/format';
 import { tx } from '../lib/i18n';
 import { locale, t } from '@shared/i18n';
@@ -68,6 +70,72 @@ export function RunPill() {
         <div style={{ width: `${run.done ? 100 : tot.pct}%` }} />
       </div>
     </button>
+  );
+}
+
+/** The last minute of throughput: the line, and now / peak / average under it. */
+function Throughput({ run, now }: { run: LiveRun; now: number }) {
+  const end = run.done ? (run.summary.finishedAt ?? now) : now;
+  const rates = useMemo(() => ratesPerSecond(run.samples, end, 60), [run.samples, end]);
+  if (rates.length < 3) return null;
+  const peak = Math.max(...rates);
+  const avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+  const current = rates[rates.length - 1];
+  const stalled = !run.done && rates.length >= 5 && rates.slice(-5).every((r) => r === 0);
+  return (
+    <div className="run-chart">
+      <div className="row" style={{ fontSize: 11.5, marginBottom: 4 }}>
+        <span className="muted row" style={{ gap: 4 }}>
+          <Activity size={12} /> {t('Hız, son {n} sn', { n: rates.length })}
+        </span>
+        <span className="spacer" />
+        {stalled ? (
+          <span className="badge amber">{t('bekliyor')}</span>
+        ) : (
+          <span className="tabular" style={{ fontWeight: 600 }}>
+            {speedText(current)}
+          </span>
+        )}
+        <span className="faint tabular" style={{ marginLeft: 10 }}>
+          {t('tepe {speed}', { speed: speedText(peak) })} • {t('ort. {speed}', { speed: speedText(avg) })}
+        </span>
+      </div>
+      <Sparkline values={rates} height={44} color={stalled ? 'var(--amber)' : 'var(--accent)'} />
+    </div>
+  );
+}
+
+/** Per group: how many of its machines are done, so "Dozer 3/5" reads at a glance. */
+function GroupChips({ run }: { run: LiveRun }) {
+  const nodes = useApp((s) => s.boot?.config.nodes);
+  const groups = useMemo(() => {
+    const byId = new Map((nodes ?? []).map((n) => [n.id, n.group || '']));
+    const m = new Map<string, { total: number; done: number; failed: number; running: number }>();
+    for (const x of run.targets) {
+      const g = byId.get(x.key) || '';
+      if (!g) continue;
+      const e = m.get(g) ?? { total: 0, done: 0, failed: 0, running: 0 };
+      e.total++;
+      if (x.status === 'ok') e.done++;
+      else if (x.status === 'failed' || x.status === 'partial') e.failed++;
+      else if (x.status === 'running') e.running++;
+      m.set(g, e);
+    }
+    return [...m.entries()].filter(([, e]) => e.total > 1);
+  }, [nodes, run.targets]);
+  if (!groups.length) return null;
+  return (
+    <div className="run-groups">
+      {groups.map(([g, e]) => (
+        <span key={g} className={cls('chip static', e.failed ? 'bad' : e.done === e.total ? 'ok' : e.running ? 'hot' : '')}>
+          <b>{g}</b>
+          <span className="tabular">
+            {e.done + e.failed}/{e.total}
+          </span>
+          {e.failed > 0 && <span style={{ color: 'var(--red)' }}>{t('{n} hata', { n: e.failed })}</span>}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -160,6 +228,8 @@ export function RunPanel() {
             <b className="tabular">{t('%{pct}', { pct: Math.round(run.done ? 100 : tot.pct) })}</b>
           </div>
           <Progress value={run.done ? 100 : tot.pct} state={run.done ? (s.status === 'ok' ? 'ok' : s.status === 'cancelled' ? undefined : 'bad') : undefined} />
+          {!s.dryRun && <Throughput run={run} now={now} />}
+          <GroupChips run={run} />
         </div>
 
         <div className="drawer-targets">

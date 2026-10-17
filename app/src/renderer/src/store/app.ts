@@ -21,6 +21,7 @@ import type {
 import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { readStored, writeStored } from '../lib/persist';
+import { pushSample, type Sample } from '../lib/rates';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 
@@ -49,6 +50,8 @@ export interface LiveRun {
   targets: RunTargetState[];
   log: RunLogLine[];
   done: boolean;
+  /** Bytes done over time (all targets together), for the throughput chart. */
+  samples: Sample[];
 }
 
 export interface Review {
@@ -490,13 +493,15 @@ function handleEvent(e: AppEvent) {
       useApp.setState({ relayState: e.state });
       break;
     case 'run-start':
-      useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false } } }));
+      useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, samples: [{ t: Date.now(), b: 0 }] } } }));
       break;
     case 'run-progress':
       useApp.setState((s) => {
         const r = s.runs[e.runId];
         if (!r) return {};
-        return { runs: { ...s.runs, [e.runId]: { ...r, targets: e.targets } } };
+        let b = 0;
+        for (const x of e.targets) b += x.bytesDone;
+        return { runs: { ...s.runs, [e.runId]: { ...r, targets: e.targets, samples: pushSample(r.samples, { t: Date.now(), b }) } } };
       });
       break;
     case 'run-log':
@@ -512,7 +517,7 @@ function handleEvent(e: AppEvent) {
         const r = s.runs[e.run.id];
         return {
           historyVersion: s.historyVersion + 1,
-          runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: r?.log ?? [], done: true } },
+          runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: r?.log ?? [], done: true, samples: r?.samples ?? [] } },
         };
       });
       const r = e.run;

@@ -1222,3 +1222,31 @@
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
 }
+
+/* throughput chart and group chips in the run panel */
+.run-chart {
+  margin-top: 12px;
+  padding: 8px 10px 6px;
+  border-radius: 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+.run-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.run-groups .chip {
+  gap: 6px;
+}
+.run-groups .chip.ok {
+  border-color: rgb(var(--green-rgb, 34 197 94) / 40%);
+  color: var(--green);
+}
+.run-groups .chip.bad {
+  border-color: rgb(var(--red-rgb, 220 60 60) / 40%);
+}
+.run-groups .chip.hot {
+  border-color: rgb(var(--accent-rgb) / 45%);
+}

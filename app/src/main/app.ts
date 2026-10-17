@@ -129,10 +129,43 @@ if (launch.removeIntegrations) {
       awake = null;
     }
   };
+  // the taskbar button shows how far the running sends are, so the window can stay in the background
+  const runProgress = new Map<string, number>();
+  const showProgress = () => {
+    if (!win || win.isDestroyed()) return;
+    if (!runProgress.size) return win.setProgressBar(-1);
+    let sum = 0;
+    for (const v of runProgress.values()) sum += v;
+    win.setProgressBar(Math.min(0.999, Math.max(0.01, sum / runProgress.size)));
+  };
   const emit = (e: AppEvent) => {
     if (e.type === 'config-changed') integrations.refresh();
-    if (e.type === 'run-start') activeRuns.add(e.run.id);
-    if (e.type === 'run-done') activeRuns.delete(e.run.id);
+    if (e.type === 'run-start') {
+      activeRuns.add(e.run.id);
+      runProgress.set(e.run.id, 0);
+      showProgress();
+    }
+    if (e.type === 'run-progress') {
+      let bt = 0;
+      let bd = 0;
+      let total = 0;
+      let done = 0;
+      for (const x of e.targets) {
+        bt += x.bytesTotal;
+        bd += x.bytesDone;
+        total += x.total;
+        done += x.done;
+      }
+      runProgress.set(e.runId, bt > 0 ? bd / bt : total ? done / total : 0);
+      showProgress();
+    }
+    if (e.type === 'run-done') {
+      activeRuns.delete(e.run.id);
+      runProgress.delete(e.run.id);
+      showProgress();
+      // a send that finished while the user was elsewhere: the taskbar button blinks until the window is focused
+      if (win && !win.isDestroyed() && win.isVisible() && !win.isFocused()) win.flashFrame(true);
+    }
     if (e.type === 'run-start' || e.type === 'run-done') keepAwake();
     if (win && !win.isDestroyed()) win.webContents.send('samsync:event', e);
   };

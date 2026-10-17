@@ -265,6 +265,10 @@ const d: Dict = {
   'Sürükle-bırak': 'Drag and drop',
   'Pencereye bırakılan dosyalar gönderim listesine eklenir': 'Files dropped on the window join the send list',
   'Beklenmeyen hata': 'Unexpected error',
+  'Hız, son {n} sn': 'Speed, last {n} s',
+  bekliyor: 'waiting',
+  'tepe {speed}': 'peak {speed}',
+  'ort. {speed}': 'avg. {speed}',
 };
 
 export default d;
