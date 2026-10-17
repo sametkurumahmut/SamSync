@@ -286,18 +286,22 @@ export function AutomationPage() {
         ) : (
           <div className="card">
             {scheduled.map((s: ScheduleState) => {
-              const job = jobs.find((j) => j.id === s.jobId);
+              const quick = s.jobId.startsWith('quick:') ? (boot.settings.quickSends ?? []).find((q) => q.id === s.jobId.slice(6)) : undefined;
+              const job = quick ? undefined : jobs.find((j) => j.id === s.jobId);
+              const sched = quick ? quick.schedule : job?.schedule;
               return (
                 <div key={s.jobId} className="list-row" style={{ height: 'auto', minHeight: 58, padding: '10px 14px', gap: 14 }}>
                   <div className={cls('icon-tile', s.enabled && s.activeHere && 'accent')}>{s.running ? <Loader2 size={15} className="spin" /> : <Clock size={15} />}</div>
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div className="row" style={{ gap: 8 }}>
                       <b className="ellipsis">{s.name}</b>
+                      {quick && <span className="badge accent">{t('hızlı gönderim')}</span>}
                       {!s.activeHere && <span className="badge">{s.reason}</span>}
                     </div>
                     <div className="faint" style={{ fontSize: 12 }}>
-                      {describeSchedule(job?.schedule)}
-                      {job?.schedule?.machineId ? ` • ${t('{machine} makinesinde', { machine: job.schedule.machineId })}` : ''}
+                      {describeSchedule(sched)}
+                      {quick ? ` • ${t('{n} kaynak → {targets} hedef', { n: quick.paths.length, targets: quick.targetIds.length })}` : ''}
+                      {sched?.machineId ? ` • ${t('{machine} makinesinde', { machine: sched.machineId })}` : ''}
                     </div>
                   </div>
                   <div className="col" style={{ gap: 2, alignItems: 'flex-end', minWidth: 170 }}>
@@ -315,8 +319,9 @@ export function AutomationPage() {
                     variant="ghost"
                     iconOnly
                     icon={<Pencil size={13} />}
-                    tip={t('İşi aç')}
+                    tip={quick ? t('Gönder sayfasında aç') : t('İşi aç')}
                     onClick={() => {
+                      if (quick) return setPage('send');
                       localStorage.setItem('samsync.sync.job', s.jobId);
                       setPage('sync');
                     }}

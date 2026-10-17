@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles } from 'lucide-react';
-import type { CopySettings, UpdateConfig, UpdateSource } from '@shared/types';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send } from 'lucide-react';
+import type { CopySettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
@@ -496,6 +496,8 @@ export function SettingsPage() {
             <UpdateStatus />
           </Section>
 
+          <NotificationsSection />
+
           <Section id="about" icon={<Info size={15} />} title={t('Hakkında')}>
             <div className="about-grid">
               <span className="faint">{t('Sürüm')}</span>
@@ -541,6 +543,79 @@ export function SettingsPage() {
         {update?.phase === 'error' && null}
       </div>
     </div>
+  );
+}
+
+/** Webhook / Telegram reports of finished runs (this machine). */
+function NotificationsSection() {
+  const boot = useApp((s) => s.boot!);
+  const saveSettings = useApp((s) => s.saveSettings);
+  const toast = useApp((s) => s.toast);
+  const saved = boot.settings.notifications ?? { onSuccess: false, onFailure: true };
+  const [n, setN] = useState<NotificationSettings>(saved);
+  const [testing, setTesting] = useState(false);
+  const dirty = JSON.stringify(n) !== JSON.stringify(saved);
+  const any = !!(n.webhookUrl || (n.telegramToken && n.telegramChatId));
+  return (
+    <Section
+      id="notifications"
+      icon={<Bell size={15} />}
+      title={t('Bildirimler')}
+      desc={t('Gönderim bitince ekibe haber: bir web kancası ya da Telegram')}
+      action={
+        dirty && (
+          <div className="row">
+            <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={() => setN(saved)}>
+              {t('Geri al')}
+            </Button>
+            <Button size="sm" variant="primary" icon={<Save size={13} />} onClick={async () => (await saveSettings({ notifications: n }), toast('ok', t('Bildirim ayarları kaydedildi')))}>
+              {t('Kaydet')}
+            </Button>
+          </div>
+        )
+      }
+    >
+      <div className="col" style={{ gap: 12 }}>
+        <Field label={t('Web kancası (URL)')} help={t('Her bitişte JSON gönderilir: durum, etiket, makineler, işlem ve bayt sayıları, süre, özet metin. Teams/Slack iş akışı ya da kendi betiğiniz.')}>
+          <input className="input mono" value={n.webhookUrl ?? ''} onChange={(e) => setN({ ...n, webhookUrl: e.target.value.trim() || undefined })} placeholder="https://…" spellCheck={false} />
+        </Field>
+        <div className="form-grid">
+          <Field label={t('Telegram bot anahtarı')} help={t('@BotFather’dan; yalnızca bu makinede saklanır')}>
+            <input className="input mono" type="password" value={n.telegramToken ?? ''} onChange={(e) => setN({ ...n, telegramToken: e.target.value.trim() || undefined })} placeholder="123456:ABC…" spellCheck={false} />
+          </Field>
+          <Field label={t('Telegram sohbet kimliği')} help={t('Kişi ya da grup; botu gruba ekleyip kimliğini öğrenin')}>
+            <input className="input mono" value={n.telegramChatId ?? ''} onChange={(e) => setN({ ...n, telegramChatId: e.target.value.trim() || undefined })} placeholder="-1001234567890" spellCheck={false} />
+          </Field>
+        </div>
+        <ToggleRow title={t('Başarılı gönderimlerde de bildir')} desc={t('Kapalıyken yalnızca hatalı ya da kısmi bitenler gider')} on={n.onSuccess} onChange={(v) => setN({ ...n, onSuccess: v })} />
+        <ToggleRow title={t('Hatalı ve kısmi gönderimlerde bildir')} on={n.onFailure} onChange={(v) => setN({ ...n, onFailure: v })} />
+        <div className="row">
+          <Button
+            size="sm"
+            icon={<Send size={13} />}
+            loading={testing}
+            disabled={!any || dirty}
+            tip={dirty ? t('Önce kaydedin') : undefined}
+            onClick={async () => {
+              setTesting(true);
+              try {
+                const r = await api.notifyTest();
+                const lines = Object.entries(r).map(([ch, res]) => `${ch}: ${res}`);
+                const ok = Object.values(r).every((x) => x === 'ok');
+                toast(ok ? 'ok' : 'error', ok ? t('Sınama iletisi gitti') : t('Sınama iletisi gönderilemedi'), lines.join(' • '));
+              } finally {
+                setTesting(false);
+              }
+            }}
+          >
+            {t('Sına')}
+          </Button>
+          <span className="faint" style={{ fontSize: 12 }}>
+            {t('Deneme çalıştırmaları bildirilmez. Masaüstü bildirimi ayrıca "Bitince bildir" seçeneğine bağlıdır.')}
+          </span>
+        </div>
+      </div>
+    </Section>
   );
 }
 

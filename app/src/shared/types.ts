@@ -223,6 +223,8 @@ export interface LocalSettings {
   quickSends?: QuickSend[];
   /** The version whose "what's new" card was shown (or that was installed first). */
   lastSeenVersion?: string;
+  /** Webhook / Telegram reports of finished runs. */
+  notifications?: NotificationSettings;
 }
 
 /** One version's section of the changelog, for the card after an update. */
@@ -383,6 +385,18 @@ export interface QuickSend {
   review?: boolean;
   /** A system-wide key (Electron accelerator, e.g. "Ctrl+Alt+1") that runs it from anywhere. */
   hotkey?: string;
+  /** Runs by itself at these times (this machine only, like the rest of the quick send). */
+  schedule?: SyncSchedule;
+}
+
+/** Where a finished run is reported besides the desktop notification (this machine's settings). */
+export interface NotificationSettings {
+  /** Any HTTP endpoint that takes a JSON POST (a Teams/Slack workflow, a script of your own). */
+  webhookUrl?: string;
+  telegramToken?: string;
+  telegramChatId?: string;
+  onSuccess: boolean;
+  onFailure: boolean;
 }
 
 export interface Bootstrap {

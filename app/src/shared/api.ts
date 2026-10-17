@@ -181,6 +181,8 @@ export interface Api {
   watchRunNow(id: string): Promise<void>;
   automationPause(paused: boolean): Promise<AutomationState>;
   scheduleRunNow(jobId: string): Promise<void>;
+  /** A test message to the webhook / Telegram chat in the settings; per channel 'ok' or the error. */
+  notifyTest(): Promise<{ webhook?: string; telegram?: string }>;
 
   windowControl(action: 'minimize' | 'maximize' | 'close' | 'devtools' | 'reload'): Promise<void>;
   /** Native theme + title bar overlay colours, so the window buttons match the app theme; zoom is the UI scale (1 = 100%). */
@@ -265,6 +267,7 @@ export const API_METHODS = {
   relayState: true,
   inventory: true,
   scheduleRunNow: true,
+  notifyTest: true,
   windowControl: true,
   setChrome: true,
   clientError: true,

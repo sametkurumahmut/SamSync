@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AutomationSettings, AutomationState, NodeConfig, RunDetail, ScheduleState, SendPlan, SourceSpec, SyncJob, SyncSchedule, WatchConfig, WatchState } from '../shared/types';
+import type { AutomationSettings, AutomationState, NodeConfig, QuickSend, RunDetail, ScheduleState, SendPlan, SourceSpec, SyncJob, SyncSchedule, WatchConfig, WatchState } from '../shared/types';
 import type { CoreContext } from './context';
 import { DEFAULT_GIT_EVENTS, ReflogWatcher, changedFiles, underWatched, type HeadMove } from './gitwatch';
 import type { RunHandle } from './executor';
@@ -24,6 +24,9 @@ export interface AutomationHost {
   saveWatches(w: WatchConfig[]): Promise<void>;
   getScheduleRuns(): Record<string, number>;
   saveScheduleRun(jobId: string, at: number): Promise<void>;
+  /** Saved sends with a schedule, and how to run one without the window. */
+  getQuickSends?(): QuickSend[];
+  runQuick?(q: QuickSend, label: string): Promise<RunHandle | null>;
   isPaused(): boolean;
   notify(title: string, body: string): void;
   emit(state: AutomationState): void;
@@ -464,6 +467,10 @@ class WatchRunner {
 
 // ------------------------------------------------------------------ schedules
 
+/** The schedule id of a quick send, as it appears among the scheduled jobs. */
+export const quickScheduleId = (quickId: string) => `quick:${quickId}`;
+export const quickIdOf = (scheduleId: string) => (scheduleId.startsWith('quick:') ? scheduleId.slice(6) : null);
+
 function parseTime(t: string): [number, number] | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
   if (!m) return null;
@@ -573,6 +580,24 @@ export class Automation {
           lastSummary: r?.summary,
         };
       });
+    // quick sends with a schedule, listed with the sync jobs ("quick:<id>")
+    for (const q of this.host.getQuickSends?.() ?? []) {
+      if (!q.schedule) continue;
+      const id = quickScheduleId(q.id);
+      const last = runs[id];
+      const r = this.lastResult.get(id);
+      schedules.push({
+        jobId: id,
+        name: q.name,
+        enabled: q.schedule.enabled,
+        activeHere: true,
+        running: this.running.has(id),
+        nextAt: q.schedule.enabled ? nextRun(q.schedule, last, this.startedAt, Date.now(), this.host.settings().catchUpSchedules) : undefined,
+        lastAt: last,
+        lastStatus: r?.status,
+        lastSummary: r?.summary,
+      });
+    }
     const watches = [...this.runners.values()].map((r) => ({ ...r.state, pendingFiles: r.pendingCount() }));
     return { paused: this.host.isPaused(), watches, schedules };
   }
@@ -616,8 +641,43 @@ export class Automation {
     const now = Date.now();
     for (const s of this.snapshot().schedules) {
       if (!s.enabled || !s.activeHere || s.running || s.nextAt == null || s.nextAt > now) continue;
+      const quickId = quickIdOf(s.jobId);
+      if (quickId) {
+        const q = this.host.getQuickSends?.().find((x) => x.id === quickId);
+        if (q) await this.runQuickSchedule(q);
+        continue;
+      }
       const job = this.host.ctx().config.syncJobs.find((j) => j.id === s.jobId);
       if (job) await this.runSchedule(job);
+    }
+  }
+
+  /** A quick send at its scheduled time: sent as it is (no review), reported like a scheduled sync job. */
+  async runQuickSchedule(q: QuickSend): Promise<void> {
+    const id = quickScheduleId(q.id);
+    if (this.running.has(id) || !this.host.runQuick) return;
+    this.running.add(id);
+    this.emit();
+    const global = this.host.settings().notify;
+    const notify = global === 'never' ? 'never' : q.schedule?.notify ?? 'errors';
+    try {
+      const handle = await this.host.runQuick(q, t('Zamanlanmış: {name}', { name: q.name }));
+      if (!handle) {
+        this.lastResult.set(id, { status: 'nothing', summary: t('Değişiklik yok') });
+        if (notify === 'always') this.host.notify(`= ${q.name}`, t('Değişiklik yok'));
+      } else {
+        const d = await handle.done;
+        this.lastResult.set(id, { status: d.status, summary: d.opsFailed ? t('{n} işlem • {failed} hata', { n: d.opsOk, failed: d.opsFailed }) : t('{n} işlem', { n: d.opsOk }) });
+        if (notify === 'always' || notify === 'changes' || d.status !== 'ok') this.host.notify(`${d.status === 'ok' ? '✓' : '✕'} ${q.name}`, t('{ok} başarılı, {failed} hatalı', { ok: d.opsOk, failed: d.opsFailed }));
+      }
+    } catch (e) {
+      this.lastResult.set(id, { status: 'failed', summary: errMessage(e) });
+      this.host.ctx().log.error(t('Zamanlama'), t('{name} çalışmadı', { name: q.name }), e);
+      if (notify !== 'never') this.host.notify(`✕ ${q.name}`, errMessage(e));
+    } finally {
+      this.running.delete(id);
+      await this.host.saveScheduleRun(id, Date.now());
+      this.emit();
     }
   }
 

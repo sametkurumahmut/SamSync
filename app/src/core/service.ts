@@ -15,9 +15,11 @@ import type {
   LocalSettings,
   PackWriteResult,
   SendPlan,
+  SendOptions,
   SendRequest,
   RunDetail,
   ProbeResult,
+  QuickSend,
   SpeedTestResult,
   RelayState,
   SourceSpec,
@@ -40,6 +42,9 @@ import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from '.
 import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
 import { HashCache } from './hashcache';
+import { runMessage, sendNotification, wantsNotification } from './notifications';
+import { quickIdOf } from './automation';
+import { baseSendOptions } from '../shared/options';
 import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
@@ -190,6 +195,8 @@ export class Service implements Api {
         this.settings.scheduleRuns = { ...(this.settings.scheduleRuns ?? {}), [id]: at };
         await this.persistSettings();
       },
+      getQuickSends: () => this.settings.quickSends ?? [],
+      runQuick: (q, label) => this.runQuick(q, label),
       isPaused: () => !!this.settings.automationPaused,
       notify: (title, body) => this.host.notify?.(title, body),
       settings: () => automationSettings(this.settings),
@@ -565,6 +572,12 @@ export class Service implements Api {
       .then(async (detail) => {
         await this.history.save(detail).catch((e) => this.log.error(t('Geçmiş'), t('Kaydedilemedi'), e));
         void this.hashCache.flush();
+        // the team's channel, when one is set: never waits for, never fails the run
+        if (wantsNotification(this.settings.notifications, detail)) {
+          void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), version: this.host.appVersion })).then((r) => {
+            for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
+          });
+        }
         // a CSV report for every run, as the old tool wrote one for every copy
         await this.history
           .exportCsv(detail.id, this.reportsDir())
@@ -918,9 +931,39 @@ export class Service implements Api {
   }
 
   async scheduleRunNow(jobId: string): Promise<void> {
+    const quickId = quickIdOf(jobId);
+    if (quickId) {
+      const q = (this.settings.quickSends ?? []).find((x) => x.id === quickId);
+      if (!q) throw new Error(t('Hızlı gönderim bulunamadı: {name}', { name: quickId }));
+      void this.automation?.runQuickSchedule(q);
+      return;
+    }
     const job = this.config.syncJobs.find((j) => j.id === jobId);
     if (!job) throw new Error(t('İş bulunamadı'));
     void this.automation?.runSchedule(job);
+  }
+
+  /** A saved send run without the window (its schedule): planned and sent as it is; null when nothing differs. */
+  private async runQuick(q: QuickSend, label: string): Promise<RunHandle | null> {
+    const options: SendOptions = { ...baseSendOptions(this.config.copy, this.settings.sendDefaults), ...(q.options ?? {}), dryRun: false, notify: false };
+    const req: SendRequest = { sources: q.paths.map((p) => ({ kind: 'fs', path: p })), targetIds: q.targetIds, options, origin: 'send', label };
+    const scans: PlanScans = new Map();
+    const plan = await buildSendPlan(this.ctx(), req, { scans });
+    this.plans.set(plan.id, plan);
+    this.planScans.set(plan.id, scans);
+    try {
+      return this.runPlan(plan, 'default', { notify: false, unreachableFails: true });
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sends a test message to the webhook and the Telegram chat set in the settings. */
+  async notifyTest(): Promise<{ webhook?: string; telegram?: string }> {
+    const s = this.settings.notifications;
+    if (!s) return {};
+    const text = t('SamSync bildirim sınaması: {host}', { host: os.hostname() });
+    return sendNotification(s, { text, payload: { event: 'test', from: os.hostname(), version: this.host.appVersion, text } });
   }
 
   async syncItemDiff(compareId: string, pairId: string, key: string): Promise<DiffResult> {

@@ -109,6 +109,9 @@ const d: Dict = {
   'Kopyalama ayarları': 'Copy settings',
   'Güncelleme kaynağı': 'Update source',
   'Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.': 'There are unsaved changes: {what}. Leave the page? These changes are lost.',
+  'hızlı gönderim': 'quick send',
+  '{n} kaynak → {targets} hedef': '{n} sources → {targets} targets',
+  'Gönder sayfasında aç': 'Open on the Send page',
 };
 
 export default d;

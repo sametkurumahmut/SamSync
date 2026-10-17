@@ -318,6 +318,10 @@ const d: Dict = {
   'Deneme çalıştırması hiçbir şey yazmadı.': 'A dry run wrote nothing.',
   'Geri alınacak bir şey bulunamadı (yedekler silinmiş olabilir).': 'Nothing to undo was found (the backups may have been removed).',
   'Geri alma: {label}': 'Undo: {label}',
+  '{n} sn': '{n} s',
+  '{ok}/{n} makine': '{ok}/{n} machines',
+  '{channel} gönderilemedi: {error}': '{channel} could not be sent: {error}',
+  'SamSync bildirim sınaması: {host}': 'SamSync notification test: {host}',
 };
 
 export default d;

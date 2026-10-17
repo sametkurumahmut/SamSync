@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package } from 'lucide-react';
+import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
-import type { SendMode, CompareMethod, QuickSend } from '@shared/types';
+import type { SendMode, CompareMethod, QuickSend, SyncSchedule } from '@shared/types';
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
 import { useStartWatchFromSend } from './AutomationPage';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { ScheduleFields } from '../components/ScheduleFields';
+import { describeSchedule } from './AutomationPage';
 
 export const MODE_OPTIONS: { value: SendMode; label: string; tip: string }[] = [
   { value: 'overwrite', label: tk('Üzerine yaz'), tip: tk('Yeni ve değişen her dosyayı yazar.\nHedefteki daha yeni dosyalar da güncellenir (uyarıyla).') },
@@ -279,6 +281,29 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
   const [name, setName] = useState('');
   const [review, setReview] = useState(false);
   const [hotkey, setHotkey] = useState('');
+  const [schedule, setSchedule] = useState<SyncSchedule | undefined>(undefined);
+  /** The saved send being edited (name, key, review, schedule); its list stays as it is. */
+  const [editId, setEditId] = useState<string | null>(null);
+  const open = (q?: QuickSend) => {
+    setEditId(q?.id ?? null);
+    setName(q?.name ?? '');
+    setReview(!!q?.review);
+    setHotkey(q?.hotkey ?? '');
+    setSchedule(q?.schedule);
+    setNaming(true);
+  };
+  const close = () => {
+    setNaming(false);
+    setEditId(null);
+    setName('');
+    setHotkey('');
+    setSchedule(undefined);
+  };
+  const submit = async () => {
+    if (!name.trim()) return;
+    await save(name.trim(), review, hotkey, schedule, editId ?? undefined);
+    close();
+  };
   if (!quick.length && !canSave) return null;
   return (
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -290,6 +315,10 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
           <button className="chip-btn" onClick={() => run(q)}>
             <Send size={12} /> {q.name}
             {q.hotkey && <span className="kbd">{q.hotkey}</span>}
+            {q.schedule?.enabled && <CalendarClock size={11} className="faint" data-tip={describeSchedule(q.schedule)} />}
+          </button>
+          <button className="chip-x" aria-label={t('Düzenle')} data-tip={t('Ad, kısayol, zamanlama')} onClick={() => open(q)}>
+            <Pencil size={11} />
           </button>
           <button
             className="chip-x"
@@ -304,41 +333,41 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
         </span>
       ))}
       {canSave && (
-        <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={() => setNaming(true)}>
+        <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={() => open()}>
           {t('Bu listeyi kaydet')}
         </Button>
       )}
       {naming && (
         <Modal
-          title={t('Hızlı gönderim kaydet')}
+          title={editId ? t('Hızlı gönderimi düzenle') : t('Hızlı gönderim kaydet')}
           icon={<Zap size={16} />}
-          onClose={() => setNaming(false)}
+          onClose={close}
+          size="medium"
           footer={
             <>
               <span className="spacer" />
-              <Button onClick={() => setNaming(false)}>{t('Vazgeç')}</Button>
-              <Button
-                variant="primary"
-                disabled={!name.trim()}
-                onClick={async () => {
-                  await save(name.trim(), review, hotkey);
-                  setNaming(false);
-                  setName('');
-                  setHotkey('');
-                }}
-              >
+              <Button onClick={close}>{t('Vazgeç')}</Button>
+              <Button variant="primary" disabled={!name.trim()} onClick={() => void submit()}>
                 {t('Kaydet')}
               </Button>
             </>
           }
         >
           <Field label={t('Ad')} help={t('Tepside, komut paletinde ve komut satırında (--quick "ad") bu adla görünür')}>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && void save(name.trim(), review, hotkey).then(() => setNaming(false))} />
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('DLL → Dozer')} autoFocus onKeyDown={(e) => e.key === 'Enter' && void submit()} />
           </Field>
           <Field label={t('Kısayol tuşu (isteğe bağlı)')} help={t('Her yerden çalışır, uygulama tepsideyken de; örn. Ctrl+Alt+1. Başka bir program kullanıyorsa atanamaz.')}>
             <input className="input mono" value={hotkey} onChange={(e) => setHotkey(e.target.value)} placeholder="Ctrl+Alt+1" />
           </Field>
           <ToggleRow icon={<Eye size={16} className="faint" />} title={t('Önce incele')} desc={t('Kapalıyken plan hesaplanır hesaplanmaz gönderilir; hedefte silme olacaksa yine inceleme açılır')} on={review} onChange={setReview} />
+          <div style={{ marginTop: 12 }}>
+            <ScheduleFields value={schedule} onChange={setSchedule} offText={t('Yalnızca tıklayınca, kısayolla ya da --quick ile çalışır')} />
+            {schedule?.enabled && (
+              <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+                {t('Zamanı gelince bu makinede inceleme açılmadan gönderilir (uygulama açık ya da tepsideyken); değişiklik yoksa bir şey yapılmaz. Otomasyon sayfasında listelenir.')}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </div>

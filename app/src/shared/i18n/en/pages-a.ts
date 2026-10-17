@@ -339,6 +339,10 @@ const d: Dict = {
   paket: 'pack',
   'Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır': 'Writes the sources into one pack file (.samsync-pack) instead of to machines:\na release carried on a disk, applied there with SamSync, which leaves the manifest',
   'Paket yaz': 'Write pack',
+  'Ad, kısayol, zamanlama': 'Name, shortcut, schedule',
+  'Hızlı gönderimi düzenle': 'Edit quick send',
+  'Yalnızca tıklayınca, kısayolla ya da --quick ile çalışır': 'Runs only on a click, by its shortcut or with --quick',
+  'Zamanı gelince bu makinede inceleme açılmadan gönderilir (uygulama açık ya da tepsideyken); değişiklik yoksa bir şey yapılmaz. Otomasyon sayfasında listelenir.': 'When the time comes it is sent from this machine without a review (while the app is open or in the tray); nothing happens when nothing changed. Listed on the Automation page.',
 };
 
 export default d;

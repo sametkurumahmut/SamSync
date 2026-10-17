@@ -414,6 +414,23 @@ const d: Dict = {
   '{n} makinede bu gönderimin değiştirdiği ve sildiği dosyalar yedeklerinden geri gelecek, eklediği yeni dosyalar silinecek. Şimdiki hâlleri de yedeklenir. Devam edilsin mi?': 'On {n} machines the files this send changed or deleted come back from its backups and the files it added are removed. The current versions are backed up too. Continue?',
   'Geri alınamadı': 'Could not undo',
   'Bu gönderimi yedeklerinden geri al': 'Undo this send from its backups',
+  Bildirimler: 'Notifications',
+  'Gönderim bitince ekibe haber: bir web kancası ya da Telegram': 'Tell the team when a send ends: a webhook or Telegram',
+  'Bildirim ayarları kaydedildi': 'Notification settings saved',
+  'Web kancası (URL)': 'Webhook (URL)',
+  'Her bitişte JSON gönderilir: durum, etiket, makineler, işlem ve bayt sayıları, süre, özet metin. Teams/Slack iş akışı ya da kendi betiğiniz.': 'A JSON POST on every finish: status, label, machines, operation and byte counts, duration, a summary text. A Teams/Slack workflow or a script of your own.',
+  'Telegram bot anahtarı': 'Telegram bot token',
+  '@BotFather’dan; yalnızca bu makinede saklanır': 'From @BotFather; kept on this machine only',
+  'Telegram sohbet kimliği': 'Telegram chat id',
+  'Kişi ya da grup; botu gruba ekleyip kimliğini öğrenin': 'A person or a group; add the bot to the group and look its id up',
+  'Başarılı gönderimlerde de bildir': 'Report successful sends too',
+  'Kapalıyken yalnızca hatalı ya da kısmi bitenler gider': 'Off: only failed or partial ones go out',
+  'Hatalı ve kısmi gönderimlerde bildir': 'Report failed and partial sends',
+  'Önce kaydedin': 'Save first',
+  'Sınama iletisi gitti': 'Test message sent',
+  'Sınama iletisi gönderilemedi': 'Test message could not be sent',
+  'Sına': 'Test',
+  'Deneme çalıştırmaları bildirilmez. Masaüstü bildirimi ayrıca "Bitince bildir" seçeneğine bağlıdır.': 'Dry runs are not reported. The desktop notification follows the "Notify when done" option separately.',
 };
 
 export default d;

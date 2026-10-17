@@ -302,6 +302,8 @@ const d: Dict = {
   'Bu sürümdeki yenilikler': 'What\'s new in this version',
   'Bu sürümde yeni': 'New in this version',
   Tamam: 'OK',
+  'Yalnızca elle çalışır': 'Runs only by hand',
+  'Hızlı gönderim güncellendi': 'Quick send updated',
 };
 
 export default d;

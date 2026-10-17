@@ -14,6 +14,7 @@ import type {
   SendOptions,
   SendPlan,
   SendRequest,
+  SyncSchedule,
   SourceInfo,
   UpdateState,
   AutomationState,
@@ -122,7 +123,8 @@ interface State {
   addSendPaths(paths: string[]): Promise<void>;
   /** Saved sends: run one, save the current list under a name, remove one. */
   runQuickSend(q: QuickSend): void;
-  saveQuickSend(name: string, review: boolean, hotkey?: string): Promise<void>;
+  /** Saves the current list under a name, or (with `editId`) renames / reschedules an existing one, keeping its list. */
+  saveQuickSend(name: string, review: boolean, hotkey?: string, schedule?: SyncSchedule, editId?: string): Promise<void>;
   removeQuickSend(id: string): Promise<void>;
   removeSendPath(p: string): void;
   clearSendPaths(): void;
@@ -319,13 +321,17 @@ export const useApp = create<State>((set, get) => ({
   runQuickSend(q) {
     void handleOpen({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
   },
-  async saveQuickSend(name, review, hotkey) {
+  async saveQuickSend(name, review, hotkey, schedule, editId) {
     const st = get();
     const { dryRun: _d, ...options } = st.options;
-    const existing = (st.boot?.settings.quickSends ?? []).filter((q) => q.name.toLowerCase() !== name.toLowerCase());
-    const q: QuickSend = { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined };
+    const all = st.boot?.settings.quickSends ?? [];
+    const old = editId ? all.find((q) => q.id === editId) : undefined;
+    const existing = all.filter((q) => q.id !== editId && q.name.toLowerCase() !== name.toLowerCase());
+    const q: QuickSend = old
+      ? { ...old, name, review, hotkey: hotkey?.trim() || undefined, schedule }
+      : { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined, schedule };
     await st.saveSettings({ quickSends: [...existing, q] });
-    st.toast('ok', t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
+    st.toast('ok', old ? t('Hızlı gönderim güncellendi') : t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
   },
   async removeQuickSend(id) {
     const st = get();
