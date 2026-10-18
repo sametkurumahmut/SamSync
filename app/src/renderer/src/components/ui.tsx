@@ -99,7 +99,7 @@ export function Switch({ on, onChange, disabled, label }: { on: boolean; onChang
 
 export function ToggleRow({ title, desc, on, onChange, disabled, icon }: { title: ReactNode; desc?: ReactNode; on: boolean; onChange: (v: boolean) => void; disabled?: boolean; icon?: ReactNode }) {
   return (
-    <div className="toggle-row" onClick={() => !disabled && onChange(!on)} style={disabled ? { opacity: 0.5, cursor: 'default' } : undefined}>
+    <div className="toggle-row" aria-disabled={disabled || undefined} onClick={() => !disabled && onChange(!on)} style={disabled ? { opacity: 0.5, cursor: 'default' } : undefined}>
       {icon}
       <div className="grow">
         <div className="t-title">{title}</div>

@@ -135,6 +135,12 @@ try {
 
   await step('accessibility: no critical or serious axe-core violations on the main pages', async () => {
     const axe = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+    // the smallest window the app allows: lists overflow there, as on a CI runner's small screen
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      w.unmaximize();
+      w.setSize(980, 620);
+    });
     const report = [];
     for (const [key, name] of [
       ['1', 'overview'],

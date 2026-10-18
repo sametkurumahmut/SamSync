@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.9.0.schema.json
+
+PackageIdentifier: SametKurumahmut.SamSync
+PackageVersion: 2.2.0
+PackageLocale: tr-TR
+Publisher: Samet Kurumahmut
+PackageName: SamSync
+License: Proprietary
+ShortDescription: Dosyaları, klasörleri ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderir; karşılaştırır, eşitler, geri alır.
+ManifestType: locale
+ManifestVersion: 1.9.0

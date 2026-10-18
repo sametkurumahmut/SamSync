@@ -132,7 +132,7 @@ export function HistoryPage() {
                 ]}
               />
             </div>
-            <div className="pane-scroll">
+            <div className="pane-scroll" tabIndex={0} role="region" aria-label={t('Çalıştırmalar')}>
               {!runs ? (
                 <ListSkeleton rows={6} />
               ) : !list.length ? (
@@ -332,7 +332,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           </span>
         )}
       </div>
-      <div ref={parent} className="pane-scroll" style={{ borderTop: '1px solid var(--border)' }}>
+      <div ref={parent} className="pane-scroll" tabIndex={0} role="region" aria-label={summary.label} style={{ borderTop: '1px solid var(--border)' }}>
         {tab === 'targets' &&
           summary.targets.map((tg) => (
             <div key={tg.key} className="list-row" style={{ height: 'auto', minHeight: 46, padding: '8px 14px' }}>

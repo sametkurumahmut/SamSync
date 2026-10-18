@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Erişilebilirlik:** Geçmiş sayfasının listeleri küçük pencerede klavyeyle kaydırılabiliyor; devre dışı ayar satırları ekran okuyucuya devre dışı olarak bildiriliyor. Uçtan uca test erişilebilirlik taramasını uygulamanın en küçük pencere boyutunda da yapıyor.
+
 ## 2.2.0 — 2026-10-18
 
 - **Web arayüzü (sunucu kipi):** Ayarlar › **Web arayüzü** açılınca hep açık duran bilgisayardaki SamSync penceresini ağdaki tarayıcılara sunar; diğer makinelere kurulum gerekmez. Giriş parolayla (bu bilgisayarda yalnızca scrypt özeti saklanır), oturum HttpOnly/SameSite çerezle; beş yanlış denemeden sonra o adres bir dakika bekler; API çağrıları özel bir başlık ister. Tarayıcıda dosya seçimi sunucunun disklerini gezen bir pencereyle yapılır; bu bilgisayarın masaüstüne dokunan işlemler (pencere, dosya açma, güncelleme kurma, sunucunun kendi ayarı) tarayıcıdan yapılamaz. Ağdan erişim ya da yalnızca bu bilgisayar, kapı seçimi, bağlı tarayıcı sayısı, adres listesi. Bağlantı HTTP'dir: güvenilen ağ ya da TLS ekleyen ters vekil.

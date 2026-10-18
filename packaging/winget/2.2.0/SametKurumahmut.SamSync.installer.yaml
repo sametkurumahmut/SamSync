@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+
+PackageIdentifier: SametKurumahmut.SamSync
+PackageVersion: 2.2.0
+InstallerType: nullsoft
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+FileExtensions:
+  - samsync-pack
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/sametkurumahmut/SamSync/releases/download/v2.2.0/SamSync-Setup-2.2.0.exe
+    InstallerSha256: BAF3D2A5B2B7A3F49DE35F7EF54FE9E529637508D502487EB070BA6AB1270531
+ManifestType: installer
+ManifestVersion: 1.9.0

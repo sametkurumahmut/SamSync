@@ -504,6 +504,7 @@ const d: Dict = {
   'Web arayüzü parolası': 'Web interface password',
   'En az 8 karakter': 'At least 8 characters',
   'Bu bilgisayarda yalnızca özeti (scrypt) saklanır': 'Only its hash (scrypt) is stored on this computer',
+  'Çalıştırmalar': 'Runs',
 };
 
 export default d;
