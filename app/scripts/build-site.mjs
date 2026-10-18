@@ -84,6 +84,8 @@ const TEXT = {
     tagline: 'Send files, folders and Git changes to many machines at the same relative path. Compare before writing, keep backups, undo a whole send, sync folders, and let one machine of a group pass a release on to the others.',
     download: 'Download for Windows',
     other_platforms: 'macOS and Linux',
+    toLight: 'Light theme',
+    toDark: 'Dark theme',
     checksums: 'Checksums',
     features: 'What it does',
     screenshots: 'Screenshots',
@@ -108,6 +110,8 @@ const TEXT = {
     tagline: 'Dosyaları, klasörleri ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderin. Yazmadan önce karşılaştırın, yedek tutun, bir gönderimin tamamını geri alın, klasörleri eşitleyin ve bir grubun bir makinesine sürümü diğerlerine dağıttırın.',
     download: 'Windows için indir',
     other_platforms: 'macOS ve Linux',
+    toLight: 'Açık tema',
+    toDark: 'Koyu tema',
     checksums: 'Özetler',
     features: 'Neler yapar',
     screenshots: 'Ekran görüntüleri',
@@ -149,6 +153,7 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
 <meta name="description" content="${esc(T.tagline)}">
 <link rel="icon" href="${up}icon.png">
 <link rel="alternate" hreflang="${lang === 'en' ? 'tr' : 'en'}" href="${T.other.href}">
+<script>(function(){var t='dark';try{t=localStorage.getItem('samsync-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark')})()</script>
 <style>${CSS}</style>
 </head>
 <body>
@@ -159,6 +164,11 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
     <a href="${T.other.href}" lang="${lang === 'en' ? 'tr' : 'en'}">${esc(T.other.label)}</a>
     <a href="${REPO}">GitHub</a>
   </nav>
+  <button id="theme-toggle" class="theme-btn" type="button" data-light="${esc(T.toLight)}" data-dark="${esc(T.toDark)}" aria-label="${esc(T.toLight)}" title="${esc(T.toLight)}">
+    <svg class="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <span class="lbl">${esc(T.toLight)}</span>
+  </button>
 </header>
 <main>
 <section class="hero">
@@ -186,6 +196,7 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
 ${faqHtml}
 </section>
 </main>
+<script>(function(){var b=document.getElementById('theme-toggle');function set(t,save){var light=t==='light';document.documentElement.setAttribute('data-theme',light?'light':'dark');if(save){try{localStorage.setItem('samsync-theme',light?'light':'dark')}catch(e){}}var next=light?b.getAttribute('data-dark'):b.getAttribute('data-light');b.setAttribute('aria-label',next);b.title=next;b.querySelector('.lbl').textContent=next;b.querySelector('.sun').style.display=light?'none':'';b.querySelector('.moon').style.display=light?'':'none'}set(document.documentElement.getAttribute('data-theme'),false);b.addEventListener('click',function(){set(document.documentElement.getAttribute('data-theme')==='light'?'dark':'light',true)})})()</script>
 <footer><p>© ${new Date().getFullYear()} ${esc(pkg.author)} · <a href="${REPO}/blob/HEAD/LICENSE">GNU GPL v3.0</a> · <a href="${REPO}">${esc(REPO.replace('https://', ''))}</a></p></footer>
 </body>
 </html>
@@ -193,8 +204,10 @@ ${faqHtml}
 }
 
 const CSS = `
-:root{--bg:#f6f7f9;--card:#fff;--text:#141821;--muted:#566070;--border:#e1e5eb;--accent:#2f7cf6;--code:#eef1f5;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0c0e13;--card:#141821;--text:#e7eaf0;--muted:#a0a9b8;--border:#252b36;--accent:#4b8ff8;--code:#1a1f29;color-scheme:dark}}
+:root{--bg:#0c0e13;--card:#141821;--text:#e7eaf0;--muted:#a0a9b8;--border:#252b36;--accent:#4b8ff8;--code:#1a1f29;color-scheme:dark}
+:root[data-theme='light']{--bg:#f6f7f9;--card:#fff;--text:#141821;--muted:#566070;--border:#e1e5eb;--accent:#2f7cf6;--code:#eef1f5;color-scheme:light}
+.theme-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;margin-left:12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font:600 13px inherit;font-family:inherit;cursor:pointer;white-space:nowrap}
+.theme-btn:hover{border-color:var(--muted)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 'Segoe UI Variable','Segoe UI',system-ui,-apple-system,sans-serif}
 a{color:var(--accent)}
@@ -236,7 +249,7 @@ h2:hover .anchor,h3:hover .anchor{opacity:.5}
 .faq details div{color:var(--muted)}
 footer{max-width:1100px;margin:40px auto 0;padding:20px 16px 40px;color:var(--muted);font-size:14px;border-top:1px solid var(--border)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (max-width:800px){.docs{grid-template-columns:1fr}.toc{position:static}.top nav{display:none}}
+@media (max-width:800px){.docs{grid-template-columns:1fr}.toc{position:static}.top nav{display:none}.theme-btn{margin-left:auto}}
 `;
 
 fs.rmSync(out, { recursive: true, force: true });
