@@ -258,7 +258,7 @@ function Shell() {
         {boot.remote && (
           <a className="titlebar-btn no-drag" href="/logout" data-tip={t('Tarayıcı oturumunu kapat')} data-tip-pos="bottom">
             <LogOut size={14} />
-            <span>{t('Çıkış')}</span>
+            <span>{t('Oturumu kapat')}</span>
           </a>
         )}
         <div

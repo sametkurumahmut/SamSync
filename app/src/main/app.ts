@@ -62,8 +62,11 @@ function writeWindowState(s: WindowState) {
   }
 }
 
-// the data folder (SAMSYNC_USER_DATA / the portable folder) was chosen in index.ts, before the single instance lock
-app.setAppUserModelId('com.sametkurumahmut.samsync');
+// the data folder (SAMSYNC_USER_DATA / the portable folder) was chosen in index.ts, before the single instance lock.
+// The installed app's Windows identity is the appId; a development or test run (electron.exe from node_modules) gets
+// one of its own. Sharing it let Windows tie the installed app to electron.exe: the Start menu shortcut Electron makes
+// for desktop notifications carried the same id, and the taskbar showed the Electron icon for SamSync.
+app.setAppUserModelId(app.isPackaged ? 'com.sametkurumahmut.samsync' : 'com.sametkurumahmut.samsync.dev');
 
 async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<number> {
   app.dock?.hide();

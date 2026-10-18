@@ -379,7 +379,7 @@ export const FAQ: FaqEntry[] = [
     q: { tr: 'Dili ya da temayı nasıl değiştiririm? Yazılar küçük', en: 'How do I change the language or theme? The text is small' },
     a: {
       tr: 'Ayarlar › Görünüm: dil (Türkçe / English / Deutsch / Español / sistemle eşle), tema (koyu / açık / sistem), vurgu rengi, yoğunluk ve **arayüz ölçeği** (%70–175; Ctrl + ile büyüt, Ctrl − küçült, Ctrl 0 sıfırla). Bunlar bu bilgisayara özeldir; kopyalama ve güncelleme ayarları ise ortak yapılandırmaya yazılır.',
-      en: 'Settings › Appearance: language (Türkçe / English / Deutsch / Español / follow the system), theme (dark / light / system), accent colour, density and the **UI scale** (70–175%; Ctrl + larger, Ctrl − smaller, Ctrl 0 reset). These belong to this computer; the copy and update settings go to the shared configuration.',
+      en: 'Settings › Appearance: language (Turkish / English / German / Spanish / follow the system), theme (dark / light / system), accent colour, density and the **UI scale** (70–175%; Ctrl + larger, Ctrl − smaller, Ctrl 0 reset). These belong to this computer; the copy and update settings go to the shared configuration.',
     },
     keywords: ['dil', 'language', 'tema', 'theme', 'ölçek', 'scale', 'büyüt', 'zoom'],
     page: 'settings',

@@ -509,6 +509,7 @@ const d: Dict = {
   'Bu bilgisayarda yalnızca özeti (scrypt) saklanır': 'En este equipo solo se guarda su hash (scrypt)',
   'Çalıştırmalar': 'Ejecuciones',
   Lisans: 'Licencia',
+  'Oturumu kapat': 'Cerrar sesión',
 };
 
 export default d;

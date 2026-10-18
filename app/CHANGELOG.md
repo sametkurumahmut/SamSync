@@ -2,6 +2,9 @@
 
 ## Yayımlanmamış
 
+- **Düzeltme:** güncellemeden sonra görev çubuğunda SamSync yerine Electron simgesi görünebiliyordu. Geliştirme ve test çalıştırmaları kurulu uygulamayla aynı Windows uygulama kimliğini kullanıyordu; Electron bildirim için bu kimlikle bir Başlat menüsü kısayolu açınca Windows kurulu uygulamayı o kısayola bağlıyordu. Geliştirme çalıştırmaları artık kendi kimliğini kullanıyor.
+- **Düzeltme:** web arayüzündeki oturum kapatma düğmesi İngilizce arayüzde "Quit" yazıyordu; artık **Oturumu kapat** / **Sign out**.
+- **Belgeler:** İngilizce README ve proje sitesi artık arayüzü İngilizce etiketleriyle anlatıyor.
 - **Lisans:** SamSync artık **GNU Genel Kamu Lisansı sürüm 3 (GPL-3.0)** ile dağıtılıyor (telif © 2026 Samet Kurumahmut). Lisans metni deponun kökünde ve her pakette (`LICENSE`) duruyor, Windows kurulumunun ilk sayfasında gösteriliyor; Ayarlar › Hakkında, SSS, README'ler, proje sitesi ve winget bildirimi lisansı belirtiyor.
 - **Erişilebilirlik:** Geçmiş sayfasının listeleri küçük pencerede klavyeyle kaydırılabiliyor; devre dışı ayar satırları ekran okuyucuya devre dışı olarak bildiriliyor. Uçtan uca test erişilebilirlik taramasını uygulamanın en küçük pencere boyutunda da yapıyor.
 

@@ -506,6 +506,7 @@ const d: Dict = {
   'Bu bilgisayarda yalnızca özeti (scrypt) saklanır': 'Auf diesem Rechner wird nur der Hash (scrypt) gespeichert',
   'Çalıştırmalar': 'Läufe',
   Lisans: 'Lizenz',
+  'Oturumu kapat': 'Abmelden',
 };
 
 export default d;

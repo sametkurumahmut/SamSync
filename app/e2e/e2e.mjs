@@ -67,7 +67,7 @@ const userData = path.join(demo, 'userdata');
 const settingsFile = path.join(userData, 'settings.json');
 const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
 // English UI (stable labels), backups on (so the send can be undone), no what's-new card, nothing asks first
-fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, language: 'en', theme: 'dark', sendDefaults: { backup: true }, lastSeenVersion: pkg.version, confirmBeforeRun: false, closeRunPanelOnSuccess: false }, null, 2));
+fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, language: 'en', theme: 'dark', sendDefaults: { backup: true, notify: false }, lastSeenVersion: pkg.version, confirmBeforeRun: false, closeRunPanelOnSuccess: false }, null, 2));
 const config = JSON.parse(fs.readFileSync(path.join(demo, 'config.json'), 'utf8'));
 const labA = config.nodes.filter((n) => n.group === 'Lab-A');
 const src = path.join(demo, 'src', 'Data');
