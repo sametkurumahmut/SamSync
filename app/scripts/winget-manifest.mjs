@@ -44,7 +44,7 @@ if (local) {
 const sha = crypto.createHash('sha256').update(bytes).digest('hex').toUpperCase();
 // winget identifiers are Publisher.Name: the author's name without spaces
 const id = `${String(pkg.author).replace(/[^A-Za-z0-9]/g, '')}.SamSync`;
-const MV = '1.9.0';
+const MV = '1.12.0';
 const header = (type) => `# yaml-language-server: $schema=https://aka.ms/winget-manifest.${type}.${MV}.schema.json\n`;
 
 const files = {
