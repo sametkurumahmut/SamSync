@@ -61,6 +61,13 @@ linux:
   target: [AppImage]
   artifactName: ${productName}-${version}-${arch}.${ext}
 
+# a double-click on a pack file opens SamSync with it on the Send page (Windows registers it at install, macOS via the bundle)
+fileAssociations:
+  - ext: samsync-pack
+    name: SamSync Pack
+    description: SamSync package
+    role: Viewer
+
 # owner/repo are set by scripts/dist.mjs from the git remote (or GITHUB_REPOSITORY in CI) and end up in app-update.yml
 publish:
   - provider: github

@@ -8,7 +8,7 @@ import { getLang } from '@shared/i18n';
 const cache = new Map<HelpLang, HelpIndex>();
 
 export function helpLang(): HelpLang {
-  return getLang() === 'en' ? 'en' : 'tr';
+  return getLang() === 'tr' ? 'tr' : 'en';
 }
 
 export function helpIndex(lang: HelpLang = helpLang()): HelpIndex {

@@ -1,7 +1,8 @@
-import { FileJson, Upload, Plus, AlertTriangle, Send, GitBranch, ArrowLeftRight } from 'lucide-react';
+import { useState } from 'react';
+import { FileJson, Upload, Plus, AlertTriangle, Send, GitBranch, ArrowLeftRight, Wand2 } from 'lucide-react';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
-import { Button } from '../components/ui';
+import { SetupWizard } from '../components/SetupWizard';
 import iconUrl from '../../../../resources/icon.png';
 import { t } from '@shared/i18n';
 
@@ -11,8 +12,9 @@ export function Welcome() {
   const saveConfig = useApp((s) => s.saveConfig);
   const setPage = useApp((s) => s.setPage);
   const toast = useApp((s) => s.toast);
+  const [wizard, setWizard] = useState(false);
 
-  const useShared = async () => {
+  const openShared = async () => {
     const [p] = await api.pick({ files: true, title: t('config.json seçin'), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!p) return;
     const b = await api.useConfigFile(p);
@@ -52,7 +54,14 @@ export function Welcome() {
           </div>
         )}
         <div className="welcome-cards">
-          <button className="welcome-card" onClick={() => void useShared()} disabled={!boot.isElectron}>
+          <button className="welcome-card primary" onClick={() => setWizard(true)}>
+            <div className="icon-tile accent lg">
+              <Wand2 size={18} />
+            </div>
+            <b>{t('Kurulum sihirbazı')}</b>
+            <span className="muted">{t('Üç adım: bu makine, ağda bulunan makineler, kaydet. Birkaç dakikada ilk gönderime hazır.')}</span>
+          </button>
+          <button className="welcome-card" onClick={() => void openShared()} disabled={!boot.isElectron}>
             <div className="icon-tile accent lg">
               <FileJson size={18} />
             </div>
@@ -70,10 +79,11 @@ export function Welcome() {
             <div className="icon-tile lg">
               <Plus size={18} />
             </div>
-            <b>{t('Sıfırdan başla')}</b>
+            <b>{t('Elle ekle')}</b>
             <span className="muted">{t('Makineleri tek tek ekleyin: adres, paylaşım kökü ve yerel kökler.')}</span>
           </button>
         </div>
+        {wizard && <SetupWizard onClose={() => setWizard(false)} />}
         <div className="welcome-features">
           <span>
             <Send size={14} /> {t('Çoklu hedefe gönderim')}

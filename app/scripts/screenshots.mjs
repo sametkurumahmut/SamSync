@@ -26,6 +26,8 @@ function prepareDemo() {
   const configFile = path.join(demo, 'config.json');
   const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  // no "what's new" card over the pages
+  settings.lastSeenVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
   // a quick send on the Send page
   const src = path.join(demo, 'src', 'Data');
   settings.quickSends = [{ id: 'q-demo', name: 'Data → Lab-A', paths: [src], targetIds: config.nodes.filter((n) => n.group === 'Lab-A').map((n) => n.id), review: false }];

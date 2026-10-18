@@ -184,7 +184,7 @@ export function MachineCompare() {
 
       <div className="card" style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {!result ? (
-          <Empty icon={<ArrowLeftRight size={22} />} title={t('Henüz karşılaştırma yok')}>
+          <Empty art="compare" title={t('Henüz karşılaştırma yok')}>
             {t('İki makine ve bir klasör seçip Karşılaştır’a basın.')}
           </Empty>
         ) : (
@@ -243,7 +243,7 @@ export function MachineCompare() {
                   }
                 />
               ) : (
-                <Empty icon={<FileText size={22} />} title={t('Bir dosya seçin')}>
+                <Empty art="search" title={t('Bir dosya seçin')}>
                   {t('Soldaki listeden bir dosyaya tıklayınca iki makinedeki hâlinin farkı burada görünür.')}
                 </Empty>
               )}

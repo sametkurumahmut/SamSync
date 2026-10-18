@@ -36,7 +36,7 @@
   --border-strong: #d2d7e0;
   --text: #141821;
   --text-2: #4c5463;
-  --text-3: #8a93a3;
+  --text-3: #667080;
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 6%);
   --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 4px 16px rgb(16 24 40 / 6%);
   --shadow-lg: 0 12px 40px rgb(16 24 40 / 18%), 0 2px 6px rgb(16 24 40 / 8%);
@@ -73,7 +73,7 @@
   --border-strong: #2e3542;
   --text: #e7eaf0;
   --text-2: #a6aebb;
-  --text-3: #6c7484;
+  --text-3: #7f8899;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 20px rgb(0 0 0 / 25%);
   --shadow-lg: 0 18px 50px rgb(0 0 0 / 55%), 0 2px 8px rgb(0 0 0 / 35%);
@@ -843,7 +843,8 @@ a {
 }
 .badge.blue {
   background: var(--blue-bg);
-  color: var(--accent);
+  /* the accent pulled toward the text colour: readable on its own tint in both themes */
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 .badge.violet {
   background: var(--violet-bg);
@@ -1582,4 +1583,148 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+/* ------------------------------------------------------------------ focus & motion */
+/* Keyboard focus: one ring everywhere, only for keyboard users (mouse clicks show nothing). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+.btn:focus-visible,
+.nav-item:focus-visible,
+.check:focus-visible,
+.switch:focus-visible,
+.segmented button:focus-visible,
+.chip:focus-visible,
+.titlebar-btn:focus-visible,
+.titlebar-search:focus-visible,
+.menu-item:focus-visible,
+.history-item:focus-visible,
+.tp-node:focus-visible,
+.topo-node:focus-visible,
+.toggle-row:focus-visible,
+.faq-q:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px rgb(var(--accent-rgb) / 18%);
+}
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  outline: none;
+}
+
+/* Reduced motion: the page keeps its progress indicators, everything decorative stops. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spinner,
+  .progress.indeterminate > div {
+    animation-duration: 1.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .skeleton {
+    animation: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ skeletons */
+.skeleton {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-inset) 25%, var(--bg-hover) 40%, var(--bg-inset) 55%);
+  background-size: 400% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+.skeleton.round {
+  border-radius: 50%;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.skeleton-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--pad) 24px;
+  flex: 1;
+  min-height: 0;
+}
+.skeleton-page .skeleton-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.skeleton-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* empty states with an illustration */
+.empty.with-art {
+  gap: 6px;
+}
+.empty .illu {
+  color: var(--text-3);
+  margin-bottom: 6px;
+  max-width: 100%;
+}
+.empty .empty-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.9;
+}
+.empty .empty-hint code {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.empty .empty-action {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
 }

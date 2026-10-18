@@ -1,5 +1,9 @@
-import type { Api } from '@shared/api';
+import type { Api, PickOptions } from '@shared/api';
 import type { AppEvent } from '@shared/types';
+import { requestWebPick } from './webpick';
+
+/** Calls that act on the desktop the window belongs to; a browser has none, so they quietly do nothing there. */
+const DESKTOP_ONLY = new Set(['openPath', 'showInFolder', 'openLog', 'windowControl', 'setChrome']);
 
 interface Bridge {
   invoke(method: string, args: unknown[]): Promise<unknown>;
@@ -30,7 +34,20 @@ async function invoke(method: string, args: unknown[]): Promise<unknown> {
       throw cleanError(e);
     }
   }
-  const res = await fetch(`/api/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) });
+  // a browser (server mode or the development preview): dialogs in the page, links in a new tab
+  if (method === 'pick') return requestWebPick(args[0] as PickOptions, false);
+  if (method === 'pickSave') return requestWebPick(args[0] as PickOptions, true);
+  if (method === 'openExternal') {
+    window.open(String(args[0]), '_blank', 'noopener');
+    return undefined;
+  }
+  if (DESKTOP_ONLY.has(method)) return undefined;
+  // the header tells the server this is the page and not a form from another site
+  const res = await fetch(`/api/${method}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-samsync': '1' }, body: JSON.stringify(args) });
+  if (res.status === 401) {
+    location.href = '/login';
+    throw new Error('not signed in');
+  }
   const body = await res.json();
   if (!body.ok) throw new Error(body.error);
   return body.result;

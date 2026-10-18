@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity } from 'lucide-react';
+import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play } from 'lucide-react';
 import type { RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, Segmented, useEscapeLayer } from './ui';
 import { Sparkline } from './charts';
+import { MachineName } from './MachineName';
 import { api } from '../lib/api';
 import { ratesPerSecond } from '../lib/rates';
 import { bytes, cls, duration, num } from '../lib/format';
@@ -177,7 +178,7 @@ export function RunPanel() {
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && useApp.setState({ runPanel: false })}>
       <aside className="drawer">
         <div className="drawer-head">
-          <div className={cls('icon-tile lg', !run.done && 'accent')}>{run.done ? <StatusIcon status={s.status} size={19} /> : <Loader2 size={19} className="spin" />}</div>
+          <div className={cls('icon-tile lg', !run.done && 'accent')}>{run.done ? <StatusIcon status={s.status} size={19} /> : run.paused ? <Pause size={19} /> : <Loader2 size={19} className="spin" />}</div>
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="row" style={{ gap: 8 }}>
               <b className="ellipsis" style={{ fontSize: 15 }}>
@@ -199,7 +200,9 @@ export function RunPanel() {
                       : s.status === 'partial'
                         ? t('Bazı işlemler başarısız')
                         : t('Başarısız')
-                  : t('Çalışıyor')}
+                  : run.paused
+                    ? t('Duraklatıldı')
+                    : t('Çalışıyor')}
               </span>
               <span className="row" style={{ gap: 4 }}>
                 <Clock size={12} /> {duration(elapsed)}
@@ -242,15 +245,21 @@ export function RunPanel() {
                 <StatusIcon status={x.status} />
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row">
-                    <span className="ellipsis" style={{ fontWeight: 580 }}>
-                      {x.title}
-                    </span>
+                    <MachineName name={x.title} layout="inline" className="ellipsis" />
+                    {x.deferred && (
+                      <span className="badge amber" data-tip={t('Makine kapalıydı; röle açılınca teslim edecek')}>
+                        <Clock size={10} /> {t('kuyrukta')}
+                      </span>
+                    )}
                     <span className="spacer" />
                     <span className="faint tabular" style={{ fontSize: 11.5 }}>
                       {x.done}/{x.total}
                       {own != null && x.status !== 'queued' && ` • ${speedText(own)}`}
                       {x.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: x.failed })}</span>}
                     </span>
+                    {!run.done && !x.via && (x.status === 'running' || x.status === 'queued') && (
+                      <Button variant="ghost" iconOnly size="sm" className="run-target-x" icon={<X size={12} />} tip={t('Bu hedefi çalıştırmadan çıkar; diğerleri sürer')} onClick={() => void api.cancelRunTarget(s.id, x.key)} />
+                    )}
                   </div>
                   <div style={{ margin: '5px 0 3px' }}>
                     <Progress value={x.status === 'queued' ? 0 : pct} state={x.status === 'ok' ? 'ok' : x.status === 'failed' || x.status === 'partial' ? 'bad' : undefined} />
@@ -298,9 +307,14 @@ export function RunPanel() {
 
         <div className="drawer-foot">
           {!run.done ? (
-            <Button variant="danger" icon={<Square size={13} />} onClick={() => void api.cancelRun(s.id)}>
-              {t('İptal et')}
-            </Button>
+            <>
+              <Button icon={run.paused ? <Play size={13} /> : <Pause size={13} />} tip={run.paused ? undefined : t('Dosyalar arasında bekler; süren kopya da durur')} onClick={() => void api.pauseRun(s.id, !run.paused)}>
+                {run.paused ? t('Sürdür') : t('Duraklat')}
+              </Button>
+              <Button variant="danger" icon={<Square size={13} />} onClick={() => void api.cancelRun(s.id)}>
+                {t('İptal et')}
+              </Button>
+            </>
           ) : (
             <Button
               icon={<FileSpreadsheet size={14} />}

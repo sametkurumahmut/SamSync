@@ -13,6 +13,7 @@ import {
   Moon,
   Sun,
   Download,
+  RefreshCw,
   Upload,
   Loader2,
   AlertTriangle,
@@ -21,14 +22,18 @@ import {
   LayoutDashboard,
   CircleHelp,
   Bot,
+  LogOut,
 } from 'lucide-react';
 import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
 import { ShortcutsModal } from './components/Shortcuts';
 import { WhatsNewModal } from './components/WhatsNew';
 import { HelpBot } from './components/HelpBot';
+import { NoticeBell, NotificationCenter } from './components/NotificationCenter';
+import { ServerPicker } from './components/ServerPicker';
 import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
-import { Button } from './components/ui';
+import { Button, PageSkeleton } from './components/ui';
+import { api } from './lib/api';
 import { Toasts } from './components/Toasts';
 import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
@@ -210,7 +215,7 @@ function Shell() {
 
   return (
     <div className={cls('app', collapsed && 'collapsed')}>
-      <header className="titlebar">
+      <header className="titlebar" role="banner">
         <div className="brand">
           <img src={iconUrl} alt="" />
           <span>SamSync</span>
@@ -226,14 +231,35 @@ function Shell() {
           <span className="kbd">Ctrl K</span>
         </button>
         <div className="spacer" />
-        <button className="titlebar-btn no-drag" data-tip={t('Yardım botu (F1)')} data-tip-pos="bottom" onClick={() => useApp.setState((s) => ({ helpBot: !s.helpBot }))}>
+        <NoticeBell />
+        <button className="titlebar-btn no-drag" data-tip={t('Yardım botu (F1)')} data-tip-pos="bottom" aria-label={t('Yardım botu (F1)')} onClick={() => useApp.setState((s) => ({ helpBot: !s.helpBot }))}>
           <Bot size={15} />
+          <span>{t('Bot')}</span>
         </button>
         <RunPill />
         {updateHot && (
-          <Button size="sm" variant="primary" icon={update.phase === 'downloading' ? <Loader2 size={14} className="spin" /> : <Download size={14} />} onClick={() => setPage('settings')}>
-            {update.phase === 'ready' ? t('Güncellemeye hazır') : update.phase === 'downloading' ? t('İndiriliyor %{pct}', { pct: Math.round(update.percent ?? 0) }) : t('v{version} çıktı', { version: update.version ?? '' })}
+          <Button
+            size="sm"
+            variant="primary"
+            className="update-pill"
+            icon={update.phase === 'downloading' ? <Loader2 size={14} className="spin" /> : update.phase === 'ready' ? <RefreshCw size={14} /> : <Download size={14} />}
+            tip={update.phase === 'ready' ? t('v{version} indirildi; yeniden başlayınca kurulur', { version: update.version ?? '' }) : undefined}
+            tipPos="bottom"
+            onClick={() => {
+              // downloaded: one click restarts into the new version; otherwise the Settings page has the details
+              if (update.phase === 'ready') {
+                if (confirm(t('SamSync v{version} kurulup yeniden başlatılsın mı? Süren bir gönderim varsa önce bitmesini bekleyin.', { version: update.version ?? '' }))) void api.updateInstall();
+              } else setPage('settings');
+            }}
+          >
+            {update.phase === 'ready' ? t('Yeniden başlat ve güncelle') : update.phase === 'downloading' ? t('İndiriliyor %{pct}', { pct: Math.round(update.percent ?? 0) }) : t('v{version} çıktı', { version: update.version ?? '' })}
           </Button>
+        )}
+        {boot.remote && (
+          <a className="titlebar-btn no-drag" href="/logout" data-tip={t('Tarayıcı oturumunu kapat')} data-tip-pos="bottom">
+            <LogOut size={14} />
+            <span>{t('Çıkış')}</span>
+          </a>
         )}
         <div
           className="chip static no-drag"
@@ -247,11 +273,11 @@ function Shell() {
         </div>
       </header>
 
-      <nav className="sidebar">
+      <nav className="sidebar" aria-label={t('Sayfalar')}>
         {NAV.map((n) => {
           const Icon = n.icon;
           return (
-            <button key={n.id} className={cls('nav-item', page === n.id && 'active')} onClick={() => setPage(n.id)} data-tip={collapsed ? t(n.label) : undefined} data-tip-pos="right">
+            <button key={n.id} className={cls('nav-item', page === n.id && 'active')} aria-current={page === n.id ? 'page' : undefined} aria-label={collapsed ? t(n.label) : undefined} onClick={() => setPage(n.id)} data-tip={collapsed ? t(n.label) : undefined} data-tip-pos="right">
               <Icon size={17} />
               <span>{t(n.label)}</span>
               {n.id === 'send' && sendCount > 0 && <span className="count hot">{sendCount}</span>}
@@ -274,28 +300,22 @@ function Shell() {
             <span>{t('Ayarlar')}</span>
             {updateHot && <span className="count hot">1</span>}
           </button>
-          <button className="nav-item" onClick={() => void saveSettings({ theme: dark ? 'light' : 'dark' })} data-tip={collapsed ? t('Tema') : undefined} data-tip-pos="right">
+          <button className="nav-item" aria-label={collapsed ? t('Tema') : undefined} onClick={() => void saveSettings({ theme: dark ? 'light' : 'dark' })} data-tip={collapsed ? t('Tema') : undefined} data-tip-pos="right">
             {dark ? <Sun size={17} /> : <Moon size={17} />}
             <span>{dark ? t('Açık tema') : t('Koyu tema')}</span>
           </button>
-          <button className="nav-item" onClick={toggleSidebar} data-tip={collapsed ? t('Genişlet') : undefined} data-tip-pos="right">
+          <button className="nav-item" aria-label={collapsed ? t('Genişlet') : t('Daralt')} aria-expanded={!collapsed} onClick={toggleSidebar} data-tip={collapsed ? t('Genişlet') : undefined} data-tip-pos="right">
             {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
             <span>{t('Daralt')}</span>
           </button>
         </div>
       </nav>
 
-      <main className="content">
+      <main className="content" id="main">
         {needsSetup && page !== 'settings' && page !== 'targets' ? (
           <Welcome />
         ) : (
-          <Suspense
-            fallback={
-              <div className="empty" style={{ flex: 1 }}>
-                <div className="spinner" />
-              </div>
-            }
-          >
+          <Suspense fallback={<PageSkeleton cards={page === 'settings' || page === 'help' ? 0 : 3} rows={5} />}>
             {page === 'overview' && <OverviewPage />}
             {page === 'send' && <SendPage />}
             {page === 'compare' && <ComparePage />}
@@ -328,6 +348,8 @@ function Shell() {
       <ShortcutsModal />
       <WhatsNewModal />
       <HelpBot />
+      <NotificationCenter />
+      <ServerPicker />
       <Toasts />
     </div>
   );

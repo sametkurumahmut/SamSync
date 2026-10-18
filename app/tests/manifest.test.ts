@@ -85,6 +85,18 @@ describe('target manifest', () => {
       expect(again.plan.targets[0].fromManifest).toBeUndefined();
       const direct = await s.svc.planSend({ ...s.req, direct: true, label: 'doğrudan' }, 'direct');
       expect(direct.targets[0].fromManifest).toBeUndefined();
+      // a send that asks for a full scan walks too, and so does every send once the setting says 0 days
+      // (the send above had nothing to do, so the manifest is made young again by hand)
+      const m2 = JSON.parse(fs.readFileSync(file, 'utf8'));
+      m2.subtrees['Data'].writtenAt = Date.now();
+      fs.writeFileSync(file, JSON.stringify(m2));
+      const trusted = await s.svc.planSend({ ...s.req, label: 'güvenilir' }, 'trusted');
+      expect(trusted.targets[0].fromManifest).toBeTruthy();
+      const full = await s.svc.planSend({ ...s.req, options: { ...s.req.options, fullScan: true }, label: 'tam' }, 'full');
+      expect(full.targets[0].fromManifest).toBeUndefined();
+      await s.svc.saveConfig({ ...s.svc.config, copy: { ...s.svc.config.copy, manifestMaxDays: 0 } });
+      const off = await s.svc.planSend({ ...s.req, label: 'kapalı' }, 'off');
+      expect(off.targets[0].fromManifest).toBeUndefined();
       // the manifest itself is never part of a plan
       expect(direct.targets[0].ops.some((o) => o.rel.includes(MANIFEST_FILE))).toBe(false);
     } finally {

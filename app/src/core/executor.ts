@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
-import type { Readable } from 'node:stream';
+import { Transform, type Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
@@ -82,6 +82,11 @@ export interface RunHandle {
   id: string;
   cancel: CancelToken;
   done: Promise<RunDetail>;
+  /** Holds the run between files (and inside a streamed copy) until resumed; the targets keep their state. */
+  pause(on: boolean): void;
+  readonly paused: boolean;
+  /** Stops one target only: its remaining operations are skipped, the other targets go on. */
+  cancelTarget(key: string): void;
 }
 
 const TMP_SUFFIX = '.samsync-tmp';
@@ -154,6 +159,24 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   const logLines: RunLogLine[] = [];
   let pendingLog: RunLogLine[] = [];
 
+  // pause: operations wait here before they start, streamed copies between chunks; cancel lets them through
+  let paused = false;
+  const pauseWaiters: (() => void)[] = [];
+  const holdWhilePaused = async () => {
+    while (paused && !cancel.cancelled) await new Promise<void>((r) => pauseWaiters.push(r));
+  };
+  const release = () => {
+    for (const w of pauseWaiters.splice(0)) w();
+  };
+  cancel.onCancel(release);
+  // each target has a token of its own, tripped by the run's cancel too, so one machine can be dropped from a run
+  const groupCancel = new Map<string, CancelToken>();
+  for (const g of groups) {
+    const gc = new CancelToken();
+    cancel.onCancel(() => gc.cancel());
+    groupCancel.set(g.key, gc);
+  }
+
   const summary = (): RunSummary => {
     const failed = results.filter((r) => !r.ok).length;
     return {
@@ -171,6 +194,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       sources: s.sources,
       targetIds: s.targetIds,
       options: s.options,
+      paused: paused || undefined,
     };
   };
 
@@ -210,7 +234,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     emitProgress.flush();
     emitLog.flush();
     const sum = summary();
-    const anyFailed = states.some((x) => x.status === 'failed' || x.status === 'partial');
+    // a target the user dropped from the run counts like a failed one: the run did not do all it set out to do
+    const anyFailed = states.some((x) => x.status === 'failed' || x.status === 'partial' || x.status === 'cancelled');
     const allFailed = states.length > 0 && states.every((x) => x.status === 'failed');
     sum.status = cancel.cancelled ? 'cancelled' : allFailed ? 'failed' : anyFailed ? 'partial' : 'ok';
     sum.finishedAt = Date.now();
@@ -227,8 +252,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   })();
 
   async function runGroup(g: ExecGroup, st: RunTargetState) {
-    if (cancel.cancelled) {
+    const gc = groupCancel.get(g.key)!;
+    await holdWhilePaused();
+    if (gc.cancelled) {
       st.status = 'cancelled';
+      st.finishedAt = Date.now();
       emitProgress();
       return;
     }
@@ -328,11 +356,22 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     const limiter = s.bandwidthMBps && s.bandwidthMBps > 0 ? new RateLimiter(s.bandwidthMBps * 1024 * 1024) : null;
+    /** The source through the bandwidth limit (when set) and the pause gate: a paused run stops mid-file, not after it. */
     const limited = (src: Readable): Readable => {
-      if (!limiter) return src;
-      const t2 = limiter.transform();
-      src.on('error', (e) => t2.destroy(e));
-      return src.pipe(t2);
+      let out = src;
+      if (limiter) {
+        const t2 = limiter.transform();
+        out.on('error', (e) => t2.destroy(e));
+        out = out.pipe(t2);
+      }
+      const gate = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          if (!paused) cb(null, chunk);
+          else void holdWhilePaused().then(() => cb(null, chunk));
+        },
+      });
+      out.on('error', (e) => gate.destroy(e));
+      return out.pipe(gate);
     };
 
     const openSource = async (op: ExecOp): Promise<Readable> => {
@@ -376,7 +415,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         // the writer reports what it wrote; a file that changed size since the plan is caught here
         let written: number;
         keepPartial = big;
-        const signal = cancel.signal;
+        const signal = gc.signal;
         const finalMtime = mtime ?? (src.kind === 'fs' ? fs.statSync(src.abs).mtimeMs : undefined);
         // a send compared by content hashes the bytes on their way through (streamed copies of the bigger files),
         // so the next content comparison can skip the read; other sends keep the operating system's copy
@@ -387,7 +426,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           onProgress(from);
           const rest = fs.createReadStream(src.abs, { start: from, highWaterMark: limiter ? 256 * 1024 : 1024 * 1024 });
           written = await tgt.appendStream!(tmp, limited(rest), { mtimeMs: finalMtime, onProgress, signal });
-        } else if (src.kind === 'fs' && tgt.copyFromLocal && !limiter && !hashOnCopy) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress, signal });
+        } else if (src.kind === 'fs' && tgt.copyFromLocal && !limiter && !hashOnCopy && !paused) written = await tgt.copyFromLocal(src.abs, tmp, { mtimeMs: mtime, onProgress, signal });
         else {
           const h = hashOnCopy ? hashing() : null;
           hashed = h;
@@ -422,7 +461,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
 
     const runOp = async (op: ExecOp) => {
-      if (cancel.cancelled) return;
+      await holdWhilePaused();
+      if (gc.cancelled) return;
       if (s.dryRun) {
         if (op.kind === 'copy') st.bytesDone += op.size;
         record(op, true);
@@ -430,7 +470,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       }
       let lastErr: unknown;
       for (let attempt = 0; attempt <= s.retryCount; attempt++) {
-        if (cancel.cancelled) return;
+        await holdWhilePaused();
+        if (gc.cancelled) return;
         try {
           let backedUp = false;
           if (op.kind === 'copy') backedUp = await doCopy(op);
@@ -447,7 +488,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           lastErr = e;
           // a file in use stays in use for the retry period: say so at once
           if (e instanceof InUseError) break;
-          if (attempt < s.retryCount && !cancel.cancelled) {
+          if (attempt < s.retryCount && !gc.cancelled) {
             log('warn', t('{path}: {error} — yeniden denenecek ({attempt}/{max})', { path: op.rel, error: errMessage(e), attempt: attempt + 1, max: s.retryCount }), g.key);
             await sleep(s.waitSeconds * 1000);
           }
@@ -478,7 +519,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       await mapLimit(delFiles, s.parallelFiles, runOp);
       for (const d of delDirs) await runOp(d);
 
-      if (cancel.cancelled) {
+      if (gc.cancelled) {
         st.status = 'cancelled';
         log('warn', t('İptal edildi'), g.key);
       } else {
@@ -620,7 +661,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       await submitRelayJob(tgt, job);
       log('info', rows.length ? t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }) : t('Paket bırakıldı; makine kendisi uyguluyor'), g.key);
       const result = await waitRelayResult(tgt, job.id, {
-        cancel,
+        cancel: groupCancel.get(g.key)!,
         ackMs: s.relayAckMs ?? 60_000,
         doneMs: s.relayDoneMs ?? 15 * 60_000,
         onAck: () => log('info', rows.length ? t('Röle işi aldı, dağıtıyor') : t('Makine paketi aldı, uyguluyor'), g.key),
@@ -633,7 +674,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
         st.failed = g.ops.length;
       } else {
-        st.status = own.status === 'cancelled' ? 'failed' : own.status;
+        st.status = own.status === 'cancelled' || own.status === 'deferred' ? 'failed' : own.status;
         st.error = own.error;
         const failedIds = new Set(own.failedOps ?? []);
         for (const op of g.ops) {
@@ -649,15 +690,16 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       applyRelayResult(rows, result);
     } catch (e) {
       const unanswered = e instanceof RelayError && e.unanswered;
-      const why = cancel.cancelled ? t('İptal edildi') : errMessage(e);
-      st.status = cancel.cancelled ? 'cancelled' : 'failed';
+      const stopped = groupCancel.get(g.key)!.cancelled;
+      const why = stopped ? t('İptal edildi') : errMessage(e);
+      st.status = stopped ? 'cancelled' : 'failed';
       st.error = why;
       st.relayUnanswered = unanswered || undefined;
       for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: why });
       st.failed = g.ops.length;
       st.done = g.ops.length;
-      for (const r of rows) Object.assign(r, { status: cancel.cancelled ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
-      log(cancel.cancelled ? 'warn' : 'error', why, g.key);
+      for (const r of rows) Object.assign(r, { status: stopped ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
+      log(stopped ? 'warn' : 'error', why, g.key);
       if (unanswered) await tgt.remove(relJoin(RELAY_FOLDER, 'jobs', `${job.id}.pack`), false).catch(() => undefined);
     }
     emitProgress();
@@ -669,6 +711,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       const got = result.targets.find((x) => x.targetId === r.key);
       if (!got) {
         Object.assign(r, { status: 'failed', error: t('Röle bu makine için sonuç bildirmedi'), failed: r.total, done: r.total });
+      } else if (got.status === 'deferred') {
+        // the machine was off: the relay keeps the job and delivers it when the machine is back
+        Object.assign(r, { status: 'failed', deferred: true, done: r.total, failed: r.total, error: got.error ?? t('Makine kapalı; röle açılınca teslim edecek') });
+        log('warn', t('{name}: kapalı; röle açılınca teslim edecek', { name: r.title }), r.key);
       } else {
         Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error });
         if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
@@ -689,7 +735,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       await submitRelayJob(tgt, job);
       log('info', t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }), g.key);
       const result = await waitRelayResult(tgt, job.id, {
-        cancel,
+        cancel: groupCancel.get(g.key)!,
         ackMs: s.relayAckMs ?? 60_000,
         doneMs: s.relayDoneMs ?? 15 * 60_000,
         onAck: () => log('info', t('Röle işi aldı, dağıtıyor'), g.key),
@@ -697,14 +743,38 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       applyRelayResult(rows, result);
     } catch (e) {
       const unanswered = e instanceof RelayError && e.unanswered;
-      const why = cancel.cancelled ? t('İptal edildi') : errMessage(e);
-      for (const r of rows) Object.assign(r, { status: cancel.cancelled ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
-      log(cancel.cancelled ? 'warn' : 'error', why, g.key);
+      const stopped = groupCancel.get(g.key)!.cancelled;
+      const why = stopped ? t('İptal edildi') : errMessage(e);
+      for (const r of rows) Object.assign(r, { status: stopped ? 'cancelled' : 'failed', error: why, failed: r.total, done: r.total, finishedAt: Date.now(), relayUnanswered: unanswered || undefined });
+      log(stopped ? 'warn' : 'error', why, g.key);
     }
     emitProgress();
   }
 
-  return { id, cancel, done };
+  return {
+    id,
+    cancel,
+    done,
+    get paused() {
+      return paused;
+    },
+    pause(on: boolean) {
+      if (paused === on || cancel.cancelled) return;
+      paused = on;
+      log(on ? 'warn' : 'info', on ? t('Duraklatıldı') : t('Sürdürülüyor'));
+      ctx.emit({ type: 'run-paused', runId: id, paused: on });
+      if (!on) release();
+    },
+    cancelTarget(key: string) {
+      const gc = groupCancel.get(key);
+      if (!gc || gc.cancelled) return;
+      const st = states.find((x) => x.key === key && !x.via);
+      log('warn', t('{name} bu çalıştırmadan çıkarıldı; kalan işlemleri atlanıyor', { name: st?.title ?? key }), key);
+      gc.cancel();
+      // a paused run lets the dropped target's wait end so its state is settled at once
+      release();
+    },
+  };
 }
 
 /**

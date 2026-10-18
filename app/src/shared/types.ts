@@ -57,6 +57,12 @@ export interface CopySettings {
   relayAckSeconds?: number;
   /** How long a relay may take to finish a job. */
   relayTimeoutMinutes?: number;
+  /** A relay keeps the jobs of a machine that is off and tries it again this often (minutes; 0 = no queue). */
+  relayQueueMinutes?: number;
+  /** Queued jobs older than this are dropped. */
+  relayQueueDays?: number;
+  /** A manifest SamSync left on a target stands in for a walk over the network for this many days (0 = always walk). */
+  manifestMaxDays?: number;
   postCommand?: string;
   postCommandTimeoutSeconds: number;
   /** Upper bound per transfer in MB/s (0 = unlimited), like robocopy /IPG in the PowerShell tool. */
@@ -86,6 +92,8 @@ export interface SendOptions {
   notify: boolean;
   /** Per target (node id) mode and backup that differ from the ones above. */
   perTarget?: Record<string, TargetOptions>;
+  /** Walk every target folder over the network instead of trusting the manifest SamSync left there. */
+  fullScan?: boolean;
 }
 
 export interface Profile {
@@ -98,7 +106,8 @@ export interface Profile {
 
 export type SyncVariant = 'twoWay' | 'mirror' | 'update' | 'custom';
 export type Category = 'leftOnly' | 'rightOnly' | 'leftNewer' | 'rightNewer' | 'different' | 'equal' | 'conflict';
-export type SyncAction = 'copyRight' | 'copyLeft' | 'deleteLeft' | 'deleteRight' | 'none';
+/** keepBoth: a conflict resolved by giving each side the other's version next to its own ("name (sol).ext"). */
+export type SyncAction = 'copyRight' | 'copyLeft' | 'deleteLeft' | 'deleteRight' | 'keepBoth' | 'none';
 
 export type CustomActions = Record<Exclude<Category, 'equal' | 'conflict'>, SyncAction>;
 
@@ -225,6 +234,42 @@ export interface LocalSettings {
   lastSeenVersion?: string;
   /** Webhook / Telegram reports of finished runs. */
   notifications?: NotificationSettings;
+  /** Server mode: this copy serves its window to browsers on the network (changed only through webUiConfigure). */
+  webUi?: WebUiSettings;
+}
+
+export interface WebUiSettings {
+  enabled: boolean;
+  port: number;
+  /** Reachable from the network (0.0.0.0) or from this computer only (127.0.0.1). */
+  lan: boolean;
+  /** scrypt hash of the password; never sent to a window (the settings it gets say hasPassword instead). */
+  passwordHash?: string;
+  hasPassword?: boolean;
+}
+
+export interface WebUiState {
+  /** Server mode exists here (the desktop app); a browser or the development preview cannot serve. */
+  available: boolean;
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  lan: boolean;
+  hasPassword: boolean;
+  /** Where browsers reach it. */
+  urls: string[];
+  clients: number;
+  sessions: number;
+  error?: string;
+}
+
+/** One folder of this computer, for the file picker of a browser (server mode). */
+export interface DirListing {
+  /** null: the list of drives (Windows) or the root. */
+  path: string | null;
+  parent: string | null;
+  entries: { name: string; path: string; isDir: boolean; size: number; mtimeMs: number }[];
+  error?: string;
 }
 
 /** The help bot's conversation with Claude (the optional cloud half). */
@@ -439,6 +484,8 @@ export interface Bootstrap {
   gitVersion?: string;
   /** The GitHub repository the installed app updates from (https://github.com/owner/repo), when known. */
   repositoryUrl?: string;
+  /** This window is a browser on another computer (server mode): dialogs, opening files and window control are not here. */
+  remote?: boolean;
 }
 
 export interface ProbeResult {
@@ -451,6 +498,17 @@ export interface ProbeResult {
   /** For a machine marked as relay: whether SamSync there wrote its heartbeat lately, and when. */
   relayAlive?: boolean;
   relaySeenAt?: number;
+}
+
+/** A machine the network scan found: what answered, its name when it has one, and the node it already is. */
+export interface DiscoveredHost {
+  address: string;
+  hostname?: string;
+  /** 445 (file sharing) and/or 22 (SSH). */
+  ports: number[];
+  /** Disk shares seen on it (Windows only; undefined when not asked, empty when none could be listed). */
+  shares?: string[];
+  nodeId?: string;
 }
 
 /** A quick measurement of the link to a machine: a few MB written and read back. */
@@ -476,6 +534,19 @@ export interface RelayState {
   lastJobAt?: number;
   lastOk?: boolean;
   lastLabel?: string;
+  /** Machines that were off when a job came: their jobs wait here until they answer. */
+  pending?: RelayPending[];
+}
+
+/** One machine in a relay's delivery queue. */
+export interface RelayPending {
+  targetId: string;
+  name: string;
+  jobs: number;
+  since: number;
+  attempts: number;
+  lastTry?: number;
+  lastError?: string;
 }
 
 /** What a machine holds under one sent folder, as its manifest says (the last send or pack that reached it). */
@@ -524,7 +595,9 @@ export interface SourceInfo {
   outsideRoots: boolean;
   error?: string;
   /** The source is a pack file (.samsync-pack): what it carries and where it was made. */
-  pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[] };
+  pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[]; encrypted?: boolean };
+  /** A password-protected pack that is still closed: no password yet, or a wrong one. */
+  locked?: 'password' | 'wrong';
 }
 
 export interface SendRequest {
@@ -635,6 +708,8 @@ export interface RunTargetState {
   via?: string;
   /** The relay never picked the job up (SamSync not running there): the sender may send directly instead. */
   relayUnanswered?: boolean;
+  /** The machine was off: the relay queued the job and delivers it when the machine answers again. */
+  deferred?: boolean;
 }
 
 export interface RunOpResult {
@@ -670,6 +745,8 @@ export interface RunSummary {
   sources: string[];
   targetIds: string[];
   options?: Partial<SendOptions>;
+  /** The run is held (Pause in the run panel); its targets keep their state until it is resumed. */
+  paused?: boolean;
 }
 
 export interface RunDetail extends RunSummary {
@@ -682,6 +759,7 @@ export type AppEvent =
   | { type: 'run-progress'; runId: string; targets: RunTargetState[] }
   | { type: 'run-log'; runId: string; lines: RunLogLine[] }
   | { type: 'run-done'; run: RunSummary }
+  | { type: 'run-paused'; runId: string; paused: boolean }
   | { type: 'task-progress'; taskId: string; message: string; done?: number; total?: number }
   | { type: 'open'; request: OpenRequest }
   | { type: 'integration'; status: IntegrationStatus }

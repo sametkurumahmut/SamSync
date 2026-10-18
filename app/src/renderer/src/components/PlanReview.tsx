@@ -404,9 +404,25 @@ function TargetOps({
             <span className="faint">{t('{n} değişiklik', { n: num(plan.ops.length) })}</span>
             {plan.counts.same > 0 && <span className="badge">{t('{n} aynı', { n: num(plan.counts.same) })}</span>}
             {plan.fromManifest && (
-              <span className="badge blue" data-tip={t('Hedefin klasörleri ağ üzerinden gezilmedi: SamSync’in {ago} bıraktığı manifestten alındı, bir örnekle doğrulandı. Karşılaştır sayfası her zaman doğrudan bakar.', { ago: ago(plan.fromManifest) })}>
-                {t('manifestten')}
-              </span>
+              <>
+                <span className="badge blue" data-tip={t('Hedefin klasörleri ağ üzerinden gezilmedi: SamSync’in {ago} bıraktığı manifestten alındı, bir örnekle doğrulandı. Karşılaştır sayfası her zaman doğrudan bakar.', { ago: ago(plan.fromManifest) })}>
+                  {t('manifestten')}
+                </span>
+                <button
+                  className="link-btn"
+                  style={{ fontSize: 11.5 }}
+                  data-tip={t('Bu incelemeyi kapatır ve hedefleri ağ üzerinden baştan tarayarak yeniden planlar')}
+                  onClick={() => {
+                    const st = useApp.getState();
+                    const req = st.review?.plan.request;
+                    if (!req) return;
+                    st.closeReview();
+                    void st.startPlan({ ...req, options: { ...req.options, fullScan: true } });
+                  }}
+                >
+                  {t('Tam tara')}
+                </button>
+              </>
             )}
           </div>
           <div className="row faint mono" style={{ fontSize: 11.5 }}>

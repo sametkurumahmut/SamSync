@@ -19,6 +19,7 @@ import type {
   PackWriteResult,
   ProbeResult,
   SpeedTestResult,
+  DiscoveredHost,
   RelayState,
   RunDetail,
   RunSummary,
@@ -34,6 +35,8 @@ import type {
   AutomationState,
   WatchConfig,
   WizardImportResult,
+  DirListing,
+  WebUiState,
 } from './types';
 
 export interface PickOptions {
@@ -104,18 +107,30 @@ export interface Api {
   speedTest(nodeId: string): Promise<SpeedTestResult>;
   /** What the relay service on this machine is doing. */
   relayState(): Promise<RelayState>;
+  /** A folder of this computer (null: its drives), for a browser's file picker in server mode. */
+  listDir(path: string | null): Promise<DirListing>;
+  /** Server mode: its state, and switching it on or off, the port, network access and the password (from the desktop only). */
+  webUiState(): Promise<WebUiState>;
+  webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null }): Promise<WebUiState>;
+  /** Scans this computer's subnets for machines that answer on file sharing or SSH; cancellable through cancelTask. */
+  discoverHosts(taskId: string): Promise<DiscoveredHost[]>;
   /** Every enabled machine's manifest, read now: which release each one holds under each sent folder. */
   inventory(): Promise<InventoryRow[]>;
-  describeSources(paths: string[], count?: boolean): Promise<SourceInfo[]>;
+  /** `secrets`: passwords for protected packs by path; a pack opened once stays open while the app runs. */
+  describeSources(paths: string[], count?: boolean, secrets?: Record<string, string>): Promise<SourceInfo[]>;
   mapPath(abs: string): Promise<{ rel: string; root?: string; outside: boolean }>;
 
   planSend(req: SendRequest, taskId: string): Promise<SendPlan>;
-  /** Writes the request's sources to a pack file (.samsync-pack) in `dir`, for a release that travels on a disk. */
-  writePack(req: SendRequest, dir: string, taskId: string): Promise<PackWriteResult>;
+  /** Writes the request's sources to a pack file (.samsync-pack) in `dir`, for a release that travels on a disk; with a password, encrypted. */
+  writePack(req: SendRequest, dir: string, taskId: string, password?: string): Promise<PackWriteResult>;
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
   executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean }): Promise<string>;
   cancelRun(runId: string): Promise<void>;
+  /** Holds a running send between files (a streamed copy stops mid-file) until resumed with false. */
+  pauseRun(runId: string, paused: boolean): Promise<void>;
+  /** Drops one target from a running send: its remaining operations are skipped, the others go on. */
+  cancelRunTarget(runId: string, key: string): Promise<void>;
   compareWithTarget(src: SourceSpec, targetId: string, rel: string): Promise<DiffResult>;
 
   runs(): Promise<RunSummary[]>;
@@ -220,6 +235,8 @@ export const API_METHODS = {
   cancelTask: true,
   executePlan: true,
   cancelRun: true,
+  pauseRun: true,
+  cancelRunTarget: true,
   compareWithTarget: true,
   runs: true,
   run: true,
@@ -275,6 +292,10 @@ export const API_METHODS = {
   automationPause: true,
   speedTest: true,
   relayState: true,
+  discoverHosts: true,
+  listDir: true,
+  webUiState: true,
+  webUiConfigure: true,
   inventory: true,
   scheduleRunNow: true,
   notifyTest: true,

@@ -12,6 +12,26 @@
         "app/.demo/userdata"
       ],
       "port": 5198
+    },
+    {
+      "name": "samsync-site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5210",
+        "--directory",
+        "site"
+      ],
+      "port": 5210
+    },
+    {
+      "name": "samsync-server-mode",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "app/scripts/server-demo.mjs"
+      ],
+      "port": 8780
     }
   ]
 }

@@ -1,4 +1,6 @@
-export type Lang = 'tr' | 'en';
+export type Lang = 'tr' | 'en' | 'de' | 'es';
+/** Every language the UI speaks, in the order the settings list them. */
+export const LANGS: readonly Lang[] = ['tr', 'en', 'de', 'es'];
 /** The setting: follow the computer's display language or a fixed one. */
 export type LangPref = 'system' | Lang;
 export type Params = Record<string, string | number>;

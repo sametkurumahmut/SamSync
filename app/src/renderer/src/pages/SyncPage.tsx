@@ -29,7 +29,7 @@ import {
   Upload,
   Download,
 } from 'lucide-react';
-import type { Category, CompareItem, CompareResult, Endpoint, SyncAction, SyncJob, SyncPair, SyncVariant, CustomActions, DiffResult, SyncSchedule } from '@shared/types';
+import type { Category, CompareItem, CompareResult, Endpoint, FileMeta, SyncAction, SyncJob, SyncPair, SyncVariant, CustomActions, DiffResult, SyncSchedule } from '@shared/types';
 import type { BrowseEntry } from '@shared/api';
 import { useApp } from '../store/app';
 import { api, newTaskId, onEvent } from '../lib/api';
@@ -39,6 +39,7 @@ import { DiffView } from '../components/DiffView';
 import { compareOptions } from './SendPage';
 import { ago, bytes, cls, num, shortDateTime, splitPath } from '../lib/format';
 import { locale, t, tk } from '@shared/i18n';
+import { tx } from '../lib/i18n';
 import { readStored, writeStored } from '../lib/persist';
 
 const VARIANTS: { value: SyncVariant; label: string; desc: string; icon: typeof ArrowRight }[] = [
@@ -64,12 +65,14 @@ const ACTION: Record<SyncAction, { label: string; short: string }> = {
   copyLeft: { label: tk('Sola kopyala'), short: '←' },
   deleteRight: { label: tk('Sağdan sil'), short: '✕→' },
   deleteLeft: { label: tk('Soldan sil'), short: '←✕' },
+  keepBoth: { label: tk('İkisini de sakla'), short: '⇆' },
   none: { label: tk('Bir şey yapma'), short: '=' },
 };
 
 function ActionIcon({ a }: { a: SyncAction }) {
   if (a === 'copyRight') return <ArrowRight size={14} />;
   if (a === 'copyLeft') return <ArrowLeft size={14} />;
+  if (a === 'keepBoth') return <Copy size={13} />;
   if (a === 'deleteRight')
     return (
       <span className="row" style={{ gap: 0 }}>
@@ -201,7 +204,7 @@ export function SyncPage() {
           </div>
           {!job ? (
             <div className="card" style={{ display: 'grid', placeItems: 'center' }}>
-              <Empty icon={<ArrowLeftRight size={22} />} title={t('Bir senkron işi seçin ya da oluşturun')}>
+              <Empty art="sync" title={t('Bir senkron işi seçin ya da oluşturun')} hint={tx('Örnek: {a} ile {b} iki yönlü, her gece', { a: <code>D:\Data</code>, b: <code>\\NAS\Data</code> })}>
                 {t('Sol ve sağ klasörleri karşılaştırın, her dosya için yapılacak işlemi görün ve değiştirin. Sağ taraf bir hedef makinenin klasörü ya da herhangi bir klasör olabilir.')}
               </Empty>
             </div>
@@ -283,18 +286,19 @@ function JobView({
 
   const effective = (pairId: string, it: CompareItem): SyncAction => overrides[pairId]?.[it.key] ?? it.action;
   const stats = useMemo(() => {
-    const s = { copyRight: 0, copyLeft: 0, deleteLeft: 0, deleteRight: 0, none: 0, bytes: 0 };
+    const s = { copyRight: 0, copyLeft: 0, deleteLeft: 0, deleteRight: 0, keepBoth: 0, none: 0, bytes: 0 };
     for (const p of result?.pairs ?? [])
       for (const it of p.items) {
         const a = effective(p.pairId, it);
         s[a]++;
         if (a === 'copyRight' && it.left && !it.left.isDir) s.bytes += it.left.size;
         if (a === 'copyLeft' && it.right && !it.right.isDir) s.bytes += it.right.size;
+        if (a === 'keepBoth') s.bytes += (it.left?.size ?? 0) + (it.right?.size ?? 0);
       }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, overrides]);
-  const work = stats.copyLeft + stats.copyRight + stats.deleteLeft + stats.deleteRight;
+  const work = stats.copyLeft + stats.copyRight + stats.deleteLeft + stats.deleteRight + stats.keepBoth;
 
   const exportJob = async () => {
     if (dirty && !(await onPersist(job))) return;
@@ -758,6 +762,7 @@ function ResultView({
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState<{ row: Row; el: HTMLElement } | null>(null);
   const [diffRow, setDiffRow] = useState<Row | null>(null);
+  const [resolver, setResolver] = useState(false);
   const parent = useRef<HTMLDivElement>(null);
 
   const all: Row[] = useMemo(() => result.pairs.flatMap((p) => p.items.map((it) => ({ pairId: p.pairId, it }))), [result]);
@@ -772,6 +777,7 @@ function ResultView({
     const o: SyncAction[] = [];
     if (it.left) o.push('copyRight', 'deleteLeft');
     if (it.right) o.push('copyLeft', 'deleteRight');
+    if (it.left && it.right && !it.isDir) o.push('keepBoth');
     o.push('none');
     return o;
   };
@@ -901,7 +907,11 @@ function ResultView({
             <Trash2 size={13} color="var(--red)" /> <b className="tabular">{num(stats.deleteLeft + stats.deleteRight)}</b>
           </span>
           <span className="faint">{bytes(stats.bytes)}</span>
-          {result.stats.byCategory.conflict > 0 && <span className="badge amber">{t('{n} çakışma', { n: result.stats.byCategory.conflict })}</span>}
+          {result.stats.byCategory.conflict > 0 && (
+            <Button size="sm" icon={<AlertTriangle size={13} color="var(--amber)" />} onClick={() => setResolver(true)} tip={t('Çakışmaları tek tek ya da toplu çözün: sol, sağ, ikisini de sakla')}>
+              {t('{n} çakışmayı çöz…', { n: result.stats.byCategory.conflict })}
+            </Button>
+          )}
         </div>
         <Button size="lg" variant="primary" icon={<Play size={15} />} disabled={!work} onClick={onRun}>
           {t('Senkronize et')}
@@ -919,7 +929,118 @@ function ResultView({
         </Popover>
       )}
       {diffRow && <SyncDiffModal compareId={result.id} row={diffRow} onClose={() => setDiffRow(null)} />}
+      {resolver && <ConflictResolver result={result} act={act} setOverride={setOverride} onClose={() => setResolver(false)} />}
     </div>
+  );
+}
+
+/**
+ * The conflicts of a comparison on their own: both sides with size and time, the reason, and a choice per item
+ * (left wins, right wins, keep both, leave) plus the same for all at once. The choices are the usual overrides.
+ */
+function ConflictResolver({ result, act, setOverride, onClose }: { result: CompareResult; act: (r: Row) => SyncAction; setOverride: (pairId: string, keys: string[], a: SyncAction) => void; onClose: () => void }) {
+  const rows: Row[] = useMemo(() => result.pairs.flatMap((p) => p.items.filter((it) => it.category === 'conflict').map((it) => ({ pairId: p.pairId, it }))), [result]);
+  const [diffRow, setDiffRow] = useState<Row | null>(null);
+  const canKeep = (it: CompareItem) => !!it.left && !!it.right && !it.isDir;
+  const choices = (it: CompareItem): SyncAction[] => [...(it.left ? (['copyRight'] as SyncAction[]) : []), ...(it.right ? (['copyLeft'] as SyncAction[]) : []), ...(canKeep(it) ? (['keepBoth'] as SyncAction[]) : []), 'none'];
+  const TOL = 2000;
+  const newer = (it: CompareItem): SyncAction | null => {
+    if (!it.left || !it.right || it.isDir) return null;
+    if (it.left.mtimeMs > it.right.mtimeMs + TOL) return 'copyRight';
+    if (it.right.mtimeMs > it.left.mtimeMs + TOL) return 'copyLeft';
+    return 'none';
+  };
+  const bulk = (pick: (it: CompareItem) => SyncAction | null) => {
+    const by = new Map<string, Map<SyncAction, string[]>>();
+    for (const r of rows) {
+      const a = pick(r.it);
+      if (!a) continue;
+      const m = by.get(r.pairId) ?? new Map<SyncAction, string[]>();
+      m.set(a, [...(m.get(a) ?? []), r.it.key]);
+      by.set(r.pairId, m);
+    }
+    for (const [pairId, m] of by) for (const [a, keys] of m) setOverride(pairId, keys, a);
+  };
+  const decided = rows.filter((r) => act(r) !== 'none').length;
+  const side = (m: FileMeta | undefined) => (m ? (m.isDir ? t('klasör') : `${bytes(m.size)} • ${shortDateTime(m.mtimeMs)}`) : t('yok'));
+  return (
+    <Modal
+      size="wide"
+      title={t('Çakışmaları çöz')}
+      icon={<AlertTriangle size={16} color="var(--amber)" />}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="muted grow" style={{ fontSize: 12.5 }}>
+            {t('{done}/{n} karar verildi; karar verilmeyenlere dokunulmaz.', { done: decided, n: rows.length })}
+          </span>
+          <Button variant="primary" onClick={onClose}>
+            {t('Tamam')}
+          </Button>
+        </>
+      }
+    >
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <span className="faint" style={{ fontSize: 12 }}>
+          {t('Hepsine:')}
+        </span>
+        <Button size="sm" onClick={() => bulk(newer)} tip={t('Tarihi daha yeni olan taraf kazanır; tarihleri aynı olanlara dokunulmaz')}>
+          {t('Yeni olan kazansın')}
+        </Button>
+        <Button size="sm" icon={<ArrowRight size={13} />} onClick={() => bulk((it) => (it.left ? 'copyRight' : null))}>
+          {t('Sol kazansın')}
+        </Button>
+        <Button size="sm" icon={<ArrowLeft size={13} />} onClick={() => bulk((it) => (it.right ? 'copyLeft' : null))}>
+          {t('Sağ kazansın')}
+        </Button>
+        <Button size="sm" icon={<Copy size={13} />} onClick={() => bulk((it) => (canKeep(it) ? 'keepBoth' : null))} tip={t('Her iki tarafa öbürünün sürümü "ad (sol).uzantı" / "ad (sağ).uzantı" olarak yazılır; hiçbir şey silinmez')}>
+          {t('İkisini de sakla')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => bulk(() => 'none')}>
+          {t('Hepsini atla')}
+        </Button>
+      </div>
+      <div className="conflict-list">
+        {rows.map((r) => {
+          const it = r.it;
+          const a = act(r);
+          const lNewer = !!it.left && !!it.right && it.left.mtimeMs > it.right.mtimeMs + TOL;
+          const rNewer = !!it.left && !!it.right && it.right.mtimeMs > it.left.mtimeMs + TOL;
+          return (
+            <div key={`${r.pairId}|${it.key}`} className="conflict-row">
+              <div className="row" style={{ gap: 8 }}>
+                <span className="mono ellipsis" style={{ fontWeight: 600, fontSize: 12.5 }} title={it.rel}>
+                  {it.rel}
+                </span>
+                {it.conflict && <span className="badge amber">{it.conflict}</span>}
+                <span className="spacer" />
+                {canKeep(it) && (
+                  <Button size="sm" variant="ghost" onClick={() => setDiffRow(r)}>
+                    {t('Farkı göster')}
+                  </Button>
+                )}
+              </div>
+              <div className="conflict-sides">
+                <div className={cls('conflict-side', a === 'copyRight' && 'win', a === 'copyLeft' && 'lose')}>
+                  <div className="row faint" style={{ fontSize: 11, gap: 6 }}>
+                    {t('Sol')} {lNewer && <span className="badge green">{t('daha yeni')}</span>}
+                  </div>
+                  <div className="tabular">{side(it.left)}</div>
+                </div>
+                <Segmented size="sm" value={a} onChange={(v) => setOverride(r.pairId, [it.key], v)} options={choices(it).map((o) => ({ value: o, label: <ActionIcon a={o} />, tip: t(ACTION[o].label) }))} />
+                <div className={cls('conflict-side', a === 'copyLeft' && 'win', a === 'copyRight' && 'lose')}>
+                  <div className="row faint" style={{ fontSize: 11, gap: 6 }}>
+                    {t('Sağ')} {rNewer && <span className="badge green">{t('daha yeni')}</span>}
+                  </div>
+                  <div className="tabular">{side(it.right)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {diffRow && <SyncDiffModal compareId={result.id} row={diffRow} onClose={() => setDiffRow(null)} />}
+    </Modal>
   );
 }
 

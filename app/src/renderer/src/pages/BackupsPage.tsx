@@ -208,7 +208,7 @@ export function BackupsPage() {
               </div>
               <div className="pane-scroll">
                 {!results ? (
-                  <Empty icon={<ArchiveRestore size={22} />} title={loading ? t('Aranıyor…') : t('Bir öğe seçip yedekleri arayın')}>
+                  <Empty art={loading ? undefined : 'backups'} icon={loading ? <ArchiveRestore size={22} /> : undefined} title={loading ? t('Aranıyor…') : t('Bir öğe seçip yedekleri arayın')}>
                     {loading ? undefined : t('Seçili hedeflerin yedek klasörleri taranır; her hedef için istediğiniz tarihi seçebilirsiniz.')}
                   </Empty>
                 ) : (

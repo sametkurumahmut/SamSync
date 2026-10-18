@@ -1,11 +1,13 @@
 // The main process proper, loaded by index.ts once it knows this is the one running instance (or a
 // headless run that needs no window).
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerSaveBlocker, safeStorage, screen, shell, type OpenDialogOptions } from 'electron';
 import { Service, type HostAdapter } from '../core/service';
-import type { AppEvent, LocalSettings, OpenRequest, QuickSend } from '../shared/types';
-import { isApiMethod, type PickOptions } from '../shared/api';
+import type { AppEvent, LocalSettings, OpenRequest, QuickSend, WebUiSettings, WebUiState } from '../shared/types';
+import { isApiMethod, type ApiMethod, type PickOptions } from '../shared/api';
+import { WebServer } from '../core/webserver';
 import { getLang, t } from '../shared/i18n';
 import { Updater } from './updater';
 import { TrayManager } from './tray';
@@ -162,6 +164,52 @@ if (launch.removeIntegrations) {
     }
     if (e.type === 'run-start' || e.type === 'run-done') keepAwake();
     if (win && !win.isDestroyed()) win.webContents.send('samsync:event', e);
+    web?.broadcast(e);
+  };
+
+  // ---- server mode: the same window for browsers on the network (Settings › Web interface)
+  let web: WebServer | null = null;
+  let webKey = '';
+  let webError: string | undefined;
+  const webState = (): WebUiState => {
+    const s = service.settings.webUi;
+    const st = web?.state();
+    const port = s?.port ?? 8780;
+    const ips = Object.values(os.networkInterfaces())
+      .flat()
+      .filter((a): a is os.NetworkInterfaceInfo => !!a && a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.'))
+      .map((a) => a.address);
+    const urls = st?.running ? (s?.lan ? ips.map((ip) => `http://${ip}:${port}`) : [`http://127.0.0.1:${port}`]) : [];
+    return { available: true, enabled: !!s?.enabled, running: !!st?.running, port, lan: s?.lan ?? true, hasPassword: !!s?.passwordHash, urls, clients: st?.clients ?? 0, sessions: st?.sessions ?? 0, error: webError };
+  };
+  const applyWebUi = async (s: WebUiSettings | undefined): Promise<WebUiState> => {
+    const want = s?.enabled && s.passwordHash ? JSON.stringify([s.port, s.lan, s.passwordHash]) : '';
+    if (want === webKey) return webState();
+    const old = web;
+    web = null;
+    webKey = '';
+    webError = undefined;
+    await old?.stop();
+    if (s && want) {
+      const srv = new WebServer({
+        port: s.port,
+        host: s.lan ? '0.0.0.0' : '127.0.0.1',
+        passwordHash: s.passwordHash!,
+        staticDir: path.join(__dirname, '../renderer'),
+        call: (method: ApiMethod, args: unknown[]) => (service[method] as (...a: unknown[]) => Promise<unknown>).apply(service, args),
+        texts: () => ({ title: 'SamSync', password: t('Parola'), signIn: t('Giriş yap'), wrong: t('Parola yanlış'), locked: t('Çok fazla deneme; bir dakika bekleyin') }),
+        log: (level, m) => service.log[level](t('Web arayüzü'), m),
+      });
+      try {
+        await srv.start();
+        web = srv;
+        webKey = want;
+      } catch (e) {
+        webError = (e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? t('{port} numaralı kapı kullanımda; başka bir kapı seçin', { port: s.port }) : (e as Error).message;
+        service.log.warn(t('Web arayüzü'), webError);
+      }
+    }
+    return webState();
   };
   const deliver = (r: OpenRequest) => {
     if (rendererReady && win && !win.isDestroyed()) emit({ type: 'open', request: r });
@@ -279,6 +327,7 @@ if (launch.removeIntegrations) {
       return app.isReady() ? [...app.getPreferredSystemLanguages(), app.getLocale()] : [];
     },
     emit,
+    webUi: { state: () => webState(), apply: (s) => applyWebUi(s) },
     async pick(opts: PickOptions) {
       const props: OpenDialogOptions['properties'] = [];
       if (opts.files !== false && !opts.folders) props.push('openFile');
@@ -532,6 +581,7 @@ if (launch.removeIntegrations) {
     settingsReady = true;
     for (const name of pendingQuick.splice(0)) runQuickByName(name);
     syncHotkeys(service.settings.quickSends ?? []);
+    void applyWebUi(service.settings.webUi);
     app.on('will-quit', () => globalShortcut.unregisterAll());
     nativeTheme.themeSource = service.settings.theme;
     createWindow();
@@ -544,6 +594,7 @@ if (launch.removeIntegrations) {
     quitting = true;
     service.automation?.stop();
     integrations.stop();
+    void web?.stop();
   });
 
   app.on('window-all-closed', () => {

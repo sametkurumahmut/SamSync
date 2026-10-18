@@ -11,6 +11,7 @@ import { Topology } from '../components/Topology';
 import { Sparkline } from '../components/charts';
 import { ago, bytes, cls, num } from '../lib/format';
 import { t } from '@shared/i18n';
+import { machineTitle } from '@shared/machine';
 
 const NO_QUICK: never[] = [];
 const DAY = 86400_000;
@@ -120,7 +121,7 @@ export function OverviewPage() {
               {reachable}
               <span className="faint">/{machines.length}</span>
             </div>
-            <div className="ov-tile-sub ellipsis">{down.length ? t('erişilemeyen: {names}', { names: down.map((n) => n.name).join(', ') }) : machines.length ? t('hepsi erişilebilir') : t('hedef tanımlı değil')}</div>
+            <div className="ov-tile-sub ellipsis">{down.length ? t('erişilemeyen: {names}', { names: down.map((n) => machineTitle(n.name, n.address)).join(', ') }) : machines.length ? t('hepsi erişilebilir') : t('hedef tanımlı değil')}</div>
           </button>
           <button className="ov-tile" onClick={() => setPage('history')}>
             <div className="ov-tile-head">
@@ -160,7 +161,7 @@ export function OverviewPage() {
               <div className="ov-tile-value" style={{ fontSize: 18 }}>
                 {updateHot ? `v${update!.version ?? ''}` : t('açık')}
               </div>
-              <div className="ov-tile-sub">{updateHot ? (update!.phase === 'ready' ? t('kurulmaya hazır') : update!.phase === 'downloading' ? t('indiriliyor %{pct}', { pct: Math.round(update!.percent ?? 0) }) : t('yeni sürüm var')) : relayState?.jobs ? t('{n} iş, son {ago}', { n: relayState.jobs, ago: ago(relayState.lastJobAt) }) : t('henüz iş gelmedi')}</div>
+              <div className="ov-tile-sub">{updateHot ? (update!.phase === 'ready' ? t('kurulmaya hazır') : update!.phase === 'downloading' ? t('indiriliyor %{pct}', { pct: Math.round(update!.percent ?? 0) }) : t('yeni sürüm var')) : relayState?.pending?.length ? t('{n} makine kuyrukta', { n: relayState.pending.length }) : relayState?.jobs ? t('{n} iş, son {ago}', { n: relayState.jobs, ago: ago(relayState.lastJobAt) }) : t('henüz iş gelmedi')}</div>
             </button>
           )}
         </div>
@@ -219,7 +220,7 @@ export function OverviewPage() {
                       {r.dryRun && <span className="badge amber" style={{ marginLeft: 6 }}>{t('deneme')}</span>}
                     </div>
                     <div className="faint ellipsis" style={{ fontSize: 11.5 }}>
-                      {r.targets.map((x) => x.title).join(', ')}
+                      {r.targets.map((x) => machineTitle(x.title)).join(', ')}
                     </div>
                   </div>
                   <div className="faint tabular nowrap" style={{ fontSize: 11.5, textAlign: 'right' }}>

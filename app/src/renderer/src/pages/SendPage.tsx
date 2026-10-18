@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
+import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
+import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
 import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
@@ -49,7 +50,9 @@ export function SendPage() {
   const toast = useApp((s) => s.toast);
   const isElectron = useApp((s) => s.boot!.isElectron);
   /** A pack from a disk among the sources: it may be applied to this very machine too. */
-  const hasPack = infos.some((i) => i.pack);
+  const hasPack = infos.some((i) => i.pack || i.locked);
+  const [packDialog, setPackDialog] = useState(false);
+  const [unlock, setUnlock] = useState<string | null>(null);
   const [manual, setManual] = useState('');
   const startWatch = useStartWatchFromSend();
 
@@ -177,7 +180,12 @@ export function SendPage() {
                           {!i.exists && <span className="badge red">{t('bulunamadı')}</span>}
                           {i.pack && (
                             <span className="badge accent" data-tip={t('{label} • {from} • {when}', { label: i.pack.label, from: i.pack.from, when: new Date(i.pack.createdAt).toLocaleString() })}>
-                              {t('paket')}
+                              {i.pack.encrypted && <Lock size={10} />} {t('paket')}
+                            </span>
+                          )}
+                          {i.locked && (
+                            <span className={cls('badge', i.locked === 'wrong' ? 'red' : 'amber')} data-tip={t('Parola korumalı paket: açmadan içeriği okunamaz ve gönderilemez')}>
+                              <Lock size={10} /> {i.locked === 'wrong' ? t('parola yanlış') : t('parolalı')}
                             </span>
                           )}
                           {i.pack ? null : i.outsideRoots ? (
@@ -200,6 +208,11 @@ export function SendPage() {
                           </span>
                         </div>
                       </div>
+                      {i.locked && (
+                        <Button size="sm" icon={<KeyRound size={13} />} onClick={() => setUnlock(i.path)}>
+                          {t('Parola…')}
+                        </Button>
+                      )}
                       <span className="faint tabular nowrap" style={{ fontSize: 12 }}>
                         {i.isDir || i.pack ? `${t('{n} dosya', { n: num(i.fileCount ?? 0) + (i.fileCountCapped ? '+' : '') })} • ${bytes(i.size)}` : bytes(i.size)}
                       </span>
@@ -250,9 +263,11 @@ export function SendPage() {
           <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
             {t('İzle')}
           </Button>
-          <Button size="lg" icon={<Package size={15} />} disabled={!paths.length || hasPack || !isElectron} onClick={() => void writePack()} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
+          <Button size="lg" icon={<Package size={15} />} disabled={!paths.length || hasPack || !isElectron} onClick={() => setPackDialog(true)} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
             {t('Paket yaz')}
           </Button>
+          {packDialog && <PackWriteDialog onClose={() => setPackDialog(false)} onWrite={(pw) => void writePack(pw)} />}
+          {unlock && <PackUnlockDialog path={unlock} onClose={() => setUnlock(null)} />}
           <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
             {t('Deneme')}
           </Button>
@@ -398,12 +413,13 @@ export function OptionsCard({ git }: { git?: boolean }) {
             </Field>
           )}
           <Field label={t('Eşzamanlı hedef')}>
-            <input className="input" type="number" min={1} max={32} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
+            <input className="input" type="number" min={1} max={32} aria-label={t('Eşzamanlı hedef')} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
           </Field>
         </div>
         <div className="options-toggles">
           <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan ve silinen dosyaların eski hâli hedefte saklanır')} on={options.backup} onChange={(v) => set({ backup: v })} />
           <ToggleRow icon={<ShieldCheck size={16} className="faint" />} title={t('Doğrula')} desc={t('Yazdıktan sonra içerik özetini karşılaştırır')} on={options.verify} onChange={(v) => set({ verify: v })} />
+          <ToggleRow icon={<ScanSearch size={16} className="faint" />} title={t('Hedefi baştan tara')} desc={t('SamSync’in hedefte bıraktığı manifeste güvenmez, klasörleri ağ üzerinden gezer (yavaş ama kesin)')} on={!!options.fullScan} onChange={(v) => set({ fullScan: v || undefined })} />
           {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinenleri hedefte de sil')} desc={t('Git’te silinen ya da taşınan dosyalar hedeften kaldırılır')} on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}
           <ToggleRow icon={<Bell size={16} className="faint" />} title={t('Bitince bildir')} desc={t('Masaüstü bildirimi gösterir')} on={options.notify} onChange={(v) => set({ notify: v })} />
           {postCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Sonrası komut')} desc={<span className="mono">{postCommand}</span>} on={options.runPostCommand} onChange={(v) => set({ runPostCommand: v })} />}

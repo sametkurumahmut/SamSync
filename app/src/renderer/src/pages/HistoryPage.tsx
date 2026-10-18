@@ -1,14 +1,47 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { History, FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2 } from 'lucide-react';
+import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2 } from 'lucide-react';
 import type { RunDetail, RunSummary } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
-import { Button, Empty, SearchInput, Segmented } from '../components/ui';
+import { Button, Empty, ListSkeleton, SearchInput, Segmented } from '../components/ui';
 import { StatusIcon } from '../components/RunPanel';
 import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
+import { MachineName } from '../components/MachineName';
 import { locale, t, tk } from '@shared/i18n';
+
+type Range = 'all' | 'today' | '7d' | '30d';
+
+function dayStart(at: number): number {
+  const d = new Date(at);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** The runs, newest first, bundled by calendar day for the separators in the list. */
+function groupByDay(runs: RunSummary[]): { day: number; runs: RunSummary[] }[] {
+  const out: { day: number; runs: RunSummary[] }[] = [];
+  for (const r of runs) {
+    const day = dayStart(r.startedAt);
+    const last = out[out.length - 1];
+    if (last && last.day === day) last.runs.push(r);
+    else out.push({ day, runs: [r] });
+  }
+  return out;
+}
+
+function dayLabel(day: number): string {
+  const today = dayStart(Date.now());
+  if (day === today) return t('Bugün');
+  if (day === today - 86400_000) return t('Dün');
+  return new Date(day).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short', year: day < today - 300 * 86400_000 ? 'numeric' : undefined });
+}
+
+function rangeStart(range: Range): number {
+  const today = dayStart(Date.now());
+  return range === 'today' ? today : range === '7d' ? today - 6 * 86400_000 : range === '30d' ? today - 29 * 86400_000 : 0;
+}
 
 const ORIGIN: Record<RunSummary['origin'], { label: string; icon: typeof Send }> = {
   send: { label: tk('Gönder'), icon: Send },
@@ -23,15 +56,26 @@ export function HistoryPage() {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
   const [origin, setOrigin] = useState<'all' | RunSummary['origin']>('all');
   const [q, setQ] = useState('');
+  const [range, setRange] = useState<Range>('all');
   const [active, setActive] = useState<string | null>(null);
   /** A day picked on the chart: only its runs are listed. */
   const [day, setDay] = useState<number | null>(null);
 
+  const openRunId = useApp((s) => s.openRunId);
   const load = () => void api.runs().then(setRuns);
   useEffect(load, [version]);
+  useEffect(() => {
+    if (!openRunId || !runs) return;
+    setActive(openRunId);
+    setOrigin('all');
+    setRange('all');
+    setDay(null);
+    useApp.setState({ openRunId: undefined });
+  }, [openRunId, runs]);
 
   const ql = q.trim().toLowerCase();
-  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && (day == null || (r.startedAt >= day && r.startedAt < day + 86400_000)) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
+  const since = rangeStart(range);
+  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && r.startedAt >= since && (day == null || (r.startedAt >= day && r.startedAt < day + 86400_000)) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
   const current = list.find((r) => r.id === active) ?? list[0];
 
   return (
@@ -75,18 +119,31 @@ export function HistoryPage() {
                   { value: 'restore', label: t('Geri al') },
                 ]}
               />
+              <Segmented
+                size="sm"
+                full
+                value={range}
+                onChange={setRange}
+                options={[
+                  { value: 'all', label: t('Hepsi') },
+                  { value: 'today', label: t('Bugün') },
+                  { value: '7d', label: t('7 gün') },
+                  { value: '30d', label: t('30 gün') },
+                ]}
+              />
             </div>
             <div className="pane-scroll">
               {!runs ? (
-                <div className="empty">
-                  <div className="spinner" />
-                </div>
+                <ListSkeleton rows={6} />
               ) : !list.length ? (
-                <Empty icon={<History size={20} />} title={t('Kayıt yok')}>
-                  {t('Gönderimler burada listelenir.')}
+                <Empty art="history" title={runs.length ? t('Eşleşen kayıt yok') : t('Kayıt yok')}>
+                  {runs.length ? t('Arama ya da filtreyi genişletin.') : t('Her gönderim, Git gönderimi, senkron ve geri alma burada hedef hedef listelenir.')}
                 </Empty>
               ) : (
-                list.map((r) => {
+                groupByDay(list).map((g) => (
+                  <div key={g.day} className="history-group">
+                    <div className="history-day">{dayLabel(g.day)}</div>
+                    {g.runs.map((r) => {
                   const O = ORIGIN[r.origin];
                   return (
                     <button key={r.id} className={cls('history-item', current?.id === r.id && 'active')} onClick={() => setActive(r.id)}>
@@ -112,7 +169,9 @@ export function HistoryPage() {
                       </div>
                     </button>
                   );
-                })
+                })}
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -279,7 +338,10 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
             <div key={tg.key} className="list-row" style={{ height: 'auto', minHeight: 46, padding: '8px 14px' }}>
               <StatusIcon status={tg.status} />
               <div className="grow" style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 580 }}>{tg.title}</div>
+                <div className="row" style={{ gap: 8 }}>
+                  <MachineName name={tg.title} layout="inline" />
+                  {tg.deferred && <span className="badge amber">{t('kuyrukta')}</span>}
+                </div>
                 <div className="faint mono ellipsis selectable" style={{ fontSize: 11.5 }}>
                   {tg.via ? t('{relay} üzerinden', { relay: summary.targets.find((y) => y.key === tg.via && !y.via)?.title ?? tg.via }) : tg.root}
                 </div>

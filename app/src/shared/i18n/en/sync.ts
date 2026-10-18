@@ -42,6 +42,20 @@ const d: Dict = {
   'Hata: {n}': 'Errors: {n}',
   '… ve {n} hata daha': pl('… and {n} more error', '… and {n} more errors'),
   'Senkron {name}: işlem {ops}, hata {errors}': 'Sync {name}: operations {ops}, errors {errors}',
+  'İki sürüm de saklanmıştı; bir taraf değişene dek dokunulmaz': 'Both versions were kept; nothing happens until one side changes',
+  'İkisini de sakla': 'Keep both',
+  'Çakışmaları tek tek ya da toplu çözün: sol, sağ, ikisini de sakla': 'Resolve the conflicts one by one or all at once: left, right, keep both',
+  '{n} çakışmayı çöz…': 'Resolve {n} conflicts…',
+  'Çakışmaları çöz': 'Resolve conflicts',
+  '{done}/{n} karar verildi; karar verilmeyenlere dokunulmaz.': '{done}/{n} decided; the undecided ones are left alone.',
+  'Hepsine:': 'For all:',
+  'Tarihi daha yeni olan taraf kazanır; tarihleri aynı olanlara dokunulmaz': 'The side with the newer date wins; equal dates are left alone',
+  'Yeni olan kazansın': 'Newer wins',
+  'Sol kazansın': 'Left wins',
+  'Sağ kazansın': 'Right wins',
+  'Her iki tarafa öbürünün sürümü "ad (sol).uzantı" / "ad (sağ).uzantı" olarak yazılır; hiçbir şey silinmez': 'Each side gets the other\'s version as "name (left).ext" / "name (right).ext"; nothing is deleted',
+  'Hepsini atla': 'Skip all',
+  'daha yeni': 'newer',
 };
 
 export default d;

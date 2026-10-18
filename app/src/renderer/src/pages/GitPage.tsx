@@ -25,7 +25,7 @@ import type { DiffResult, GitChange, GitCommit as Commit } from '@shared/types';
 import { useApp } from '../store/app';
 import { useGit } from '../store/git';
 import { api } from '../lib/api';
-import { Button, Checkbox, Empty, MenuButton, Popover, SearchInput, Segmented, useDebounced, type MenuEntry } from '../components/ui';
+import { Button, Checkbox, Empty, ListSkeleton, MenuButton, Popover, SearchInput, Segmented, useDebounced, type MenuEntry } from '../components/ui';
 import { DiffView } from '../components/DiffView';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { OptionsCard } from './SendPage';
@@ -154,7 +154,7 @@ export function GitPage() {
 
         {!g.repo ? (
           <div className="card" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
-            <Empty icon={<FolderGit2 size={22} />} title={g.loadingRepos ? t('Depolar aranıyor…') : t('Git deposu bulunamadı')} action={<Button icon={<Plus size={15} />} onClick={() => void addRepo()}>{t('Depo ekle')}</Button>}>
+            <Empty art={g.loadingRepos ? undefined : 'git'} icon={g.loadingRepos ? <FolderGit2 size={22} /> : undefined} title={g.loadingRepos ? t('Depolar aranıyor…') : t('Git deposu bulunamadı')} action={<Button icon={<Plus size={15} />} onClick={() => void addRepo()}>{t('Depo ekle')}</Button>}>
               {t('Yerel kökler içinde ya da üstünde bir git deposu bulunamadı. Bir depo klasörü seçin.')}
             </Empty>
           </div>
@@ -211,9 +211,7 @@ function ChangeList({
         <SearchInput value={q} onChange={setQ} placeholder={t('Süz')} style={{ width: 150 }} />
       </div>
       {loading && !changes.length ? (
-        <div className="empty">
-          <div className="spinner" />
-        </div>
+        <ListSkeleton rows={8} dense />
       ) : !rows.length ? (
         <Empty icon={<CheckCheck size={20} />} title={changes.length ? t('Eşleşen dosya yok') : t('Değişiklik yok')}>
           {changes.length ? undefined : emptyText}

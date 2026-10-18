@@ -62,6 +62,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # one file with the SHA-256 of every download, so a copy from a mirror or a USB stick can be checked:
+      #   Windows: Get-FileHash SamSync-Setup-x.y.z.exe   macOS/Linux: shasum -a 256 -c SHA256SUMS.txt
+      - name: Checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern '*.exe' --pattern '*.zip' --pattern '*.dmg' --pattern '*.AppImage'
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge } from 'lucide-react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock } from 'lucide-react';
 import type { NodeConfig, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
+import { tx } from '../lib/i18n';
 import { ConfigEditor } from '../components/ConfigEditor';
 import { Inventory } from '../components/Inventory';
+import { MachineName } from '../components/MachineName';
+import { DiscoverDialog, nodeFromHost } from '../components/DiscoverDialog';
+import { LatencySpark } from '../components/charts';
+import { machineLabel } from '@shared/machine';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -23,6 +28,7 @@ export function TargetsPage() {
   const [editingJson, setEditingJson] = useState(false);
   const cfg = boot.config;
   const probes = useApp((s) => s.probes);
+  const latency = useApp((s) => s.latency);
   const relayState = useApp((s) => s.relayState);
   // a few MB written and read back on request: the pace of the link, as a number
   const [speed, setSpeed] = useState<Record<string, SpeedTestResult | 'running' | undefined>>({});
@@ -65,7 +71,8 @@ export function TargetsPage() {
   const saveConfig = useApp((s) => s.saveConfig);
   const saveSettings = useApp((s) => s.saveSettings);
   const toast = useApp((s) => s.toast);
-  const [editing, setEditing] = useState<NodeConfig | 'new' | null>(null);
+  const [editing, setEditing] = useState<NodeConfig | 'new' | { prefill: Partial<NodeConfig> } | null>(null);
+  const [discover, setDiscover] = useState(false);
   const [q, setQ] = useState('');
   const id = boot.identity;
 
@@ -93,6 +100,9 @@ export function TargetsPage() {
         <Button icon={<RefreshCw size={14} className={probing ? 'spin' : undefined} />} onClick={() => void probe()}>
           {t('Erişimi sına')}
         </Button>
+        <Button icon={<Radar size={15} />} onClick={() => setDiscover(true)} disabled={!boot.configWritable} tip={t('Alt ağdaki makineleri bulur; bulunanlar tek tıkla hedef olur')}>
+          {t('Ağı tara')}
+        </Button>
         <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')} disabled={!boot.configWritable}>
           {t('Hedef ekle')}
         </Button>
@@ -108,7 +118,7 @@ export function TargetsPage() {
               <span className="spacer" />
               <span className="row" style={{ gap: 6 }}>
                 <Pin size={13} className="faint" />
-                <select className="select" style={{ height: 27, width: 200, fontSize: 12.5 }} value={boot.settings.localNodeId ?? ''} onChange={(e) => void saveSettings({ localNodeId: e.target.value || undefined })}>
+                <select className="select" aria-label={t('Bu makine')} style={{ height: 27, width: 200, fontSize: 12.5 }} value={boot.settings.localNodeId ?? ''} onChange={(e) => void saveSettings({ localNodeId: e.target.value || undefined })}>
                   <option value="">{t('Otomatik tanı')}</option>
                   {cfg.nodes.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -140,6 +150,24 @@ export function TargetsPage() {
                         {t('Bu makine {group} grubunun rölesi', { group: relayState.group ?? '-' })} •{' '}
                         {relayState.jobs ? t('{n} iş alındı, son {ago}{ok}', { n: relayState.jobs, ago: ago(relayState.lastJobAt), ok: relayState.lastOk === false ? ` (${t('hatalı')})` : '' }) : t('henüz iş gelmedi')}
                       </span>
+                    </div>
+                  )}
+                  {relayState?.active && (relayState.pending?.length ?? 0) > 0 && (
+                    <div className="col" style={{ gap: 4, marginTop: 8, fontSize: 12.5 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        <Clock size={13} color="var(--amber)" />
+                        <b>{t('Teslimat kuyruğu')}</b>
+                        <span className="faint">{t('kapalı makineler açılınca alır')}</span>
+                      </div>
+                      {relayState.pending!.map((p) => (
+                        <div key={p.targetId} className="row faint" style={{ gap: 6, paddingLeft: 19 }} data-tip={p.lastError}>
+                          <span style={{ color: 'var(--text)' }}>{machineLabel(p.name).title}</span>
+                          <span>
+                            {t('{n} iş', { n: p.jobs })} • {t('{ago} beri', { ago: ago(p.since) })}
+                            {p.lastTry ? ` • ${t('son deneme {ago}', { ago: ago(p.lastTry) })}` : ''}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   <div className="section-title" style={{ marginTop: 14 }}>
@@ -193,7 +221,7 @@ export function TargetsPage() {
         {cfg.nodes.length > 0 && <Inventory />}
         {!cfg.nodes.length ? (
           <div className="card" style={{ marginTop: 16 }}>
-            <Empty icon={<Server size={22} />} title={t('Henüz hedef yok')} action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İlk hedefi ekle')}</Button>}>
+            <Empty art="targets" title={t('Henüz hedef yok')} hint={tx('Örnek: {name}, adres {ip}, paylaşım kökü {root}', { name: <code>PC-1</code>, ip: <code>10.10.1.11</code>, root: <code>Share\Release</code> })} action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İlk hedefi ekle')}</Button>}>
               {t('Bütün makineleri ekleyin. Her makinenin yerel kökü (kaynak olduğunda) ve paylaşım kökü (hedef olduğunda) ayrı tanımlanır.')}
             </Empty>
           </div>
@@ -216,15 +244,8 @@ export function TargetsPage() {
                     <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local')}>
                       <div className="row" style={{ gap: 10 }}>
                         <span className={cls('dot', isLocal ? 'ok' : p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} />
-                        <div className="grow" style={{ minWidth: 0 }}>
-                          <div className="ellipsis" style={{ fontWeight: 620 }}>
-                            {n.name}
-                          </div>
-                          <div className="faint mono ellipsis" style={{ fontSize: 11.5 }}>
-                            {n.id}
-                          </div>
-                        </div>
-                        {isLocal ? <span className="badge blue">{t('bu makine')}</span> : <Switch on={n.enabled} onChange={(v) => void toggleEnabled(n, v)} disabled={!boot.configWritable} />}
+                        <MachineName className="grow" node={n} size="lg" sub={machineLabel(n.name, n.address).title !== n.id ? <span className="mono">{n.id}</span> : undefined} />
+                        {isLocal ? <span className="badge blue">{t('bu makine')}</span> : <Switch on={n.enabled} onChange={(v) => void toggleEnabled(n, v)} disabled={!boot.configWritable} label={t('{name} hedef olarak kullanılsın', { name: n.name })} />}
                       </div>
                       <div className="target-root mono selectable" title={rootPreview(n, boot.platform)}>
                         {n.transport === 'sftp' ? <KeyRound size={12} /> : n.transport === 'path' ? <HardDrive size={12} /> : <Network size={12} />}
@@ -244,10 +265,10 @@ export function TargetsPage() {
                           </div>
                         );
                       })()}
-                      <div className="row" style={{ gap: 6 }}>
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap', rowGap: 4 }}>
                         {!isLocal &&
                           (p ? (
-                            <span className={cls('row faint')} style={{ fontSize: 11.5, gap: 4 }} data-tip={p.detail}>
+                            <span className={cls('row faint nowrap')} style={{ fontSize: 11.5, gap: 4 }} data-tip={p.detail}>
                               {p.ok ? <Wifi size={12} color="var(--green)" /> : <WifiOff size={12} color="var(--red)" />}
                               {p.ok ? `${p.latencyMs ?? '?'} ms` : t('erişilemedi')} • {ago(p.checkedAt)}
                             </span>
@@ -256,6 +277,11 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
+                        {!isLocal && (latency[n.id]?.length ?? 0) > 2 && (
+                          <span data-tip={t('Son {n} yoklamanın gecikmesi; kırmızı çizgi yanıt alınamayan yoklama', { n: latency[n.id].length })} style={{ display: 'inline-flex' }}>
+                            <LatencySpark values={latency[n.id]} />
+                          </span>
+                        )}
                         {!isLocal && speed[n.id] && speed[n.id] !== 'running' && (
                           <span className="faint tabular" style={{ fontSize: 11.5 }} data-tip={t('Yazma / okuma hızı ve gecikme (3 MB ile ölçüldü)')}>
                             ↑{(speed[n.id] as SpeedTestResult).writeMBps.toFixed(1)} ↓{(speed[n.id] as SpeedTestResult).readMBps.toFixed(1)} MB/sn • {(speed[n.id] as SpeedTestResult).latencyMs} ms
@@ -284,18 +310,28 @@ export function TargetsPage() {
           ))
         )}
       </div>
-      {editing && <NodeEditor node={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <NodeEditor node={editing === 'new' || 'prefill' in editing ? null : editing} prefill={editing !== 'new' && 'prefill' in editing ? editing.prefill : undefined} onClose={() => setEditing(null)} />}
+      {discover && (
+        <DiscoverDialog
+          onClose={() => setDiscover(false)}
+          onPick={(h) => {
+            setDiscover(false);
+            const root = id.node?.localRoots[0];
+            setEditing({ prefill: nodeFromHost(h, { folder: root ? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() : undefined, group: id.node?.group }) });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function NodeEditor({ node, onClose }: { node: NodeConfig | null; onClose: () => void }) {
+function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefill?: Partial<NodeConfig>; onClose: () => void }) {
   const boot = useApp((s) => s.boot!);
   const cfg = boot.config;
   const saveConfig = useApp((s) => s.saveConfig);
   const toast = useApp((s) => s.toast);
   const [n, setN] = useState<NodeConfig>(
-    node ?? { id: '', name: '', address: '', localRoots: [], networkRoot: 'Share\\Release', enabled: true, transport: 'smb' },
+    node ?? { id: '', name: '', address: '', localRoots: [], networkRoot: 'Share\\Release', enabled: true, transport: 'smb', ...prefill },
   );
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);

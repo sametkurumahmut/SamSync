@@ -13,6 +13,7 @@ import { parseLaunch } from '../src/main/launch';
 import { stamp } from '../src/core/util';
 import type { Endpoint, SyncJob } from '../src/shared/types';
 import { tmpDir, write, read, pathNode, makeCtx, defaultOptions, daysAgo } from './helpers';
+import { t } from '../src/shared/i18n';
 
 const BK = '_SamSyncYedek';
 
@@ -331,5 +332,51 @@ describe('sync job files', () => {
     } finally {
       svc.automation?.stop();
     }
+  });
+});
+
+describe('conflicts kept both ways', () => {
+  it('copies each side next to the other, remembers the pair and leaves it alone until one side changes', async () => {
+    const base = await tmpDir();
+    const L = path.join(base, 'L');
+    const Rt = path.join(base, 'R');
+    const when = daysAgo(1);
+    await write(path.join(L, 'doc.txt'), 'left v2', when);
+    await write(path.join(Rt, 'doc.txt'), 'right v2!', when);
+    await write(path.join(L, 'same.txt'), 'same', when);
+    await write(path.join(Rt, 'same.txt'), 'same', when);
+    const ctx = makeCtx({}, [], path.join(base, 'ud'));
+    const j = job(local(L), local(Rt), { variant: 'twoWay' });
+
+    // same time, different content: a conflict with no suggestion
+    const cmp = await compareJob(ctx, j);
+    const it = cmp.pairs[0].items.find((x) => x.rel === 'doc.txt')!;
+    expect(it.category).toBe('conflict');
+    expect(it.action).toBe('none');
+    it.action = 'keepBoth';
+    const groups = syncGroups(ctx, j, cmp);
+    const [SOL, SAG] = [t('sol'), t('sağ')];
+    expect(groups.map((g) => g.ops.map((o) => o.rel)).flat().sort()).toEqual([`doc (${SOL}).txt`, `doc (${SAG}).txt`].sort());
+    const d = await startRun(ctx, groups, syncExecSettings(ctx, j, 's', cmp, groups)).done;
+    expect(d.status).toBe('ok');
+    await updateDbAfterRun(ctx, j, cmp, d);
+    expect(read(path.join(Rt, `doc (${SOL}).txt`))).toBe('left v2');
+    expect(read(path.join(L, `doc (${SAG}).txt`))).toBe('right v2!');
+    expect(read(path.join(L, 'doc.txt'))).toBe('left v2');
+    expect(read(path.join(Rt, 'doc.txt'))).toBe('right v2!');
+
+    // next time: the pair is known and stays quiet; the two copies travel like any new file
+    const again = await compareJob(ctx, j);
+    const it2 = again.pairs[0].items.find((x) => x.rel === 'doc.txt')!;
+    expect(it2.action).toBe('none');
+    expect(it2.category).toBe('conflict');
+    expect(it2.conflict).toMatch(/saklanmıştı|kept/);
+    const copies = again.pairs[0].items.filter((x) => x.rel.includes(`(${SOL})`) || x.rel.includes(`(${SAG})`));
+    expect(copies.map((c) => c.action).sort()).toEqual(['copyLeft', 'copyRight']);
+
+    // one side edited afterwards: the usual two way rule again
+    await write(path.join(L, 'doc.txt'), 'left v3', new Date());
+    const third = await compareJob(ctx, j);
+    expect(third.pairs[0].items.find((x) => x.rel === 'doc.txt')!.action).toBe('copyRight');
   });
 });

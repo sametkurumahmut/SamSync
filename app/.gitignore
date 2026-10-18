@@ -4,3 +4,4 @@ dist/
 release/
 *.log
 .demo/
+e2e-results/

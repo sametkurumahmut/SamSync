@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Server, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check } from 'lucide-react';
 import type { NodeConfig, Profile, TargetOptions } from '@shared/types';
 import { overrideFor, pickOverrides, setOverride } from '@shared/options';
 import { MODE_OPTIONS } from '../pages/SendPage';
@@ -7,6 +7,7 @@ import { useApp } from '../store/app';
 import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type MenuEntry } from './ui';
 import { api } from '../lib/api';
 import { cls } from '../lib/format';
+import { MachineName } from './MachineName';
 import { tx } from '../lib/i18n';
 import { t } from '@shared/i18n';
 
@@ -102,7 +103,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
 
   if (!nodes.length)
     return (
-      <Empty icon={<Server size={22} />} title={t('Hedef yok')} action={<Button onClick={() => useApp.getState().setPage('targets')}>{t('Hedef ekle')}</Button>}>
+      <Empty art="targets" title={t('Hedef yok')} action={<Button onClick={() => useApp.getState().setPage('targets')}>{t('Hedef ekle')}</Button>}>
         {t('Bu makine dışında etkin bir hedef tanımlı değil.')}
       </Empty>
     );
@@ -130,7 +131,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
           return (
             <div key={g.key} className="tp-group">
               <div className="tp-group-head">
-                <Checkbox checked={on === ids.length} mixed={on > 0 && on < ids.length} onChange={(v) => setMany(ids, v)} />
+                <Checkbox checked={on === ids.length} mixed={on > 0 && on < ids.length} onChange={(v) => setMany(ids, v)} label={t('{group} grubunun tamamı', { group: g.name })} />
                 <button
                   className="tp-group-name"
                   onClick={() =>
@@ -153,17 +154,14 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                   const p = probes[n.id];
                   return (
                     <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))}>
-                      <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} />
+                      <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} label={n.name} />
                       <span className={cls('dot', p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
-                      <div className="grow">
-                        <div className="ellipsis row" style={{ fontWeight: 540, gap: 6 }}>
-                          {n.name}
-                          {n.id === localId && <span className="badge accent">{t('bu makine')}</span>}
-                        </div>
-                        <div className="faint mono ellipsis" style={{ fontSize: 11 }}>
-                          {n.transport === 'sftp' ? `sftp ${n.sftp?.host || n.address}` : n.transport === 'path' ? n.path : `${n.address} • ${n.networkRoot}`}
-                        </div>
-                      </div>
+                      <MachineName
+                        className="grow"
+                        node={n.transport === 'sftp' ? { name: n.name, address: n.sftp?.host || n.address } : n}
+                        extra={n.id === localId && <span className="badge accent">{t('bu makine')}</span>}
+                        sub={<span className="mono ellipsis">{n.transport === 'sftp' ? `sftp ${n.sftp?.root ?? ''}` : n.transport === 'path' ? n.path : n.networkRoot}</span>}
+                      />
                       {p?.ok && p.latencyMs != null && <span className="faint tabular" style={{ fontSize: 11 }}>{p.latencyMs} ms</span>}
                       {overrides && <TargetOverride id={n.id} />}
                     </div>

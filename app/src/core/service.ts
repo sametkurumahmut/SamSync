@@ -4,6 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
 import type {
+  DiscoveredHost,
+  DirListing,
+  WebUiSettings,
+  WebUiState,
   AppConfig,
   AssistantReply,
   AssistantStatus,
@@ -42,6 +46,8 @@ import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
+import { discoverHosts } from './discover';
+import { hashPassword } from './webserver';
 import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
 import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assistantSystem } from './assistant';
@@ -89,6 +95,8 @@ export interface HostAdapter {
   openPath?(p: string): Promise<void>;
   showInFolder?(p: string): Promise<void>;
   openExternal?(url: string): Promise<void>;
+  /** Server mode: the HTTP server of the desktop app (absent in the development preview). */
+  webUi?: { state(): WebUiState; apply(s: WebUiSettings | undefined): Promise<WebUiState> };
   /** Moves a local file or folder to the operating system's trash (sync jobs that delete to the Recycle Bin). */
   trash?(absPath: string): Promise<void>;
   encrypt?(plain: string): string | null;
@@ -276,7 +284,7 @@ export class Service implements Api {
       configPath: this.configPath,
       configWritable: this.configWritable(),
       configError: this.configError,
-      settings: this.settings,
+      settings: this.publicSettings(),
       identity: this.identity,
       initialPaths: this.host.initialPaths.splice(0),
       initialTargets: this.host.initialTargets?.splice(0) ?? [],
@@ -358,9 +366,19 @@ export class Service implements Api {
     return this.bootstrap();
   }
 
+  /** The settings as a window sees them: the server mode's password hash stays here. */
+  publicSettings(): LocalSettings {
+    const w = this.settings.webUi;
+    if (!w) return this.settings;
+    const { passwordHash, ...rest } = w;
+    return { ...this.settings, webUi: { ...rest, hasPassword: !!passwordHash } };
+  }
+
   async saveSettings(patch: Partial<LocalSettings>): Promise<LocalSettings> {
     const pinChanged = 'localNodeId' in patch && patch.localNodeId !== this.settings.localNodeId;
-    this.settings = { ...this.settings, ...patch };
+    // the server mode is changed through webUiConfigure only (the settings a window sends back have no hash)
+    const { webUi: _ignored, ...safe } = patch;
+    this.settings = { ...this.settings, ...safe };
     await this.persistSettings();
     if (pinChanged) {
       this.identity = detectIdentity(this.config, this.settings.localNodeId);
@@ -370,7 +388,58 @@ export class Service implements Api {
     if ('automationPaused' in patch || 'automation' in patch) this.automation?.setPaused();
     if ('language' in patch) setLang(this.uiLang());
     if (this.automation) this.host.applySettings?.(this.settings, this.automation.snapshot());
-    return this.settings;
+    return this.publicSettings();
+  }
+
+  /** A folder of this computer for a browser's file picker: folders first, then files; null lists the drives. */
+  async listDir(p: string | null): Promise<DirListing> {
+    if (!p) {
+      if (process.platform !== 'win32') return this.listDir('/');
+      const drives: DirListing['entries'] = [];
+      for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZAB') {
+        const root = `${letter}:\\`;
+        const st = await fsp.stat(root).catch(() => null);
+        if (st) drives.push({ name: `${letter}:`, path: root, isDir: true, size: 0, mtimeMs: st.mtimeMs });
+      }
+      return { path: null, parent: null, entries: drives };
+    }
+    const abs = path.resolve(p);
+    const parentDir = path.dirname(abs);
+    const parent = parentDir === abs ? (process.platform === 'win32' ? '' : null) : parentDir;
+    try {
+      const items = await fsp.readdir(abs, { withFileTypes: true });
+      const entries = await mapLimit(items, 16, async (d) => {
+        const full = path.join(abs, d.name);
+        const st = await fsp.stat(full).catch(() => null);
+        return { name: d.name, path: full, isDir: st ? st.isDirectory() : d.isDirectory(), size: st?.size ?? 0, mtimeMs: st?.mtimeMs ?? 0 };
+      });
+      entries.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      return { path: abs, parent: parent === '' ? null : parent, entries };
+    } catch (e) {
+      return { path: abs, parent: parent === '' ? null : parent, entries: [], error: errMessage(e) };
+    }
+  }
+
+  async webUiState(): Promise<WebUiState> {
+    if (this.host.webUi) return this.host.webUi.state();
+    const w = this.settings.webUi;
+    return { available: false, enabled: !!w?.enabled, running: false, port: w?.port ?? 8780, lan: w?.lan ?? true, hasPassword: !!w?.passwordHash, urls: [], clients: 0, sessions: 0 };
+  }
+
+  async webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null }): Promise<WebUiState> {
+    const cur: WebUiSettings = this.settings.webUi ?? { enabled: false, port: 8780, lan: true };
+    const next: WebUiSettings = {
+      enabled: patch.enabled ?? cur.enabled,
+      port: Math.max(1024, Math.min(65535, Math.round(patch.port ?? cur.port) || 8780)),
+      lan: patch.lan ?? cur.lan,
+      passwordHash: patch.password === undefined ? cur.passwordHash : patch.password ? hashPassword(patch.password) : undefined,
+    };
+    if (patch.password != null && patch.password.length < 8) throw new Error(t('Parola en az 8 karakter olmalı'));
+    if (next.enabled && !next.passwordHash) throw new Error(t('Önce bir parola belirleyin'));
+    this.settings = { ...this.settings, webUi: next };
+    await this.persistSettings();
+    this.log.info(t('Web arayüzü'), next.enabled ? t('Açık: kapı {port}, {where}', { port: next.port, where: next.lan ? t('ağdan erişilebilir') : t('yalnızca bu bilgisayar') }) : t('Kapalı'));
+    return this.host.webUi ? this.host.webUi.apply(next) : this.webUiState();
   }
 
   private async persistSettings() {
@@ -487,8 +556,8 @@ export class Service implements Api {
     return results;
   }
 
-  async describeSources(paths: string[], count = true) {
-    return describeSources(this.ctx(), paths, count);
+  async describeSources(paths: string[], count = true, secrets?: Record<string, string>) {
+    return describeSources(this.ctx(), paths, count, secrets);
   }
 
   async mapPath(abs: string) {
@@ -525,14 +594,15 @@ export class Service implements Api {
   }
 
   /** The sources as one pack file in `dir` (named after the label and the time), for a release carried on a disk. */
-  async writePack(req: SendRequest, dir: string, taskId: string): Promise<PackWriteResult> {
+  async writePack(req: SendRequest, dir: string, taskId: string, password?: string): Promise<PackWriteResult> {
     const cancel = new CancelToken();
     this.tasks.set(taskId, cancel);
     const file = path.join(dir, packFileName(req.label || t('Gönderim')));
     try {
-      this.log.info(t('Paket'), t('{n} kaynak → {file}', { n: req.sources.length, file }));
+      this.log.info(t('Paket'), password ? t('{n} kaynak → {file} (parolalı)', { n: req.sources.length, file }) : t('{n} kaynak → {file}', { n: req.sources.length, file }));
       const r = await writeSendPack(this.ctx(), req, file, {
         cancel,
+        password,
         onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total }),
       });
       this.log.info(t('Paket'), t('Paket yazıldı: {file} ({files} dosya, {size} → {packed})', { file, files: r.files, size: formatBytes(r.size), packed: formatBytes(r.packed) }));
@@ -544,6 +614,22 @@ export class Service implements Api {
 
   async cancelTask(taskId: string) {
     this.tasks.get(taskId)?.cancel();
+  }
+
+  /** The machines on this computer's subnets that answer on file sharing or SSH, for the Targets page and the setup wizard. */
+  async discoverHosts(taskId: string): Promise<DiscoveredHost[]> {
+    const cancel = new CancelToken();
+    this.tasks.set(taskId, cancel);
+    try {
+      const hosts = await discoverHosts(this.config, {
+        cancel,
+        onProgress: (done, total, found) => this.host.emit({ type: 'task-progress', taskId, message: t('{found} makine bulundu', { found }), done, total }),
+      });
+      this.log.info(t('Ağ taraması'), t('{n} makine yanıt verdi', { n: hosts.length }));
+      return hosts;
+    } finally {
+      this.tasks.delete(taskId);
+    }
   }
 
   private execSettings(label: string, origin: SendRequest['origin'], o: Partial<SendRequest['options']>, extra: Partial<ExecSettings> = {}): ExecSettings {
@@ -739,6 +825,14 @@ export class Service implements Api {
 
   async cancelRun(runId: string) {
     this.runsActive.get(runId)?.cancel.cancel();
+  }
+
+  async pauseRun(runId: string, paused: boolean) {
+    this.runsActive.get(runId)?.pause(paused);
+  }
+
+  async cancelRunTarget(runId: string, key: string) {
+    this.runsActive.get(runId)?.cancelTarget(key);
   }
 
   private async readSource(src: SourceSpec): Promise<{ buf: Buffer | null; size: number; mtimeMs?: number }> {
@@ -1123,7 +1217,7 @@ export class Service implements Api {
       profilesSkipped: skipped,
       unknownTargets: conv.unknownTargets,
       profilesError,
-      settings: this.settings,
+      settings: this.publicSettings(),
       config: this.config,
     };
   }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { buildSendPlan, describeSources, writeSendPack } from '../src/core/plan';
+import { PackLockedError, PackPasswordError } from '../src/core/packcrypt';
 import { startRun, type ExecSettings } from '../src/core/executor';
 import { transportForNode } from '../src/core/transport';
 import { readPackIndex, isPackFile, packFileName } from '../src/core/packfile';
@@ -125,6 +126,58 @@ describe('pack files', () => {
     // a folder as a source still never targets this machine
     const plan2 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(src, 'Release') }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
     expect(plan2.targets).toHaveLength(0);
+  });
+
+  it('keeps a password-protected pack closed without its password and applies it with it', async () => {
+    const base = await tmpDir();
+    const root = path.join(base, 'root');
+    const rel = path.join(root, 'Release');
+    await write(path.join(rel, 'bin', 'app.exe'), 'exe'.repeat(5000), new Date('2026-01-02T10:00:00Z'));
+    await write(path.join(rel, 'pic.png'), 'png-bytes-that-must-not-show', new Date('2026-01-03T10:00:00Z'));
+    await fsp.mkdir(path.join(rel, 'empty'), { recursive: true });
+    const sender = makeCtx({ nodes: [pathNode('Me', root)] }, [root], path.join(base, 'ud1'));
+    const pack = path.join(base, 'usb', 'secret.samsync-pack');
+    const r = await writeSendPack(sender, { sources: [{ kind: 'fs', path: rel }], targetIds: [], options: defaultOptions, origin: 'send', label: 'Gizli' }, pack, { password: 'gizli-1234' });
+    expect(r.files).toBe(2);
+
+    // on disk: the new magic, and none of the content in the clear (the png member is stored, not gzipped)
+    const raw = fs.readFileSync(pack);
+    expect(raw.subarray(0, 8).toString('latin1')).toBe('SSPACK02');
+    expect(raw.includes(Buffer.from('png-bytes-that-must-not-show'))).toBe(false);
+    expect(raw.includes(Buffer.from('"label"'))).toBe(false);
+
+    // closed without the password, closed with a wrong one
+    await expect(readPackIndex(pack)).rejects.toBeInstanceOf(PackLockedError);
+    await expect(readPackIndex(pack, 'yanlış')).rejects.toBeInstanceOf(PackPasswordError);
+    const other = path.join(base, 'other');
+    await fsp.mkdir(other, { recursive: true });
+    const receiver = makeCtx({ nodes: [pathNode('Other', other)] }, [path.join(base, 'elsewhere')], path.join(base, 'ud2'));
+    const [locked] = await describeSources(receiver, [pack]);
+    expect(locked.exists).toBe(true);
+    expect(locked.locked).toBe('password');
+    expect(locked.pack).toBeUndefined();
+    const [wrong] = await describeSources(receiver, [pack], true, { [pack]: 'nope' });
+    expect(wrong.locked).toBe('wrong');
+    // a plan with the closed pack warns and sends nothing
+    const closed = await buildSendPlan(receiver, { sources: [{ kind: 'fs', path: pack }], targetIds: ['Other'], options: defaultOptions, origin: 'send' });
+    expect(closed.warnings.some((w) => /parola|password/i.test(w))).toBe(true);
+    expect(closed.targets.every((tp) => tp.ops.filter((o) => o.selected).length === 0)).toBe(true);
+
+    // the password opens it on the Send page; the plan and the run then read the members without asking again
+    const [info] = await describeSources(receiver, [pack], true, { [pack]: 'gizli-1234' });
+    expect(info.locked).toBeUndefined();
+    expect(info.pack?.encrypted).toBe(true);
+    expect(info.pack?.files).toBe(2);
+    const idx = await readPackIndex(pack);
+    expect(idx.encrypted).toBe(true);
+    expect(idx.entries.map((e) => e.rel).sort()).toEqual(['Release/bin', 'Release/bin/app.exe', 'Release/empty', 'Release/pic.png']);
+    const { plan, d } = await runPlan(receiver, [pack], ['Other']);
+    expect(plan.targets[0].counts.new).toBe(5); // Release itself, bin, app.exe, empty, pic.png
+    expect(d?.status).toBe('ok');
+    expect(read(path.join(other, 'Release', 'bin', 'app.exe'))).toBe('exe'.repeat(5000));
+    expect(read(path.join(other, 'Release', 'pic.png'))).toBe('png-bytes-that-must-not-show');
+    expect(fs.existsSync(path.join(other, 'Release', 'empty'))).toBe(true);
+    expect(Math.abs(fs.statSync(path.join(other, 'Release', 'pic.png')).mtimeMs - new Date('2026-01-03T10:00:00Z').getTime())).toBeLessThan(2000);
   });
 
   it('refuses a file that is not a pack', async () => {

@@ -38,6 +38,33 @@ export function Sparkline({
   );
 }
 
+/** Latency over the last probes, 56×16: a line through the answers, a red tick for every missed one. */
+export function LatencySpark({ values, width = 56, height = 16, title }: { values: number[]; width?: number; height?: number; title?: string }) {
+  const n = values.length;
+  const ok = values.filter((v) => v >= 0);
+  const top = Math.max(1, ...ok);
+  const pad = 2;
+  const x = (i: number) => (n === 1 ? width / 2 : pad + (i / (n - 1)) * (width - 2 * pad));
+  const y = (v: number) => height - pad - (v / top) * (height - 2 * pad);
+  let d = '';
+  let open = false;
+  values.forEach((v, i) => {
+    if (v < 0) {
+      open = false;
+      return;
+    }
+    d += `${open ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `;
+    open = true;
+  });
+  return (
+    <svg className="lat-spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      {title && <title>{title}</title>}
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth={1.25} strokeLinejoin="round" strokeLinecap="round" />
+      {values.map((v, i) => (v < 0 ? <line key={i} x1={x(i)} y1={height - pad} x2={x(i)} y2={height - pad - 5} stroke="var(--red)" strokeWidth={1.5} /> : null))}
+    </svg>
+  );
+}
+
 /** Vertical bars for buckets (per day, per hour); `tone` colours a bar differently (a day with failures). */
 export function Bars({
   values,

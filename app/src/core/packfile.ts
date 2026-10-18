@@ -6,12 +6,16 @@
 // is fast again.
 //
 //   [member bytes …][index JSON, UTF-8][index length, 8 bytes LE][magic, 8 bytes]
+//
+// With a password the same bytes are encrypted behind a header (see packcrypt.ts).
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import { packStream, type PackEntry, type PackSource } from './pack';
+import { ENC_HEADER, ENC_MAGIC, PackLockedError, PackPasswordError, ctrBuffer, ctrTransform, deriveKey, forgetPackKey, newPackKey, packKeyFor, rememberPackKey, type PackKey } from './packcrypt';
 import { relJoin } from './paths';
 import type { Entry } from './transport';
 
@@ -44,6 +48,8 @@ export interface PackIndex {
   /** Original bytes of all files, and how many files there are (folders not counted). */
   size: number;
   files: number;
+  /** Set when the index was read out of a password-protected pack (not stored in the file). */
+  encrypted?: boolean;
 }
 
 export interface PackWriteSource extends PackSource {
@@ -57,23 +63,25 @@ export interface PackWriteSource extends PackSource {
  */
 export async function writePackFile(
   file: string,
-  args: { label: string; subtrees: PackSubtree[]; files: PackSource[]; dirs: string[]; node?: string; version?: string; signal?: AbortSignal },
+  args: { label: string; subtrees: PackSubtree[]; files: PackSource[]; dirs: string[]; node?: string; version?: string; signal?: AbortSignal; password?: string },
   onFile?: (done: number, bytes: number) => void,
 ): Promise<PackIndex> {
   await fsp.mkdir(path.dirname(file), { recursive: true });
   const members: PackEntry[] = [];
   let done = 0;
   let bytes = 0;
+  let index: PackIndex | null = null;
   const out = fs.createWriteStream(file, { highWaterMark: 1024 * 1024 });
-  const stream = packStream(args.files, members, (s) => {
-    done++;
-    bytes += s.size;
-    onFile?.(done, bytes);
-  });
-  try {
-    await pipeline(stream, out, { signal: args.signal });
+  // the members, then the index and the trailer, as one stream: with a password it is encrypted as a whole
+  async function* body() {
+    const stream = packStream(args.files, members, (s) => {
+      done++;
+      bytes += s.size;
+      onFile?.(done, bytes);
+    });
+    for await (const chunk of stream as AsyncIterable<Buffer>) yield chunk;
     const entries: PackIndexEntry[] = [...args.dirs.map((rel) => ({ rel, isDir: true, size: 0, mtimeMs: 0, offset: 0, length: 0, method: 'store' as const })), ...members];
-    const index: PackIndex = {
+    index = {
       version: 1,
       label: args.label,
       createdAt: Date.now(),
@@ -86,29 +94,66 @@ export async function writePackFile(
     const json = Buffer.from(JSON.stringify(index), 'utf8');
     const len = Buffer.alloc(8);
     len.writeBigUInt64LE(BigInt(json.length));
-    await fsp.appendFile(file, Buffer.concat([json, len, MAGIC]));
-    return index;
+    yield Buffer.concat([json, len, MAGIC]);
+  }
+  try {
+    if (args.password) {
+      const { k, header } = newPackKey(args.password);
+      out.write(header);
+      await pipeline(Readable.from(body()), ctrTransform(k, 0), out, { signal: args.signal });
+    } else await pipeline(Readable.from(body()), out, { signal: args.signal });
+    forgetPackKey(file);
+    return index!;
   } catch (e) {
     await fsp.rm(file, { force: true }).catch(() => undefined);
     throw e;
   }
 }
 
-/** Reads the index at the end of a pack file; throws when the file is not a pack. */
-export async function readPackIndex(file: string): Promise<PackIndex> {
+/**
+ * Reads the index at the end of a pack file; throws when the file is not a pack. A password-protected pack needs
+ * its password once (PackLockedError without one, PackPasswordError with a wrong one); the key is then kept for
+ * this process, so the plan and the run read the members without it.
+ */
+export async function readPackIndex(file: string, password?: string): Promise<PackIndex> {
   const fh = await fsp.open(file, 'r');
   try {
     const { size } = await fh.stat();
-    if (size < TRAILER) throw new Error('not a pack');
-    const trailer = Buffer.alloc(TRAILER);
-    await fh.read(trailer, 0, TRAILER, size - TRAILER);
-    if (!trailer.subarray(8).equals(MAGIC)) throw new Error('not a pack');
+    let k: PackKey | undefined;
+    let base = 0;
+    const head = Buffer.alloc(8);
+    if (size >= 8) await fh.read(head, 0, 8, 0);
+    if (head.equals(ENC_MAGIC)) {
+      if (size < ENC_HEADER + TRAILER) throw new Error('not a pack');
+      const hdr = Buffer.alloc(ENC_HEADER);
+      await fh.read(hdr, 0, ENC_HEADER, 0);
+      k = password != null && password !== '' ? { key: deriveKey(password, hdr.subarray(8, 24)), nonce: Buffer.from(hdr.subarray(24, 40)) } : packKeyFor(file);
+      if (!k) throw new PackLockedError();
+      base = ENC_HEADER;
+    } else forgetPackKey(file);
+    const bodySize = size - base;
+    if (bodySize < TRAILER) throw new Error('not a pack');
+    const read = async (pos: number, len: number) => {
+      const b = Buffer.alloc(len);
+      await fh.read(b, 0, len, base + pos);
+      return k ? ctrBuffer(k, pos, b) : b;
+    };
+    const trailer = await read(bodySize - TRAILER, TRAILER);
+    if (!trailer.subarray(8).equals(MAGIC)) throw k ? new PackPasswordError() : new Error('not a pack');
     const len = Number(trailer.readBigUInt64LE(0));
-    if (!Number.isFinite(len) || len <= 0 || len > MAX_INDEX || len + TRAILER > size) throw new Error('bad pack index');
-    const json = Buffer.alloc(len);
-    await fh.read(json, 0, len, size - TRAILER - len);
-    const idx = JSON.parse(json.toString('utf8')) as PackIndex;
+    if (!Number.isFinite(len) || len <= 0 || len > MAX_INDEX || len + TRAILER > bodySize) throw new Error('bad pack index');
+    const json = await read(bodySize - TRAILER - len, len);
+    let idx: PackIndex;
+    try {
+      idx = JSON.parse(json.toString('utf8')) as PackIndex;
+    } catch (e) {
+      throw k ? new PackPasswordError() : e;
+    }
     if (idx.version !== 1 || !Array.isArray(idx.entries) || !Array.isArray(idx.subtrees)) throw new Error('bad pack index');
+    if (k) {
+      rememberPackKey(file, k);
+      idx.encrypted = true;
+    }
     return idx;
   } finally {
     await fh.close();

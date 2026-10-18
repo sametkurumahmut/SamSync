@@ -1,7 +1,6 @@
 // What changed in the version that just started, once, from the changelog that ships with the app.
 import { Sparkles, ExternalLink } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { ChangelogSection } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Modal } from './ui';

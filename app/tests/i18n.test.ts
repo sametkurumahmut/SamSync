@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EN, EN_PARTS } from '../src/shared/i18n/en';
+import { DE } from '../src/shared/i18n/de';
+import { ES } from '../src/shared/i18n/es';
+import type { Dict } from '../src/shared/i18n/types';
 import { t, setLang, systemLang, resolveLang } from '../src/shared/i18n';
 
 const SRC = path.join(__dirname, '..', 'src');
@@ -133,6 +136,26 @@ describe('i18n dictionary', () => {
     expect(bad).toEqual([]);
   });
 
+  it.each([
+    ['German', DE],
+    ['Spanish', ES],
+  ] as [string, Dict][])('has %s for every English entry, with the same placeholders and nothing extra', (_name, D) => {
+    expect(Object.keys(EN).filter((k) => !(k in D))).toEqual([]);
+    expect(Object.keys(D).filter((k) => !(k in EN))).toEqual([]);
+    const bad: string[] = [];
+    for (const [k, v] of Object.entries(D)) {
+      if (typeof v === 'string') {
+        if (holes(k).join() !== holes(v).join()) bad.push(`${JSON.stringify(k)} -> ${JSON.stringify(v)}`);
+      } else {
+        for (const n of [1, 2]) {
+          const out = v(Object.fromEntries(holes(k).map((h) => [h, n])));
+          if (holes(out).some((h) => !holes(k).includes(h))) bad.push(`${JSON.stringify(k)} -> ${JSON.stringify(out)}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('builds no key at run time from a template', () => {
     expect(found.dynamic).toEqual([]);
   });
@@ -154,8 +177,12 @@ describe('t()', () => {
   it('follows the computer language unless one is picked', () => {
     expect(systemLang(['tr-TR', 'en-US'])).toBe('tr');
     expect(systemLang(['en-US', 'tr-TR'])).toBe('en');
-    expect(systemLang(['de-DE'])).toBe('en');
+    expect(systemLang(['de-DE'])).toBe('de');
+    expect(systemLang(['es-419', 'en'])).toBe('es');
+    expect(systemLang(['fr-FR', 'de-DE'])).toBe('en');
+    expect(systemLang(['en_US'])).toBe('en');
     expect(systemLang([])).toBe('en');
+    expect(resolveLang('de', 'tr')).toBe('de');
     expect(resolveLang('system', 'tr')).toBe('tr');
     expect(resolveLang('en', 'tr')).toBe('en');
     expect(resolveLang(undefined, 'en')).toBe('en');

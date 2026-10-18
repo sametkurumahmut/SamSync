@@ -4,18 +4,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Bot, Send, Sparkles, X, ArrowRight, Trash2, BookOpen, CircleHelp, Loader2, Wand2 } from 'lucide-react';
 import type { AppPage } from '@shared/pages';
-import { answer, starterQuestions, type HelpAnswer, type HelpHit } from '@shared/help/search';
+import { starterQuestions, type HelpAnswer, type HelpHit } from '@shared/help/search';
 import { FAQ_TOPICS } from '@shared/help/faq';
 import { useApp, type HelpMessage } from '../store/app';
-import { api } from '../lib/api';
-import { helpIndex, helpLang } from '../lib/help';
+import { helpLang } from '../lib/help';
 import { inlineMarkdown } from './WhatsNew';
 import { Button, useEscapeLayer } from './ui';
 import { cls } from '../lib/format';
 import { t } from '@shared/i18n';
 
-let seq = 1;
-const nextId = () => `m${Date.now().toString(36)}${seq++}`;
 
 /** The answer text and the places to go, for a search result. */
 function offlineReply(a: HelpAnswer, lang: 'tr' | 'en'): Omit<HelpMessage, 'id' | 'role'> {

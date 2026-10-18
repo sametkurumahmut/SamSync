@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { Readable as ReadableType } from 'node:stream';
+import { ENC_HEADER, ctrTransform, packKeyFor } from './packcrypt';
 
 export type PackMethod = 'gzip' | 'store';
 
@@ -58,13 +59,21 @@ export function packStream(sources: PackSource[], entries: PackEntry[], onFile?:
   return Readable.from(gen());
 }
 
-/** Opens one member of a pack file as the original bytes. */
+/** Opens one member of a pack file as the original bytes (a password-protected pack must have been opened once). */
 export function openPackEntry(file: string, e: { offset: number; length: number; method: PackMethod }): ReadableType {
   if (e.length === 0) return Readable.from([]);
-  const raw = fs.createReadStream(file, { start: e.offset, end: e.offset + e.length - 1, highWaterMark: 1024 * 1024 });
-  if (e.method === 'store') return raw;
-  const out = raw.pipe(zlib.createGunzip());
-  raw.on('error', (err) => out.destroy(err));
+  const k = packKeyFor(file);
+  const base = k ? ENC_HEADER : 0;
+  const raw = fs.createReadStream(file, { start: base + e.offset, end: base + e.offset + e.length - 1, highWaterMark: 1024 * 1024 });
+  let src: ReadableType = raw;
+  if (k) {
+    const d = ctrTransform(k, e.offset);
+    raw.on('error', (err) => d.destroy(err));
+    src = raw.pipe(d);
+  }
+  if (e.method === 'store') return src;
+  const out = src.pipe(zlib.createGunzip());
+  src.on('error', (err) => out.destroy(err));
   return out;
 }
 

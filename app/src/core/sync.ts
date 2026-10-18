@@ -28,6 +28,8 @@ interface DbEntry {
   d?: 1;
   l: DbSide;
   r: DbSide;
+  /** The two versions were kept side by side: nothing is proposed until one of them changes again. */
+  k?: 1;
 }
 type SyncDb = Record<string, DbEntry>;
 
@@ -112,6 +114,7 @@ function defaultAction(job: SyncJob, item: Omit<CompareItem, 'action' | 'default
   if (e) {
     const lc = changedSince(item.left!, e.l, tol);
     const rc = changedSince(item.right!, e.r, tol);
+    if (e.k && !lc && !rc) return { action: 'none', category: 'conflict', conflict: t('İki sürüm de saklanmıştı; bir taraf değişene dek dokunulmaz') };
     if (lc && !rc) return { action: 'copyRight' };
     if (rc && !lc) return { action: 'copyLeft' };
     if (lc && rc) return { action: 'none', category: 'conflict', conflict: t('İki tarafta da değiştirilmiş') };
@@ -124,7 +127,7 @@ function defaultAction(job: SyncJob, item: Omit<CompareItem, 'action' | 'default
 export function emptyStats(): CompareStats {
   return {
     byCategory: { leftOnly: 0, rightOnly: 0, leftNewer: 0, rightNewer: 0, different: 0, equal: 0, conflict: 0 },
-    byAction: { copyRight: 0, copyLeft: 0, deleteLeft: 0, deleteRight: 0, none: 0 },
+    byAction: { copyRight: 0, copyLeft: 0, deleteLeft: 0, deleteRight: 0, keepBoth: 0, none: 0 },
     bytesToCopy: 0,
   };
 }
@@ -137,8 +140,23 @@ export function computeStats(pairs: PairResult[]): CompareStats {
       s.byAction[it.action]++;
       if (it.action === 'copyRight' && it.left && !it.left.isDir) s.bytesToCopy += it.left.size;
       if (it.action === 'copyLeft' && it.right && !it.right.isDir) s.bytesToCopy += it.right.size;
+      if (it.action === 'keepBoth') {
+        if (it.left && !it.left.isDir) s.bytesToCopy += it.left.size;
+        if (it.right && !it.right.isDir) s.bytesToCopy += it.right.size;
+      }
     }
   return s;
+}
+
+/** "Data/doc.txt" with side "sol" → "Data/doc (sol).txt": where the other side's version lands when both are kept. */
+export function conflictCopyName(rel: string, side: string): string {
+  const i = rel.lastIndexOf('/');
+  const dir = i >= 0 ? rel.slice(0, i + 1) : '';
+  const base = rel.slice(i + 1);
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  return `${dir}${stem} (${side})${ext}`;
 }
 
 export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair, cancel: CancelToken, onProgress?: (n: number) => void): Promise<PairResult> {
@@ -234,6 +252,12 @@ export function syncGroups(ctx: CoreContext, job: SyncJob, cmp: CompareResult): 
         toR.push({ id, kind: 'delete', rel: it.rel, isDir: it.right.isDir, size: 0 });
       } else if (it.action === 'deleteLeft' && it.left) {
         toL.push({ id, kind: 'delete', rel: it.rel, isDir: it.left.isDir, size: 0 });
+      } else if (it.action === 'keepBoth' && it.left && it.right && !it.left.isDir && !it.right.isDir) {
+        // each side gets the other's version next to its own; nothing is overwritten, the two can be merged by hand
+        const srcL = pair.left.kind === 'local' ? { kind: 'fs' as const, abs: joinRoot(pair.left.path, it.rel) } : { kind: 'endpoint' as const, key: 'L', rel: it.rel };
+        const srcR = pair.right.kind === 'local' ? { kind: 'fs' as const, abs: joinRoot(pair.right.path, it.rel) } : { kind: 'endpoint' as const, key: 'R', rel: it.rel };
+        toR.push({ id: `${id}#L`, kind: 'copy', rel: conflictCopyName(it.rel, t('sol')), isDir: false, size: it.left.size, mtimeMs: it.left.mtimeMs, src: srcL, dstExists: false });
+        toL.push({ id: `${id}#R`, kind: 'copy', rel: conflictCopyName(it.rel, t('sağ')), isDir: false, size: it.right.size, mtimeMs: it.right.mtimeMs, src: srcR, dstExists: false });
       }
     }
     const endpoints = { L: openL, R: openR };
@@ -293,6 +317,13 @@ export async function updateDbAfterRun(ctx: CoreContext, job: SyncJob, cmp: Comp
       const side = (m?: FileMeta): DbSide => ({ s: m?.size ?? 0, m: m?.mtimeMs ?? 0 });
       if (it.action === 'none') {
         if (it.category === 'equal' && it.left && it.right) db[it.key] = { l: side(it.left), r: side(it.right), ...(it.isDir ? { d: 1 as const } : {}) };
+        else if (old[it.key]) db[it.key] = old[it.key];
+        continue;
+      }
+      if (it.action === 'keepBoth') {
+        // both copies made: the pair is known as it is now, and stays quiet until a side changes
+        const both = okByKey.get(`${pr.pairId}\n${it.key}#L`) && okByKey.get(`${pr.pairId}\n${it.key}#R`);
+        if (both && !run.dryRun) db[it.key] = { l: side(it.left), r: side(it.right), k: 1 };
         else if (old[it.key]) db[it.key] = old[it.key];
         continue;
       }

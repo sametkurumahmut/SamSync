@@ -94,7 +94,6 @@ const d: Dict = {
   'Yeniden karşılaştır': 'Compare again',
   'Gönder sayfasında dosya ya da klasör ekleyin.': 'Add files or folders on the Send page.',
   'Henüz karşılaştırma yok': 'No comparison yet',
-  'Kaynakları ve hedefleri seçip Karşılaştır’a basın.': 'Pick the sources and targets and press Compare.',
   'Bu farkları gönder…': 'Send these differences…',
   'Dosya ara': 'Search files',
   'Bu süzgece uyan dosya yok.': 'No file matches this filter.',

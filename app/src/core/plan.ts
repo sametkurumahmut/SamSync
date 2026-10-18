@@ -11,6 +11,7 @@ import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
 import { blobInfo, blobStream } from './git';
 import { openPackEntry, type PackEntry, type PackSource } from './pack';
 import { isPackFile, packFileEntry, packSubtreeEntries, readPackIndex, writePackFile, type PackIndex, type PackSubtree } from './packfile';
+import { PackLockedError, PackPasswordError } from './packcrypt';
 import { probeNode } from './probe';
 import { otherBackupRoots } from './backups';
 import { IGNORE_FILE, ignoreExcludes, readLocalIgnore } from './ignore';
@@ -102,18 +103,29 @@ async function countTree(dir: string, maxFiles = 20000, budgetMs = 2500): Promis
 /** Describes the sources (for the header chips and the plan) without touching any target. */
 /** What the Send page shows for a pack file: its label, what is in it and where it came from. */
 function packInfo(idx: PackIndex): NonNullable<SourceInfo['pack']> {
-  return { label: idx.label, createdAt: idx.createdAt, from: idx.from.user ? `${idx.from.user}@${idx.from.host}` : idx.from.host, files: idx.files, size: idx.size, subtrees: idx.subtrees.map((s) => s.rel || '/') };
+  return { label: idx.label, createdAt: idx.createdAt, from: idx.from.user ? `${idx.from.user}@${idx.from.host}` : idx.from.host, files: idx.files, size: idx.size, subtrees: idx.subtrees.map((s) => s.rel || '/'), encrypted: idx.encrypted || undefined };
 }
 
-export async function describeSources(ctx: CoreContext, paths: string[], count = true): Promise<SourceInfo[]> {
+/** A password-protected pack that could not be opened, as the Send page shows it (with the pack's size on disk). */
+function lockedInfo(abs: string, st: fs.Stats, e: unknown): SourceInfo {
+  return { path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, rel: '', outsideRoots: false, locked: e instanceof PackPasswordError ? 'wrong' : 'password' };
+}
+
+/** `secrets`: passwords for protected packs by path (as given); a pack opened once stays open for this process. */
+export async function describeSources(ctx: CoreContext, paths: string[], count = true, secrets?: Record<string, string>): Promise<SourceInfo[]> {
   return mapLimit(paths, 8, async (p) => {
     const abs = normalizeAbs(p);
     const m = mapToRel(abs, ctx.localRoots);
     try {
       const st = await fsp.stat(abs);
       if (!st.isDirectory() && isPackFile(abs)) {
-        const idx = await readPackIndex(abs);
-        return { path: abs, exists: true, isDir: false, size: idx.size, fileCount: idx.files, mtimeMs: st.mtimeMs, rel: idx.subtrees.map((s) => s.rel || '/').join(', '), outsideRoots: false, pack: packInfo(idx) };
+        try {
+          const idx = await readPackIndex(abs, secrets?.[p] ?? secrets?.[abs]);
+          return { path: abs, exists: true, isDir: false, size: idx.size, fileCount: idx.files, mtimeMs: st.mtimeMs, rel: idx.subtrees.map((s) => s.rel || '/').join(', '), outsideRoots: false, pack: packInfo(idx) };
+        } catch (e) {
+          if (e instanceof PackLockedError || e instanceof PackPasswordError) return lockedInfo(abs, st, e);
+          throw e;
+        }
       }
       if (st.isDirectory() && count) {
         const c = await countTree(abs);
@@ -157,6 +169,12 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
         fst = await fsp.stat(abs);
         idx = await readPackIndex(abs);
       } catch (e) {
+        if (e instanceof PackLockedError || e instanceof PackPasswordError) {
+          // the pack is there but closed: the Send page asks for the password, the plan leaves it out
+          warnings.push(t('Paket parola korumalı, atlandı: {path}. Gönder sayfasında parolasını girin.', { path: abs }));
+          sources.push(lockedInfo(abs, await fsp.stat(abs), e));
+          continue;
+        }
         warnings.push(t('Paket okunamadı: {path} ({error})', { path: abs, error: errMessage(e) }));
         sources.push({ path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: '', outsideRoots: false, error: errMessage(e) });
         continue;
@@ -392,7 +410,9 @@ async function planTarget(
       if (kept.length && opt.mode === 'mirror') warn(t('{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.', { name: node.name, folders: kept.join(', ') }));
       // the manifest first: what SamSync left here last time, checked against a sample of the folder
       const unitFilter = withTopDirsExcluded(filter, kept);
-      const manifest = dstRoot?.isDir && !req.direct && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel).catch(() => null) : null;
+      // (not for a comparison, a send that asks for a full scan, or when the settings turned the manifest off)
+      const manifestDays = ctx.config.copy.manifestMaxDays ?? 7;
+      const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000).catch(() => null) : null;
       if (manifest) {
         fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
         ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
@@ -544,7 +564,7 @@ export async function buildSendPlan(
  * Writes the sources of a send to a pack file instead of to machines: everything the plan would have compared,
  * with the send's exclusions and ignore files applied. The pack is a source like a folder afterwards.
  */
-export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: string, opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void } = {}): Promise<PackWriteResult> {
+export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: string, opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void; password?: string } = {}): Promise<PackWriteResult> {
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
   const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
@@ -575,7 +595,7 @@ export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: st
   const total = files.length;
   const label = req.label || t('Gönderim');
   progress({ message: t('Paket yazılıyor'), done: 0, total });
-  const idx = await writePackFile(file, { label, subtrees, files, dirs, node: ctx.localNodeId, version: ctx.appVersion, signal: cancel.signal }, (done, bytes) =>
+  const idx = await writePackFile(file, { label, subtrees, files, dirs, node: ctx.localNodeId, version: ctx.appVersion, signal: cancel.signal, password: opts.password }, (done, bytes) =>
     progress({ message: t('Paket yazılıyor: {done}/{total} dosya, {size}', { done, total, size: formatBytes(bytes) }), done, total }),
   );
   const packed = (await fsp.stat(file)).size;

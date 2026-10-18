@@ -5,14 +5,15 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { NodeConfig, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
-import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelayTargetResult } from '../shared/relay';
+import type { NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
 import { FsTransport, type Transport } from './transport';
 import { buildSendPlan, sendFilter } from './plan';
 import { scanTree } from './scan';
 import { saveManifestSubtree } from './manifest';
+import { probeNode } from './probe';
 import os from 'node:os';
 import { relJoin } from './paths';
 import { CancelToken, errMessage, newId, sleep } from './util';
@@ -27,6 +28,26 @@ export const HEARTBEAT_MS = 30_000;
 export const ALIVE_STALE_MS = 90_000;
 /** Results older than this are removed by the relay. */
 const RESULT_KEEP_MS = 2 * 86400_000;
+
+/** A job waiting on the relay for a machine that was off when it came. */
+interface PendingJob {
+  id: string;
+  label: string;
+  from?: string;
+  sources: RelaySource[];
+  options: SendOptions;
+  createdAt: number;
+}
+/** The relay's delivery queue for one machine: _SamSyncRelay/pending/<id>.json. */
+interface PendingFile {
+  targetId: string;
+  since: number;
+  attempts: number;
+  lastTry?: number;
+  lastError?: string;
+  jobs: PendingJob[];
+}
+const PENDING_MAX_JOBS = 50;
 
 export interface Heartbeat {
   at: number;
@@ -150,6 +171,11 @@ export class RelayService {
   private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
   readonly resultsDir: string;
+  /** The delivery queue: one file per machine that was off. */
+  readonly pendingDir: string;
+  private tickTimer: NodeJS.Timeout | null = null;
+  private lastRetry = 0;
+  private delivering = false;
 
   /** What this relay has done since it started (for this machine's card). */
   state(): RelayState {
@@ -170,6 +196,7 @@ export class RelayService {
   ) {
     this.jobsDir = path.join(localRoot, RELAY_FOLDER, 'jobs');
     this.resultsDir = path.join(localRoot, RELAY_FOLDER, 'results');
+    this.pendingDir = path.join(localRoot, RELAY_FOLDER, 'pending');
   }
 
   start(): void {
@@ -177,6 +204,7 @@ export class RelayService {
     try {
       fs.mkdirSync(this.jobsDir, { recursive: true });
       fs.mkdirSync(this.resultsDir, { recursive: true });
+      fs.mkdirSync(this.pendingDir, { recursive: true });
       this.watcher = fs.watch(this.jobsDir, () => void this.poll());
       this.watcher.on('error', () => undefined);
     } catch (e) {
@@ -184,11 +212,14 @@ export class RelayService {
     }
     this.timer = setInterval(() => void this.poll(), this.pollMs);
     this.beat = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
+    // the queue: every minute a look at whether it is time to try the machines that were off
+    this.tickTimer = setInterval(() => void this.tick(), 60_000);
     this.host.ctx().log.info(t('Röle'), t('Bu makine {group} grubuna röle: {dir} izleniyor', { group: this.node.group ?? '-', dir: this.jobsDir }));
     this.stats = { ...this.stats, active: true, group: this.node.group, dir: this.jobsDir };
     this.tell();
     void this.heartbeat();
     void this.poll();
+    void this.refreshPending();
   }
 
   stop(): void {
@@ -196,6 +227,8 @@ export class RelayService {
     this.timer = null;
     if (this.beat) clearInterval(this.beat);
     this.beat = null;
+    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.tickTimer = null;
     this.watcher?.close();
     this.watcher = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
@@ -275,7 +308,7 @@ export class RelayService {
       for (const tp of plan.targets) {
         const got = detail?.targets.find((x) => x.key === tp.targetId);
         const r: RelayTargetResult = !tp.reachable
-          ? { targetId: tp.targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: tp.error }
+          ? await this.deferOrFail(job, tp.targetId, tp.error)
           : got
             ? { targetId: tp.targetId, status: got.status === 'queued' || got.status === 'running' ? 'failed' : got.status, opsOk: got.done - got.failed, opsFailed: got.failed, bytes: got.bytesDone, error: got.error }
             : { targetId: tp.targetId, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
@@ -299,6 +332,146 @@ export class RelayService {
       await fsp.rm(path.join(this.jobsDir, `${id}.ack`), { force: true });
     } catch (e) {
       log.error(t('Röle'), t('Sonuç yazılamadı: {error}', { error: errMessage(e) }), e);
+    }
+  }
+
+  // ------------------------------------------------------------------ the delivery queue
+
+  private queueOn(): boolean {
+    return (this.host.ctx().config.copy.relayQueueMinutes ?? 5) > 0;
+  }
+
+  private pendingFile(targetId: string): string {
+    return path.join(this.pendingDir, `${targetId.replace(/[^\w.-]/g, '_')}.json`);
+  }
+
+  private async readPending(): Promise<PendingFile[]> {
+    let names: string[];
+    try {
+      names = (await fsp.readdir(this.pendingDir)).filter((n) => n.endsWith('.json'));
+    } catch {
+      return [];
+    }
+    const out: PendingFile[] = [];
+    for (const n of names) {
+      try {
+        const p = JSON.parse(await fsp.readFile(path.join(this.pendingDir, n), 'utf8')) as PendingFile;
+        if (p && Array.isArray(p.jobs)) out.push(p);
+      } catch {
+        /* half written or foreign */
+      }
+    }
+    return out.sort((a, b) => a.since - b.since);
+  }
+
+  private async writePending(p: PendingFile): Promise<void> {
+    const file = this.pendingFile(p.targetId);
+    await fsp.mkdir(this.pendingDir, { recursive: true });
+    await fsp.writeFile(`${file}.tmp`, JSON.stringify(p, null, 1));
+    await fsp.rename(`${file}.tmp`, file);
+  }
+
+  private async removePending(targetId: string): Promise<void> {
+    await fsp.rm(this.pendingFile(targetId), { force: true }).catch(() => undefined);
+  }
+
+  /** The queue as the cards show it. */
+  async refreshPending(): Promise<RelayPending[]> {
+    const nodes = this.host.ctx().config.nodes;
+    const pending = (await this.readPending()).map((p) => ({ targetId: p.targetId, name: nodes.find((n) => n.id === p.targetId)?.name ?? p.targetId, jobs: p.jobs.length, since: p.since, attempts: p.attempts, lastTry: p.lastTry, lastError: p.lastError }));
+    this.stats = { ...this.stats, pending };
+    this.tell();
+    return pending;
+  }
+
+  /** A machine that did not answer: its job goes to the queue (when the queue is on), else it fails as before. */
+  private async deferOrFail(job: RelayJob, targetId: string, why?: string): Promise<RelayTargetResult> {
+    if (!this.queueOn()) return { targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: why };
+    const log = this.host.ctx().log;
+    try {
+      const list = await this.readPending();
+      const p: PendingFile = list.find((x) => x.targetId === targetId) ?? { targetId, since: Date.now(), attempts: 0, jobs: [] };
+      if (!p.jobs.some((j) => j.id === job.id)) p.jobs.push({ id: job.id, label: job.label, from: job.from, sources: job.sources, options: job.options, createdAt: job.createdAt });
+      if (p.jobs.length > PENDING_MAX_JOBS) p.jobs.splice(0, p.jobs.length - PENDING_MAX_JOBS);
+      p.lastError = why;
+      await this.writePending(p);
+      log.info(t('Röle'), t('{name} erişilemedi; iş kuyruğa alındı ({n} iş bekliyor)', { name: targetId, n: p.jobs.length }));
+      void this.refreshPending();
+      return { targetId, status: 'deferred', opsOk: 0, opsFailed: 0, bytes: 0, error: t('Makine kapalı; röle açılınca teslim edecek') };
+    } catch (e) {
+      log.warn(t('Röle'), t('Kuyruğa yazılamadı: {error}', { error: errMessage(e) }));
+      return { targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: why };
+    }
+  }
+
+  private async tick(): Promise<void> {
+    if (!this.queueOn() || !this.stats.pending?.length) return;
+    const every = (this.host.ctx().config.copy.relayQueueMinutes ?? 5) * 60_000;
+    if (Date.now() - this.lastRetry < every) return;
+    await this.deliverPending();
+  }
+
+  /**
+   * One pass over the queue: each machine that answers now gets its jobs, oldest first (the plan compares, so a
+   * job whose files arrived another way costs nothing); the first failure leaves the rest for the next pass.
+   * Machines quiet for longer than the configured days are dropped.
+   */
+  async deliverPending(): Promise<void> {
+    if (this.delivering) return;
+    this.delivering = true;
+    this.lastRetry = Date.now();
+    const ctx = this.host.ctx();
+    const log = ctx.log;
+    try {
+      const list = await this.readPending();
+      if (!list.length) return;
+      const maxAge = (ctx.config.copy.relayQueueDays ?? 7) * 86400_000;
+      for (const p of list) {
+        const node = ctx.config.nodes.find((n) => n.id === p.targetId);
+        if (!node) {
+          await this.removePending(p.targetId);
+          continue;
+        }
+        if (Date.now() - p.since > maxAge) {
+          log.warn(t('Röle'), t('{name} {d} gündür erişilemedi; kuyruktaki {n} iş düşürüldü', { name: node.name, d: Math.round(maxAge / 86400_000), n: p.jobs.length }));
+          await this.removePending(p.targetId);
+          continue;
+        }
+        p.lastTry = Date.now();
+        p.attempts++;
+        const pr = await probeNode(ctx.config, node, 1500, false).catch(() => null);
+        if (!pr?.ok) {
+          p.lastError = pr?.detail;
+          await this.writePending(p);
+          continue;
+        }
+        while (p.jobs.length) {
+          const j = p.jobs[0];
+          const sources: SourceSpec[] = j.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
+          const req: SendRequest = { sources, targetIds: [p.targetId], options: { ...j.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle (kuyruktan): {label}', { label: j.label }), direct: true };
+          try {
+            const plan = await buildSendPlan(ctx, req);
+            const tp = plan.targets.find((x) => x.targetId === p.targetId);
+            if (tp && !tp.reachable) throw new Error(tp.error ?? t('erişilemedi'));
+            const h = this.host.runPlan(plan, req.label!);
+            const d = h ? await h.done : null;
+            if (d && (d.status === 'failed' || d.status === 'cancelled')) throw new Error(d.targets[0]?.error ?? d.status);
+            p.jobs.shift();
+            p.lastError = undefined;
+            log.info(t('Röle'), t('{name}: kuyruktaki iş teslim edildi: {label}', { name: node.name, label: j.label }));
+            this.stats = { ...this.stats, jobs: this.stats.jobs + 1, lastJobAt: Date.now(), lastOk: true, lastLabel: j.label };
+          } catch (e) {
+            p.lastError = errMessage(e);
+            log.warn(t('Röle'), t('{name}: kuyruktaki iş teslim edilemedi: {error}', { name: node.name, error: p.lastError }));
+            break;
+          }
+        }
+        if (p.jobs.length) await this.writePending(p);
+        else await this.removePending(p.targetId);
+      }
+    } finally {
+      this.delivering = false;
+      await this.refreshPending();
     }
   }
 

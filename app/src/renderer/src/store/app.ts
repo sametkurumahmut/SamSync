@@ -32,8 +32,47 @@ import { offlineReply } from '../components/HelpBot';
 import { bytes as bytesText } from '../lib/format';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
+import { machineTitle } from '@shared/machine';
 
 export type Page = AppPage;
+
+/** How many probes a machine's latency chart keeps. */
+const LATENCY_KEEP = 48;
+
+/** One line of the notification centre (the bell in the title bar). */
+export interface Notice {
+  id: string;
+  at: number;
+  kind: 'run' | 'machine' | 'update' | 'automation' | 'relay';
+  level: 'ok' | 'warn' | 'error' | 'info';
+  title: string;
+  detail?: string;
+  /** Where a click goes. */
+  page?: Page;
+  runId?: string;
+  read: boolean;
+  /** The same thing is not listed twice within an hour (a machine flapping, the same update seen again). */
+  key?: string;
+}
+const NOTICE_KEEP = 100;
+const NOTICE_DEDUPE_MS = 60 * 60_000;
+let noticeSeq = Date.now();
+
+/** New probe results into the store: the latest per machine, and its latency history (-1 for no answer). */
+function mergeProbes(s: Pick<State, 'probes' | 'latency'>, results: ProbeResult[]): Pick<State, 'probes' | 'latency'> {
+  const probes = { ...s.probes };
+  const latency = { ...s.latency };
+  for (const r of results) {
+    const prev = probes[r.nodeId];
+    probes[r.nodeId] = r;
+    // the same result arriving twice (the renderer asked and the main process pushed) counts once
+    if (prev && prev.checkedAt === r.checkedAt) continue;
+    const list = latency[r.nodeId] ? [...latency[r.nodeId]] : [];
+    list.push(r.ok ? (r.latencyMs ?? 0) : -1);
+    latency[r.nodeId] = list.length > LATENCY_KEEP ? list.slice(-LATENCY_KEEP) : list;
+  }
+  return { probes, latency };
+}
 export const PAGES: Page[] = APP_PAGES;
 
 export interface Toast {
@@ -58,6 +97,9 @@ export interface LiveRun {
   targets: RunTargetState[];
   log: RunLogLine[];
   done: boolean;
+  /** Held by the user; the panel shows Resume instead of Pause. */
+  paused?: boolean;
+
   /** Bytes done over time (all targets together), for the throughput chart. */
   samples: Sample[];
 }
@@ -76,6 +118,16 @@ interface State {
   collapsed: boolean;
   dark: boolean;
   probes: Record<string, ProbeResult>;
+  /** The last probes per machine, newest last: the latency in ms, or -1 when it did not answer (the small chart on its card). */
+  latency: Record<string, number[]>;
+  /** The notification centre: what happened, newest first; kept in this window's storage. */
+  notices: Notice[];
+  noticesOpen: boolean;
+  addNotice(n: Omit<Notice, 'id' | 'at' | 'read'> & { at?: number; read?: boolean }): void;
+  markNoticesRead(): void;
+  clearNotices(): void;
+  /** A run the History page should open when it loads (a click in the notification centre). */
+  openRunId?: string;
   /** What the relay service on this machine is doing, when this machine is a relay. */
   relayState?: RelayState;
   probing: boolean;
@@ -148,7 +200,9 @@ interface State {
   startPlan(req: Omit<SendRequest, 'targetIds' | 'options'> & { targetIds?: string[]; options?: Partial<SendOptions> }): Promise<void>;
   cancelPlan(): void;
   /** Writes the Send list to a pack file in a folder the user picks (a release that travels on a disk). */
-  writePack(): Promise<void>;
+  writePack(password?: string): Promise<void>;
+  /** Opens a password-protected pack among the sources; 'wrong' when the password does not fit. */
+  unlockPack(path: string, password: string): Promise<'ok' | 'wrong'>;
   closeReview(): void;
   setReviewSelection(targetId: string, ids: Set<string>): void;
   executeReview(dryRun?: boolean): Promise<void>;
@@ -202,6 +256,31 @@ export const useApp = create<State>((set, get) => ({
   collapsed: localStorage.getItem('samsync.collapsed') === '1',
   dark: true,
   probes: {},
+  latency: {},
+  notices: readStored<Notice[]>('samsync.notices', []),
+  noticesOpen: false,
+  addNotice(n) {
+    set((s) => {
+      const now = n.at ?? Date.now();
+      if (n.key && s.notices.some((x) => x.key === n.key && now - x.at < NOTICE_DEDUPE_MS)) return {};
+      const notice: Notice = { ...n, id: `n${++noticeSeq}`, at: now, read: n.read ?? false };
+      const notices = [notice, ...s.notices].slice(0, NOTICE_KEEP);
+      writeStored('samsync.notices', notices);
+      return { notices };
+    });
+  },
+  markNoticesRead() {
+    set((s) => {
+      if (!s.notices.some((x) => !x.read)) return {};
+      const notices = s.notices.map((x) => (x.read ? x : { ...x, read: true }));
+      writeStored('samsync.notices', notices);
+      return { notices };
+    });
+  },
+  clearNotices() {
+    writeStored('samsync.notices', null);
+    set({ notices: [] });
+  },
   probing: false,
   update: null,
   automation: null,
@@ -331,11 +410,9 @@ export const useApp = create<State>((set, get) => ({
     set({ probing: true });
     try {
       const res = await api.probe(ids);
-      set((s) => {
-        const probes = { ...s.probes };
-        for (const r of res) probes[r.nodeId] = r;
-        return { probes };
-      });
+      const before = get().probes;
+      set((s) => mergeProbes(s, res));
+      probeNotices(before, res);
     } catch (e) {
       get().toast('error', t('Erişim yoklaması başarısız'), (e as Error).message);
     } finally {
@@ -485,7 +562,12 @@ export const useApp = create<State>((set, get) => ({
     }
     set((s) => ({ helpMessages: [...s.helpMessages, reply].slice(-60), helpBusy: false }));
   },
-  async writePack() {
+  async unlockPack(path, password) {
+    const [info] = await api.describeSources([path], true, { [path]: password });
+    set((s) => ({ sendInfos: s.sendInfos.map((i) => (i.path === info.path || i.path === path ? info : i)) }));
+    return info.locked ? 'wrong' : 'ok';
+  },
+  async writePack(password) {
     const st = get();
     if (!st.sendPaths.length) return st.toast('warn', t('Kaynak yok'), t('Pakete yazılacak dosya veya klasör seçin.'));
     const [dir] = await api.pick({ folders: true, title: t('Paket nereye yazılsın?') });
@@ -495,7 +577,7 @@ export const useApp = create<State>((set, get) => ({
     const req: SendRequest = { sources: st.sendPaths.map((p) => ({ kind: 'fs', path: p })), targetIds: [], options: { ...st.options, dryRun: false }, origin: 'send', label };
     set({ planning: { taskId, message: t('Paket hazırlanıyor…') } });
     try {
-      const r = await api.writePack(req, dir, taskId);
+      const r = await api.writePack(req, dir, taskId, password);
       set({ planning: null });
       for (const w of r.warnings) get().toast('warn', t('Paket'), w);
       get().toast('ok', t('Paket yazıldı'), `${t('{n} dosya', { n: r.files })} • ${t('{size} → {packed}', { size: bytesText(r.size), packed: bytesText(r.packed) })}`, { label: t('Klasörde göster'), run: () => void api.showInFolder(r.file) });
@@ -590,7 +672,13 @@ function handleEvent(e: AppEvent) {
       useApp.setState({ relayState: e.state });
       break;
     case 'run-start':
-      useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, samples: [{ t: Date.now(), b: 0 }] } } }));
+      useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, paused: e.run.paused, samples: [{ t: Date.now(), b: 0 }] } } }));
+      break;
+    case 'run-paused':
+      useApp.setState((s) => {
+        const r = s.runs[e.runId];
+        return r ? { runs: { ...s.runs, [e.runId]: { ...r, paused: e.paused } } } : {};
+      });
       break;
     case 'run-progress':
       useApp.setState((s) => {
@@ -618,6 +706,16 @@ function handleEvent(e: AppEvent) {
         };
       });
       const r = e.run;
+      // every finished run is listed; only the ones that went wrong wait as unread
+      st.addNotice({
+        kind: 'run',
+        level: r.status === 'ok' ? 'ok' : r.status === 'cancelled' ? 'warn' : 'error',
+        title: r.status === 'ok' ? (r.dryRun ? t('{label}: deneme tamamlandı', { label: r.label }) : t('{label} tamamlandı', { label: r.label })) : r.status === 'cancelled' ? t('{label} iptal edildi', { label: r.label }) : r.status === 'partial' ? t('{label} kısmen başarılı', { label: r.label }) : t('{label} başarısız', { label: r.label }),
+        detail: `${t('{ok} başarılı, {failed} hatalı', { ok: r.opsOk, failed: r.opsFailed })} • ${t('{n} hedef', { n: r.targets.length })}`,
+        page: 'history',
+        runId: r.id,
+        read: r.status === 'ok',
+      });
       if (r.status === 'ok') {
         st.toast('ok', r.dryRun ? t('Deneme tamamlandı') : t('Gönderim tamamlandı'), `${t('{n} işlem', { n: r.opsOk })} • ${t('{n} hedef', { n: r.targets.length })}`);
         if (st.boot?.settings.closeRunPanelOnSuccess && st.activeRunId === r.id) useApp.setState({ runPanel: false });
@@ -640,19 +738,48 @@ function handleEvent(e: AppEvent) {
       if (boot) useApp.setState({ boot: { ...boot, config: e.config } });
       break;
     }
-    case 'probe':
-      useApp.setState((s) => {
-        const probes = { ...s.probes };
-        for (const r of e.results) probes[r.nodeId] = r;
-        return { probes };
-      });
+    case 'probe': {
+      const before = st.probes;
+      useApp.setState((s) => mergeProbes(s, e.results));
+      probeNotices(before, e.results);
       break;
+    }
     case 'update':
       useApp.setState({ update: e.state });
+      if (e.state.phase === 'available' || e.state.phase === 'ready') {
+        st.addNotice({
+          kind: 'update',
+          level: 'info',
+          key: `update:${e.state.phase}:${e.state.version ?? ''}`,
+          title: e.state.phase === 'ready' ? t('v{version} indirildi; yeniden başlayınca kurulur', { version: e.state.version ?? '' }) : t('v{version} çıktı', { version: e.state.version ?? '' }),
+          page: 'settings',
+        });
+      }
       break;
     case 'automation':
       useApp.setState({ automation: e.state });
+      for (const w of e.state.watches) {
+        if (w.status === 'error' && w.error) st.addNotice({ kind: 'automation', level: 'error', key: `watch:${w.id}:${w.error}`, title: t('{name} izlemesi durdu', { name: w.name }), detail: w.error, page: 'automation' });
+        else if (w.lastStatus === 'failed' || w.lastStatus === 'partial') st.addNotice({ kind: 'automation', level: 'error', key: `watch-run:${w.id}:${w.lastRunAt ?? 0}`, title: t('{name}: otomatik gönderim hatalı bitti', { name: w.name }), detail: w.lastSummary, page: 'history', runId: w.lastRunId });
+      }
+      for (const sc of e.state.schedules) {
+        if ((sc.lastStatus === 'failed' || sc.lastStatus === 'partial') && sc.lastAt) st.addNotice({ kind: 'automation', level: 'error', key: `sched:${sc.jobId}:${sc.lastAt}`, title: t('{name}: zamanlanmış iş hatalı bitti', { name: sc.name }), detail: sc.lastSummary, page: 'automation' });
+      }
       break;
+  }
+}
+
+/** Machines that went away or came back since the last probe: a line each in the notification centre. */
+function probeNotices(before: Record<string, ProbeResult>, results: ProbeResult[]): void {
+  const st = useApp.getState();
+  const nodes = st.boot?.config.nodes ?? [];
+  for (const r of results) {
+    const prev = before[r.nodeId];
+    if (!prev || prev.ok === r.ok) continue;
+    const node = nodes.find((n) => n.id === r.nodeId);
+    const name = node ? machineTitle(node.name, node.address) : r.nodeId;
+    if (r.ok) st.addNotice({ kind: 'machine', level: 'ok', key: `up:${r.nodeId}`, title: t('{name} yeniden erişilebilir', { name }), page: 'targets', read: true });
+    else st.addNotice({ kind: 'machine', level: 'warn', key: `down:${r.nodeId}`, title: t('{name} erişilemez oldu', { name }), detail: r.detail, page: 'targets' });
   }
 }
 

@@ -1,0 +1,45 @@
+# The project website on GitHub Pages, built from the READMEs, the help bot's FAQ and the screenshots
+# (app/scripts/build-site.mjs). It runs on pushes that touch those and by hand.
+# One-time setup: Settings → Pages → Source: "GitHub Actions", then the repository variable SAMSYNC_PAGES = true
+# (Settings → Secrets and variables → Actions → Variables). Without the variable the job is skipped, not failed.
+name: Pages
+
+on:
+  push:
+    branches: [master]
+    paths: ['app/README*.md', 'app/src/shared/help/**', 'docs/screenshots/**', 'app/scripts/build-site.mjs', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: vars.SAMSYNC_PAGES == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - run: node scripts/build-site.mjs ../site
+        working-directory: app
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

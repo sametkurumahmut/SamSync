@@ -157,8 +157,8 @@ export function ComparePage() {
 
           <div className="card" style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {!plan ? (
-              <Empty icon={<GitCompare size={22} />} title={t('Henüz karşılaştırma yok')}>
-                {t('Kaynakları ve hedefleri seçip Karşılaştır’a basın.')}
+              <Empty art="compare" title={t('Henüz karşılaştırma yok')} hint={tx('Örnek: {src} klasörünü {grp} grubundaki makinelerle karşılaştırın', { src: <code>D:\Release</code>, grp: <code>Lab-A</code> })}>
+                {t('Kaynakları ve hedefleri seçip Karşılaştır’a basın. Hiçbir şey gönderilmez; yalnızca farklar listelenir.')}
               </Empty>
             ) : (
               <>
@@ -237,7 +237,7 @@ export function ComparePage() {
                           }
                         />
                       ) : (
-                        <Empty icon={<FileText size={22} />} title={t('Bir dosya seçin')}>
+                        <Empty art="search" title={t('Bir dosya seçin')}>
                           {t('Soldaki listeden bir dosyaya tıklayınca hedefteki ile kaynaktaki hâlinin farkı burada görünür.')}
                         </Empty>
                       )}

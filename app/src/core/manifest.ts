@@ -62,10 +62,10 @@ const sameEntry = (a: Entry, b: Entry) => a.isDir === b.isDir && (a.isDir || (a.
  * folder: the folder's direct children as listed now, and a sample of files spread over the whole set.
  * Null means: walk the folder.
  */
-export async function manifestEntries(tgt: Transport, subtreeRel: string, now = Date.now()): Promise<{ entries: Map<string, Entry>; writtenAt: number; checked: number } | null> {
+export async function manifestEntries(tgt: Transport, subtreeRel: string, now = Date.now(), maxAgeMs = MANIFEST_MAX_AGE_MS): Promise<{ entries: Map<string, Entry>; writtenAt: number; checked: number } | null> {
   const m = await readManifest(tgt);
   const sub = m?.subtrees[subtreeRel];
-  if (!sub || !Array.isArray(sub.entries) || now - sub.writtenAt > MANIFEST_MAX_AGE_MS) return null;
+  if (!sub || !Array.isArray(sub.entries) || now - sub.writtenAt > maxAgeMs) return null;
   const entries = entriesToMap(sub);
   // the direct children now, against what the manifest says about them
   const listed = await tgt.list(subtreeRel).catch(() => null);

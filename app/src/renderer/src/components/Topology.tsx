@@ -2,13 +2,16 @@
 // coloured by how many of its machines answer, the relay marked and dashed lines from it to the machines
 // it distributes to. Click a machine to pick it as a send target; drag it into another group to move it.
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Laptop, Share2, Wifi, WifiOff, Check } from 'lucide-react';
+import { Laptop, Share2, WifiOff, Check } from 'lucide-react';
 import type { NodeConfig } from '@shared/types';
 import { useApp } from '../store/app';
 import { cls } from '../lib/format';
+import { MachineName } from './MachineName';
 import { t } from '@shared/i18n';
 
-const NODE_W = 152;
+/** Machine cards stretch between these to fill their group box, so the address line is never cut short. */
+const MIN_NODE_W = 150;
+const MAX_NODE_W = 210;
 const NODE_H = 46;
 const GAP = 10;
 const PAD = 12;
@@ -34,11 +37,15 @@ interface Layout {
   pos: Map<string, { x: number; y: number }>;
   height: number;
   laptop: { x: number; y: number };
+  /** The width every machine card gets at this panel width. */
+  nodeW: number;
 }
 
 function layout(groups: { key: string; name: string; members: NodeConfig[] }[], width: number, probes: Record<string, { ok: boolean } | undefined>): Layout {
-  const boxW = Math.max(NODE_W + 2 * PAD, width - BOX_X - 8);
-  const cols = Math.max(1, Math.floor((boxW - 2 * PAD + GAP) / (NODE_W + GAP)));
+  const boxW = Math.max(MIN_NODE_W + 2 * PAD, width - BOX_X - 8);
+  const inner = boxW - 2 * PAD;
+  const cols = Math.max(1, Math.floor((inner + GAP) / (MIN_NODE_W + GAP)));
+  const NODE_W = Math.min(MAX_NODE_W, Math.floor((inner - (cols - 1) * GAP) / cols));
   const pos = new Map<string, { x: number; y: number }>();
   const boxes: GroupBox[] = [];
   let y = 8;
@@ -58,7 +65,7 @@ function layout(groups: { key: string; name: string; members: NodeConfig[] }[], 
     y += h + 14;
   }
   const height = Math.max(y - 14 + 8, LAPTOP_H + 16);
-  return { boxes, pos, height, laptop: { x: 8, y: Math.max(8, height / 2 - LAPTOP_H / 2) } };
+  return { boxes, pos, height, laptop: { x: 8, y: Math.max(8, height / 2 - LAPTOP_H / 2) }, nodeW: NODE_W };
 }
 
 export function Topology({ compact }: { compact?: boolean }) {
@@ -165,7 +172,7 @@ export function Topology({ compact }: { compact?: boolean }) {
             .filter((n) => n.id !== relay.id)
             .map((n) => {
               const p = lay.pos.get(n.id)!;
-              return <path key={`${relay.id}-${n.id}`} d={`M${r.x + NODE_W / 2},${r.y + NODE_H / 2} L${p.x + NODE_W / 2},${p.y + NODE_H / 2}`} className={cls('topo-relay', alive === false && 'off')} />;
+              return <path key={`${relay.id}-${n.id}`} d={`M${r.x + lay.nodeW / 2},${r.y + NODE_H / 2} L${p.x + lay.nodeW / 2},${p.y + NODE_H / 2}`} className={cls('topo-relay', alive === false && 'off')} />;
             });
         })}
       </svg>
@@ -205,27 +212,35 @@ export function Topology({ compact }: { compact?: boolean }) {
           const p = lay.pos.get(n.id)!;
           const pr = probes[n.id];
           const isDrag = drag?.id === n.id && drag.moved;
-          const x = isDrag ? drag.x - NODE_W / 2 : p.x;
+          const x = isDrag ? drag.x - lay.nodeW / 2 : p.x;
           const y = isDrag ? drag.y - NODE_H / 2 : p.y;
           return (
             <div
               key={n.id}
               className={cls('topo-node', selected.has(n.id) && 'selected', !n.enabled && 'disabled', isDrag && 'ghost', n.relay && 'relay')}
-              style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
+              style={{ left: x, top: y, width: lay.nodeW, height: NODE_H }}
               onPointerDown={onDown(n)}
               title={pr ? pr.detail : t('Henüz yoklanmadı')}
             >
               <span className={cls('dot', pr ? (pr.ok ? 'ok' : 'bad') : 'pending')} />
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div className="ellipsis" style={{ fontWeight: 600, fontSize: 12.5 }}>
-                  {n.name}
-                </div>
-                <div className="faint ellipsis row" style={{ fontSize: 10.5, gap: 4 }}>
-                  {pr ? pr.ok ? <Wifi size={10} /> : <WifiOff size={10} /> : null}
-                  {pr?.ok && pr.latencyMs != null ? `${pr.latencyMs} ms` : pr ? t('erişilemedi') : n.id}
-                  {n.relay && <Share2 size={10} className={pr?.relayAlive === false ? 'faint' : undefined} />}
-                </div>
-              </div>
+              <MachineName
+                className="grow"
+                node={n}
+                size="sm"
+                // a machine that does not answer says so instead of its address (which stays in the tooltip)
+                hideAddress={!!pr && !pr.ok}
+                sub={
+                  pr ? (
+                    <>
+                      {!pr.ok && <WifiOff size={10} />}
+                      {pr.ok && pr.latencyMs != null ? `${pr.latencyMs} ms` : t('erişilemedi')}
+                      {n.relay && <Share2 size={10} className={pr.relayAlive === false ? 'faint' : undefined} />}
+                    </>
+                  ) : n.relay ? (
+                    <Share2 size={10} />
+                  ) : undefined
+                }
+              />
               {selected.has(n.id) && (
                 <span className="topo-check">
                   <Check size={11} />

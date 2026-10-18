@@ -44,7 +44,8 @@ export interface RelayJob {
 
 export interface RelayTargetResult {
   targetId: string;
-  status: 'ok' | 'partial' | 'failed' | 'cancelled';
+  /** deferred: the machine was off; the relay queued the job for it. */
+  status: 'ok' | 'partial' | 'failed' | 'cancelled' | 'deferred';
   opsOk: number;
   opsFailed: number;
   bytes: number;

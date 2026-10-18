@@ -25,6 +25,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - name: Tests (real file system and git)
         run: npm test
         env:
@@ -32,3 +33,37 @@ jobs:
           GIT_AUTHOR_EMAIL: ci@example.com
           GIT_COMMITTER_NAME: CI
           GIT_COMMITTER_EMAIL: ci@example.com
+
+  # the built app, driven like a user: send, compare, undo, and an accessibility scan of the main pages
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: End-to-end (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+          xvfb-run -a --server-args="-screen 0 1400x900x24" npm run e2e
+      - name: End-to-end
+        if: runner.os != 'Linux'
+        run: npm run e2e
+      - name: Keep the screenshots and the accessibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.os }}
+          path: app/e2e-results
+          if-no-files-found: ignore

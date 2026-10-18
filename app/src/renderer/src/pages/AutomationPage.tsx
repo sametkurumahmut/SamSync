@@ -33,7 +33,7 @@ import type { AutomationSettings, GitEvent, SendOptions, WatchConfig, WatchState
 import { automationSettings, DEFAULT_GIT_EVENTS, DEFAULT_QUIET_MS } from '@shared/automation';
 import { useApp, DEFAULT_OPTIONS } from '../store/app';
 import { api } from '../lib/api';
-import { Button, Checkbox, Empty, Field, Modal, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { Button, Checkbox, Empty, Field, Modal, PageSkeleton, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
 import { ago, baseName, cls, num } from '../lib/format';
 import { t, tk, locale } from '@shared/i18n';
@@ -90,14 +90,7 @@ export function AutomationPage() {
   const toast = useApp((s) => s.toast);
   const [editing, setEditing] = useState<WatchConfig | 'new' | null>(null);
 
-  if (!automation)
-    return (
-      <div className="page">
-        <div className="empty">
-          <div className="spinner" />
-        </div>
-      </div>
-    );
+  if (!automation) return <PageSkeleton cards={0} rows={4} />;
 
   const configs = boot.settings.watches ?? [];
   const jobs = boot.config.syncJobs;
@@ -164,7 +157,7 @@ export function AutomationPage() {
         </div>
         {automation.watches.length === 0 ? (
           <div className="card">
-            <Empty icon={<Eye size={22} />} title={t('İzleme yok')} action={<Button icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İzleme ekle')}</Button>}>
+            <Empty art="watch" title={t('İzleme yok')} hint={tx('Örnek: {src} kaydedilince birkaç saniye sonra {grp} makinelerine gider', { src: <code>D:\Release\Config</code>, grp: <code>Lab-A</code> })} action={<Button icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İzleme ekle')}</Button>}>
               {tx('Gönder sayfasında kaynakları ve hedefleri seçip {watch}’ye basabilir ya da buradan ekleyebilirsiniz.', { watch: <b>{t('İzle')}</b> })}
             </Empty>
           </div>
@@ -279,7 +272,7 @@ export function AutomationPage() {
         </div>
         {scheduled.length === 0 ? (
           <div className="card">
-            <Empty icon={<CalendarClock size={22} />} title={t('Zamanlanmış iş yok')} action={<Button onClick={() => setPage('sync')}>{t('Senkron sayfasına git')}</Button>}>
+            <Empty art="schedule" title={t('Zamanlanmış iş yok')} hint={t('Örnek: her gece 02:00’de yedek sunucusuyla eşitle')} action={<Button onClick={() => setPage('sync')}>{t('Senkron sayfasına git')}</Button>}>
               {jobs.length ? t('{n} senkron işinizden birini açıp “Zamanla”yı etkinleştirin.', { n: jobs.length }) : t('Önce Senkron sayfasında bir iş oluşturun.')}
             </Empty>
           </div>

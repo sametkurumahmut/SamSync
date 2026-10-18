@@ -9,9 +9,10 @@ import { t, tk } from '@shared/i18n';
 import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
 import { ConfigEditor } from '../components/ConfigEditor';
+import { WebUiSection } from '../components/WebUiSettings';
 import { tx } from '../lib/i18n';
 
-const LANG_NAMES = { tr: 'Türkçe', en: 'English' } as const; // i18n-ignore: each language by its own name
+const LANG_NAMES = { tr: 'Türkçe', en: 'English', de: 'Deutsch', es: 'Español' } as const; // i18n-ignore: each language by its own name
 
 const ACCENTS = ['#2f7cf6', '#0ea5e9', '#14b8a6', '#22c55e', '#8b5cf6', '#ec4899', '#f97316', '#e11d48'];
 
@@ -77,7 +78,7 @@ export function SettingsPage() {
     }
   };
 
-  const useFile = async () => {
+  const pickConfigFile = async () => {
     const [p] = await api.pick({ files: true, title: t('config.json seçin'), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!p) return;
     const b = await api.useConfigFile(p);
@@ -163,6 +164,8 @@ export function SettingsPage() {
                   { value: 'system', label: t('Sistemle eşle'), icon: <Languages size={14} />, tip: t('Bilgisayarın dili: {lang}', { lang: LANG_NAMES[boot.systemLang] }) },
                   { value: 'tr', label: LANG_NAMES.tr },
                   { value: 'en', label: LANG_NAMES.en },
+                  { value: 'de', label: LANG_NAMES.de },
+                  { value: 'es', label: LANG_NAMES.es },
                 ]}
               />
             </Field>
@@ -180,9 +183,9 @@ export function SettingsPage() {
             <Field label={t('Vurgu rengi')} style={{ marginTop: 14 }}>
               <div className="row" style={{ gap: 8 }}>
                 {ACCENTS.map((c) => (
-                  <button key={c} className={cls('swatch', s.accent === c && 'on')} style={{ background: c }} onClick={() => void saveSettings({ accent: c })} />
+                  <button key={c} className={cls('swatch', s.accent === c && 'on')} style={{ background: c }} aria-label={t('Vurgu rengi {color}', { color: c })} aria-pressed={s.accent === c} onClick={() => void saveSettings({ accent: c })} />
                 ))}
-                <input type="color" className="swatch-input" value={s.accent} onChange={(e) => void saveSettings({ accent: e.target.value })} />
+                <input type="color" className="swatch-input" aria-label={t('Özel vurgu rengi')} value={s.accent} onChange={(e) => void saveSettings({ accent: e.target.value })} />
               </div>
             </Field>
             <Field label={t('Yoğunluk')} style={{ marginTop: 14 }}>
@@ -270,6 +273,15 @@ export function SettingsPage() {
               <Field label={t('Röle bitirme süresi (dk)')} help={t('Rölenin dağıtımı bu sürede bitmezse hata sayılır')}>
                 {num('relayTimeoutMinutes', 1, 1440)}
               </Field>
+              <Field label={t('Röle kuyruğu: yeniden deneme (dk)')} help={t('Kapalı makinenin işleri rölede bekler, bu aralıkla denenir; 0 = kuyruk yok')}>
+                {num('relayQueueMinutes', 0, 1440)}
+              </Field>
+              <Field label={t('Röle kuyruğu: en çok (gün)')} help={t('Bu kadar gün erişilemeyen makinenin bekleyen işleri düşürülür')}>
+                {num('relayQueueDays', 1, 90)}
+              </Field>
+              <Field label={t('Manifeste güven (gün)')} help={t('Hedefte bırakılan manifest bu kadar gün ağ üzerinden gezinmenin yerine geçer (örnekle doğrulanır); 0 = her gönderimde tam tarama')}>
+                {num('manifestMaxDays', 0, 365)}
+              </Field>
             </div>
             <Field label={t('Yedek klasörü')} help={t('Hedef kökünün altında; yedek alınan dosyaların eski hâlleri burada tarih klasörlerinde durur. Değiştirirseniz eski addaki yedekler listelenmez.')} style={{ marginTop: 12 }}>
               <input
@@ -314,7 +326,7 @@ export function SettingsPage() {
               {t('Eski PowerShell aracının dosyası doğrudan okunur; kaydederken onun alanları korunur.')}
             </p>
             <div className="row" style={{ flexWrap: 'wrap' }}>
-              <Button icon={<FolderOpen size={14} />} onClick={() => void useFile()} disabled={!boot.isElectron}>
+              <Button icon={<FolderOpen size={14} />} onClick={() => void pickConfigFile()} disabled={!boot.isElectron}>
                 {t('Başka dosya kullan…')}
               </Button>
               <Button icon={<Upload size={14} />} onClick={() => void importFile()} disabled={!boot.isElectron}>
@@ -497,6 +509,8 @@ export function SettingsPage() {
           </Section>
 
           <NotificationsSection />
+
+          <WebUiSection Section={Section} />
 
           <AssistantSection />
 

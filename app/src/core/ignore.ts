@@ -16,7 +16,7 @@ const MAX_BYTES = 1024 * 1024;
 
 export function parseIgnore(text: string): string[] {
   return text
-    .replace(/^﻿/, '')
+    .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'));

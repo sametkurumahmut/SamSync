@@ -199,3 +199,51 @@ describe('relay end to end', () => {
     }
   });
 });
+
+describe('relay delivery queue', () => {
+  it('keeps the job of a machine that is off and delivers it once the machine answers', async () => {
+    const s = await setup({ relayRunning: true });
+    try {
+      // PC2 is off: its folder does not exist while the job comes
+      await fsp.rm(s.pc2, { recursive: true, force: true });
+      await write(path.join(s.src, 'a.txt'), 'A');
+      const plan = await s.me.planSend(req(s.src), 'q1');
+      const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
+      const rows = Object.fromEntries(d.targets.map((x) => [x.key, x]));
+      expect(rows.PC1.status).toBe('ok');
+      expect(rows.PC2.status).toBe('failed');
+      expect(rows.PC2.deferred).toBe(true);
+      expect(rows.PC2.error).toMatch(/teslim|deliver/);
+      expect(d.status).toBe('partial');
+      expect(d.log.some((l) => l.key === 'PC2' && /röle açılınca|relay delivers/.test(l.message))).toBe(true);
+      // the queue on the relay: one file for PC2 with the job in it, and the card shows it
+      const pendingDir = path.join(s.server, '_SamSyncRelay', 'pending');
+      await until(() => fs.existsSync(path.join(pendingDir, 'PC2.json')));
+      const pending = JSON.parse(fs.readFileSync(path.join(pendingDir, 'PC2.json'), 'utf8'));
+      expect(pending.jobs).toHaveLength(1);
+      expect(pending.jobs[0].sources[0].rel).toBe('Data');
+      const relay = s.relay!.relay!;
+      await until(async () => ((await s.relay!.relayState()).pending?.length ?? 0) === 1);
+      // a second job while PC2 is still off joins the queue
+      await write(path.join(s.src, 'b.txt'), 'B');
+      const plan2 = await s.me.planSend(req(s.src), 'q2');
+      await s.me.runPlan(plan2, 'default', { notify: false }).done;
+      await until(() => JSON.parse(fs.readFileSync(path.join(pendingDir, 'PC2.json'), 'utf8')).jobs.length === 2);
+      // still off: a pass over the queue changes nothing but the attempt count
+      await relay.deliverPending();
+      expect(JSON.parse(fs.readFileSync(path.join(pendingDir, 'PC2.json'), 'utf8')).attempts).toBe(1);
+      expect(fs.existsSync(path.join(s.pc2, 'Data', 'a.txt'))).toBe(false);
+      // PC2 comes back: the next pass delivers both jobs and empties the queue
+      await fsp.mkdir(s.pc2, { recursive: true });
+      await relay.deliverPending();
+      expect(read(path.join(s.pc2, 'Data', 'a.txt'))).toBe('A');
+      expect(read(path.join(s.pc2, 'Data', 'b.txt'))).toBe('B');
+      expect(fs.existsSync(path.join(pendingDir, 'PC2.json'))).toBe(false);
+      expect((await s.relay!.relayState()).pending).toEqual([]);
+      const relayRuns = await s.relay!.runs();
+      expect(relayRuns.filter((r) => /kuyruktan|from the queue/.test(r.label)).length).toBeGreaterThanOrEqual(1);
+    } finally {
+      s.stop();
+    }
+  }, 40000);
+});

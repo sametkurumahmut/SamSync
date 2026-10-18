@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { Button } from './ui';
 import { ago, bytes, cls, dateTime, num } from '../lib/format';
 import { t } from '@shared/i18n';
+import { machineLabel } from '@shared/machine';
 
 /** Two writes closer than this count as the same release (a group sent in one go). */
 const SAME_MS = 10 * 60_000;
@@ -110,16 +111,16 @@ export function Inventory() {
           </div>
         )}
         {folders.length > 0 && (
-          <div className="inventory-scroll">
+          <div className="inventory-scroll" tabIndex={0} role="region" aria-label={t('Makine envanteri')}>
             <table className="inventory-table">
               <thead>
                 <tr>
                   <th className="inv-folder">{t('Klasör')}</th>
                   {columns.map((c) => (
                     <th key={c.nodeId} className={cls(!c.reachable && 'down')} title={c.error}>
-                      <div className="ellipsis">{c.name}</div>
+                      <div className="ellipsis">{machineLabel(c.name).title}</div>
                       <div className="faint ellipsis" style={{ fontSize: 10.5, fontWeight: 500 }}>
-                        {c.nodeId === localId ? t('bu makine') : (c.group ?? '')}
+                        {[machineLabel(c.name).sub, c.nodeId === localId ? t('bu makine') : c.group].filter(Boolean).join(' · ')}
                         {!c.reachable && (
                           <span className="row" style={{ gap: 3, color: 'var(--red)' }}>
                             <WifiOff size={10} /> {t('erişilemedi')}
