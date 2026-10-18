@@ -528,6 +528,13 @@ export function SettingsPage() {
               <span className="mono selectable" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>
                 {boot.userDataPath}
               </span>
+              <span className="faint">{t('Lisans')}</span>
+              <span>
+                <a href="https://www.gnu.org/licenses/gpl-3.0.html" onClick={(e) => (e.preventDefault(), void api.openExternal(boot.repositoryUrl ? `${boot.repositoryUrl}/blob/HEAD/LICENSE` : 'https://www.gnu.org/licenses/gpl-3.0.html'))}>
+                  GNU GPL v3.0
+                </a>{' '}
+                <span className="faint">• © 2026 Samet Kurumahmut</span>
+              </span>
             </div>
             <div className="row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
               <Button size="sm" icon={<FileText size={13} />} onClick={() => void api.openLog()}>

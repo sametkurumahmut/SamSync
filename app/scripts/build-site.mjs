@@ -186,7 +186,7 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
 ${faqHtml}
 </section>
 </main>
-<footer><p>© ${new Date().getFullYear()} ${esc(pkg.author)} · <a href="${REPO}">${esc(REPO.replace('https://', ''))}</a></p></footer>
+<footer><p>© ${new Date().getFullYear()} ${esc(pkg.author)} · <a href="${REPO}/blob/HEAD/LICENSE">GNU GPL v3.0</a> · <a href="${REPO}">${esc(REPO.replace('https://', ''))}</a></p></footer>
 </body>
 </html>
 `;

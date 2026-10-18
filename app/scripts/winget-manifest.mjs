@@ -81,7 +81,9 @@ Publisher: ${pkg.author}
 PublisherUrl: https://github.com/${owner}
 PackageName: SamSync
 PackageUrl: ${base}
-License: Proprietary
+License: GPL-3.0-only
+LicenseUrl: ${base}/blob/HEAD/LICENSE
+Copyright: Copyright (C) 2026 ${pkg.author}
 ShortDescription: Send files, folders and Git changes to many machines at the same relative path; compare, sync and undo.
 Description: |-
   SamSync copies files, folders and Git commits or local changes to many machines at once, at the same path relative to each
@@ -104,7 +106,8 @@ PackageVersion: ${version}
 PackageLocale: tr-TR
 Publisher: ${pkg.author}
 PackageName: SamSync
-License: Proprietary
+License: GPL-3.0-only
+LicenseUrl: ${base}/blob/HEAD/LICENSE
 ShortDescription: Dosyaları, klasörleri ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderir; karşılaştırır, eşitler, geri alır.
 ManifestType: locale
 ManifestVersion: ${MV}

@@ -378,10 +378,21 @@ export const FAQ: FaqEntry[] = [
     topic: 'settings',
     q: { tr: 'Dili ya da temayı nasıl değiştiririm? Yazılar küçük', en: 'How do I change the language or theme? The text is small' },
     a: {
-      tr: 'Ayarlar › Görünüm: dil (Türkçe / English / sistemle eşle), tema (koyu / açık / sistem), vurgu rengi, yoğunluk ve **arayüz ölçeği** (%70–175; Ctrl + ile büyüt, Ctrl − küçült, Ctrl 0 sıfırla). Bunlar bu bilgisayara özeldir; kopyalama ve güncelleme ayarları ise ortak yapılandırmaya yazılır.',
-      en: 'Settings › Appearance: language (Türkçe / English / follow the system), theme (dark / light / system), accent colour, density and the **UI scale** (70–175%; Ctrl + larger, Ctrl − smaller, Ctrl 0 reset). These belong to this computer; the copy and update settings go to the shared configuration.',
+      tr: 'Ayarlar › Görünüm: dil (Türkçe / English / Deutsch / Español / sistemle eşle), tema (koyu / açık / sistem), vurgu rengi, yoğunluk ve **arayüz ölçeği** (%70–175; Ctrl + ile büyüt, Ctrl − küçült, Ctrl 0 sıfırla). Bunlar bu bilgisayara özeldir; kopyalama ve güncelleme ayarları ise ortak yapılandırmaya yazılır.',
+      en: 'Settings › Appearance: language (Türkçe / English / Deutsch / Español / follow the system), theme (dark / light / system), accent colour, density and the **UI scale** (70–175%; Ctrl + larger, Ctrl − smaller, Ctrl 0 reset). These belong to this computer; the copy and update settings go to the shared configuration.',
     },
     keywords: ['dil', 'language', 'tema', 'theme', 'ölçek', 'scale', 'büyüt', 'zoom'],
+    page: 'settings',
+  },
+  {
+    id: 'license',
+    topic: 'settings',
+    q: { tr: 'SamSync\'in lisansı ne? Ücretsiz mi, değiştirip dağıtabilir miyim?', en: 'What is SamSync\'s licence? Is it free, may I change and share it?' },
+    a: {
+      tr: 'SamSync özgür yazılımdır ve **GNU Genel Kamu Lisansı sürüm 3 (GPL-3.0)** ile dağıtılır; telif © 2026 Samet Kurumahmut. Ücretsiz kullanabilir, kaynak kodunu inceleyebilir, değiştirebilir ve dağıtabilirsiniz. Değiştirilmiş ya da değiştirilmemiş bir sürümü başkalarına verirseniz kaynak kodunu da aynı lisansla vermeniz gerekir. Yazılım hiçbir garanti olmadan sunulur. Lisans metni deponun kökündeki `LICENSE` dosyasında ve kurulum klasöründedir; Ayarlar › Hakkında\'dan açılır.',
+      en: 'SamSync is free software, released under the **GNU General Public License version 3 (GPL-3.0)**; copyright © 2026 Samet Kurumahmut. You may use it at no cost, read, change and share the source code. If you give a version, changed or not, to others, you must give them the source code under the same licence. It comes without any warranty. The licence text is the `LICENSE` file at the root of the repository and in the installation folder; Settings › About opens it.',
+    },
+    keywords: ['lisans', 'license', 'licence', 'gpl', 'gnu', 'açık kaynak', 'open source', 'telif', 'copyright', 'ücretsiz', 'free'],
     page: 'settings',
   },
   {

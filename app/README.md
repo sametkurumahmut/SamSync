@@ -300,3 +300,9 @@ npm run dist:win     # installer + portable exe + zip
 `dist:win` also compiles `resources/launcher/SamSyncSend.c` (the program the Explorer menu starts) with the Visual C++ compiler found through `vswhere`; without one the package is built without it and the menus start `SamSync.exe` directly.
 
 Layers: `src/core` (engine independent of Electron: configuration, machine detection, transports, planner, executor, git, sync, automation, backups), `src/main` (window, IPC, tray, command line, Explorer and Notepad++ integration, updater), `src/preload`, `src/renderer` (React UI), `src/shared` (shared types, the API contract, the menu entries and `i18n`: the Turkish text is the key, `i18n/en/*.ts`, `i18n/de/*.ts` and `i18n/es/*.ts` hold the English, German and Spanish; `tests/i18n.test.ts` fails when a text has no English, German or Spanish, when placeholders differ, or when a Turkish text is left outside `t()`; `node scripts/add-en.cjs <part> [en|de|es]` appends entries).
+
+## License
+
+Copyright (C) 2026 Samet Kurumahmut
+
+SamSync is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License version 3](../LICENSE) as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but **without any warranty**; without even the implied warranty of merchantability or fitness for a particular purpose. See the [`LICENSE`](../LICENSE) file for the full text.

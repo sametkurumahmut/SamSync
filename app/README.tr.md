@@ -306,3 +306,9 @@ npm run dist:win     # kurulum + taşınabilir exe + zip
 `dist:win` ayrıca `resources/launcher/SamSyncSend.c` dosyasını (Explorer menüsünün başlattığı program) `vswhere` ile bulduğu Visual C++ derleyicisiyle derler; derleyici yoksa paket onsuz çıkar ve menüler doğrudan `SamSync.exe`'yi başlatır.
 
 Katmanlar: `src/core` (Electron'dan bağımsız motor: yapılandırma, makine tanıma, aktarım katmanları, planlayıcı, yürütücü, git, senkron, otomasyon, yedekler), `src/main` (pencere, IPC, tepsi, komut satırı, Explorer ve Notepad++ entegrasyonu, güncelleyici), `src/preload`, `src/renderer` (React arayüzü), `src/shared` (ortak tipler, API sözleşmesi, menü girdileri ve `i18n`). `i18n` içinde Türkçe metin anahtardır; İngilizce, Almanca ve İspanyolcalar `i18n/en/*.ts`, `i18n/de/*.ts` ve `i18n/es/*.ts` dosyalarındadır. Bir metnin İngilizcesi, Almancası ya da İspanyolcası yoksa, yer tutucular farklıysa ya da `t()` dışında Türkçe metin kalmışsa `tests/i18n.test.ts` başarısız olur; `node scripts/add-en.cjs <bölüm> [en|de|es]` yeni girdi ekler.
+
+## Lisans
+
+Telif hakkı (C) 2026 Samet Kurumahmut
+
+SamSync özgür yazılımdır: Özgür Yazılım Vakfı'nın yayımladığı [GNU Genel Kamu Lisansı sürüm 3](../LICENSE) koşulları altında dağıtabilir ve/veya değiştirebilirsiniz. Yararlı olması umuduyla, ancak **hiçbir garanti olmadan** dağıtılır; satılabilirlik ya da belirli bir amaca uygunluk garantisi de dahil değildir. Tam metin için [`LICENSE`](../LICENSE) dosyasına bakın.

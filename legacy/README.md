@@ -606,3 +606,9 @@ Uninstall-ContextMenu.bat
 ```
 
 This removes the Explorer right-click registrations and the SamePathCopy commands in Notepad++; it does not delete other Notepad++ customizations, the scripts, the configuration or any copied files.
+
+## License
+
+Copyright (C) 2026 Samet Kurumahmut
+
+This tool is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License version 3](../LICENSE) as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but **without any warranty**; without even the implied warranty of merchantability or fitness for a particular purpose. See the [`LICENSE`](../LICENSE) file for the full text.

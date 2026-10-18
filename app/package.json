@@ -4,7 +4,7 @@
   "version": "2.2.0",
   "description": "Dosyaları ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderen, karşılaştıran ve eşitleyen masaüstü uygulaması.",
   "author": "Samet Kurumahmut",
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-only",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {

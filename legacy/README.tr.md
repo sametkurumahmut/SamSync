@@ -606,3 +606,9 @@ Uninstall-ContextMenu.bat
 ```
 
 Bu işlem Explorer sağ tık kayıtlarını ve Notepad++ içindeki SamePathCopy komutlarını kaldırır; diğer Notepad++ özelleştirmelerini, betikleri, yapılandırmayı veya kopyalanmış dosyaları silmez.
+
+## Lisans
+
+Telif hakkı (C) 2026 Samet Kurumahmut
+
+Bu araç özgür yazılımdır: Özgür Yazılım Vakfı'nın yayımladığı [GNU Genel Kamu Lisansı sürüm 3](../LICENSE) koşulları altında dağıtabilir ve/veya değiştirebilirsiniz. Yararlı olması umuduyla, ancak **hiçbir garanti olmadan** dağıtılır; satılabilirlik ya da belirli bir amaca uygunluk garantisi de dahil değildir. Tam metin için [`LICENSE`](../LICENSE) dosyasına bakın.

@@ -14,3 +14,9 @@ Dosyaları birden çok makineye aynı göreli yolla gönderen araçlar.
 | [`legacy/`](legacy/README.tr.md) | Eski sürüm (1.x) — Explorer ve Notepad++ sağ tık menüsünden çalışan PowerShell aracı. |
 
 İkisi aynı `config.json` dosyasını kullanabilir: SamSync eski aracın dosyasını okur ve kaydederken onun alanlarını korur.
+
+## Lisans
+
+Telif hakkı (C) 2026 Samet Kurumahmut
+
+SamSync özgür yazılımdır: Özgür Yazılım Vakfı'nın yayımladığı [GNU Genel Kamu Lisansı sürüm 3](LICENSE) koşulları altında dağıtabilir ve/veya değiştirebilirsiniz. Yararlı olması umuduyla, ancak **hiçbir garanti olmadan** dağıtılır; satılabilirlik ya da belirli bir amaca uygunluk garantisi de dahil değildir. Tam metin için [`LICENSE`](LICENSE) dosyasına bakın.

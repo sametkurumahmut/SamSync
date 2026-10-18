@@ -5,7 +5,8 @@ PackageVersion: 2.2.0
 PackageLocale: tr-TR
 Publisher: Samet Kurumahmut
 PackageName: SamSync
-License: Proprietary
+License: GPL-3.0-only
+LicenseUrl: https://github.com/sametkurumahmut/SamSync/blob/HEAD/LICENSE
 ShortDescription: Dosyaları, klasörleri ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderir; karşılaştırır, eşitler, geri alır.
 ManifestType: locale
 ManifestVersion: 1.12.0

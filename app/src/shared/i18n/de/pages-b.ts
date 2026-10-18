@@ -505,6 +505,7 @@ const d: Dict = {
   'En az 8 karakter': 'Mindestens 8 Zeichen',
   'Bu bilgisayarda yalnızca özeti (scrypt) saklanır': 'Auf diesem Rechner wird nur der Hash (scrypt) gespeichert',
   'Çalıştırmalar': 'Läufe',
+  Lisans: 'Lizenz',
 };
 
 export default d;

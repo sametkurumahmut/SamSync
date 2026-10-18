@@ -7,7 +7,9 @@ Publisher: Samet Kurumahmut
 PublisherUrl: https://github.com/sametkurumahmut
 PackageName: SamSync
 PackageUrl: https://github.com/sametkurumahmut/SamSync
-License: Proprietary
+License: GPL-3.0-only
+LicenseUrl: https://github.com/sametkurumahmut/SamSync/blob/HEAD/LICENSE
+Copyright: Copyright (C) 2026 Samet Kurumahmut
 ShortDescription: Send files, folders and Git changes to many machines at the same relative path; compare, sync and undo.
 Description: |-
   SamSync copies files, folders and Git commits or local changes to many machines at once, at the same path relative to each

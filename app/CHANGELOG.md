@@ -2,6 +2,7 @@
 
 ## Yayımlanmamış
 
+- **Lisans:** SamSync artık **GNU Genel Kamu Lisansı sürüm 3 (GPL-3.0)** ile dağıtılıyor (telif © 2026 Samet Kurumahmut). Lisans metni deponun kökünde ve her pakette (`LICENSE`) duruyor, Windows kurulumunun ilk sayfasında gösteriliyor; Ayarlar › Hakkında, SSS, README'ler, proje sitesi ve winget bildirimi lisansı belirtiyor.
 - **Erişilebilirlik:** Geçmiş sayfasının listeleri küçük pencerede klavyeyle kaydırılabiliyor; devre dışı ayar satırları ekran okuyucuya devre dışı olarak bildiriliyor. Uçtan uca test erişilebilirlik taramasını uygulamanın en küçük pencere boyutunda da yapıyor.
 
 ## 2.2.0 — 2026-10-18
