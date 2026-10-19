@@ -1,7 +1,8 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.2.1 — 2026-10-19
 
+- **Kök dışı kaynaklar:** hiçbir yerel kökün altında olmayan bir klasör artık hedefte sürücü harfiyle tam yoluna (`C/…/Releasex64/…`) gitmiyor; kendi klasörü hedef kökünün yerine geçiyor, yani içindekiler doğrudan hedef köküne yazılıyor. Bir dosya da hedef köküne adıyla gidiyor. Gönder sayfasında kaynağın altındaki listeden başka bir yer seçilebilir: üstündeki her klasör hedef kökü olabilir ya da eski tam yol korunabilir. **Yerel kök yap** seçili klasörü bu makinenin yerel köklerine ekler. Seçim sekmede, hızlı gönderimde, izlemede ve geçmişteki **Yeniden gönder**de saklanıyor; Karşılaştır sayfası ve paket yazma da aynı yeri kullanıyor. Ayarlar › Kopyalama › **Kök dışı kaynakları tam yoluyla gönder** eski davranışı varsayılan yapar.
 - **Düzeltme:** güncellemeden sonra görev çubuğunda SamSync yerine Electron simgesi görünebiliyordu. Geliştirme ve test çalıştırmaları kurulu uygulamayla aynı Windows uygulama kimliğini kullanıyordu; Electron bildirim için bu kimlikle bir Başlat menüsü kısayolu açınca Windows kurulu uygulamayı o kısayola bağlıyordu. Geliştirme çalıştırmaları artık kendi kimliğini kullanıyor.
 - **Düzeltme:** web arayüzündeki oturum kapatma düğmesi İngilizce arayüzde "Quit" yazıyordu; artık **Oturumu kapat** / **Sign out**.
 - **Belgeler:** İngilizce README ve proje sitesi artık arayüzü İngilizce etiketleriyle anlatıyor.
