@@ -1,5 +1,11 @@
 # Sürüm Geçmişi
 
+## 2.2.2 — 2026-10-19
+
+- **İnceleme ilerlemesi:** inceleme hazırlanırken pencere her makine için bir satır gösteriyor: sırada, erişim deneniyor, hedefteki klasörler listeleniyor, "8.400 / 20.013 dosya karşılaştırıldı • 1,2 GB içerik okundu" ya da bitti. Üstteki çubuk makine sayısı yerine karşılaştırılan dosyalara göre ilerliyor; eskiden bütün makineler bitene dek boş kalıyordu.
+- **Bu makineye gönderme:** kaynakların hepsi bu makinenin yerel köklerinin dışındaysa (başka bir diskteki sürüm gibi) gönderen makine de hedef listesinde çıkıyor; eskiden yalnızca paket dosyalarında çıkıyordu. Dosyalar paylaşım yerine doğrudan ilk yerel köke, kendi diskine yazılıyor. Hedef listesi bu makine için paylaşım yolu yerine yerel kökü, inceleme de **bu makine** rozetini gösteriyor. Kendi kökünden ya da o kökü içine alan bir klasörden gönderirken bu makine yine listede yok.
+- **Tam yol ipucu:** hedef listesinde, incelemede ve çalıştırma panelinde kırpılarak görünen hedef yolunun tamamı üzerine gelince ipucu olarak görünüyor.
+
 ## 2.2.1 — 2026-10-19
 
 - **Kök dışı kaynaklar:** hiçbir yerel kökün altında olmayan bir klasör artık hedefte sürücü harfiyle tam yoluna (`C/…/Releasex64/…`) gitmiyor; kendi klasörü hedef kökünün yerine geçiyor, yani içindekiler doğrudan hedef köküne yazılıyor. Bir dosya da hedef köküne adıyla gidiyor. Gönder sayfasında kaynağın altındaki listeden başka bir yer seçilebilir: üstündeki her klasör hedef kökü olabilir ya da eski tam yol korunabilir. **Yerel kök yap** seçili klasörü bu makinenin yerel köklerine ekler. Seçim sekmede, hızlı gönderimde, izlemede ve geçmişteki **Yeniden gönder**de saklanıyor; Karşılaştır sayfası ve paket yazma da aynı yeri kullanıyor. Ayarlar › Kopyalama › **Kök dışı kaynakları tam yoluyla gönder** eski davranışı varsayılan yapar.
