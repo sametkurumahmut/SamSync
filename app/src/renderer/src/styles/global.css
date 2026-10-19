@@ -612,6 +612,19 @@ a {
   background-position: right 9px center;
   cursor: pointer;
 }
+.select.sm {
+  height: 24px;
+  padding: 0 24px 0 8px;
+  font-size: 11.5px;
+  background-position: right 7px center;
+}
+/* where a source outside every local root lands: as wide as its text, never wider than the row */
+.place-select {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
 .field {
   display: flex;
   flex-direction: column;

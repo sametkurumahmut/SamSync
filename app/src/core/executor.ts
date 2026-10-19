@@ -72,6 +72,8 @@ export interface ExecSettings {
   relayAckMs?: number;
   relayDoneMs?: number;
   sources: string[];
+  /** Where the sources outside every local root went on the targets, by path (Send again puts them there again). */
+  sourceRels?: Record<string, string>;
   /** Last source item and its target relative path: {source} and {destination} of the post-copy command. */
   postSource?: { path: string; rel: string };
   targetIds: string[];
@@ -192,6 +194,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       opsFailed: failed,
       bytes: states.reduce((a, x) => a + x.bytesDone, 0),
       sources: s.sources,
+      sourceRels: s.sourceRels,
       targetIds: s.targetIds,
       options: s.options,
       paused: paused || undefined,

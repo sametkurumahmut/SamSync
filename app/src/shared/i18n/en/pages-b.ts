@@ -507,6 +507,8 @@ const d: Dict = {
   'Çalıştırmalar': 'Runs',
   Lisans: 'Licence',
   'Oturumu kapat': 'Sign out',
+  'Kök dışı kaynakları tam yoluyla gönder': 'Send sources outside the roots with their full path',
+  'Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.': 'The old way: a folder that is not under any local root lands on the targets with its full path, drive letter included. When off, the folder itself stands for the target root; the Send page can also pick this for each source.',
 };
 
 export default d;

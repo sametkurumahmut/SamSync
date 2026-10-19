@@ -351,6 +351,11 @@ const d: Dict = {
   'Özel vurgu rengi': 'Eigene Akzentfarbe',
   '{name} hedef olarak kullanılsın': '{name} als Ziel verwenden',
   '{item} kaldır': '{item} entfernen',
+  'Hedef yolu değiştirilemedi': 'Der Zielpfad ließ sich nicht ändern',
+  'Bu bilgisayar yapılandırmada yok': 'Dieser Rechner ist nicht in der Konfiguration',
+  'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'Um einen lokalen Stamm hinzuzufügen, muss dieser Rechner auf der Seite Ziele als Rechner eingerichtet sein.',
+  'Yerel kök eklendi': 'Lokaler Stamm hinzugefügt',
+  '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} ist jetzt ein lokaler Stamm dieses Rechners; sein Inhalt landet auf den Zielen unter demselben relativen Pfad.',
 };
 
 export default d;

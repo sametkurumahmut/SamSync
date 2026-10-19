@@ -351,6 +351,11 @@ const d: Dict = {
   'Özel vurgu rengi': 'Color de énfasis personalizado',
   '{name} hedef olarak kullanılsın': 'Usar {name} como destino',
   '{item} kaldır': 'Quitar {item}',
+  'Hedef yolu değiştirilemedi': 'No se pudo cambiar la ruta de destino',
+  'Bu bilgisayar yapılandırmada yok': 'Este equipo no está en la configuración',
+  'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'Para añadir una raíz local, este equipo debe estar definido como máquina en la página Destinos.',
+  'Yerel kök eklendi': 'Raíz local añadida',
+  '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} es ahora una raíz local de esta máquina; su contenido llega a los destinos con la misma ruta relativa.',
 };
 
 export default d;

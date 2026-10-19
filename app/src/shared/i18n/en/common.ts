@@ -351,6 +351,11 @@ const d: Dict = {
   'Özel vurgu rengi': 'Custom accent colour',
   '{name} hedef olarak kullanılsın': 'Use {name} as a target',
   '{item} kaldır': 'Remove {item}',
+  'Hedef yolu değiştirilemedi': 'Could not change the target path',
+  'Bu bilgisayar yapılandırmada yok': 'This computer is not in the configuration',
+  'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'To add a local root, this computer has to be set up as a machine on the Targets page.',
+  'Yerel kök eklendi': 'Local root added',
+  '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} is now a local root of this machine; what is inside lands on the targets under the same relative path.',
 };
 
 export default d;

@@ -41,6 +41,8 @@ export interface NodeConfig {
 }
 
 export type CompareMethod = 'timeSize' | 'content' | 'size';
+/** How a source outside every local root lands on the targets: by its own folder (default) or with its full path. */
+export type OutsideRoots = 'own' | 'fullPath';
 export type SendMode = 'overwrite' | 'update' | 'mirror';
 
 export interface CopySettings {
@@ -69,6 +71,8 @@ export interface CopySettings {
   bandwidthMBps: number;
   excludeFiles: string[];
   excludeDirs: string[];
+  /** Sources outside every local root: their own folder stands for the target root (default), or the full path is kept. */
+  outsideRoots?: OutsideRoots;
 }
 
 /** One target's exceptions to the send options, like the per machine columns of the old wizard. */
@@ -323,6 +327,8 @@ export interface WatchConfig {
   id: string;
   name: string;
   paths: string[];
+  /** Target paths picked by hand for some of the paths (a source outside every local root), by path. */
+  rels?: Record<string, string>;
   /** Machines from the configuration. */
   targetIds: string[];
   /** Plain folders (local, mounted or UNC), no configuration needed: each watched folder's content goes into them. */
@@ -427,6 +433,8 @@ export interface LocalIdentity {
 /** What a launch from Explorer, Notepad++ or the command line asks for. */
 export interface OpenRequest {
   paths: string[];
+  /** Target paths picked by hand for some of the paths (a quick send brings them), by path. */
+  rels?: Record<string, string>;
   /** --to: node ids, group:<name>, profile:<name or id>, all, or last (the last send's targets and options). */
   targets?: string[];
   /** --yes: send at once without the review (the one-click menu entries). */
@@ -443,6 +451,8 @@ export interface QuickSend {
   id: string;
   name: string;
   paths: string[];
+  /** Target paths picked by hand for some of the paths, by path. */
+  rels?: Record<string, string>;
   targetIds: string[];
   options?: Partial<SendOptions>;
   /** Open the review instead of sending at once. */
@@ -575,10 +585,20 @@ export interface InventoryRow {
 
 // ---------------------------------------------------------------- sources & plans
 
+/** `rel`: where the item goes on the targets, picked by hand; without it the local roots decide. */
 export type SourceSpec =
-  | { kind: 'fs'; path: string }
+  | { kind: 'fs'; path: string; rel?: string }
   | { kind: 'git'; repo: string; rev: string; path: string }
-  | { kind: 'delete'; path: string };
+  | { kind: 'delete'; path: string; rel?: string };
+
+/** A place a source outside every local root can take on the targets. */
+export interface SourcePlace {
+  rel: string;
+  /** The local folder that stands for the target root. */
+  base?: string;
+  /** The whole path with the drive as a folder (the old way). */
+  full?: boolean;
+}
 
 export interface SourceInfo {
   path: string;
@@ -593,6 +613,11 @@ export interface SourceInfo {
   rel: string;
   root?: string;
   outsideRoots: boolean;
+  /** Outside every root: the local folder that stands for the target root, or the full path is kept. */
+  base?: string;
+  full?: boolean;
+  /** Outside every root: where else it can go (the Send page offers these). */
+  places?: SourcePlace[];
   error?: string;
   /** The source is a pack file (.samsync-pack): what it carries and where it was made. */
   pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[]; encrypted?: boolean };
@@ -743,6 +768,8 @@ export interface RunSummary {
   opsFailed: number;
   bytes: number;
   sources: string[];
+  /** Where the sources outside every local root went on the targets, by path. */
+  sourceRels?: Record<string, string>;
   targetIds: string[];
   options?: Partial<SendOptions>;
   /** The run is held (Pause in the run panel); its targets keep their state until it is resumed. */

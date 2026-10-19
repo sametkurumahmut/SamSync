@@ -360,6 +360,9 @@ const d: Dict = {
   '{n} iş': '{n} tarea(s)',
   '{ago} beri': 'desde {ago}',
   'son deneme {ago}': 'último intento {ago}',
+  'Geçersiz hedef yolu: {rel}': 'Ruta de destino no válida: {rel}',
+  '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} no está bajo ninguna raíz local; su contenido se escribirá directamente en la raíz de los destinos.',
+  '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} no está bajo ninguna raíz local; se escribirá en {rel} en los destinos.',
 };
 
 export default d;

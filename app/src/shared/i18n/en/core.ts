@@ -360,6 +360,9 @@ const d: Dict = {
   '{n} iş': '{n} job(s)',
   '{ago} beri': 'since {ago}',
   'son deneme {ago}': 'last try {ago}',
+  'Geçersiz hedef yolu: {rel}': 'Invalid target path: {rel}',
+  '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} is not under any local root; its content will be written straight into the root of the targets.',
+  '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} is not under any local root; it will be written to {rel} on the targets.',
 };
 
 export default d;

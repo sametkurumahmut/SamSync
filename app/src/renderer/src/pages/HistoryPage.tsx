@@ -215,7 +215,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
     st.clearSendPaths();
     st.setTargets(onlyFailed ? failedTargets : summary.targetIds);
     st.setPage('send');
-    await st.addSendPaths(summary.sources);
+    await st.addSendPaths(summary.sources, summary.sourceRels);
     toast('info', onlyFailed ? t('{n} hatalı hedef seçildi', { n: failedTargets.length }) : t('Kaynaklar ve hedefler yüklendi'), t('İnceleyip gönderin.'));
   };
 

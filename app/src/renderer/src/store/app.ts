@@ -17,6 +17,7 @@ import type {
   SendRequest,
   SyncSchedule,
   SourceInfo,
+  SourceSpec,
   UpdateState,
   AutomationState,
   OpenRequest,
@@ -24,6 +25,7 @@ import type {
 import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { readStored, writeStored } from '../lib/persist';
+import { fsSources, pathWithin, relsFor, samePath } from '@shared/sources';
 import { pushSample, type Sample } from '../lib/rates';
 import { APP_PAGES, type AppPage } from '@shared/pages';
 import { answer, type HelpHit } from '@shared/help/search';
@@ -87,8 +89,10 @@ export interface Toast {
 export interface Workspace {
   id: string;
   name: string;
-  /** Kept for inactive tabs; the active tab's live values are sendPaths and targets. */
+  /** Kept for inactive tabs; the active tab's live values are sendPaths, sendRels and targets. */
   paths: string[];
+  /** Target paths picked by hand (sources outside every local root), by path. */
+  rels?: Record<string, string>;
   targets: string[];
 }
 
@@ -159,12 +163,14 @@ interface State {
   restoreRequest: { paths: string[]; seq: number } | null;
 
   sendPaths: string[];
+  /** Where some of sendPaths go on the targets, picked by hand on the Send page (sources outside every local root). */
+  sendRels: Record<string, string>;
   sendInfos: SourceInfo[];
   targets: string[];
   workspaces: Workspace[];
   activeWorkspace: string;
   /** force: a new tab even when the open one is empty. */
-  newWorkspace(opts?: { name?: string; paths?: string[]; targets?: string[]; force?: boolean }): Promise<void>;
+  newWorkspace(opts?: { name?: string; paths?: string[]; rels?: Record<string, string>; targets?: string[]; force?: boolean }): Promise<void>;
   switchWorkspace(id: string): Promise<void>;
   closeWorkspace(id: string): Promise<void>;
   renameWorkspace(id: string, name: string): void;
@@ -186,7 +192,14 @@ interface State {
   applyTheme(): void;
   probe(ids?: string[]): Promise<void>;
 
-  addSendPaths(paths: string[]): Promise<void>;
+  /** `rels`: target paths picked earlier for some of them (a quick send, a run sent again). */
+  addSendPaths(paths: string[], rels?: Record<string, string>): Promise<void>;
+  /** Places a source outside every local root on the targets (null: back to the default place). */
+  setSendRel(path: string, rel: string | null): Promise<void>;
+  /** The Send page's list as send sources, with the places picked by hand. */
+  sendSources(): SourceSpec[];
+  /** Adds a folder to this machine's local roots; the sources below it then follow it on their own. */
+  addLocalRoot(folder: string): Promise<void>;
   /** Saved sends: run one, save the current list under a name, remove one. */
   runQuickSend(q: QuickSend): void;
   /** Saves the current list under a name, or (with `editId`) renames / reschedules an existing one, keeping its list. */
@@ -306,6 +319,7 @@ export const useApp = create<State>((set, get) => ({
     set({ unsaved: next });
   },
   sendPaths: [],
+  sendRels: {},
   sendInfos: [],
   targets: [],
   workspaces: [{ id: 'w1', name: '', paths: [], targets: [] }],
@@ -345,7 +359,7 @@ export const useApp = create<State>((set, get) => ({
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
-      if (active?.paths.length) await get().addSendPaths(active.paths);
+      if (active?.paths.length) await get().addSendPaths(active.paths, active.rels);
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
@@ -420,18 +434,56 @@ export const useApp = create<State>((set, get) => ({
     }
   },
 
-  async addSendPaths(paths) {
+  async addSendPaths(paths, rels) {
     const cur = get().sendPaths;
     const lower = new Set(cur.map((p) => p.toLowerCase()));
     const add = paths.filter((p) => !lower.has(p.toLowerCase()));
     if (!add.length) return;
     const next = [...cur, ...add];
-    set({ sendPaths: next });
-    const infos = await api.describeSources(next);
+    const picked = relsFor(add, rels);
+    const nextRels = picked ? { ...get().sendRels, ...picked } : get().sendRels;
+    set({ sendPaths: next, sendRels: nextRels });
+    const infos = await api.describeSources(next, true, undefined, nextRels);
     if (get().sendPaths === next) set({ sendInfos: infos });
   },
+  async setSendRel(path, rel) {
+    const st = get();
+    const key = st.sendPaths.find((p) => p === path) ?? st.sendPaths.find((p) => p.toLowerCase() === path.toLowerCase()) ?? path;
+    const rels = { ...st.sendRels };
+    if (rel === null) delete rels[key];
+    else rels[key] = rel;
+    set({ sendRels: rels });
+    try {
+      const [info] = await api.describeSources([key], true, undefined, rels);
+      set((s) => ({ sendInfos: s.sendInfos.map((i) => (i.path === info.path || i.path === key ? info : i)) }));
+    } catch (e) {
+      st.toast('error', t('Hedef yolu değiştirilemedi'), (e as Error).message);
+    }
+  },
+  sendSources() {
+    const st = get();
+    return fsSources(st.sendPaths, st.sendRels);
+  },
+  async addLocalRoot(folder) {
+    const st = get();
+    const boot = st.boot!;
+    const id = boot.identity.node?.id;
+    if (!id) {
+      st.toast('warn', t('Bu bilgisayar yapılandırmada yok'), t('Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.'));
+      return;
+    }
+    const cfg = { ...boot.config, nodes: boot.config.nodes.map((n) => (n.id === id && !n.localRoots.some((r) => samePath(r, folder)) ? { ...n, localRoots: [...n.localRoots, folder] } : n)) };
+    if (!(await st.saveConfig(cfg))) return;
+    // what is below the new root follows it now; the places picked by hand there are dropped
+    const rels = Object.fromEntries(Object.entries(get().sendRels).filter(([p]) => !pathWithin(p, folder)));
+    set({ sendRels: rels });
+    const paths = get().sendPaths;
+    const infos = await api.describeSources(paths, true, undefined, rels);
+    if (get().sendPaths === paths) set({ sendInfos: infos });
+    st.toast('ok', t('Yerel kök eklendi'), t('{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.', { path: folder }));
+  },
   runQuickSend(q) {
-    void handleOpen({ paths: q.paths, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
+    void handleOpen({ paths: q.paths, rels: q.rels, targets: q.targetIds, send: !q.review, options: q.options, label: q.name });
   },
   async saveQuickSend(name, review, hotkey, schedule, editId) {
     const st = get();
@@ -441,7 +493,7 @@ export const useApp = create<State>((set, get) => ({
     const existing = all.filter((q) => q.id !== editId && q.name.toLowerCase() !== name.toLowerCase());
     const q: QuickSend = old
       ? { ...old, name, review, hotkey: hotkey?.trim() || undefined, schedule }
-      : { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined, schedule };
+      : { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], rels: relsFor(st.sendPaths, st.sendRels), targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined, schedule };
     await st.saveSettings({ quickSends: [...existing, q] });
     st.toast('ok', old ? t('Hızlı gönderim güncellendi') : t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
   },
@@ -450,10 +502,13 @@ export const useApp = create<State>((set, get) => ({
     await st.saveSettings({ quickSends: (st.boot?.settings.quickSends ?? []).filter((q) => q.id !== id) });
   },
   removeSendPath(p) {
-    set((s) => ({ sendPaths: s.sendPaths.filter((x) => x !== p), sendInfos: s.sendInfos.filter((x) => x.path !== p) }));
+    set((s) => {
+      const { [p]: _gone, ...rels } = s.sendRels;
+      return { sendPaths: s.sendPaths.filter((x) => x !== p), sendRels: rels, sendInfos: s.sendInfos.filter((x) => x.path !== p) };
+    });
   },
   clearSendPaths() {
-    set({ sendPaths: [], sendInfos: [] });
+    set({ sendPaths: [], sendRels: {}, sendInfos: [] });
   },
   async newWorkspace(opts = {}) {
     const st = get();
@@ -461,28 +516,28 @@ export const useApp = create<State>((set, get) => ({
     // an empty tab is used as it is instead of piling up empty ones
     if (cur && !st.sendPaths.length && !opts.force) {
       set({ workspaces: st.workspaces.map((w) => (w.id === cur.id ? { ...w, name: opts.name ?? w.name } : w)), targets: opts.targets ?? st.targets });
-      if (opts.paths?.length) await get().addSendPaths(opts.paths);
+      if (opts.paths?.length) await get().addSendPaths(opts.paths, opts.rels);
       return;
     }
     const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, targets: st.targets } : w));
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targets: st.targets } : w));
     const targets = opts.targets ?? st.targets;
-    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendInfos: [], targets });
-    if (opts.paths?.length) await get().addSendPaths(opts.paths);
+    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendRels: {}, sendInfos: [], targets });
+    if (opts.paths?.length) await get().addSendPaths(opts.paths, opts.rels);
   },
   async switchWorkspace(id) {
     const st = get();
     if (id === st.activeWorkspace) return;
     const next = st.workspaces.find((w) => w.id === id);
     if (!next) return;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, targets: st.targets } : w));
-    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendInfos: [], targets: next.targets });
-    await get().addSendPaths(next.paths);
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targets: st.targets } : w));
+    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendRels: {}, sendInfos: [], targets: next.targets });
+    await get().addSendPaths(next.paths, next.rels);
   },
   async closeWorkspace(id) {
     const st = get();
     if (st.workspaces.length === 1) {
-      set({ sendPaths: [], sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [] })) });
+      set({ sendPaths: [], sendRels: {}, sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [], rels: undefined })) });
       return;
     }
     const i = st.workspaces.findIndex((w) => w.id === id);
@@ -574,7 +629,7 @@ export const useApp = create<State>((set, get) => ({
     if (!dir) return;
     const taskId = newTaskId();
     const label = st.sendPaths.length === 1 ? st.sendPaths[0].replace(/[\\/]+$/, '').split(/[\\/]/).pop() || t('Gönderim') : t('{n} öğe', { n: st.sendPaths.length });
-    const req: SendRequest = { sources: st.sendPaths.map((p) => ({ kind: 'fs', path: p })), targetIds: [], options: { ...st.options, dryRun: false }, origin: 'send', label };
+    const req: SendRequest = { sources: st.sendSources(), targetIds: [], options: { ...st.options, dryRun: false }, origin: 'send', label };
     set({ planning: { taskId, message: t('Paket hazırlanıyor…') } });
     try {
       const r = await api.writePack(req, dir, taskId, password);
@@ -649,8 +704,8 @@ export const useApp = create<State>((set, get) => ({
 }));
 
 useApp.subscribe((s, prev) => {
-  if (!s.boot || (s.sendPaths === prev.sendPaths && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
-  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, targets: s.targets } : w));
+  if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
+  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, rels: relsFor(s.sendPaths, s.sendRels), targets: s.targets } : w));
   writeStored('samsync.workspaces', { active: s.activeWorkspace, list });
 });
 
@@ -863,7 +918,7 @@ async function handleOpen(r: OpenRequest) {
   if (!r.targets?.length) {
     st.setPage('send');
     // the menu's items get a tab of their own; the lists already open stay as they are
-    await st.newWorkspace({ name: tabName(r.paths), paths: r.paths });
+    await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, rels: r.rels });
     return;
   }
   const to = resolveTargets(r.targets);
@@ -871,26 +926,26 @@ async function handleOpen(r: OpenRequest) {
   // a quick send brings its own options and name
   if (r.options) to.options = { ...(to.options ?? {}), ...r.options };
   if (r.label) to.label = r.label;
-  if (r.send) return sendNow(r.paths, to);
+  if (r.send) return sendNow(r.paths, to, r.rels);
   st.setPage('send');
   // a launch with --to is its own send in its own tab
-  await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, targets: to.targets });
+  await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, rels: r.rels, targets: to.targets });
   if (to.options) st.setOptions(to.options);
-  await st.startPlan({ sources: r.paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: to.targets, label: to.label });
+  await st.startPlan({ sources: fsSources(r.paths, r.rels), origin: 'send', targetIds: to.targets, label: to.label });
 }
 
 /**
  * The one-click menu entries: plan and send at once, like the old tool's menu did. The Send page list is left
  * alone. A plan that would delete on a target (mirror from a profile or the last settings) opens the review.
  */
-async function sendNow(paths: string[], to: ResolvedTargets) {
+async function sendNow(paths: string[], to: ResolvedTargets, rels?: Record<string, string>) {
   const st = useApp.getState();
   const boot = st.boot!;
   const options: SendOptions = { ...baseOptions(boot), ...(to.options ?? {}), dryRun: false };
   const taskId = newTaskId();
   useApp.setState({ planning: { taskId, message: t('Hazırlanıyor…') } });
   try {
-    const plan = await api.planSend({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', targetIds: to.targets, options, label: to.label }, taskId);
+    const plan = await api.planSend({ sources: fsSources(paths, rels), origin: 'send', targetIds: to.targets, options, label: to.label }, taskId);
     if (useApp.getState().planning?.taskId !== taskId) return; // cancelled
     useApp.setState({ planning: null });
     const selected: Record<string, string[]> = {};

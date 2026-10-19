@@ -186,7 +186,7 @@ export function CommandPalette() {
           st.clearSendPaths();
           st.setTargets(last.targetIds);
           st.setPage('send');
-          await st.addSendPaths(last.sources);
+          await st.addSendPaths(last.sources, last.sourceRels);
         },
       },
       {

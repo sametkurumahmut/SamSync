@@ -18,6 +18,7 @@ export const DEFAULT_COPY: CopySettings = {
   bandwidthMBps: 0,
   excludeFiles: [],
   excludeDirs: ['.git', '.svn', '.vs', 'node_modules'],
+  outsideRoots: 'own',
 };
 
 export { DEFAULT_AUTOMATION, automationSettings } from '../shared/automation';
@@ -138,6 +139,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     bandwidthMBps: Math.max(0, Math.min(10000, Number(c.bandwidthMBps) || 0)),
     excludeFiles: c.excludeFiles !== undefined ? asStringArray(c.excludeFiles) : [...DEFAULT_COPY.excludeFiles],
     excludeDirs: c.excludeDirs !== undefined ? asStringArray(c.excludeDirs) : [...DEFAULT_COPY.excludeDirs],
+    outsideRoots: c.outsideRoots === 'fullPath' ? 'fullPath' : 'own',
   };
 
   const profiles: Profile[] = (Array.isArray(r.profiles) ? r.profiles : [])

@@ -1,4 +1,6 @@
 import path from 'node:path';
+import type { OutsideRoots, SourcePlace } from '../shared/types';
+import { t } from '../shared/i18n';
 import { isWin } from './util';
 
 /** Normalises an absolute local path: resolves it and strips trailing separators (except for roots). */
@@ -93,6 +95,58 @@ function outsideRel(n: string): string {
   const drive = /^([A-Za-z]):[\\/]?(.*)$/.exec(n);
   if (drive) return relJoin(drive[1].toUpperCase(), toPosix(drive[2]));
   return relJoin('ROOT', toPosix(n));
+}
+
+export interface SourceMapping extends RelMapping {
+  /** Outside every root: the local folder that stands for the target root. */
+  base?: string;
+  /** Outside every root and placed with its whole path, the drive as a folder (the old tool's way). */
+  full?: boolean;
+}
+
+/**
+ * Where a source lands on every target. Under a local root it keeps its path below that root. Outside every
+ * root it is placed by default as if its own folder were a root: a folder's content goes straight into the
+ * target root, a file into the root by its name. `outside: 'fullPath'` keeps the old way instead (the whole
+ * path with the drive as a folder). A `rel` picked by hand on the Send page wins over both.
+ */
+export function mapSource(abs: string, localRoots: readonly string[], isDir: boolean, outside: OutsideRoots = 'own', rel?: string): SourceMapping {
+  const m = mapToRel(abs, localRoots);
+  if (rel !== undefined) {
+    const r = cleanRel(rel);
+    if (!m.outside) return { ...m, rel: r };
+    const place = outsidePlaces(abs, isDir).find((p) => relKey(p.rel) === relKey(r));
+    return { rel: r, outside: true, base: place?.base, full: place?.full };
+  }
+  if (!m.outside) return m;
+  if (outside === 'fullPath') return { ...m, full: true };
+  const n = normalizeAbs(abs);
+  return isDir ? { rel: '', outside: true, base: n } : { rel: path.basename(n), outside: true, base: path.dirname(n) };
+}
+
+/**
+ * The places a source outside every root can take on the targets: one for its own folder (a file: the folder
+ * it is in) and one for every folder above it as the stand-in for the target root, then its full path.
+ */
+export function outsidePlaces(abs: string, isDir: boolean): SourcePlace[] {
+  const n = normalizeAbs(abs);
+  const out: SourcePlace[] = [];
+  let base = isDir ? n : path.dirname(n);
+  for (;;) {
+    out.push({ rel: toPosix(path.relative(base, n)), base });
+    const up = path.dirname(base);
+    if (up === base) break;
+    base = up;
+  }
+  out.push({ rel: outsideRel(n), full: true });
+  return out;
+}
+
+/** A target path given by hand, made plain: forward slashes, no leading or trailing slash, no "." parts; ".." is refused. */
+export function cleanRel(rel: string): string {
+  const parts = toPosix(rel).split('/').filter((p) => p && p !== '.');
+  if (parts.includes('..')) throw new Error(t('Geçersiz hedef yolu: {rel}', { rel }));
+  return parts.join('/');
 }
 
 /** Joins a target root with a POSIX rel path using the separator style of the root. */

@@ -360,6 +360,9 @@ const d: Dict = {
   '{n} iş': '{n} Auftrag/Aufträge',
   '{ago} beri': 'eingereiht {ago}',
   'son deneme {ago}': 'letzter Versuch {ago}',
+  'Geçersiz hedef yolu: {rel}': 'Ungültiger Zielpfad: {rel}',
+  '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} liegt unter keinem lokalen Stamm; sein Inhalt wird direkt in den Stamm der Ziele geschrieben.',
+  '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} liegt unter keinem lokalen Stamm; es wird auf den Zielen nach {rel} geschrieben.',
 };
 
 export default d;

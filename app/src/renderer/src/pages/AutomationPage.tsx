@@ -39,6 +39,7 @@ import { ago, baseName, cls, num } from '../lib/format';
 import { t, tk, locale } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { withoutMirror } from '@shared/options';
+import { relsFor } from '@shared/sources';
 
 function StatusPill({ status }: { status: WatchState['status'] }) {
   const map: Record<WatchState['status'], { label: string; cls: string; icon: React.ReactNode }> = {
@@ -347,7 +348,7 @@ export function useStartWatchFromSend() {
     }
     const name = st.sendPaths.length === 1 ? baseName(st.sendPaths[0]) : `${baseName(st.sendPaths[0])} +${st.sendPaths.length - 1}`;
     const { dryRun: _d, ...rest } = st.options;
-    const a = await api.watchAdd({ name, paths: st.sendPaths, targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: DEFAULT_QUIET_MS, enabled: true });
+    const a = await api.watchAdd({ name, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: DEFAULT_QUIET_MS, enabled: true });
     useApp.setState({ automation: a });
     await st.saveSettings({});
     st.toast('ok', t('İzleme başladı'), t('{name} → {n} hedef. Değişiklikler kendiliğinden gönderilecek.', { name, n: st.targets.length }), { label: t('Otomasyonu aç'), run: () => st.setPage('automation') });
@@ -383,6 +384,8 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
       const cfg = {
         name: name.trim() || baseName(paths[0] ?? t('İzleme')),
         paths,
+        // places picked on the Send page come along for the paths that are still in the list
+        rels: relsFor(paths, initial ? initial.rels : st.sendRels),
         targetIds: sendTargets,
         folders: sendFolders,
         syncJobId: action === 'sync' ? jobId : undefined,

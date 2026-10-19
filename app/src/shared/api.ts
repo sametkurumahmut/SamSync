@@ -117,7 +117,7 @@ export interface Api {
   /** Every enabled machine's manifest, read now: which release each one holds under each sent folder. */
   inventory(): Promise<InventoryRow[]>;
   /** `secrets`: passwords for protected packs by path; a pack opened once stays open while the app runs. */
-  describeSources(paths: string[], count?: boolean, secrets?: Record<string, string>): Promise<SourceInfo[]>;
+  describeSources(paths: string[], count?: boolean, secrets?: Record<string, string>, rels?: Record<string, string>): Promise<SourceInfo[]>;
   mapPath(abs: string): Promise<{ rel: string; root?: string; outside: boolean }>;
 
   planSend(req: SendRequest, taskId: string): Promise<SendPlan>;

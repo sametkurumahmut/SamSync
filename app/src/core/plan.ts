@@ -4,7 +4,7 @@ import type { CategoryCounts, NodeConfig, PackWriteResult, PlanCategory, PlanOp,
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
 import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
-import { mapToRel, normalizeAbs, relKey, relIsWithin, relJoin } from './paths';
+import { mapSource, mapToRel, normalizeAbs, outsidePlaces, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
 import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
@@ -111,13 +111,31 @@ function lockedInfo(abs: string, st: fs.Stats, e: unknown): SourceInfo {
   return { path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, rel: '', outsideRoots: false, locked: e instanceof PackPasswordError ? 'wrong' : 'password' };
 }
 
-/** `secrets`: passwords for protected packs by path (as given); a pack opened once stays open for this process. */
-export async function describeSources(ctx: CoreContext, paths: string[], count = true, secrets?: Record<string, string>): Promise<SourceInfo[]> {
+/** The mapping fields of a SourceInfo; outside every root also the other places the source could take. */
+function placeInfo(abs: string, isDir: boolean, m: SourceMapping): Pick<SourceInfo, 'rel' | 'root' | 'outsideRoots' | 'base' | 'full' | 'places'> {
+  if (!m.outside) return { rel: m.rel, root: m.root, outsideRoots: false };
+  return { rel: m.rel, outsideRoots: true, base: m.base, full: m.full, places: outsidePlaces(abs, isDir) };
+}
+
+/** What the review says about a source outside every root: where it is going to land. */
+function outsideWarning(shown: string, m: SourceMapping): string {
+  if (m.full) return t('{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.', { path: shown, rel: m.rel });
+  if (!m.rel) return t('{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.', { path: shown });
+  return t('{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.', { path: shown, rel: m.rel });
+}
+
+/**
+ * `secrets`: passwords for protected packs by path (as given); a pack opened once stays open for this process.
+ * `rels`: target paths picked by hand, by path (as given).
+ */
+export async function describeSources(ctx: CoreContext, paths: string[], count = true, secrets?: Record<string, string>, rels?: Record<string, string>): Promise<SourceInfo[]> {
+  const outside = ctx.config.copy.outsideRoots ?? 'own';
   return mapLimit(paths, 8, async (p) => {
     const abs = normalizeAbs(p);
-    const m = mapToRel(abs, ctx.localRoots);
+    let m = mapSource(abs, ctx.localRoots, false, outside, rels?.[p]);
     try {
       const st = await fsp.stat(abs);
+      m = mapSource(abs, ctx.localRoots, st.isDirectory(), outside, rels?.[p]);
       if (!st.isDirectory() && isPackFile(abs)) {
         try {
           const idx = await readPackIndex(abs, secrets?.[p] ?? secrets?.[abs]);
@@ -129,9 +147,9 @@ export async function describeSources(ctx: CoreContext, paths: string[], count =
       }
       if (st.isDirectory() && count) {
         const c = await countTree(abs);
-        return { path: abs, exists: true, isDir: true, size: c.bytes, fileCount: c.files, fileCountCapped: c.capped, mtimeMs: st.mtimeMs, rel: m.rel, root: m.root, outsideRoots: m.outside };
+        return { path: abs, exists: true, isDir: true, size: c.bytes, fileCount: c.files, fileCountCapped: c.capped, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m) };
       }
-      return { path: abs, exists: true, isDir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtimeMs: st.mtimeMs, rel: m.rel, root: m.root, outsideRoots: m.outside };
+      return { path: abs, exists: true, isDir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, st.isDirectory(), m) };
     } catch (e) {
       return { path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside, error: errMessage(e) };
     }
@@ -143,6 +161,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
   const warnings: string[] = [];
   const sources: SourceInfo[] = [];
   const gitGroups = new Map<string, { repo: string; rev: string; items: { i: number; path: string }[] }>();
+  const outside = ctx.config.copy.outsideRoots ?? 'own';
 
   for (let i = 0; i < req.sources.length; i++) {
     cancel.throwIfCancelled();
@@ -154,7 +173,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
       continue;
     }
     const abs = normalizeAbs(s.path);
-    const m = mapToRel(abs, ctx.localRoots);
+    let m = mapSource(abs, ctx.localRoots, false, outside, s.rel);
     if (s.kind === 'delete') {
       units.push({ kind: 'delete', sourceIndex: i, rel: m.rel, abs });
       sources.push({ path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside });
@@ -197,9 +216,9 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
       sources.push({ path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside, error: errMessage(e) });
       continue;
     }
-    if (!m.rel) {
-      warnings.push(t('{path} yerel kökün kendisi: kökün tamamı gönderilecek.', { path: abs }));
-    }
+    m = mapSource(abs, ctx.localRoots, st.isDirectory(), outside, s.rel);
+    if (m.outside) warnings.push(outsideWarning(abs, m));
+    else if (!m.rel) warnings.push(t('{path} yerel kökün kendisi: kökün tamamı gönderilecek.', { path: abs }));
     if (st.isDirectory()) {
       progress({ message: t('Kaynak taranıyor: {path}', { path: abs }) });
       const local = new FsTransport(abs);
@@ -214,12 +233,11 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
         size += e.size;
         files++;
       }
-      sources.push({ path: abs, exists: true, isDir: true, size, fileCount: files, mtimeMs: st.mtimeMs, rel: m.rel, root: m.root, outsideRoots: m.outside });
+      sources.push({ path: abs, exists: true, isDir: true, size, fileCount: files, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m) });
     } else {
       units.push({ kind: 'file', sourceIndex: i, rel: m.rel, abs, size: st.size, mtimeMs: Math.floor(st.mtimeMs) });
-      sources.push({ path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, rel: m.rel, root: m.root, outsideRoots: m.outside });
+      sources.push({ path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, false, m) });
     }
-    if (m.outside) warnings.push(t('{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.', { path: abs, rel: m.rel }));
   }
 
   for (const g of gitGroups.values()) {
@@ -228,7 +246,9 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
     const at = Number((await gitText(g.repo, ['show', '-s', '--format=%ct', g.rev]).catch(() => '0')).trim()) * 1000;
     for (const it of g.items) {
       const abs = normalizeAbs(`${g.repo}/${it.path}`);
-      const m = mapToRel(abs, ctx.localRoots);
+      // a repository outside every root stands for the target root itself (the old way: the full path)
+      const r = mapToRel(abs, ctx.localRoots);
+      const m: SourceMapping = !r.outside ? r : outside === 'fullPath' ? { ...r, full: true } : { rel: relJoin(toPosix(it.path)), outside: true, base: normalizeAbs(g.repo) };
       const b = info.get(it.path);
       if (!b) {
         units.push({ kind: 'delete', sourceIndex: it.i, rel: m.rel, abs });
@@ -244,7 +264,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
         units.push({ kind: 'git', sourceIndex: it.i, rel: m.rel, repo: g.repo, rev: g.rev, path: it.path, blob: b.blob, size: b.size, mtimeMs: at || Date.now() });
       }
       sources.push({ path: abs, exists: true, isDir: false, size: b.size, mtimeMs: at, rel: m.rel, root: m.root, outsideRoots: m.outside });
-      if (m.outside) warnings.push(t('{path} hiçbir yerel kökün altında değil; tam yoluyla ({rel}) gönderilecek.', { path: it.path, rel: m.rel }));
+      if (m.outside) warnings.push(outsideWarning(it.path, m));
     }
   }
 

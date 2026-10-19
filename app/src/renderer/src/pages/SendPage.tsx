@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
+import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
 import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
-import type { SendMode, CompareMethod, QuickSend, SyncSchedule } from '@shared/types';
+import type { SendMode, CompareMethod, QuickSend, SyncSchedule, SourcePlace } from '@shared/types';
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
@@ -36,10 +36,19 @@ export function compareOptions() {
   return COMPARE_OPTIONS.map((o) => ({ ...o, label: t(o.label), tip: t(o.tip) }));
 }
 
+/** How the Send page names a place a source outside every local root can take on the targets. */
+function placeLabel(p: SourcePlace, isDir: boolean): string {
+  const where = p.rel ? `${p.rel}${isDir ? '/' : ''}` : t('(içeriği doğrudan hedef köküne)');
+  return p.full ? t('{path} (tam yol)', { path: where }) : where;
+}
+
 export function SendPage() {
   const paths = useApp((s) => s.sendPaths);
   const infos = useApp((s) => s.sendInfos);
   const add = useApp((s) => s.addSendPaths);
+  const setRel = useApp((s) => s.setSendRel);
+  const addRoot = useApp((s) => s.addLocalRoot);
+  const sendSources = useApp((s) => s.sendSources);
   const remove = useApp((s) => s.removeSendPath);
   const clear = useApp((s) => s.clearSendPaths);
   const targets = useApp((s) => s.targets);
@@ -70,7 +79,7 @@ export function SendPage() {
   const dirs = infos.filter((i) => i.isDir).length;
   const missing = infos.filter((i) => !i.exists).length;
 
-  const review = () => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
+  const review = () => startPlan({ sources: sendSources(), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
   // Ctrl Enter from the app shell
   useEffect(() => {
     const h = () => {
@@ -189,7 +198,7 @@ export function SendPage() {
                             </span>
                           )}
                           {i.pack ? null : i.outsideRoots ? (
-                            <span className="badge amber" data-tip={t('Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur')}>
+                            <span className="badge amber" data-tip={t('Hiçbir yerel kökün altında değil.\nHedeflerde nereye gideceğini alttaki listeden seçin.')}>
                               {t('kök dışı')}
                             </span>
                           ) : (
@@ -200,13 +209,37 @@ export function SendPage() {
                             )
                           )}
                         </div>
-                        <div className="row faint mono" style={{ fontSize: 11.5, gap: 6 }}>
-                          <ArrowRight size={11} style={{ flex: 'none' }} />
-                          <span className="ellipsis selectable" title={i.path}>
-                            {i.rel || t('(kökün kendisi)')}
-                            {i.isDir ? '/' : ''}
-                          </span>
-                        </div>
+                        {i.outsideRoots && !i.pack && i.places?.length ? (
+                          <div className="row faint mono" style={{ fontSize: 11.5, gap: 6, minWidth: 0 }}>
+                            <ArrowRight size={11} style={{ flex: 'none' }} />
+                            <select
+                              className="select sm mono place-select"
+                              aria-label={t('{name}: hedeflerde nereye gitsin', { name: baseName(i.path) })}
+                              title={i.base ? t('Hedef kökünün yerine geçen klasör: {path}', { path: i.base }) : t('Sürücü harfiyle birlikte tam yol')}
+                              value={String(Math.max(0, i.places.findIndex((p) => p.rel === i.rel && !!p.full === !!i.full)))}
+                              onChange={(e) => void setRel(i.path, i.places![Number(e.target.value)].rel)}
+                            >
+                              {i.places.map((p, n) => (
+                                <option key={n} value={String(n)}>
+                                  {placeLabel(p, i.isDir)}
+                                </option>
+                              ))}
+                            </select>
+                            {i.base && (
+                              <Button size="sm" variant="ghost" icon={<FolderInput size={13} />} onClick={() => void addRoot(i.base!)} tip={t('{path} klasörünü bu makinenin yerel köklerine ekler:\niçindekiler bundan sonra her yerde bu yolla eşlenir', { path: i.base })}>
+                                {t('Yerel kök yap')}
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="row faint mono" style={{ fontSize: 11.5, gap: 6 }}>
+                            <ArrowRight size={11} style={{ flex: 'none' }} />
+                            <span className="ellipsis selectable" title={i.path}>
+                              {i.rel || t('(kökün kendisi)')}
+                              {i.isDir ? '/' : ''}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       {i.locked && (
                         <Button size="sm" icon={<KeyRound size={13} />} onClick={() => setUnlock(i.path)}>
@@ -268,7 +301,7 @@ export function SendPage() {
           </Button>
           {packDialog && <PackWriteDialog onClose={() => setPackDialog(false)} onWrite={(pw) => void writePack(pw)} />}
           {unlock && <PackUnlockDialog path={unlock} onClose={() => setUnlock(null)} />}
-          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: paths.map((p) => ({ kind: 'fs', path: p })), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
+          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: sendSources(), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
             {t('Deneme')}
           </Button>
           <Button size="lg" variant="primary" icon={<Send size={15} />} disabled={!paths.length || !targets.length} onClick={review}>

@@ -36,7 +36,6 @@ const d: Dict = {
   '…ya da tam yolu yapıştırın ve Enter’a basın': '…or paste a full path and press Enter',
   '{n} öğe bulunamadı; gönderimde atlanacak.': pl('{n} item was not found; it will be skipped when sending.', '{n} items were not found; they will be skipped when sending.'),
   bulunamadı: 'not found',
-  'Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur': 'Not under any local root:\nthe full path is kept, drive letter included',
   'kök dışı': 'outside roots',
   'Yerel kök: {path}': 'Local root: {path}',
   '(kökün kendisi)': '(the root itself)',
@@ -400,6 +399,14 @@ const d: Dict = {
   'Alt ağdaki makineleri bulur; bulunanlar tek tıkla hedef olur': 'Finds the machines on the subnet; one click turns one into a target',
   'Üç adım: bu makine, ağda bulunan makineler, kaydet. Birkaç dakikada ilk gönderime hazır.': 'Three steps: this machine, the machines found on the network, save. Ready for the first send in minutes.',
   'Elle ekle': 'Add by hand',
+  '(içeriği doğrudan hedef köküne)': '(its content straight into the target root)',
+  '{path} (tam yol)': '{path} (full path)',
+  'Hiçbir yerel kökün altında değil.\nHedeflerde nereye gideceğini alttaki listeden seçin.': 'Not under any local root.\nPick in the list below where it goes on the targets.',
+  '{name}: hedeflerde nereye gitsin': '{name}: where it goes on the targets',
+  'Hedef kökünün yerine geçen klasör: {path}': 'Folder that stands for the target root: {path}',
+  'Sürücü harfiyle birlikte tam yol': 'Full path, drive letter included',
+  '{path} klasörünü bu makinenin yerel köklerine ekler:\niçindekiler bundan sonra her yerde bu yolla eşlenir': 'Adds {path} to this machine\'s local roots:\nfrom then on what is inside maps this way everywhere',
+  'Yerel kök yap': 'Make local root',
 };
 
 export default d;

@@ -59,7 +59,8 @@ import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
 import { transportForNode, transportForEndpoint, nodeRootLabel, type Transport } from './transport';
-import { mapToRel, normalizeAbs, pathKey } from './paths';
+import { mapSource, normalizeAbs, pathKey } from './paths';
+import { fsSources } from '../shared/sources';
 import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } from './sync';
@@ -556,12 +557,13 @@ export class Service implements Api {
     return results;
   }
 
-  async describeSources(paths: string[], count = true, secrets?: Record<string, string>) {
-    return describeSources(this.ctx(), paths, count, secrets);
+  async describeSources(paths: string[], count = true, secrets?: Record<string, string>, rels?: Record<string, string>) {
+    return describeSources(this.ctx(), paths, count, secrets, rels);
   }
 
   async mapPath(abs: string) {
-    return mapToRel(abs, this.ctx().localRoots);
+    const isDir = !!(await fsp.stat(abs).catch(() => null))?.isDirectory();
+    return mapSource(abs, this.ctx().localRoots, isDir, this.config.copy.outsideRoots);
   }
 
   // ------------------------------------------------------------ send
@@ -750,8 +752,11 @@ export class Service implements Api {
     const opts = { ...req.options, ...(overrides.dryRun != null ? { dryRun: overrides.dryRun } : {}) };
     const label = req.label || (req.origin === 'git' ? t('Git gönderimi') : t('Gönderim'));
     const last = plan.sources[plan.sources.length - 1];
+    const shown = plan.sources.slice(0, 200);
+    const outside = shown.filter((x) => x.outsideRoots && !x.pack);
     const s = this.execSettings(label, req.origin, opts, {
-      sources: plan.sources.map((x) => x.path).slice(0, 200),
+      sources: shown.map((x) => x.path),
+      sourceRels: outside.length ? Object.fromEntries(outside.map((x) => [x.path, x.rel])) : undefined,
       postSource: last ? { path: last.path, rel: last.rel } : undefined,
       targetIds: plan.targets.map((tp) => tp.targetId),
     });
@@ -1046,7 +1051,7 @@ export class Service implements Api {
   /** A saved send run without the window (its schedule): planned and sent as it is; null when nothing differs. */
   private async runQuick(q: QuickSend, label: string): Promise<RunHandle | null> {
     const options: SendOptions = { ...baseSendOptions(this.config.copy, this.settings.sendDefaults), ...(q.options ?? {}), dryRun: false, notify: false };
-    const req: SendRequest = { sources: q.paths.map((p) => ({ kind: 'fs', path: p })), targetIds: q.targetIds, options, origin: 'send', label };
+    const req: SendRequest = { sources: fsSources(q.paths, q.rels), targetIds: q.targetIds, options, origin: 'send', label };
     const scans: PlanScans = new Map();
     const plan = await buildSendPlan(this.ctx(), req, { scans });
     this.plans.set(plan.id, plan);

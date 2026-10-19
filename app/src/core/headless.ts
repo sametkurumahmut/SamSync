@@ -19,7 +19,7 @@ import { buildSendPlan } from './plan';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun } from './sync';
 import { startRun } from './executor';
 import { History, pruneReports } from './history';
-import { joinRoot, mapToRel, normalizeAbs, relIsWithin } from './paths';
+import { joinRoot, mapSource, normalizeAbs, relIsWithin } from './paths';
 import { nodeRootLabel } from './transport';
 import { errMessage } from './util';
 import { baseSendOptions, targetOptions } from '../shared/options';
@@ -242,7 +242,7 @@ export async function runHeadless(
 
   if (req.mode === 'plan') {
     const rows = paths.flatMap((p) => {
-      const m = mapToRel(p, ctx.localRoots);
+      const m = mapSource(p, ctx.localRoots, fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() ?? false, ctx.config.copy.outsideRoots);
       return to.nodes.map((n) => ({
         Source: p,
         LocalRoot: m.outside ? t('(kök dışı)') : m.root ?? '',

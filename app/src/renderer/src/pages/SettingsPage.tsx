@@ -294,6 +294,12 @@ export function SettingsPage() {
             <div style={{ marginTop: 6 }}>
               <ToggleRow title={t('Yazdıktan sonra doğrula')} desc={t('İçerik özetini karşılaştırır (daha yavaş)')} on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
               <ToggleRow title={t('1 saatlik yaz saati farkını yok say')} desc={t('Saat dilimi kaymış dosyaları aynı sayar')} on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />
+              <ToggleRow
+                title={t('Kök dışı kaynakları tam yoluyla gönder')}
+                desc={t('Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.')}
+                on={copy.outsideRoots === 'fullPath'}
+                onChange={(v) => setCopy({ ...copy, outsideRoots: v ? 'fullPath' : 'own' })}
+              />
             </div>
             <div className="form-grid" style={{ marginTop: 8 }}>
               <Field label={t('Varsayılan hariç dosyalar')}>

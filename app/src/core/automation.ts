@@ -8,7 +8,7 @@ import { DEFAULT_GIT_EVENTS, ReflogWatcher, changedFiles, underWatched, type Hea
 import type { RunHandle } from './executor';
 import { buildSendPlan } from './plan';
 import { makeFilter, ancestorExcluded, type PathFilter } from './filter';
-import { isUnder, normalizeAbs, toPosix } from './paths';
+import { isUnder, mapSource, normalizeAbs, pathKey, relJoin, toPosix } from './paths';
 import { errMessage, newId } from './util';
 import { t } from '../shared/i18n';
 import { RELAY_FOLDER } from '../shared/relay';
@@ -110,6 +110,8 @@ export class ChangeCollector {
  * deletions (only when deletions are propagated). Paths under an excluded folder or name are dropped.
  * A folder that only reported a content change (Windows does that when a child changes) is skipped:
  * its children arrive as their own events, and sending the whole folder would widen the send.
+ * `rootRel`: where a watched path goes on the targets when the local roots do not decide it (a path outside
+ * every root, or one placed by hand); what changed below it follows it there.
  */
 export async function changesToSources(
   changed: string[],
@@ -117,6 +119,7 @@ export async function changesToSources(
   filter: PathFilter,
   propagateDeletes: boolean,
   contentOnly: Set<string> = new Set(),
+  rootRel?: (root: string) => string | undefined,
 ): Promise<SourceSpec[]> {
   const out: SourceSpec[] = [];
   const seen = new Set<string>();
@@ -125,15 +128,20 @@ export async function changesToSources(
     if (seen.has(key)) continue;
     seen.add(key);
     const root = roots.find((r) => isUnder(abs, r));
+    let target: string | undefined;
     if (root) {
-      const base = fs.existsSync(root) && fs.statSync(root).isDirectory() ? root : path.dirname(root);
+      const rootIsDir = fs.existsSync(root) && fs.statSync(root).isDirectory();
+      const base = rootIsDir ? root : path.dirname(root);
       const rel = toPosix(path.relative(base, abs));
       if (rel && (ancestorExcluded(filter, rel) || !filter.file(rel))) continue;
+      const placed = rootRel?.(root);
+      if (placed !== undefined) target = rootIsDir ? relJoin(placed, rel) : placed;
     }
     const st = await fsp.stat(abs).catch(() => null);
     if (st?.isDirectory() && contentOnly.has(abs)) continue;
-    if (st) out.push({ kind: 'fs', path: abs });
-    else if (propagateDeletes) out.push({ kind: 'delete', path: abs });
+    const at = target !== undefined ? { rel: target } : {};
+    if (st) out.push({ kind: 'fs', path: abs, ...at });
+    else if (propagateDeletes) out.push({ kind: 'delete', path: abs, ...at });
   }
   // a folder covers what is inside it
   const dirs = out.filter((s) => s.kind === 'fs' && fs.existsSync(s.path) && fs.statSync(s.path).isDirectory()).map((s) => s.path);
@@ -195,6 +203,14 @@ class WatchRunner {
 
   private roots(): string[] {
     return this.cfg.paths.map(normalizeAbs);
+  }
+
+  /** Where a watched path goes on the machines when the local roots do not decide it: picked by hand, or outside every root. */
+  private rootRel(ctx: CoreContext, root: string): string | undefined {
+    const given = Object.entries(this.cfg.rels ?? {}).find(([p]) => pathKey(p) === pathKey(root))?.[1];
+    const isDir = fs.statSync(root, { throwIfNoEntry: false })?.isDirectory() ?? true;
+    const m = mapSource(root, ctx.localRoots, isDir, ctx.config.copy.outsideRoots, given);
+    return m.outside || given !== undefined ? m.rel : undefined;
   }
 
   /** Every destination: machines from the configuration and the plain folders. */
@@ -331,7 +347,7 @@ class WatchRunner {
     const ctx = this.host.ctx();
     const settings = this.host.settings();
     const roots = this.roots();
-    const sources = await changesToSources(changed, roots, this.filter(), !full && this.cfg.options.propagateDeletes, contentOnly);
+    const sources = await changesToSources(changed, roots, this.filter(), !full && this.cfg.options.propagateDeletes, contentOnly, (r) => this.rootRel(ctx, r));
     if (!sources.length) {
       if (!full) return;
       this.state.lastRunAt = Date.now();
@@ -364,7 +380,9 @@ class WatchRunner {
         // a plain folder receives each watched folder's content, relative to that folder
         const local = roots.map((r) => (fs.existsSync(r) && fs.statSync(r).isFile() ? path.dirname(r) : r));
         const fctx: CoreContext = { ...ctx, localRoots: local, config: { ...ctx.config, nodes: [...ctx.config.nodes, ...nodes] } };
-        plans.push({ plan: await buildSendPlan(fctx, { sources, targetIds: nodes.map((n) => n.id), options, origin: 'send', label }), nodes });
+        // the places picked for the machines do not apply here
+        const plain = sources.map((s) => (s.kind === 'git' ? s : { kind: s.kind, path: s.path }));
+        plans.push({ plan: await buildSendPlan(fctx, { sources: plain, targetIds: nodes.map((n) => n.id), options, origin: 'send', label }), nodes });
       }
       const unreachable: string[] = [];
       for (const { plan } of plans) {

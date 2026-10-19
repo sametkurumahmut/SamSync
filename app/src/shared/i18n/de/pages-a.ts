@@ -36,7 +36,6 @@ const d: Dict = {
   '…ya da tam yolu yapıştırın ve Enter’a basın': '…oder den vollständigen Pfad einfügen und Enter drücken',
   '{n} öğe bulunamadı; gönderimde atlanacak.': pl('{n} Element wurde nicht gefunden; es wird beim Senden übersprungen.', '{n} Elemente wurden nicht gefunden; sie werden beim Senden übersprungen.'),
   bulunamadı: 'nicht gefunden',
-  'Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur': 'Nicht unter einem lokalen Stamm:\nder vollständige Pfad bleibt erhalten, samt Laufwerksbuchstabe',
   'kök dışı': 'außerhalb der Stämme',
   'Yerel kök: {path}': 'Lokaler Stamm: {path}',
   '(kökün kendisi)': '(der Stamm selbst)',
@@ -400,6 +399,14 @@ const d: Dict = {
   'Alt ağdaki makineleri bulur; bulunanlar tek tıkla hedef olur': 'Findet die Rechner im Subnetz; ein Klick macht einen gefundenen zum Ziel',
   'Üç adım: bu makine, ağda bulunan makineler, kaydet. Birkaç dakikada ilk gönderime hazır.': 'Drei Schritte: dieser Rechner, die im Netzwerk gefundenen Rechner, speichern. In wenigen Minuten bereit für die erste Übertragung.',
   'Elle ekle': 'Manuell hinzufügen',
+  '(içeriği doğrudan hedef köküne)': '(der Inhalt direkt in den Zielstamm)',
+  '{path} (tam yol)': '{path} (voller Pfad)',
+  'Hiçbir yerel kökün altında değil.\nHedeflerde nereye gideceğini alttaki listeden seçin.': 'Liegt unter keinem lokalen Stamm.\nWählen Sie in der Liste darunter, wohin es auf den Zielen kommt.',
+  '{name}: hedeflerde nereye gitsin': '{name}: wohin es auf den Zielen kommt',
+  'Hedef kökünün yerine geçen klasör: {path}': 'Ordner, der für den Zielstamm steht: {path}',
+  'Sürücü harfiyle birlikte tam yol': 'Voller Pfad samt Laufwerksbuchstaben',
+  '{path} klasörünü bu makinenin yerel köklerine ekler:\niçindekiler bundan sonra her yerde bu yolla eşlenir': 'Fügt {path} den lokalen Stämmen dieses Rechners hinzu:\nsein Inhalt wird danach überall so zugeordnet',
+  'Yerel kök yap': 'Zum lokalen Stamm machen',
 };
 
 export default d;

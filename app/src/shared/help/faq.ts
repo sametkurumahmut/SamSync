@@ -61,10 +61,10 @@ export const FAQ: FaqEntry[] = [
     topic: 'start',
     q: { tr: 'Dosya hedefte nereye yazılır? Göreli yol nedir?', en: 'Where does a file land on the target? What is the relative path?' },
     a: {
-      tr: 'Her makinenin **yerel kökleri** vardır (Hedefler › makine kartı). Kaynak bu köklerden birinin altındaysa kökten sonrası göreli yoldur ve hedefte de hedefin kökünün altına aynı yolla yazılır. Kaynak hiçbir kökün altında değilse "kök dışı" rozeti çıkar ve sürücü harfiyle birlikte tam yol korunur (`C/Projeler/x.txt` gibi).',
-      en: 'Every machine has **local roots** (Targets › machine card). When the source is below one of them, what follows the root is the relative path, and the target gets it below its own root. A source outside every root shows an "outside roots" badge and keeps its full path with the drive letter (`C/Projects/x.txt`).',
+      tr: 'Her makinenin **yerel kökleri** vardır (Hedefler › makine kartı). Kaynak bu köklerden birinin altındaysa kökten sonrası göreli yoldur ve hedefte de hedefin kökünün altına aynı yolla yazılır. Kaynak hiçbir kökün altında değilse "kök dışı" rozeti çıkar ve kendi klasörü hedef kökünün yerine geçer: klasörün içindekiler doğrudan hedef köküne, dosya da adıyla oraya gider. Gönder sayfasında kaynağın altındaki listeden üstteki bir klasörü kök yapabilir ya da sürücü harfiyle tam yolu (`C/Projeler/x.txt` gibi) seçebilirsiniz. **Yerel kök yap** klasörü bu makinenin yerel köklerine ekler. Ayarlar › Kopyalama › *Kök dışı kaynakları tam yoluyla gönder* eski davranışı varsayılan yapar.',
+      en: 'Every machine has **local roots** (Targets › machine card). When the source is below one of them, what follows the root is the relative path, and the target gets it below its own root. A source outside every root shows an "outside roots" badge, and its own folder stands for the target root: a folder\'s content goes straight into the target root, a file goes there by its name. On the Send page the list under the source makes a folder above it the root instead, or keeps the full path with the drive letter (`C/Projects/x.txt`). **Make local root** adds the folder to this machine\'s local roots. Settings › Copy › *Send sources outside the roots with their full path* makes the old way the default.',
     },
-    keywords: ['yerel kök', 'local root', 'kök dışı', 'path'],
+    keywords: ['yerel kök', 'local root', 'kök dışı', 'outside roots', 'hedef kökü', 'target root', 'tam yol', 'full path', 'path'],
     page: 'targets',
   },
   {

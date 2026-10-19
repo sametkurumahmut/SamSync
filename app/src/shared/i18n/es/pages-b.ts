@@ -510,6 +510,8 @@ const d: Dict = {
   'Çalıştırmalar': 'Ejecuciones',
   Lisans: 'Licencia',
   'Oturumu kapat': 'Cerrar sesión',
+  'Kök dışı kaynakları tam yoluyla gönder': 'Enviar con su ruta completa las fuentes fuera de las raíces',
+  'Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.': 'El comportamiento anterior: una carpeta que no está bajo ninguna raíz local llega a los destinos con su ruta completa, con la letra de unidad. Desactivado, la propia carpeta hace de raíz de destino; en la página Enviar también se puede elegir para cada fuente.',
 };
 
 export default d;

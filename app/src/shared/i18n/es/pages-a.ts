@@ -36,7 +36,6 @@ const d: Dict = {
   '…ya da tam yolu yapıştırın ve Enter’a basın': '…o pega la ruta completa y pulsa Enter',
   '{n} öğe bulunamadı; gönderimde atlanacak.': pl('No se encontró {n} elemento; se omitirá al enviar.', 'No se encontraron {n} elementos; se omitirán al enviar.'),
   bulunamadı: 'no encontrado',
-  'Hiçbir yerel kökün altında değil:\nsürücü harfiyle birlikte tam yolu korunur': 'No está bajo ninguna raíz local:\nse conserva la ruta completa, con la letra de unidad',
   'kök dışı': 'fuera de las raíces',
   'Yerel kök: {path}': 'Raíz local: {path}',
   '(kökün kendisi)': '(la propia raíz)',
@@ -400,6 +399,14 @@ const d: Dict = {
   'Alt ağdaki makineleri bulur; bulunanlar tek tıkla hedef olur': 'Encuentra los equipos de la subred; con un clic, cada uno pasa a ser un destino',
   'Üç adım: bu makine, ağda bulunan makineler, kaydet. Birkaç dakikada ilk gönderime hazır.': 'Tres pasos: este equipo, los equipos encontrados en la red y guardar. En pocos minutos estarás listo para el primer envío.',
   'Elle ekle': 'Añadir manualmente',
+  '(içeriği doğrudan hedef köküne)': '(su contenido directamente en la raíz de destino)',
+  '{path} (tam yol)': '{path} (ruta completa)',
+  'Hiçbir yerel kökün altında değil.\nHedeflerde nereye gideceğini alttaki listeden seçin.': 'No está bajo ninguna raíz local.\nElija en la lista de abajo adónde va en los destinos.',
+  '{name}: hedeflerde nereye gitsin': '{name}: adónde va en los destinos',
+  'Hedef kökünün yerine geçen klasör: {path}': 'Carpeta que hace de raíz de destino: {path}',
+  'Sürücü harfiyle birlikte tam yol': 'Ruta completa, con la letra de unidad',
+  '{path} klasörünü bu makinenin yerel köklerine ekler:\niçindekiler bundan sonra her yerde bu yolla eşlenir': 'Añade {path} a las raíces locales de esta máquina:\na partir de entonces su contenido se asigna así en todas partes',
+  'Yerel kök yap': 'Hacer raíz local',
 };
 
 export default d;
