@@ -356,6 +356,14 @@ const d: Dict = {
   'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'To add a local root, this computer has to be set up as a machine on the Targets page.',
   'Yerel kök eklendi': 'Local root added',
   '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} is now a local root of this machine; what is inside lands on the targets under the same relative path.',
+  'sırada': 'waiting',
+  'erişim deneniyor': 'checking access',
+  'hedefteki klasörler listeleniyor: {n} öğe': 'listing the folders on the target: {n} items',
+  '{done} / {total} dosya karşılaştırıldı': '{done} of {total} files compared',
+  '{size} içerik okundu': '{size} of content read',
+  bitti: 'done',
+  'Hedeflerin durumu': 'State of the targets',
+  'Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır': 'This machine itself: the files are written straight to its local root on its own disk, not over the network share',
 };
 
 export default d;

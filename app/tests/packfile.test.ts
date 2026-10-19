@@ -123,9 +123,18 @@ describe('pack files', () => {
     expect(d.status).toBe('ok');
     expect(read(path.join(here, 'Release', 'a.txt'))).toBe('A');
 
-    // a folder as a source still never targets this machine
-    const plan2 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(src, 'Release') }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
+    // a folder below this machine's own root never targets it: it would be copied onto itself
+    await write(path.join(here, 'Mine', 'm.txt'), 'm');
+    const plan2 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(here, 'Mine') }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
     expect(plan2.targets).toHaveLength(0);
+    expect(plan2.warnings.some((w) => /kendisi hedef listesinden|itself was left out/.test(w))).toBe(true);
+    // nor does one that holds the root
+    const plan3 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: base }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
+    expect(plan3.targets).toHaveLength(0);
+    // a folder from outside every root (a release on another disk) may: its content lands in the root
+    const plan4 = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: path.join(src, 'Release') }], targetIds: ['PC1'], options: defaultOptions, origin: 'send' });
+    expect(plan4.targets.map((x) => x.targetId)).toEqual(['PC1']);
+    expect(plan4.targets[0].ops.filter((o) => o.kind === 'copy').map((o) => o.rel)).toEqual(['a.txt']);
   });
 
   it('keeps a password-protected pack closed without its password and applies it with it', async () => {

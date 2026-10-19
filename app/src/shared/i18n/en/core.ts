@@ -123,7 +123,6 @@ const d: Dict = {
   'Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).': 'This machine itself was left out of the targets (source and target would be the same).',
   'Gönderilecek etkin hedef yok.': 'No enabled target to send to.',
   'Hedefler inceleniyor': 'Reviewing targets',
-  '{name} incelendi': '{name} reviewed',
   '{name}: hedefte {free} boş alan var, {size} yazılacak.': '{name}: the target has {free} free, {size} will be written.',
   'Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.': pl(
     'Mirror mode: {n} extra item in total will be deleted on the targets.',
@@ -363,6 +362,7 @@ const d: Dict = {
   'Geçersiz hedef yolu: {rel}': 'Invalid target path: {rel}',
   '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} is not under any local root; its content will be written straight into the root of the targets.',
   '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} is not under any local root; it will be written to {rel} on the targets.',
+  '{done} / {total} makine incelendi': '{done} of {total} machines reviewed',
 };
 
 export default d;

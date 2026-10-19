@@ -123,7 +123,6 @@ const d: Dict = {
   'Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).': 'Este equipo se excluyó de los destinos (origen y destino serían el mismo).',
   'Gönderilecek etkin hedef yok.': 'No hay ningún destino activo al que enviar.',
   'Hedefler inceleniyor': 'Revisando destinos',
-  '{name} incelendi': '{name} revisado',
   '{name}: hedefte {free} boş alan var, {size} yazılacak.': '{name}: el destino tiene {free} libres y se escribirán {size}.',
   'Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.': pl(
     'Modo espejo: se eliminará {n} elemento sobrante en total en los destinos.',
@@ -363,6 +362,7 @@ const d: Dict = {
   'Geçersiz hedef yolu: {rel}': 'Ruta de destino no válida: {rel}',
   '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} no está bajo ninguna raíz local; su contenido se escribirá directamente en la raíz de los destinos.',
   '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} no está bajo ninguna raíz local; se escribirá en {rel} en los destinos.',
+  '{done} / {total} makine incelendi': '{done} de {total} máquinas revisadas',
 };
 
 export default d;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical } from 'lucide-react';
-import type { PlanCategory, PlanOp, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
+import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
@@ -43,14 +43,35 @@ const FILTERS: { id: Filter; label: string; match: (o: PlanOp) => boolean }[] = 
   { id: 'remove', label: tk('Fazla / silinecek'), match: (o) => o.category === 'extra' || o.category === 'deleted' },
 ];
 
+/** What one target is doing while the review is prepared, in a few words. */
+function targetStep(x: PlanTargetProgress): string {
+  switch (x.phase) {
+    case 'wait':
+      return t('sırada');
+    case 'probe':
+      return t('erişim deneniyor');
+    case 'scan':
+      return t('hedefteki klasörler listeleniyor: {n} öğe', { n: num(x.listed ?? 0) });
+    case 'compare': {
+      const files = t('{done} / {total} dosya karşılaştırıldı', { done: num(Math.min(x.done, x.total)), total: num(x.total) });
+      return x.read ? `${files} • ${t('{size} içerik okundu', { size: bytes(x.read) })}` : files;
+    }
+    case 'done':
+      return x.read ? `${t('bitti')} • ${t('{size} içerik okundu', { size: bytes(x.read) })}` : t('bitti');
+    case 'failed':
+      return t('erişilemedi');
+  }
+}
+
 export function PlanningOverlay() {
   const planning = useApp((s) => s.planning);
   const cancel = useApp((s) => s.cancelPlan);
   if (!planning) return null;
   const pct = planning.total ? ((planning.done ?? 0) / planning.total) * 100 : 0;
+  const targets = planning.targets ?? [];
   return (
     <div className="scrim">
-      <div className="modal" style={{ width: 420 }}>
+      <div className="modal" style={{ width: targets.length ? 520 : 420 }}>
         <div className="modal-body" style={{ padding: 24 }}>
           <div className="row" style={{ gap: 14, marginBottom: 16 }}>
             <div className="icon-tile accent lg">
@@ -64,6 +85,20 @@ export function PlanningOverlay() {
             </div>
           </div>
           <Progress value={pct} indeterminate={!planning.total} />
+          {targets.length > 0 && (
+            <div className="plan-progress" role="list" aria-label={t('Hedeflerin durumu')}>
+              {targets.map((x) => {
+                const share = x.phase === 'done' || x.phase === 'failed' ? 100 : x.total ? Math.min(100, (x.done / x.total) * 100) : 0;
+                return (
+                  <div key={x.id} role="listitem" className={cls('plan-progress-row', x.phase === 'failed' && 'failed', x.phase === 'done' && 'done')}>
+                    <span className="name ellipsis">{x.name}</span>
+                    <span className="step ellipsis">{targetStep(x)}</span>
+                    <span className="pct tabular">{Math.floor(share)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="row" style={{ marginTop: 14 }}>
             <span className="faint" style={{ fontSize: 12 }}>
               {t('Hedeflere hiçbir şey yazılmaz.')}
@@ -401,6 +436,11 @@ function TargetOps({
         <div className="col" style={{ gap: 2, minWidth: 0 }}>
           <div className="row" style={{ gap: 8 }}>
             <b style={{ fontSize: 14 }}>{plan.targetName}</b>
+            {plan.self && (
+              <span className="badge accent" data-tip={t('Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır')}>
+                {t('bu makine')}
+              </span>
+            )}
             <span className="faint">{t('{n} değişiklik', { n: num(plan.ops.length) })}</span>
             {plan.counts.same > 0 && <span className="badge">{t('{n} aynı', { n: num(plan.counts.same) })}</span>}
             {plan.fromManifest && (
@@ -426,7 +466,10 @@ function TargetOps({
             )}
           </div>
           <div className="row faint mono" style={{ fontSize: 11.5 }}>
-            <HardDrive size={12} /> <span className="ellipsis selectable">{plan.root}</span>
+            <HardDrive size={12} />{' '}
+            <span className="ellipsis selectable" title={plan.root}>
+              {plan.root}
+            </span>
             {plan.freeBytes != null && <span className="nowrap">• {t('{size} boş', { size: bytes(plan.freeBytes) })}</span>}
           </div>
         </div>

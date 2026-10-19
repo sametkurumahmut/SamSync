@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import type { CategoryCounts, NodeConfig, PackWriteResult, PlanCategory, PlanOp, SendPlan, SendRequest, SourceInfo, TargetPlan } from '../shared/types';
+import type { CategoryCounts, NodeConfig, PackWriteResult, PlanCategory, PlanOp, PlanTargetProgress, SendPlan, SendRequest, SourceInfo, TargetPlan } from '../shared/types';
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
 import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
-import { mapSource, mapToRel, normalizeAbs, outsidePlaces, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
+import { isUnder, mapSource, mapToRel, normalizeAbs, outsidePlaces, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
 import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
@@ -48,6 +48,29 @@ export interface PlanProgress {
   message: string;
   done?: number;
   total?: number;
+  /** While the targets are looked at: each one's progress. */
+  targets?: PlanTargetProgress[];
+}
+
+/** The source files a target gets compared against (folders count by the files in them). */
+function fileCount(units: Unit[]): number {
+  let n = 0;
+  for (const u of units) {
+    if (u.kind === 'dir' || u.kind === 'packdir') {
+      for (const e of u.entries.values()) if (!e.isDir) n++;
+    } else n++;
+  }
+  return n;
+}
+
+/**
+ * This machine may take the send itself when nothing comes from the folder it would write to: every source is a
+ * pack, or lies outside this machine's local roots (a release on a USB disk, say) and does not hold its first root.
+ */
+function selfTargetOk(ctx: CoreContext, req: SendRequest): boolean {
+  const own = ctx.localRoots[0];
+  if (!own || !req.sources.length) return false;
+  return req.sources.every((s) => s.kind === 'fs' && (isPackFile(s.path) || (mapToRel(s.path, ctx.localRoots).outside && !isUnder(own, s.path))));
 }
 
 /** The send's exclusions plus the patterns of the sent folders' ignore files; the ignore file itself is never sent. */
@@ -326,13 +349,18 @@ async function planTarget(
   cancel: CancelToken,
   warn: (message: string) => void,
   scans?: Map<string, Map<string, Entry>>,
+  /** Updated as the work goes on; the caller passes it on to the window. */
+  st: PlanTargetProgress = { id: node.id, name: node.name, phase: 'wait', done: 0, total: 0 },
 ): Promise<TargetPlan> {
   // this target's own mode and backup, when the send gives it exceptions
   const opt = targetOptions(req.options, node.id);
+  // this machine itself is written on its own disk, in its first local root, not over its own share
+  const isSelf = !!ctx.localNodeId && node.id === ctx.localNodeId && node.transport !== 'sftp' && !!ctx.localRoots[0];
   const base: TargetPlan = {
     targetId: node.id,
     targetName: node.name,
-    root: nodeRootLabel(ctx.config, node),
+    root: isSelf ? ctx.localRoots[0] : nodeRootLabel(ctx.config, node),
+    self: isSelf || undefined,
     mode: opt.mode,
     backup: opt.backup,
     reachable: true,
@@ -341,20 +369,25 @@ async function planTarget(
     bytes: 0,
   };
   // a machine the window saw reachable a moment ago is not asked again: one round trip less per send;
-  // this machine itself (a pack applied here) is its own disk, nothing to probe
+  // this machine itself is its own disk, nothing to probe
   const recent = ctx.recentProbe?.(node.id);
-  const isSelf = !!ctx.localNodeId && node.id === ctx.localNodeId && node.transport !== 'sftp' && !!ctx.localRoots[0];
   if (!isSelf && !(recent?.ok && Date.now() - recent.checkedAt < RECENT_PROBE_MS)) {
+    st.phase = 'probe';
     const probe = await probeNode(ctx.config, node, 1500, false);
-    if (!probe.ok) return { ...base, reachable: false, error: probe.detail };
+    if (!probe.ok) {
+      st.phase = 'failed';
+      return { ...base, reachable: false, error: probe.detail };
+    }
   }
 
   let tgt: Transport;
   try {
     tgt = await transportForNode(ctx, node);
   } catch (e) {
+    st.phase = 'failed';
     return { ...base, reachable: false, error: errMessage(e) };
   }
+  st.phase = 'compare';
   // asked now and read at the end: on a slow network it overlaps with the comparison below
   const freeSpace = tgt.freeSpace().catch(() => undefined);
   // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
@@ -371,16 +404,22 @@ async function planTarget(
     if (v === 'needsContent') {
       // hashes remembered from an earlier comparison or copy spare the read over the network
       const cache = ctx.hashCache;
-      if (!cache) return (await streamsEqual((await readSrc()) as any, await tgt.readStream(rel))) ? 'same' : 'changed';
+      if (!cache) {
+        const same = await streamsEqual((await readSrc()) as any, await tgt.readStream(rel));
+        st.read = (st.read ?? 0) + src.size + dst.size;
+        return same ? 'same' : 'changed';
+      }
       const dh = cache.get(tgt.root, rel, dst.size, dst.mtimeMs);
       const sh = cache.get('src', srcId, src.size, src.mtimeMs);
       if (dh && sh) return dh === sh ? 'same' : 'changed';
       if (dh) {
         const h = await hashStream((await readSrc()) as any);
+        st.read = (st.read ?? 0) + src.size;
         cache.set('src', srcId, src.size, src.mtimeMs, h);
         return h === dh ? 'same' : 'changed';
       }
       const [a, b] = await Promise.all([hashStream((await readSrc()) as any), hashStream(await tgt.readStream(rel))]);
+      st.read = (st.read ?? 0) + src.size + dst.size;
       cache.set('src', srcId, src.size, src.mtimeMs, a);
       cache.set(tgt.root, rel, dst.size, dst.mtimeMs, b);
       return a === b ? 'same' : 'changed';
@@ -394,92 +433,125 @@ async function planTarget(
       cancel.throwIfCancelled();
       if (u.kind === 'delete') {
         const dst = await tgt.stat(u.rel);
+        st.done++;
         if (!dst) return push(b, { kind: 'delete', rel: u.rel, isDir: false, category: 'same', size: 0, selected: false, sourceIndex: u.sourceIndex });
         push(b, { kind: 'delete', rel: u.rel, isDir: dst.isDir, category: 'deleted', size: dst.size, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: opt.propagateDeletes, sourceIndex: u.sourceIndex });
         return;
       }
       if (u.kind === 'file' || u.kind === 'git' || u.kind === 'packfile') {
-        const dst = await tgt.stat(u.rel);
-        const src = u.kind === 'file' ? ({ kind: 'fs', abs: u.abs } as const) : u.kind === 'git' ? ({ kind: 'git', repo: u.repo, rev: u.rev, path: u.path, blob: u.blob } as const) : packRef(u.file, u.member);
-        const common = { kind: 'copy' as const, rel: u.rel, isDir: false, src, size: u.size, srcMtime: u.mtimeMs, sourceIndex: u.sourceIndex };
-        if (!dst) return push(b, { ...common, category: 'new', selected: true });
-        if (dst.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: dst.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.') });
-        let cat: PlanCategory;
-        if (u.kind === 'git' || (u.kind === 'file' && u.blob)) {
-          // Commit content: the blob id tells equality exactly, time stamps mean nothing here.
-          if (dst.size !== u.size) cat = 'changed';
-          else cat = (await gitBlobId(await tgt.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
-        } else if (u.kind === 'packfile') {
-          cat = await classify(u, dst, async () => openPackEntry(u.file, u.member), u.rel, `${u.file}#${u.member.offset}`);
-        } else {
-          cat = await classify(u, dst, async () => fs.createReadStream(u.abs), u.rel, u.abs);
+        // counted once this file is decided, whichever way it goes
+        try {
+          await fileUnit(u);
+        } finally {
+          st.done++;
         }
-        return push(b, { ...common, category: cat, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
+        return;
       }
-      // folder
-      const dstRoot = await tgt.stat(u.rel);
-      if (dstRoot && !dstRoot.isDir) {
-        push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var; dosya kaldırılıp klasör oluşturulacak.') });
-      } else if (!dstRoot) {
-        push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
-      }
-      // older backup folders at the target root are neither compared, written to nor deleted (not even by a mirror)
-      const kept = !u.rel && dstRoot?.isDir ? await otherBackupRoots(tgt, ctx.config.copy.backupFolderName) : [];
-      const keptKeys = new Set(kept.map((k) => k.toLowerCase()));
-      const inKept = (rel: string) => keptKeys.has(rel.split('/')[0].toLowerCase());
-      if (kept.length && opt.mode === 'mirror') warn(t('{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.', { name: node.name, folders: kept.join(', ') }));
-      // the manifest first: what SamSync left here last time, checked against a sample of the folder
-      const unitFilter = withTopDirsExcluded(filter, kept);
-      // (not for a comparison, a send that asks for a full scan, or when the settings turned the manifest off)
-      const manifestDays = ctx.config.copy.manifestMaxDays ?? 7;
-      const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000).catch(() => null) : null;
-      if (manifest) {
-        fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
-        ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
-      }
-      const dstScan = manifest ? null : dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: unitFilter, cancel, caseInsensitive: true }) : null;
-      const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
-      scans?.set(u.rel, dstEntries);
-      // a folder on disk is read from there; a folder in a pack straight out of the pack
-      const local = u.kind === 'dir' ? new FsTransport(u.abs) : null;
-      const srcOf = (e: PackedEntry) => (local ? ({ kind: 'fs', abs: local.localPath(e.rel) } as const) : packRef((u as { file: string }).file, e.member!));
-      const readSrc = (e: PackedEntry) => (local ? local.readStream(e.rel) : Promise.resolve(openPackEntry((u as { file: string }).file, e.member!)));
-      const files: [string, PackedEntry][] = [];
-      for (const [key, e] of u.entries as Map<string, PackedEntry>) {
-        if (inKept(e.rel)) continue;
-        const rel = relJoin(u.rel, e.rel);
-        const d = dstEntries.get(key);
-        if (e.isDir) {
-          if (!d) push(b, { kind: 'mkdir', rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
-          else if (!d.isDir) push(b, { kind: 'mkdir', rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var.') });
-        } else files.push([key, e]);
-      }
-      await mapLimit(files, 8, async ([key, e]) => {
-        cancel.throwIfCancelled();
-        const rel = relJoin(u.rel, e.rel);
-        const d = dstEntries.get(key);
-        const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
-        if (!d) return push(b, { ...common, category: 'new', selected: true });
-        if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
-        const cat = await classify(e, d, () => readSrc(e), rel, local ? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
-        push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
-      });
-      // extras: on the target but not in the source
-      const extras = [...dstEntries.entries()].filter(([k]) => !u.entries.has(k)).map(([, e]) => e).sort((x, y) => x.rel.localeCompare(y.rel));
-      const removedDirs: string[] = [];
-      for (const e of extras) {
-        if (removedDirs.some((d) => relIsWithin(e.rel, d, true))) continue;
-        if (e.isDir) removedDirs.push(e.rel);
-        push(b, { kind: 'delete', rel: relJoin(u.rel, e.rel), isDir: e.isDir, category: 'extra', size: e.size, dstMtime: e.mtimeMs, dstSize: e.size, selected: opt.mode === 'mirror', sourceIndex: u.sourceIndex });
-      }
+      await dirUnit(u);
     });
   } catch (e) {
     await Promise.all([freeSpace, heartbeat, lock]);
     await tgt.close();
+    st.phase = 'failed';
     if (cancel.cancelled) throw e;
     return { ...base, reachable: false, failed: true, error: errMessage(e), counts: b.counts, ops: b.ops };
   }
 
+  async function fileUnit(u: Extract<Unit, { kind: 'file' | 'git' | 'packfile' }>): Promise<void> {
+    const dst = await tgt.stat(u.rel);
+    const src = u.kind === 'file' ? ({ kind: 'fs', abs: u.abs } as const) : u.kind === 'git' ? ({ kind: 'git', repo: u.repo, rev: u.rev, path: u.path, blob: u.blob } as const) : packRef(u.file, u.member);
+    const common = { kind: 'copy' as const, rel: u.rel, isDir: false, src, size: u.size, srcMtime: u.mtimeMs, sourceIndex: u.sourceIndex };
+    if (!dst) return push(b, { ...common, category: 'new', selected: true });
+    if (dst.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: dst.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.') });
+    let cat: PlanCategory;
+    if (u.kind === 'git' || (u.kind === 'file' && u.blob)) {
+      // Commit content: the blob id tells equality exactly, time stamps mean nothing here.
+      if (dst.size !== u.size) cat = 'changed';
+      else {
+        cat = (await gitBlobId(await tgt.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
+        st.read = (st.read ?? 0) + dst.size;
+      }
+    } else if (u.kind === 'packfile') {
+      cat = await classify(u, dst, async () => openPackEntry(u.file, u.member), u.rel, `${u.file}#${u.member.offset}`);
+    } else {
+      cat = await classify(u, dst, async () => fs.createReadStream(u.abs), u.rel, u.abs);
+    }
+    return push(b, { ...common, category: cat, dstMtime: dst.mtimeMs, dstSize: dst.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
+  }
+
+  async function dirUnit(u: Extract<Unit, { kind: 'dir' | 'packdir' }>): Promise<void> {
+    const dstRoot = await tgt.stat(u.rel);
+    if (dstRoot && !dstRoot.isDir) {
+      push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var; dosya kaldırılıp klasör oluşturulacak.') });
+    } else if (!dstRoot) {
+      push(b, { kind: 'mkdir', rel: u.rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
+    }
+    // older backup folders at the target root are neither compared, written to nor deleted (not even by a mirror)
+    const kept = !u.rel && dstRoot?.isDir ? await otherBackupRoots(tgt, ctx.config.copy.backupFolderName) : [];
+    const keptKeys = new Set(kept.map((k) => k.toLowerCase()));
+    const inKept = (rel: string) => keptKeys.has(rel.split('/')[0].toLowerCase());
+    if (kept.length && opt.mode === 'mirror') warn(t('{name}: {folders} yedek klasörü olarak tanındı; ayna kipinde silinmez.', { name: node.name, folders: kept.join(', ') }));
+    // the manifest first: what SamSync left here last time, checked against a sample of the folder
+    const unitFilter = withTopDirsExcluded(filter, kept);
+    // (not for a comparison, a send that asks for a full scan, or when the settings turned the manifest off)
+    const manifestDays = ctx.config.copy.manifestMaxDays ?? 7;
+    const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000).catch(() => null) : null;
+    if (manifest) {
+      fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
+      ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
+    }
+    let listed = 0;
+    const onListed = (n: number) => {
+      if (st.phase === 'compare') st.phase = 'scan';
+      st.listed = (st.listed ?? 0) + n - listed;
+      listed = n;
+    };
+    const dstScan = manifest ? null : dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: unitFilter, cancel, caseInsensitive: true, onProgress: onListed }) : null;
+    st.phase = 'compare';
+    const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
+    scans?.set(u.rel, dstEntries);
+    // a folder on disk is read from there; a folder in a pack straight out of the pack
+    const local = u.kind === 'dir' ? new FsTransport(u.abs) : null;
+    const srcOf = (e: PackedEntry) => (local ? ({ kind: 'fs', abs: local.localPath(e.rel) } as const) : packRef((u as { file: string }).file, e.member!));
+    const readSrc = (e: PackedEntry) => (local ? local.readStream(e.rel) : Promise.resolve(openPackEntry((u as { file: string }).file, e.member!)));
+    const files: [string, PackedEntry][] = [];
+    for (const [key, e] of u.entries as Map<string, PackedEntry>) {
+      if (inKept(e.rel)) {
+        if (!e.isDir) st.done++;
+        continue;
+      }
+      const rel = relJoin(u.rel, e.rel);
+      const d = dstEntries.get(key);
+      if (e.isDir) {
+        if (!d) push(b, { kind: 'mkdir', rel, isDir: true, category: 'new', size: 0, selected: true, sourceIndex: u.sourceIndex });
+        else if (!d.isDir) push(b, { kind: 'mkdir', rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var.') });
+      } else files.push([key, e]);
+    }
+    await mapLimit(files, 8, async ([key, e]) => {
+      cancel.throwIfCancelled();
+      const rel = relJoin(u.rel, e.rel);
+      const d = dstEntries.get(key);
+      const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
+      try {
+        if (!d) return push(b, { ...common, category: 'new', selected: true });
+        if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
+        const cat = await classify(e, d, () => readSrc(e), rel, local ? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
+        push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
+      } finally {
+        st.done++;
+      }
+    });
+    // extras: on the target but not in the source
+    const extras = [...dstEntries.entries()].filter(([k]) => !u.entries.has(k)).map(([, e]) => e).sort((x, y) => x.rel.localeCompare(y.rel));
+    const removedDirs: string[] = [];
+    for (const e of extras) {
+      if (removedDirs.some((d) => relIsWithin(e.rel, d, true))) continue;
+      if (e.isDir) removedDirs.push(e.rel);
+      push(b, { kind: 'delete', rel: relJoin(u.rel, e.rel), isDir: e.isDir, category: 'extra', size: e.size, dstMtime: e.mtimeMs, dstSize: e.size, selected: opt.mode === 'mirror', sourceIndex: u.sourceIndex });
+    }
+  }
+
+  st.phase = 'done';
   b.ops.sort((x, y) => x.rel.localeCompare(y.rel));
   b.ops.forEach((op, i) => (op.id = String(i)));
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
@@ -515,10 +587,10 @@ export async function buildSendPlan(
   const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress);
 
   const requested = req.targetIds;
-  // a pack from a disk may be applied to this very machine: its files come from the pack, not from the root
-  const onlyPacks = req.sources.length > 0 && req.sources.every((s) => s.kind === 'fs' && isPackFile(s.path));
-  const all = expandTargetIds(ctx.config, requested, onlyPacks ? undefined : ctx.localNodeId);
-  if (!onlyPacks && ctx.localNodeId && requested.some((id) => id.toLowerCase() === ctx.localNodeId!.toLowerCase()))
+  // a pack, or a release from somewhere outside this machine's roots, may be applied to this very machine
+  const selfOk = selfTargetOk(ctx, req);
+  const all = expandTargetIds(ctx.config, requested, selfOk ? undefined : ctx.localNodeId);
+  if (!selfOk && ctx.localNodeId && requested.some((id) => id.toLowerCase() === ctx.localNodeId!.toLowerCase()))
     warnings.push(t('Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).'));
   if (!all.length) warnings.push(t('Gönderilecek etkin hedef yok.'));
   // a relay among the targets takes the other machines of its group: they are not looked at from here
@@ -527,18 +599,39 @@ export async function buildSendPlan(
   const nodes = routing.direct;
 
   let done = 0;
-  progress({ message: t('Hedefler inceleniyor'), done, total: nodes.length });
+  // each target's progress, sent on to the window a few times a second (and at every target that finishes)
+  const files = fileCount(units);
+  const states: PlanTargetProgress[] = nodes.map((n) => ({ id: n.id, name: n.name, phase: 'wait', done: 0, total: files }));
+  const report = () => {
+    const filesDone = states.reduce((s, x) => s + (x.phase === 'done' || x.phase === 'failed' ? x.total : Math.min(x.done, x.total)), 0);
+    const filesTotal = states.reduce((s, x) => s + x.total, 0);
+    progress({
+      message: t('{done} / {total} makine incelendi', { done, total: nodes.length }),
+      done: filesTotal ? filesDone : done,
+      total: filesTotal || nodes.length,
+      targets: states.map((x) => ({ ...x })),
+    });
+  };
+  report();
+  const ticker = setInterval(report, 300);
   const scansFor = (id: string) => {
     if (!opts.scans) return undefined;
     const m = opts.scans.get(id) ?? new Map<string, Map<string, Entry>>();
     opts.scans.set(id, m);
     return m;
   };
-  const planned = await mapLimit(nodes, 6, async (n) => {
-    const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id));
-    progress({ message: t('{name} incelendi', { name: n.name }), done: ++done, total: nodes.length });
-    return tp;
-  });
+  let planned: TargetPlan[];
+  try {
+    planned = await mapLimit(nodes, 6, async (n, i) => {
+      const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), states[i]);
+      if (!tp.reachable) states[i].phase = 'failed';
+      done++;
+      report();
+      return tp;
+    });
+  } finally {
+    clearInterval(ticker);
+  }
   // a relay whose SamSync is not running: the machines behind it are looked at and written to from here
   const behindDown = new Map<string, NodeConfig[]>();
   for (const tp of planned) {

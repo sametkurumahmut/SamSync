@@ -612,6 +612,38 @@ a {
   background-position: right 9px center;
   cursor: pointer;
 }
+/* the planning window: one line per target while the review is prepared */
+.plan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.plan-progress-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 40px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.plan-progress-row .name {
+  font-weight: 600;
+}
+.plan-progress-row .step {
+  color: var(--text-2);
+}
+.plan-progress-row .pct {
+  text-align: right;
+  color: var(--text-3);
+}
+.plan-progress-row.done .step {
+  color: var(--text-3);
+}
+.plan-progress-row.failed .step {
+  color: var(--red);
+}
 .select.sm {
   height: 24px;
   padding: 0 24px 0 8px;

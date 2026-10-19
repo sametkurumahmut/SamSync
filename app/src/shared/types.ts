@@ -637,6 +637,20 @@ export interface SendRequest {
 
 export type PlanCategory = 'new' | 'changed' | 'targetNewer' | 'extra' | 'deleted' | 'same';
 
+/** How far the review has got on one target (the planning window lists them while it works). */
+export interface PlanTargetProgress {
+  id: string;
+  name: string;
+  phase: 'wait' | 'probe' | 'scan' | 'compare' | 'done' | 'failed';
+  /** Entries listed on the target so far (its folders are walked over the network). */
+  listed?: number;
+  /** Source files looked at so far, out of all of them. */
+  done: number;
+  total: number;
+  /** Bytes read for comparisons by content so far, both sides together. */
+  read?: number;
+}
+
 export type SrcRef =
   | { kind: 'fs'; abs: string }
   | { kind: 'git'; repo: string; rev: string; path: string; blob?: string }
@@ -668,6 +682,8 @@ export interface TargetPlan {
   targetId: string;
   targetName: string;
   root: string;
+  /** This machine itself: written on its own disk, in its first local root (shown as `root`). */
+  self?: boolean;
   /** Mode and backup in effect on this target (the send options with this target's exceptions). */
   mode: SendMode;
   backup: boolean;
@@ -787,7 +803,7 @@ export type AppEvent =
   | { type: 'run-log'; runId: string; lines: RunLogLine[] }
   | { type: 'run-done'; run: RunSummary }
   | { type: 'run-paused'; runId: string; paused: boolean }
-  | { type: 'task-progress'; taskId: string; message: string; done?: number; total?: number }
+  | { type: 'task-progress'; taskId: string; message: string; done?: number; total?: number; targets?: PlanTargetProgress[] }
   | { type: 'open'; request: OpenRequest }
   | { type: 'integration'; status: IntegrationStatus }
   | { type: 'config-changed'; config: AppConfig }

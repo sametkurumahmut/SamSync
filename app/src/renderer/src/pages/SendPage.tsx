@@ -10,6 +10,7 @@ import type { SendMode, CompareMethod, QuickSend, SyncSchedule, SourcePlace } fr
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
+import { pathWithin } from '@shared/sources';
 import { useStartWatchFromSend } from './AutomationPage';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { ScheduleFields } from '../components/ScheduleFields';
@@ -60,6 +61,9 @@ export function SendPage() {
   const isElectron = useApp((s) => s.boot!.isElectron);
   /** A pack from a disk among the sources: it may be applied to this very machine too. */
   const hasPack = infos.some((i) => i.pack || i.locked);
+  // this machine can take the send itself when nothing comes from its own root: packs, or a release from another disk
+  const ownRoot = useApp((s) => s.boot!.identity.node?.localRoots[0]);
+  const sendsHere = infos.length > 0 && infos.every((i) => i.pack || i.locked || (i.outsideRoots && !!ownRoot && !pathWithin(ownRoot, i.path)));
   const [packDialog, setPackDialog] = useState(false);
   const [unlock, setUnlock] = useState<string | null>(null);
   const [manual, setManual] = useState('');
@@ -271,7 +275,7 @@ export function SendPage() {
               <h2>{t('Hedefler')}</h2>
               <span className="spacer" />
             </div>
-            <TargetPicker value={targets} onChange={setTargets} overrides includeLocal={hasPack} />
+            <TargetPicker value={targets} onChange={setTargets} overrides includeLocal={sendsHere} />
           </div>
         </div>
 

@@ -8,6 +8,14 @@ import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type Me
 import { api } from '../lib/api';
 import { cls } from '../lib/format';
 import { MachineName } from './MachineName';
+
+/** Where a send lands on a machine, in full (the row shows it cut short): this machine's own root, its share, folder or SFTP root. */
+function targetRoot(n: NodeConfig, localId?: string): string {
+  if (n.id === localId && n.transport !== 'sftp' && n.localRoots[0]) return n.localRoots[0];
+  if (n.transport === 'sftp') return `sftp://${n.sftp?.username ?? ''}@${n.sftp?.host || n.address}/${(n.sftp?.root ?? '').replace(/^\/+/, '')}`;
+  if (n.transport === 'path') return n.path ?? '';
+  return n.networkRoot.startsWith('\\\\') ? n.networkRoot : `\\\\${n.address}\\${n.networkRoot.replace(/^[\\/]+/, '')}`;
+}
 import { tx } from '../lib/i18n';
 import { t } from '@shared/i18n';
 
@@ -160,7 +168,11 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                         className="grow"
                         node={n.transport === 'sftp' ? { name: n.name, address: n.sftp?.host || n.address } : n}
                         extra={n.id === localId && <span className="badge accent">{t('bu makine')}</span>}
-                        sub={<span className="mono ellipsis">{n.transport === 'sftp' ? `sftp ${n.sftp?.root ?? ''}` : n.transport === 'path' ? n.path : n.networkRoot}</span>}
+                        sub={
+                          <span className="mono ellipsis" title={targetRoot(n, localId)}>
+                            {n.id === localId && n.transport !== 'sftp' && n.localRoots[0] ? n.localRoots[0] : n.transport === 'sftp' ? `sftp ${n.sftp?.root ?? ''}` : n.transport === 'path' ? n.path : n.networkRoot}
+                          </span>
+                        }
                       />
                       {p?.ok && p.latencyMs != null && <span className="faint tabular" style={{ fontSize: 11 }}>{p.latencyMs} ms</span>}
                       {overrides && <TargetOverride id={n.id} />}

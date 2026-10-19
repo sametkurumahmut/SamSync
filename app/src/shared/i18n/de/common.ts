@@ -356,6 +356,14 @@ const d: Dict = {
   'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'Um einen lokalen Stamm hinzuzufügen, muss dieser Rechner auf der Seite Ziele als Rechner eingerichtet sein.',
   'Yerel kök eklendi': 'Lokaler Stamm hinzugefügt',
   '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} ist jetzt ein lokaler Stamm dieses Rechners; sein Inhalt landet auf den Zielen unter demselben relativen Pfad.',
+  'sırada': 'wartet',
+  'erişim deneniyor': 'Zugriff wird geprüft',
+  'hedefteki klasörler listeleniyor: {n} öğe': 'Ordner auf dem Ziel werden gelistet: {n} Einträge',
+  '{done} / {total} dosya karşılaştırıldı': '{done} von {total} Dateien verglichen',
+  '{size} içerik okundu': '{size} Inhalt gelesen',
+  bitti: 'fertig',
+  'Hedeflerin durumu': 'Stand der Ziele',
+  'Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır': 'Dieser Rechner selbst: Die Dateien werden direkt in seinen lokalen Stamm auf der eigenen Platte geschrieben, nicht über die Netzwerkfreigabe',
 };
 
 export default d;

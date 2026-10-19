@@ -356,6 +356,14 @@ const d: Dict = {
   'Yerel kök eklemek için bu bilgisayar Hedefler sayfasında bir makine olarak tanımlı olmalı.': 'Para añadir una raíz local, este equipo debe estar definido como máquina en la página Destinos.',
   'Yerel kök eklendi': 'Raíz local añadida',
   '{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.': '{path} es ahora una raíz local de esta máquina; su contenido llega a los destinos con la misma ruta relativa.',
+  'sırada': 'en espera',
+  'erişim deneniyor': 'comprobando el acceso',
+  'hedefteki klasörler listeleniyor: {n} öğe': 'listando las carpetas del destino: {n} elementos',
+  '{done} / {total} dosya karşılaştırıldı': '{done} de {total} archivos comparados',
+  '{size} içerik okundu': '{size} de contenido leído',
+  bitti: 'listo',
+  'Hedeflerin durumu': 'Estado de los destinos',
+  'Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır': 'Esta misma máquina: los archivos se escriben directamente en su raíz local, en su propio disco, no a través del recurso compartido de red',
 };
 
 export default d;

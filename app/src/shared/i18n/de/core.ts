@@ -123,7 +123,6 @@ const d: Dict = {
   'Bu makinenin kendisi hedef listesinden çıkarıldı (kaynak ile hedef aynı olurdu).': 'Dieser Rechner selbst wurde aus der Zielliste entfernt (Quelle und Ziel wären identisch gewesen).',
   'Gönderilecek etkin hedef yok.': 'Kein aktives Ziel zum Senden vorhanden.',
   'Hedefler inceleniyor': 'Ziele werden geprüft',
-  '{name} incelendi': '{name} geprüft',
   '{name}: hedefte {free} boş alan var, {size} yazılacak.': '{name}: Auf dem Ziel sind {free} frei, es werden {size} geschrieben.',
   'Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.': pl(
     'Modus „Spiegeln“: Auf den Zielen wird insgesamt {n} zusätzliches Element gelöscht.',
@@ -363,6 +362,7 @@ const d: Dict = {
   'Geçersiz hedef yolu: {rel}': 'Ungültiger Zielpfad: {rel}',
   '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} liegt unter keinem lokalen Stamm; sein Inhalt wird direkt in den Stamm der Ziele geschrieben.',
   '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} liegt unter keinem lokalen Stamm; es wird auf den Zielen nach {rel} geschrieben.',
+  '{done} / {total} makine incelendi': '{done} von {total} Rechnern geprüft',
 };
 
 export default d;

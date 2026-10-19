@@ -18,6 +18,7 @@ import type {
   SyncSchedule,
   SourceInfo,
   SourceSpec,
+  PlanTargetProgress,
   UpdateState,
   AutomationState,
   OpenRequest,
@@ -176,7 +177,7 @@ interface State {
   renameWorkspace(id: string, name: string): void;
   options: SendOptions;
 
-  planning: { taskId: string; message: string; done?: number; total?: number } | null;
+  planning: { taskId: string; message: string; done?: number; total?: number; targets?: PlanTargetProgress[] } | null;
   review: Review | null;
 
   runs: Record<string, LiveRun>;
@@ -779,7 +780,7 @@ function handleEvent(e: AppEvent) {
       break;
     }
     case 'task-progress':
-      useApp.setState((s) => (s.planning?.taskId === e.taskId ? { planning: { ...s.planning, message: e.message, done: e.done, total: e.total } } : {}));
+      useApp.setState((s) => (s.planning?.taskId === e.taskId ? { planning: { ...s.planning, message: e.message, done: e.done, total: e.total, targets: e.targets ?? s.planning.targets } } : {}));
       break;
     case 'open':
       if (st.boot) void handleOpen(e.request);
