@@ -617,6 +617,35 @@
 .source-row.missing {
   opacity: 0.6;
 }
+/* picked with a click (Ctrl adds one, Shift a range); the bar above acts on all of them */
+.source-row.picked {
+  background: rgb(var(--accent-rgb) / 11%);
+}
+.source-row.picked:hover {
+  background: rgb(var(--accent-rgb) / 15%);
+}
+/* kept in the list but left out of the send */
+.source-row.off .icon-tile,
+.source-row.off .grow,
+.source-row.off .tabular {
+  opacity: 0.5;
+}
+.source-row.loading .grow {
+  color: var(--text-3);
+}
+/* the bottom of a non-empty source list: pick more files or folders, or paste a path */
+.source-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.source-add .input {
+  flex: 1;
+  min-width: 120px;
+}
 .targets-card {
   display: flex;
   flex-direction: column;

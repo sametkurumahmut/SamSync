@@ -175,6 +175,8 @@ export interface Api {
   pick(opts: PickOptions): Promise<string[]>;
   openPath(p: string): Promise<void>;
   showInFolder(p: string): Promise<void>;
+  /** Opens the folder a send lands in on this target (its share, folder, or this machine's own root) in the file manager. */
+  openTarget(nodeId: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   openLog(): Promise<void>;
   /** Copies the logs, the configuration, the settings (no secrets) and a summary into a folder the user picks; null when cancelled. */
@@ -270,6 +272,7 @@ export const API_METHODS = {
   pick: true,
   openPath: true,
   showInFolder: true,
+  openTarget: true,
   openExternal: true,
   openLog: true,
   exportDiagnostics: true,

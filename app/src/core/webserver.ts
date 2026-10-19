@@ -21,6 +21,7 @@ export const REMOTE_DENIED: ReadonlySet<string> = new Set<ApiMethod>([
   'pickSave',
   'openPath',
   'showInFolder',
+  'openTarget',
   'openExternal',
   'openLog',
   'windowControl',

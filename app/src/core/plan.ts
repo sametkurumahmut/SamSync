@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import type { CategoryCounts, NodeConfig, PackWriteResult, PlanCategory, PlanOp, PlanTargetProgress, SendPlan, SendRequest, SourceInfo, TargetPlan } from '../shared/types';
+import path from 'node:path';
+import type { CategoryCounts, NodeConfig, OutsideRoots, PackWriteResult, PlanCategory, PlanOp, PlanTargetProgress, SendPlan, SendRequest, SourceInfo, SourcePlace, TargetPlan } from '../shared/types';
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
 import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
-import { isUnder, mapSource, mapToRel, normalizeAbs, outsidePlaces, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
+import { isUnder, mapSource, mapToRel, normalizeAbs, outsidePlaces, pathKey, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
 import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
@@ -24,16 +25,18 @@ import { heartbeatFresh, readHeartbeat } from './relay';
 import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
 
-type PackedEntry = Entry & { member?: PackEntry };
+/** member: where a pack holds the file. abs: a file merged in from another folder sent to the same place. */
+type PackedEntry = Entry & { member?: PackEntry; abs?: string };
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
-  | { kind: 'dir'; sourceIndex: number; rel: string; abs: string; entries: Map<string, Entry> }
+  /** skip: parts below rel that another source of the send takes over on the targets (left alone here). */
+  | { kind: 'dir'; sourceIndex: number; rel: string; abs: string; entries: Map<string, PackedEntry>; skip?: string[] }
   | { kind: 'git'; sourceIndex: number; rel: string; repo: string; rev: string; path: string; blob: string; size: number; mtimeMs: number }
   | { kind: 'delete'; sourceIndex: number; rel: string; abs: string }
   /** A file or a folder carried in a pack file (.samsync-pack); members are read straight out of it. */
   | { kind: 'packfile'; sourceIndex: number; rel: string; file: string; size: number; mtimeMs: number; member: PackEntry }
-  | { kind: 'packdir'; sourceIndex: number; rel: string; file: string; entries: Map<string, PackedEntry> };
+  | { kind: 'packdir'; sourceIndex: number; rel: string; file: string; entries: Map<string, PackedEntry>; skip?: string[] };
 
 const packRef = (file: string, m: PackEntry) => ({ kind: 'pack' as const, file, offset: m.offset, length: m.length, method: m.method });
 
@@ -135,9 +138,20 @@ function lockedInfo(abs: string, st: fs.Stats, e: unknown): SourceInfo {
 }
 
 /** The mapping fields of a SourceInfo; outside every root also the other places the source could take. */
-function placeInfo(abs: string, isDir: boolean, m: SourceMapping): Pick<SourceInfo, 'rel' | 'root' | 'outsideRoots' | 'base' | 'full' | 'places'> {
-  if (!m.outside) return { rel: m.rel, root: m.root, outsideRoots: false };
-  return { rel: m.rel, outsideRoots: true, base: m.base, full: m.full, places: outsidePlaces(abs, isDir) };
+function placeInfo(abs: string, isDir: boolean, m: SourceMapping, roots: readonly string[], mode: OutsideRoots): Pick<SourceInfo, 'rel' | 'root' | 'outsideRoots' | 'base' | 'full' | 'places' | 'defaultRel'> {
+  // where it goes unless a place is picked by hand, and the places that can be picked: under a root its path
+  // by the root comes first, then (as for a source outside every root) each folder above it as the target root
+  const def = mapSource(abs, roots, isDir, mode);
+  const all: SourcePlace[] = def.outside ? outsidePlaces(abs, isDir) : [{ rel: def.rel, root: def.root }, ...outsidePlaces(abs, isDir)];
+  const seen = new Set<string>();
+  const places = all.filter((p) => {
+    const k = relKey(p.rel, true);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (!m.outside) return { rel: m.rel, root: m.root, outsideRoots: false, places, defaultRel: def.rel };
+  return { rel: m.rel, outsideRoots: true, base: m.base, full: m.full, places, defaultRel: def.rel };
 }
 
 /** What the review says about a source outside every root: where it is going to land. */
@@ -170,9 +184,9 @@ export async function describeSources(ctx: CoreContext, paths: string[], count =
       }
       if (st.isDirectory() && count) {
         const c = await countTree(abs);
-        return { path: abs, exists: true, isDir: true, size: c.bytes, fileCount: c.files, fileCountCapped: c.capped, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m) };
+        return { path: abs, exists: true, isDir: true, size: c.bytes, fileCount: c.files, fileCountCapped: c.capped, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m, ctx.localRoots, outside) };
       }
-      return { path: abs, exists: true, isDir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, st.isDirectory(), m) };
+      return { path: abs, exists: true, isDir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, st.isDirectory(), m, ctx.localRoots, outside) };
     } catch (e) {
       return { path: abs, exists: false, isDir: false, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside, error: errMessage(e) };
     }
@@ -256,10 +270,10 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
         size += e.size;
         files++;
       }
-      sources.push({ path: abs, exists: true, isDir: true, size, fileCount: files, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m) });
+      sources.push({ path: abs, exists: true, isDir: true, size, fileCount: files, mtimeMs: st.mtimeMs, ...placeInfo(abs, true, m, ctx.localRoots, outside) });
     } else {
       units.push({ kind: 'file', sourceIndex: i, rel: m.rel, abs, size: st.size, mtimeMs: Math.floor(st.mtimeMs) });
-      sources.push({ path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, false, m) });
+      sources.push({ path: abs, exists: true, isDir: false, size: st.size, mtimeMs: st.mtimeMs, ...placeInfo(abs, false, m, ctx.localRoots, outside) });
     }
   }
 
@@ -291,18 +305,78 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
     }
   }
 
-  // A file inside a selected folder is already covered by the folder; the same rel twice is sent once.
-  const dirs = units.filter((u) => u.kind === 'dir' || u.kind === 'packdir');
-  const seen = new Set<string>();
-  const deduped: Unit[] = [];
+  return { units: layerUnits(units, warnings), warnings, sources };
+}
+
+/** Where a unit's content comes from: a path on disk, or the pack it is read out of. */
+function originOf(u: Unit): string {
+  if (u.kind === 'dir' || u.kind === 'file' || u.kind === 'delete') return pathKey(u.abs);
+  if (u.kind === 'git') return pathKey(path.join(u.repo, u.path));
+  return `pack:${pathKey(u.file)}`;
+}
+
+/** `rel` below `parent` (both target paths, the first within the second). */
+function relBelow(rel: string, parent: string): string {
+  return parent ? rel.slice(parent.length + 1) : rel;
+}
+
+/**
+ * Sources that land in the same place, or inside one another, on the targets.
+ * - Two folders on disk for the same place: their contents are merged; a file both hold comes from the one
+ *   listed first, and the review says how many there were.
+ * - Anything else for the same place twice: the first source is sent, the review says which one was left out.
+ * - Inside a sent folder and from the same place (Release and Release\Data): the folder already carries it.
+ * - Inside a sent folder but from somewhere else (a Contents folder from another disk sent into Contents
+ *   while Release goes to the root): the deeper source takes that part of the targets over, and the outer
+ *   folder neither compares, writes nor deletes there.
+ */
+function layerUnits(units: Unit[], warnings: string[]): Unit[] {
+  const first = new Map<string, Unit>();
+  const unique: Unit[] = [];
+  const shown = (u: Unit) => (u.kind === 'git' ? u.path : u.kind === 'packdir' || u.kind === 'packfile' ? u.file : u.abs);
   for (const u of units) {
     const k = relKey(u.rel, true);
-    if (u.kind !== 'dir' && u.kind !== 'packdir' && dirs.some((d) => relIsWithin(u.rel, d.rel, true))) continue;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    deduped.push(u);
+    const prev = first.get(k);
+    if (prev) {
+      if (originOf(prev) === originOf(u)) continue;
+      if (prev.kind === 'dir' && u.kind === 'dir') {
+        let clash = 0;
+        for (const [key, e] of u.entries) {
+          const have = prev.entries.get(key);
+          if (have) {
+            if (!(have.isDir && e.isDir)) clash++;
+            continue;
+          }
+          prev.entries.set(key, { ...e, abs: e.abs ?? path.join(u.abs, e.rel) });
+        }
+        if (clash) warnings.push(t('{n} öğe hem {first} hem {other} içinde var; {first} içindekiler gönderilecek.', { n: clash, first: prev.abs, other: u.abs }));
+        continue;
+      }
+      warnings.push(t('{path} hedeflerde {other} ile aynı yere gidiyor ({rel}); yalnızca {other} gönderilecek.', { path: shown(u), other: shown(prev), rel: u.rel || '/' }));
+      continue;
+    }
+    first.set(k, u);
+    unique.push(u);
   }
-  return { units: deduped, warnings, sources };
+  type Folder = Extract<Unit, { kind: 'dir' | 'packdir' }>;
+  const folders = unique.filter((u): u is Folder => u.kind === 'dir' || u.kind === 'packdir');
+  const carries = (outer: Folder, inner: Unit): boolean => {
+    const sub = relBelow(inner.rel, outer.rel);
+    if (!outer.entries.has(relKey(sub, true))) return false;
+    return outer.kind === 'packdir' ? originOf(inner) === originOf(outer) : originOf(inner) === pathKey(path.join(outer.abs, sub));
+  };
+  const out: Unit[] = [];
+  for (const u of unique) {
+    const outers = folders.filter((d) => d !== u && relKey(d.rel, true) !== relKey(u.rel, true) && relIsWithin(u.rel, d.rel, true));
+    if (outers.some((d) => carries(d, u))) continue;
+    for (const d of outers) {
+      const sub = relBelow(u.rel, d.rel);
+      (d.skip ??= []).push(sub);
+      for (const [key, e] of d.entries) if (relIsWithin(e.rel, sub, true)) d.entries.delete(key);
+    }
+    out.push(u);
+  }
+  return out;
 }
 
 interface OpBuilder {
@@ -509,11 +583,14 @@ async function planTarget(
     const dstScan = manifest ? null : dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: unitFilter, cancel, caseInsensitive: true, onProgress: onListed }) : null;
     st.phase = 'compare';
     const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
+    // what another source of this send takes over is neither compared, written nor deleted from here
+    if (u.skip?.length) for (const [k, e] of dstEntries) if (u.skip.some((s) => relIsWithin(e.rel, s, true))) dstEntries.delete(k);
     scans?.set(u.rel, dstEntries);
     // a folder on disk is read from there; a folder in a pack straight out of the pack
     const local = u.kind === 'dir' ? new FsTransport(u.abs) : null;
-    const srcOf = (e: PackedEntry) => (local ? ({ kind: 'fs', abs: local.localPath(e.rel) } as const) : packRef((u as { file: string }).file, e.member!));
-    const readSrc = (e: PackedEntry) => (local ? local.readStream(e.rel) : Promise.resolve(openPackEntry((u as { file: string }).file, e.member!)));
+    // a file merged in from another folder for the same place is read from where it is
+    const srcOf = (e: PackedEntry) => (local ? ({ kind: 'fs', abs: e.abs ?? local.localPath(e.rel) } as const) : packRef((u as { file: string }).file, e.member!));
+    const readSrc = (e: PackedEntry) => (local ? (e.abs ? Promise.resolve(fs.createReadStream(e.abs)) : local.readStream(e.rel)) : Promise.resolve(openPackEntry((u as { file: string }).file, e.member!)));
     const files: [string, PackedEntry][] = [];
     for (const [key, e] of u.entries as Map<string, PackedEntry>) {
       if (inKept(e.rel)) {
@@ -535,7 +612,7 @@ async function planTarget(
       try {
         if (!d) return push(b, { ...common, category: 'new', selected: true });
         if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
-        const cat = await classify(e, d, () => readSrc(e), rel, local ? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
+        const cat = await classify(e, d, () => readSrc(e), rel, local ? e.abs ?? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
         push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       } finally {
         st.done++;
@@ -605,10 +682,12 @@ export async function buildSendPlan(
   const report = () => {
     const filesDone = states.reduce((s, x) => s + (x.phase === 'done' || x.phase === 'failed' ? x.total : Math.min(x.done, x.total)), 0);
     const filesTotal = states.reduce((s, x) => s + x.total, 0);
+    // nothing compared yet (the targets' folders are still being listed): the bar runs without a number
+    const started = filesDone > 0 || done > 0;
     progress({
       message: t('{done} / {total} makine incelendi', { done, total: nodes.length }),
-      done: filesTotal ? filesDone : done,
-      total: filesTotal || nodes.length,
+      done: started ? (filesTotal ? filesDone : done) : undefined,
+      total: started ? filesTotal || nodes.length : undefined,
       targets: states.map((x) => ({ ...x })),
     });
   };
@@ -699,7 +778,7 @@ export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: st
       for (const e of u.entries.values() as Iterable<PackedEntry>) {
         const rel = relJoin(u.rel, e.rel);
         if (e.isDir) dirs.push(rel);
-        else if (local) files.push({ rel, size: e.size, mtimeMs: e.mtimeMs, open: () => fs.createReadStream(local.localPath(e.rel), { highWaterMark: 1024 * 1024 }) });
+        else if (local) files.push({ rel, size: e.size, mtimeMs: e.mtimeMs, open: () => fs.createReadStream(e.abs ?? local.localPath(e.rel), { highWaterMark: 1024 * 1024 }) });
         else files.push({ rel, size: e.size, mtimeMs: e.mtimeMs, open: () => openPackEntry((u as { file: string }).file, e.member!) });
       }
     }

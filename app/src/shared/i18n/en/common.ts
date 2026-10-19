@@ -364,6 +364,14 @@ const d: Dict = {
   bitti: 'done',
   'Hedeflerin durumu': 'State of the targets',
   'Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır': 'This machine itself: the files are written straight to its local root on its own disk, not over the network share',
+  'Finder’da göster': 'Show in Finder',
+  'Dosya yöneticisinde göster': 'Show in the file manager',
+  'Explorer’da göster': 'Show in Explorer',
+  'Klasör açılamadı': 'Could not open the folder',
+  'Yolu kopyala': 'Copy path',
+  'Yol panoya kopyalandı': 'Path copied to the clipboard',
+  'Yalnızca bunu seç': 'Select only this one',
+  'Kaynaklar okunamadı': 'Could not read the sources',
 };
 
 export default d;

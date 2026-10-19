@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
-import { Button, Segmented, TagInput, ToggleRow, Field, Modal } from '../components/ui';
+import { Button, Checkbox, Segmented, TagInput, ToggleRow, Field, Modal, type MenuEntry } from '../components/ui';
+import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from '../components/ContextMenu';
 import { api } from '../lib/api';
 import { bytes, cls, num, baseName } from '../lib/format';
-import type { SendMode, CompareMethod, QuickSend, SyncSchedule, SourcePlace } from '@shared/types';
+import type { SendMode, CompareMethod, QuickSend, SyncSchedule, SourceInfo, SourcePlace } from '@shared/types';
 import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
-import { pathWithin } from '@shared/sources';
+import { pathWithin, samePath } from '@shared/sources';
 import { useStartWatchFromSend } from './AutomationPage';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { ScheduleFields } from '../components/ScheduleFields';
@@ -43,6 +44,18 @@ function placeLabel(p: SourcePlace, isDir: boolean): string {
   return p.full ? t('{path} (tam yol)', { path: where }) : where;
 }
 
+/** The value of the place list's "type a path" entry. */
+const TYPED = '\u0000typed';
+
+/** The place list of a source: its places (the default marked), a path typed earlier, and "type a path…". */
+function placeOptions(i: SourceInfo): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = [];
+  for (const p of i.places ?? []) out.push({ value: p.rel, label: p.rel === i.defaultRel ? t('{place} (varsayılan)', { place: placeLabel(p, i.isDir) }) : placeLabel(p, i.isDir) });
+  if (!out.some((o) => o.value.toLowerCase() === i.rel.toLowerCase())) out.push({ value: i.rel, label: t('{path} (elle)', { path: i.rel ? `${i.rel}${i.isDir ? '/' : ''}` : t('(içeriği doğrudan hedef köküne)') }) });
+  out.push({ value: TYPED, label: t('Başka bir yol yaz…') });
+  return out;
+}
+
 export function SendPage() {
   const paths = useApp((s) => s.sendPaths);
   const infos = useApp((s) => s.sendInfos);
@@ -51,6 +64,10 @@ export function SendPage() {
   const addRoot = useApp((s) => s.addLocalRoot);
   const sendSources = useApp((s) => s.sendSources);
   const remove = useApp((s) => s.removeSendPath);
+  const removeMany = useApp((s) => s.removeSendPaths);
+  const off = useApp((s) => s.sendOff);
+  const setEnabled = useApp((s) => s.setSendEnabled);
+  const platform = useApp((s) => s.boot!.platform);
   const clear = useApp((s) => s.clearSendPaths);
   const targets = useApp((s) => s.targets);
   const setTargets = useApp((s) => s.setTargets);
@@ -59,11 +76,88 @@ export function SendPage() {
   const writePack = useApp((s) => s.writePack);
   const toast = useApp((s) => s.toast);
   const isElectron = useApp((s) => s.boot!.isElectron);
+  // sources can stay in the list turned off: they are left out of the send, the counts and the checks below
+  const isOff = (p: string) => off.some((o) => samePath(o, p));
+  const onInfos = infos.filter((i) => !isOff(i.path));
+  const onCount = paths.filter((p) => !isOff(p)).length;
+  /** Added but not read yet (a big folder is counted first): shown as waiting rows. */
+  const pending = paths.filter((p) => !infos.some((i) => samePath(i.path, p)));
   /** A pack from a disk among the sources: it may be applied to this very machine too. */
-  const hasPack = infos.some((i) => i.pack || i.locked);
+  const hasPack = onInfos.some((i) => i.pack || i.locked);
   // this machine can take the send itself when nothing comes from its own root: packs, or a release from another disk
   const ownRoot = useApp((s) => s.boot!.identity.node?.localRoots[0]);
-  const sendsHere = infos.length > 0 && infos.every((i) => i.pack || i.locked || (i.outsideRoots && !!ownRoot && !pathWithin(ownRoot, i.path)));
+  const sendsHere = onInfos.length > 0 && onInfos.every((i) => i.pack || i.locked || (i.outsideRoots && !!ownRoot && !pathWithin(ownRoot, i.path)));
+  // picking rows: a click picks one, Ctrl adds or drops one, Shift takes a range; actions on a picked row cover all picked
+  const [sel, setSel] = useState<string[]>([]);
+  const anchor = useRef<number | null>(null);
+  const picked = sel.filter((p) => infos.some((i) => i.path === p));
+  const rowsFor = (p: string) => (picked.includes(p) ? picked : [p]);
+  const pickRow = (e: React.MouseEvent, p: string, at: number) => {
+    if ((e.target as Element).closest('button, select, input, a, .selectable')) return;
+    if (e.shiftKey && anchor.current != null) {
+      const [a, b] = [anchor.current, at].sort((x, y) => x - y);
+      setSel(infos.slice(a, b + 1).map((i) => i.path));
+      return;
+    }
+    anchor.current = at;
+    if (e.ctrlKey || e.metaKey) setSel((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+    else setSel((s) => (s.length === 1 && s[0] === p ? [] : [p]));
+  };
+  const listKeys = (e: React.KeyboardEvent) => {
+    if ((e.target as Element).closest('select, input')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      setSel(infos.map((i) => i.path));
+    } else if (e.key === 'Escape' && picked.length) {
+      e.stopPropagation();
+      setSel([]);
+    } else if (e.key === 'Delete' && picked.length) {
+      removeMany(picked);
+      setSel([]);
+    }
+  };
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  /** The source whose target path is being typed by hand. */
+  const [typing, setTyping] = useState<string | null>(null);
+  const placeTo = (i: SourceInfo, rel: string) => {
+    if (rel === TYPED) return setTyping(i.path);
+    // back to where it goes by itself: the pick is dropped, so later changes to the roots apply again
+    void setRel(i.path, rel === i.defaultRel ? null : rel);
+  };
+  const copyPaths = (list: string[]) => {
+    void navigator.clipboard.writeText(list.join('\n'));
+    toast('ok', list.length > 1 ? t('Yollar panoya kopyalandı') : t('Yol panoya kopyalandı'), list.length > 1 ? undefined : list[0]);
+  };
+  /** Right click on a source: open it in the file manager, copy the path, turn it on or off, take it out. */
+  const sourceMenu = (e: React.MouseEvent, i: SourceInfo) => {
+    e.preventDefault();
+    const rows = rowsFor(i.path);
+    const many = rows.length > 1;
+    const allOn = rows.every((p) => !isOff(p));
+    const items: MenuEntry[] = [
+      {
+        label: showInFileManagerLabel(platform),
+        icon: <FolderOpen size={15} />,
+        disabled: !isElectron || !i.exists,
+        onClick: () => void (i.isDir ? api.openPath(i.path) : api.showInFolder(i.path)).catch((err) => toast('error', t('Klasör açılamadı'), (err as Error).message)),
+      },
+      { label: many ? t('{n} yolu kopyala', { n: rows.length }) : t('Yolu kopyala'), icon: <Copy size={15} />, onClick: () => copyPaths(rows) },
+      { sep: true },
+      allOn
+        ? { label: many ? t('{n} kaynağı devre dışı bırak', { n: rows.length }) : t('Devre dışı bırak'), icon: <EyeOff size={15} />, onClick: () => setEnabled(rows, false) }
+        : { label: many ? t('{n} kaynağı etkinleştir', { n: rows.length }) : t('Etkinleştir'), icon: <Eye size={15} />, onClick: () => setEnabled(rows, true) },
+      {
+        label: many ? t('{n} kaynağı listeden çıkar', { n: rows.length }) : t('Listeden çıkar'),
+        icon: <X size={15} />,
+        danger: true,
+        onClick: () => {
+          removeMany(rows);
+          setSel([]);
+        },
+      },
+    ];
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  };
   const [packDialog, setPackDialog] = useState(false);
   const [unlock, setUnlock] = useState<string | null>(null);
   const [manual, setManual] = useState('');
@@ -77,17 +171,27 @@ export function SendPage() {
     const p = await api.pick({ folders: true, multi: true, title: t('Gönderilecek klasörler') });
     if (p.length) await add(p);
   };
+  /** Enter in a path box: every line (quotes stripped) is added. */
+  const addTyped = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !manual.trim()) return;
+    void add(manual.split(/\r?\n/).map((x) => x.trim().replace(/^"|"$/g, '')).filter(Boolean));
+    setManual('');
+  };
 
-  const totalSize = infos.reduce((s, i) => s + i.size, 0);
-  const files = infos.reduce((s, i) => s + (!i.exists ? 0 : i.isDir ? i.fileCount ?? 0 : 1), 0);
-  const dirs = infos.filter((i) => i.isDir).length;
-  const missing = infos.filter((i) => !i.exists).length;
+  const totalSize = onInfos.reduce((s, i) => s + i.size, 0);
+  const files = onInfos.reduce((s, i) => s + (!i.exists ? 0 : i.isDir ? i.fileCount ?? 0 : 1), 0);
+  const dirs = onInfos.filter((i) => i.isDir).length;
+  const missing = onInfos.filter((i) => !i.exists).length;
+  const offCount = infos.length - onInfos.length;
 
-  const review = () => startPlan({ sources: sendSources(), origin: 'send', label: paths.length === 1 ? baseName(paths[0]) : t('{n} öğe', { n: paths.length }) });
+  const review = () => {
+    const on = paths.filter((p) => !isOff(p));
+    return startPlan({ sources: sendSources(), origin: 'send', label: on.length === 1 ? baseName(on[0]) : t('{n} öğe', { n: on.length }) });
+  };
   // Ctrl Enter from the app shell
   useEffect(() => {
     const h = () => {
-      if (paths.length && targets.length) void review();
+      if (onCount && targets.length) void review();
     };
     window.addEventListener('samsync:review', h);
     return () => window.removeEventListener('samsync:review', h);
@@ -111,7 +215,7 @@ export function SendPage() {
       </div>
       <div className="page-body fill" style={{ display: 'flex', flexDirection: 'column' }}>
         <WorkspaceTabs />
-        <QuickSendsBar canSave={paths.length > 0 && targets.length > 0} />
+        <QuickSendsBar canSave={onCount > 0 && targets.length > 0} />
         <div className="send-grid" style={{ flex: 1, minHeight: 0 }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
             <div className="card sources-card">
@@ -120,9 +224,37 @@ export function SendPage() {
                   <UploadCloud size={15} />
                 </div>
                 <h2>{t('Kaynaklar')}</h2>
+                {picked.length > 0 ? (
+                  <>
+                    <span className="badge accent">{t('{n} seçili', { n: picked.length })}</span>
+                    <span className="spacer" />
+                    <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setEnabled(picked, true)}>
+                      {t('Etkinleştir')}
+                    </Button>
+                    <Button size="sm" variant="ghost" icon={<EyeOff size={13} />} onClick={() => setEnabled(picked, false)}>
+                      {t('Devre dışı bırak')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<X size={13} />}
+                      onClick={() => {
+                        removeMany(picked);
+                        setSel([]);
+                      }}
+                    >
+                      {t('Çıkar')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSel([])}>
+                      {t('Seçimi kaldır')}
+                    </Button>
+                  </>
+                ) : (
+                  <>
                 {infos.length > 0 && (
                   <span className="hint">
-                    {t('{n} öğe', { n: num(infos.length) })} • {t('{n} dosya', { n: files })}, {t('{n} klasör', { n: dirs })} • {bytes(totalSize)}
+                    {t('{n} öğe', { n: num(onInfos.length) })} • {t('{n} dosya', { n: files })}, {t('{n} klasör', { n: dirs })} • {bytes(totalSize)}
+                    {offCount > 0 && ` • ${t('{n} devre dışı', { n: offCount })}`}
                   </span>
                 )}
                 <span className="spacer" />
@@ -142,6 +274,8 @@ export function SendPage() {
                     <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={clear}>
                       {t('Temizle')}
                     </Button>
+                  </>
+                )}
                   </>
                 )}
               </div>
@@ -166,24 +300,26 @@ export function SendPage() {
                       placeholder={t('…ya da tam yolu yapıştırın ve Enter’a basın')}
                       value={manual}
                       onChange={(e) => setManual(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && manual.trim()) {
-                          void add(manual.split(/\r?\n/).map((x) => x.trim().replace(/^"|"$/g, '')).filter(Boolean));
-                          setManual('');
-                        }
-                      }}
+                      aria-label={t('Eklenecek yol')}
+                      onKeyDown={addTyped}
                     />
                   </div>
                 </div>
               ) : (
-                <div className="source-list">
+                <div className="source-list" role="region" aria-label={t('Kaynak listesi')} tabIndex={0} onKeyDown={listKeys}>
                   {missing > 0 && (
                     <div className="alert error" style={{ margin: 10 }}>
                       <AlertTriangle size={15} /> {t('{n} öğe bulunamadı; gönderimde atlanacak.', { n: missing })}
                     </div>
                   )}
-                  {infos.map((i) => (
-                    <div key={i.path} className={cls('source-row', !i.exists && 'missing')}>
+                  {infos.map((i, at) => (
+                    <div
+                      key={i.path}
+                      className={cls('source-row', !i.exists && 'missing', isOff(i.path) && 'off', picked.includes(i.path) && 'picked')}
+                      onClick={(e) => pickRow(e, i.path, at)}
+                      onContextMenu={(e) => sourceMenu(e, i)}
+                    >
+                      <Checkbox checked={!isOff(i.path)} onChange={(v) => setEnabled(rowsFor(i.path), v)} label={t('{name} gönderilsin', { name: baseName(i.path) })} tip={isOff(i.path) ? t('Devre dışı: listede kalır, gönderilmez') : undefined} />
                       <div className={cls('icon-tile', (i.isDir || i.pack) && 'accent')}>{i.pack ? <Package size={15} /> : i.isDir ? <Folder size={15} /> : <File size={15} />}</div>
                       <div className="grow" style={{ minWidth: 0 }}>
                         <div className="row" style={{ gap: 6 }}>
@@ -191,6 +327,7 @@ export function SendPage() {
                             {baseName(i.path)}
                           </span>
                           {!i.exists && <span className="badge red">{t('bulunamadı')}</span>}
+                          {isOff(i.path) && <span className="badge">{t('devre dışı')}</span>}
                           {i.pack && (
                             <span className="badge accent" data-tip={t('{label} • {from} • {when}', { label: i.pack.label, from: i.pack.from, when: new Date(i.pack.createdAt).toLocaleString() })}>
                               {i.pack.encrypted && <Lock size={10} />} {t('paket')}
@@ -213,23 +350,45 @@ export function SendPage() {
                             )
                           )}
                         </div>
-                        {i.outsideRoots && !i.pack && i.places?.length ? (
+                        {!i.pack && !i.locked && i.places?.length ? (
                           <div className="row faint mono" style={{ fontSize: 11.5, gap: 6, minWidth: 0 }}>
                             <ArrowRight size={11} style={{ flex: 'none' }} />
-                            <select
-                              className="select sm mono place-select"
-                              aria-label={t('{name}: hedeflerde nereye gitsin', { name: baseName(i.path) })}
-                              title={i.base ? t('Hedef kökünün yerine geçen klasör: {path}', { path: i.base }) : t('Sürücü harfiyle birlikte tam yol')}
-                              value={String(Math.max(0, i.places.findIndex((p) => p.rel === i.rel && !!p.full === !!i.full)))}
-                              onChange={(e) => void setRel(i.path, i.places![Number(e.target.value)].rel)}
-                            >
-                              {i.places.map((p, n) => (
-                                <option key={n} value={String(n)}>
-                                  {placeLabel(p, i.isDir)}
-                                </option>
-                              ))}
-                            </select>
-                            {i.base && (
+                            {typing === i.path ? (
+                              <input
+                                className="input sm mono"
+                                style={{ height: 24, maxWidth: 360 }}
+                                autoFocus
+                                defaultValue={i.rel}
+                                placeholder={t('hedef köküne göre yol, örn. Contents')}
+                                aria-label={t('{name}: hedefteki yol', { name: baseName(i.path) })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const v = e.currentTarget.value.trim().replace(/^[\\/]+|[\\/]+$/g, '');
+                                    setTyping(null);
+                                    void setRel(i.path, v === i.defaultRel ? null : v);
+                                  } else if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    setTyping(null);
+                                  }
+                                }}
+                                onBlur={() => setTyping(null)}
+                              />
+                            ) : (
+                              <select
+                                className="select sm mono place-select"
+                                aria-label={t('{name}: hedeflerde nereye gitsin', { name: baseName(i.path) })}
+                                title={i.base ? t('Hedef kökünün yerine geçen klasör: {path}', { path: i.base }) : i.full ? t('Sürücü harfiyle birlikte tam yol') : i.root ? t('Yerel kök: {path}', { path: i.root }) : undefined}
+                                value={placeOptions(i).find((o) => o.value.toLowerCase() === i.rel.toLowerCase())?.value ?? i.rel}
+                                onChange={(e) => placeTo(i, e.target.value)}
+                              >
+                                {placeOptions(i).map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {i.outsideRoots && i.base && (
                               <Button size="sm" variant="ghost" icon={<FolderInput size={13} />} onClick={() => void addRoot(i.base!)} tip={t('{path} klasörünü bu makinenin yerel köklerine ekler:\niçindekiler bundan sonra her yerde bu yolla eşlenir', { path: i.base })}>
                                 {t('Yerel kök yap')}
                               </Button>
@@ -256,11 +415,31 @@ export function SendPage() {
                       <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(i.path)} tip={t('Listeden çıkar')} />
                     </div>
                   ))}
-                  {paths.length > infos.length && (
-                    <div className="row faint" style={{ padding: 12 }}>
-                      <div className="spinner" /> {t('Kaynaklar okunuyor…')}
+                  {pending.map((p) => (
+                    <div key={p} className="source-row loading" aria-busy="true">
+                      <div className="icon-tile">
+                        <div className="spinner" />
+                      </div>
+                      <div className="grow" style={{ minWidth: 0 }}>
+                        <div className="ellipsis" style={{ fontWeight: 580 }} title={p}>
+                          {baseName(p)}
+                        </div>
+                        <div style={{ fontSize: 11.5 }}>{t('Okunuyor: dosyalar sayılıyor…')}</div>
+                      </div>
                     </div>
-                  )}
+                  ))}
+                </div>
+              )}
+              {(infos.length > 0 || paths.length > 0) && (
+                // more sources while the list is not empty: the same choices as the empty list's drop zone
+                <div className="source-add">
+                  <Button size="sm" variant="ghost" icon={<FilePlus size={13} />} onClick={pickFiles} disabled={!isElectron}>
+                    {t('Dosya seç')}
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={<FolderPlus size={13} />} onClick={pickFolders} disabled={!isElectron}>
+                    {t('Klasör seç')}
+                  </Button>
+                  <input className="input sm mono" placeholder={t('…ya da tam yolu yapıştırın ve Enter’a basın')} aria-label={t('Eklenecek yol')} value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={addTyped} />
                 </div>
               )}
             </div>
@@ -284,8 +463,8 @@ export function SendPage() {
             <span className="tabular">
               {tx(
                 '{sources} kaynak {arrow} {targets} hedef',
-                { sources: <b>{num(paths.length)}</b>, arrow: <ArrowRight size={13} style={{ verticalAlign: -2 }} />, targets: <b>{targets.length}</b> },
-                { s: paths.length, n: targets.length },
+                { sources: <b>{num(onCount)}</b>, arrow: <ArrowRight size={13} style={{ verticalAlign: -2 }} />, targets: <b>{targets.length}</b> },
+                { s: onCount, n: targets.length },
               )}
             </span>
             <span className="badge outline">{modeLabel && t(modeLabel)}</span>
@@ -297,21 +476,22 @@ export function SendPage() {
               </span>
             )}
           </div>
-          <Button size="lg" icon={<Eye size={15} />} disabled={!paths.length || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
+          <Button size="lg" icon={<Eye size={15} />} disabled={!onCount || !targets.length} onClick={() => void startWatch()} tip={t('Bu kaynakları izler; değiştikçe\nseçili hedeflere kendiliğinden gönderir')}>
             {t('İzle')}
           </Button>
-          <Button size="lg" icon={<Package size={15} />} disabled={!paths.length || hasPack || !isElectron} onClick={() => setPackDialog(true)} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
+          <Button size="lg" icon={<Package size={15} />} disabled={!onCount || hasPack || !isElectron} onClick={() => setPackDialog(true)} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
             {t('Paket yaz')}
           </Button>
           {packDialog && <PackWriteDialog onClose={() => setPackDialog(false)} onWrite={(pw) => void writePack(pw)} />}
           {unlock && <PackUnlockDialog path={unlock} onClose={() => setUnlock(null)} />}
-          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!paths.length || !targets.length} onClick={() => startPlan({ sources: sendSources(), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
+          <Button size="lg" icon={<FlaskConical size={15} />} disabled={!onCount || !targets.length} onClick={() => startPlan({ sources: sendSources(), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
             {t('Deneme')}
           </Button>
-          <Button size="lg" variant="primary" icon={<Send size={15} />} disabled={!paths.length || !targets.length} onClick={review}>
+          <Button size="lg" variant="primary" icon={<Send size={15} />} disabled={!onCount || !targets.length} onClick={review}>
             {t('İncele ve gönder')}
           </Button>
         </div>
+        {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       </div>
     </div>
   );

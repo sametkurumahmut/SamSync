@@ -94,6 +94,8 @@ export interface Workspace {
   paths: string[];
   /** Target paths picked by hand (sources outside every local root), by path. */
   rels?: Record<string, string>;
+  /** Sources kept in the list but left out of the send. */
+  off?: string[];
   targets: string[];
 }
 
@@ -166,6 +168,8 @@ interface State {
   sendPaths: string[];
   /** Where some of sendPaths go on the targets, picked by hand on the Send page (sources outside every local root). */
   sendRels: Record<string, string>;
+  /** Sources kept in the list but turned off: they are not sent, compared, packed or watched. */
+  sendOff: string[];
   sendInfos: SourceInfo[];
   targets: string[];
   workspaces: Workspace[];
@@ -197,8 +201,13 @@ interface State {
   addSendPaths(paths: string[], rels?: Record<string, string>): Promise<void>;
   /** Places a source outside every local root on the targets (null: back to the default place). */
   setSendRel(path: string, rel: string | null): Promise<void>;
-  /** The Send page's list as send sources, with the places picked by hand. */
+  /** The Send page's list as send sources (the ones turned on), with the places picked by hand. */
   sendSources(): SourceSpec[];
+  /** The sources that are turned on, in list order. */
+  enabledSendPaths(): string[];
+  /** Turns sources on or off without taking them out of the list. */
+  setSendEnabled(paths: string[], on: boolean): void;
+  removeSendPaths(paths: string[]): void;
   /** Adds a folder to this machine's local roots; the sources below it then follow it on their own. */
   addLocalRoot(folder: string): Promise<void>;
   /** Saved sends: run one, save the current list under a name, remove one. */
@@ -321,6 +330,7 @@ export const useApp = create<State>((set, get) => ({
   },
   sendPaths: [],
   sendRels: {},
+  sendOff: [],
   sendInfos: [],
   targets: [],
   workspaces: [{ id: 'w1', name: '', paths: [], targets: [] }],
@@ -360,7 +370,10 @@ export const useApp = create<State>((set, get) => ({
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
-      if (active?.paths.length) await get().addSendPaths(active.paths, active.rels);
+      if (active?.paths.length) {
+        set({ sendOff: active.off ?? [] });
+        await get().addSendPaths(active.paths, active.rels);
+      }
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
       // keep the reachability dots fresh while the window is in use
@@ -444,8 +457,13 @@ export const useApp = create<State>((set, get) => ({
     const picked = relsFor(add, rels);
     const nextRels = picked ? { ...get().sendRels, ...picked } : get().sendRels;
     set({ sendPaths: next, sendRels: nextRels });
-    const infos = await api.describeSources(next, true, undefined, nextRels);
-    if (get().sendPaths === next) set({ sendInfos: infos });
+    // only the new ones are read (a big folder is counted once, not again with every addition); the rows wait meanwhile
+    try {
+      const infos = await api.describeSources(add, true, undefined, nextRels);
+      set((s) => ({ sendInfos: mergeInfos(s.sendInfos, infos, s.sendPaths) }));
+    } catch (e) {
+      get().toast('error', t('Kaynaklar okunamadı'), (e as Error).message);
+    }
   },
   async setSendRel(path, rel) {
     const st = get();
@@ -463,7 +481,28 @@ export const useApp = create<State>((set, get) => ({
   },
   sendSources() {
     const st = get();
-    return fsSources(st.sendPaths, st.sendRels);
+    return fsSources(st.enabledSendPaths(), st.sendRels);
+  },
+  enabledSendPaths() {
+    const st = get();
+    return st.sendOff.length ? st.sendPaths.filter((p) => !st.sendOff.some((o) => samePath(o, p))) : st.sendPaths;
+  },
+  setSendEnabled(paths, on) {
+    set((s) => {
+      const rest = s.sendOff.filter((o) => !paths.some((p) => samePath(o, p)));
+      return { sendOff: on ? rest : [...rest, ...paths] };
+    });
+  },
+  removeSendPaths(paths) {
+    set((s) => {
+      const gone = (p: string) => paths.some((x) => samePath(x, p));
+      return {
+        sendPaths: s.sendPaths.filter((p) => !gone(p)),
+        sendRels: Object.fromEntries(Object.entries(s.sendRels).filter(([p]) => !gone(p))),
+        sendOff: s.sendOff.filter((p) => !gone(p)),
+        sendInfos: s.sendInfos.filter((i) => !gone(i.path)),
+      };
+    });
   },
   async addLocalRoot(folder) {
     const st = get();
@@ -480,7 +519,7 @@ export const useApp = create<State>((set, get) => ({
     set({ sendRels: rels });
     const paths = get().sendPaths;
     const infos = await api.describeSources(paths, true, undefined, rels);
-    if (get().sendPaths === paths) set({ sendInfos: infos });
+    set((s) => ({ sendInfos: mergeInfos(s.sendInfos, infos, s.sendPaths) }));
     st.toast('ok', t('Yerel kök eklendi'), t('{path} artık bu makinenin yerel kökü; içindekiler hedeflerde aynı göreli yolla yer alır.', { path: folder }));
   },
   runQuickSend(q) {
@@ -494,7 +533,7 @@ export const useApp = create<State>((set, get) => ({
     const existing = all.filter((q) => q.id !== editId && q.name.toLowerCase() !== name.toLowerCase());
     const q: QuickSend = old
       ? { ...old, name, review, hotkey: hotkey?.trim() || undefined, schedule }
-      : { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.sendPaths], rels: relsFor(st.sendPaths, st.sendRels), targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined, schedule };
+      : { id: `q-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, paths: [...st.enabledSendPaths()], rels: relsFor(st.enabledSendPaths(), st.sendRels), targetIds: [...st.targets], options, review, hotkey: hotkey?.trim() || undefined, schedule };
     await st.saveSettings({ quickSends: [...existing, q] });
     st.toast('ok', old ? t('Hızlı gönderim güncellendi') : t('Hızlı gönderim kaydedildi'), t('{name}: {n} kaynak → {targets} hedef', { name, n: q.paths.length, targets: q.targetIds.length }));
   },
@@ -503,13 +542,10 @@ export const useApp = create<State>((set, get) => ({
     await st.saveSettings({ quickSends: (st.boot?.settings.quickSends ?? []).filter((q) => q.id !== id) });
   },
   removeSendPath(p) {
-    set((s) => {
-      const { [p]: _gone, ...rels } = s.sendRels;
-      return { sendPaths: s.sendPaths.filter((x) => x !== p), sendRels: rels, sendInfos: s.sendInfos.filter((x) => x.path !== p) };
-    });
+    get().removeSendPaths([p]);
   },
   clearSendPaths() {
-    set({ sendPaths: [], sendRels: {}, sendInfos: [] });
+    set({ sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [] });
   },
   async newWorkspace(opts = {}) {
     const st = get();
@@ -521,9 +557,9 @@ export const useApp = create<State>((set, get) => ({
       return;
     }
     const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targets: st.targets } : w));
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets } : w));
     const targets = opts.targets ?? st.targets;
-    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendRels: {}, sendInfos: [], targets });
+    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], targets });
     if (opts.paths?.length) await get().addSendPaths(opts.paths, opts.rels);
   },
   async switchWorkspace(id) {
@@ -531,14 +567,14 @@ export const useApp = create<State>((set, get) => ({
     if (id === st.activeWorkspace) return;
     const next = st.workspaces.find((w) => w.id === id);
     if (!next) return;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targets: st.targets } : w));
-    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendRels: {}, sendInfos: [], targets: next.targets });
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets } : w));
+    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: next.off ?? [], sendInfos: [], targets: next.targets });
     await get().addSendPaths(next.paths, next.rels);
   },
   async closeWorkspace(id) {
     const st = get();
     if (st.workspaces.length === 1) {
-      set({ sendPaths: [], sendRels: {}, sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [], rels: undefined })) });
+      set({ sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [], rels: undefined, off: undefined })) });
       return;
     }
     const i = st.workspaces.findIndex((w) => w.id === id);
@@ -625,7 +661,7 @@ export const useApp = create<State>((set, get) => ({
   },
   async writePack(password) {
     const st = get();
-    if (!st.sendPaths.length) return st.toast('warn', t('Kaynak yok'), t('Pakete yazılacak dosya veya klasör seçin.'));
+    if (!st.enabledSendPaths().length) return st.toast('warn', t('Kaynak yok'), t('Pakete yazılacak dosya veya klasör seçin.'));
     const [dir] = await api.pick({ folders: true, title: t('Paket nereye yazılsın?') });
     if (!dir) return;
     const taskId = newTaskId();
@@ -704,9 +740,16 @@ export const useApp = create<State>((set, get) => ({
   },
 }));
 
+/** Source rows as the Send page lists them: the fresh ones replace the old, in the list's order, gone ones dropped. */
+function mergeInfos(cur: SourceInfo[], fresh: SourceInfo[], order: string[]): SourceInfo[] {
+  const at = (p: string) => order.findIndex((o) => samePath(o, p));
+  const all = [...cur.filter((i) => !fresh.some((f) => samePath(f.path, i.path))), ...fresh];
+  return all.filter((i) => at(i.path) >= 0).sort((a, b) => at(a.path) - at(b.path));
+}
+
 useApp.subscribe((s, prev) => {
-  if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
-  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, rels: relsFor(s.sendPaths, s.sendRels), targets: s.targets } : w));
+  if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.sendOff === prev.sendOff && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
+  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, rels: relsFor(s.sendPaths, s.sendRels), off: s.sendOff.length ? s.sendOff : undefined, targets: s.targets } : w));
   writeStored('samsync.workspaces', { active: s.activeWorkspace, list });
 });
 

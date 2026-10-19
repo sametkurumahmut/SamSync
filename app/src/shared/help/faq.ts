@@ -72,13 +72,35 @@ export const FAQ: FaqEntry[] = [
     topic: 'start',
     q: { tr: 'Uygulama hangi makinede olduğunu nasıl biliyor?', en: 'How does the app know which machine it runs on?' },
     a: {
-      tr: 'Yapılandırma bütün makinelerde ortak. Uygulama bilgisayar adını ve IP adreslerini makine listesiyle karşılaştırıp kendini tanır (başlık çubuğundaki yeşil nokta). Tanıyamazsa Hedefler › **Bu makine** kartından elle seçin ya da `SAMSYNC_NODE_ID` ortam değişkenini tanımlayın. Kendisi hiçbir zaman hedef olarak seçilmez (paket uygulanması dışında).',
-      en: 'The configuration is shared by every machine. The app matches the computer name and IP addresses against the machine list to recognise itself (the green dot in the title bar). If it cannot, pick it by hand under Targets › **This machine** or set the `SAMSYNC_NODE_ID` environment variable. It never targets itself (except when a pack is applied).',
+      tr: 'Yapılandırma bütün makinelerde ortak. Uygulama bilgisayar adını ve IP adreslerini makine listesiyle karşılaştırıp kendini tanır (başlık çubuğundaki yeşil nokta). Tanıyamazsa Hedefler › **Bu makine** kartından elle seçin ya da `SAMSYNC_NODE_ID` ortam değişkenini tanımlayın. Kendisi yalnızca kaynakların hepsi paketse ya da yerel köklerinin dışındaysa (başka bir diskteki sürüm gibi) hedef olabilir; o zaman dosyalar doğrudan ilk yerel köküne yazılır.',
+      en: 'The configuration is shared by every machine. The app matches the computer name and IP addresses against the machine list to recognise itself (the green dot in the title bar). If it cannot, pick it by hand under Targets › **This machine** or set the `SAMSYNC_NODE_ID` environment variable. It can be a target itself only when every source is a pack or lies outside its local roots (a release on another disk); the files then go straight to its first local root.',
     },
     keywords: ['tanımsız makine', 'unknown machine', 'kimlik', 'identity', 'hostname'],
     page: 'targets',
   },
   // ---- send
+  {
+    id: 'overlapping-sources',
+    topic: 'send',
+    q: { tr: 'İki kaynak hedefte aynı yere ya da iç içe giderse ne olur?', en: 'What happens when two sources go to the same place, or one inside the other, on the targets?' },
+    a: {
+      tr: 'Aynı yere giden iki klasörün içerikleri birleştirilir; ikisinde de olan dosya listede önce gelenden alınır ve inceleme bunu bir uyarıyla söyler. Başka bir kaynağın yerinin içine düşen kaynak o kısmı devralır: `Release` köke, `D:\\icerik\\Contents` de `Contents`\'e giderse hedeflerdeki `Contents` yalnızca ikinciden gelir; `Release` orada ne karşılaştırır, ne yazar, ne siler. Her kaynağın gideceği yer Gönder sayfasında satırın altındaki listeden seçilir ya da **Başka bir yol yaz…** ile elle yazılır.',
+      en: 'Two folders for the same place are merged; a file both hold comes from the one listed first, and the review warns about it. A source that lands inside another one\'s place takes that part over: with `Release` going to the root and `D:\\content\\Contents` going to `Contents`, the targets\' `Contents` comes only from the second, and `Release` neither compares, writes nor deletes there. Where each source goes is picked on the Send page from the list under it, or typed with **Type another path…**.',
+    },
+    keywords: ['çakışma', 'overlap', 'birleştir', 'merge', 'contents', 'hedef yolu', 'target path', 'aynı yer', 'same place'],
+    page: 'send',
+  },
+  {
+    id: 'source-list',
+    topic: 'send',
+    q: { tr: 'Bir kaynağı listeden çıkarmadan nasıl kapatırım, birden çok kaynağı nasıl seçerim?', en: 'How do I turn a source off without removing it, or pick several sources?' },
+    a: {
+      tr: 'Kaynağın önündeki onay kutusu onu kapatır: listede kalır ama gönderilmez, karşılaştırılmaz, pakete yazılmaz. Tıklamak bir kaynağı seçer, Ctrl bir tane ekler, Shift aralık alır, Ctrl+A hepsini seçer; üstteki çubuk seçilenleri etkinleştirir, devre dışı bırakır ya da çıkarır. Sağ tık **Explorer’da göster** ve **Yolu kopyala** da sunar.',
+      en: 'The checkbox in front of a source turns it off: it stays in the list but is not sent, compared or packed. A click picks a source, Ctrl adds one, Shift a range, Ctrl+A all; the bar above turns the picked ones on or off or removes them. A right click also offers **Show in Explorer** and **Copy path**.',
+    },
+    keywords: ['devre dışı', 'turn off', 'seç', 'select', 'çoklu', 'multiple', 'sağ tık', 'right click', 'explorer'],
+    page: 'send',
+  },
   {
     id: 'modes',
     topic: 'send',

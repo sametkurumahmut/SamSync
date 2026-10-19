@@ -342,13 +342,14 @@ export function AutomationPage() {
 export function useStartWatchFromSend() {
   const st = useApp();
   return async () => {
-    if (!st.sendPaths.length || !st.targets.length) {
+    const on = st.enabledSendPaths();
+    if (!on.length || !st.targets.length) {
       st.toast('warn', t('Kaynak ve hedef seçin'), t('İzlemek için en az bir dosya/klasör ve bir hedef gerekli.'));
       return;
     }
-    const name = st.sendPaths.length === 1 ? baseName(st.sendPaths[0]) : `${baseName(st.sendPaths[0])} +${st.sendPaths.length - 1}`;
+    const name = on.length === 1 ? baseName(on[0]) : `${baseName(on[0])} +${on.length - 1}`;
     const { dryRun: _d, ...rest } = st.options;
-    const a = await api.watchAdd({ name, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: DEFAULT_QUIET_MS, enabled: true });
+    const a = await api.watchAdd({ name, paths: on, rels: relsFor(on, st.sendRels), targetIds: st.targets, options: { ...rest, dryRun: false, mode: rest.mode === 'mirror' ? 'overwrite' : rest.mode, propagateDeletes: false, perTarget: withoutMirror(rest.perTarget) }, quietMs: DEFAULT_QUIET_MS, enabled: true });
     useApp.setState({ automation: a });
     await st.saveSettings({});
     st.toast('ok', t('İzleme başladı'), t('{name} → {n} hedef. Değişiklikler kendiliğinden gönderilecek.', { name, n: st.targets.length }), { label: t('Otomasyonu aç'), run: () => st.setPage('automation') });
@@ -359,7 +360,7 @@ function WatchEditor({ initial, onClose }: { initial: WatchConfig | null; onClos
   const st = useApp();
   const isElectron = st.boot!.isElectron;
   const [name, setName] = useState(initial?.name ?? '');
-  const [paths, setPaths] = useState<string[]>(initial?.paths ?? st.sendPaths);
+  const [paths, setPaths] = useState<string[]>(initial?.paths ?? st.enabledSendPaths());
   const [targets, setTargets] = useState<string[]>(initial?.targetIds ?? st.targets);
   const [opts, setOpts] = useState<SendOptions>(initial?.options ?? { ...DEFAULT_OPTIONS, ...st.options, dryRun: false, propagateDeletes: false, mode: st.options.mode === 'mirror' ? 'overwrite' : st.options.mode, perTarget: withoutMirror(st.options.perTarget) });
   const [quiet, setQuiet] = useState((initial?.quietMs ?? DEFAULT_QUIET_MS) / 1000);

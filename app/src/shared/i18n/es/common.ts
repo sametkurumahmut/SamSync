@@ -364,6 +364,14 @@ const d: Dict = {
   bitti: 'listo',
   'Hedeflerin durumu': 'Estado de los destinos',
   'Bu makinenin kendisi: dosyalar ağ paylaşımı yerine doğrudan yerel köke, kendi diskine yazılır': 'Esta misma máquina: los archivos se escriben directamente en su raíz local, en su propio disco, no a través del recurso compartido de red',
+  'Finder’da göster': 'Mostrar en Finder',
+  'Dosya yöneticisinde göster': 'Mostrar en el gestor de archivos',
+  'Explorer’da göster': 'Mostrar en el Explorador',
+  'Klasör açılamadı': 'No se pudo abrir la carpeta',
+  'Yolu kopyala': 'Copiar la ruta',
+  'Yol panoya kopyalandı': 'Ruta copiada al portapapeles',
+  'Yalnızca bunu seç': 'Seleccionar solo este',
+  'Kaynaklar okunamadı': 'No se pudieron leer las fuentes',
 };
 
 export default d;

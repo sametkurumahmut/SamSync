@@ -598,6 +598,8 @@ export interface SourcePlace {
   base?: string;
   /** The whole path with the drive as a folder (the old way). */
   full?: boolean;
+  /** Its path below this local root (the place a source under a root gets by default). */
+  root?: string;
 }
 
 export interface SourceInfo {
@@ -616,8 +618,10 @@ export interface SourceInfo {
   /** Outside every root: the local folder that stands for the target root, or the full path is kept. */
   base?: string;
   full?: boolean;
-  /** Outside every root: where else it can go (the Send page offers these). */
+  /** Where else it can go (the Send page offers these, and a path typed by hand). */
   places?: SourcePlace[];
+  /** Where it goes when no place is picked by hand. */
+  defaultRel?: string;
   error?: string;
   /** The source is a pack file (.samsync-pack): what it carries and where it was made. */
   pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[]; encrypted?: boolean };

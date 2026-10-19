@@ -363,6 +363,10 @@ const d: Dict = {
   '{path} hiçbir yerel kökün altında değil; içindekiler doğrudan hedeflerin köküne yazılacak.': '{path} liegt unter keinem lokalen Stamm; sein Inhalt wird direkt in den Stamm der Ziele geschrieben.',
   '{path} hiçbir yerel kökün altında değil; hedeflerde {rel} yoluna yazılacak.': '{path} liegt unter keinem lokalen Stamm; es wird auf den Zielen nach {rel} geschrieben.',
   '{done} / {total} makine incelendi': '{done} von {total} Rechnern geprüft',
+  '{n} öğe hem {first} hem {other} içinde var; {first} içindekiler gönderilecek.': '{n} Einträge liegen sowohl in {first} als auch in {other}; gesendet werden die aus {first}.',
+  '{path} hedeflerde {other} ile aynı yere gidiyor ({rel}); yalnızca {other} gönderilecek.': '{path} landet auf den Zielen an derselben Stelle wie {other} ({rel}); nur {other} wird gesendet.',
+  'Hedef bulunamadı: {ids}': 'Ziel nicht gefunden: {ids}',
+  'SFTP hedefi dosya yöneticisinde açılamaz.': 'Ein SFTP-Ziel lässt sich nicht im Dateimanager öffnen.',
 };
 
 export default d;

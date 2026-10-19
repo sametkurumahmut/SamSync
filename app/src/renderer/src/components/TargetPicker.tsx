@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check, FolderOpen, Copy, MousePointerClick } from 'lucide-react';
 import type { NodeConfig, Profile, TargetOptions } from '@shared/types';
 import { overrideFor, pickOverrides, setOverride } from '@shared/options';
 import { MODE_OPTIONS } from '../pages/SendPage';
@@ -8,6 +8,7 @@ import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type Me
 import { api } from '../lib/api';
 import { cls } from '../lib/format';
 import { MachineName } from './MachineName';
+import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from './ContextMenu';
 
 /** Where a send lands on a machine, in full (the row shows it cut short): this machine's own root, its share, folder or SFTP root. */
 function targetRoot(n: NodeConfig, localId?: string): string {
@@ -61,6 +62,37 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
   const [q, setQ] = useState('');
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const platform = useApp((s) => s.boot!.platform);
+  const isElectron = useApp((s) => s.boot!.isElectron);
+  /** Right click on a machine: open where the send lands, copy that path, pick only this one. */
+  const nodeMenu = (e: React.MouseEvent, n: NodeConfig) => {
+    e.preventDefault();
+    const root = targetRoot(n, localId);
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: showInFileManagerLabel(platform),
+          icon: <FolderOpen size={15} />,
+          disabled: !isElectron || n.transport === 'sftp',
+          onClick: () => void api.openTarget(n.id).catch((err) => toast('error', t('Klasör açılamadı'), (err as Error).message)),
+        },
+        {
+          label: t('Yolu kopyala'),
+          icon: <Copy size={15} />,
+          hint: root.length > 34 ? `…${root.slice(-32)}` : root,
+          onClick: () => {
+            void navigator.clipboard.writeText(root);
+            toast('ok', t('Yol panoya kopyalandı'), root);
+          },
+        },
+        { sep: true },
+        { label: t('Yalnızca bunu seç'), icon: <MousePointerClick size={15} />, onClick: () => onChange([n.id]) },
+      ],
+    });
+  };
 
   const sel = new Set(value);
   const ql = q.trim().toLowerCase();
@@ -161,7 +193,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                 g.nodes.map((n) => {
                   const p = probes[n.id];
                   return (
-                    <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))}>
+                    <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))} onContextMenu={(e) => nodeMenu(e, n)}>
                       <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} label={n.name} />
                       <span className={cls('dot', p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
                       <MachineName
@@ -184,6 +216,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
         })}
         {!groups.length && <div className="faint" style={{ padding: 16, textAlign: 'center' }}>{t('Eşleşen makine yok')}</div>}
       </div>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {saving && (
         <SaveProfileModal
           profiles={cfg.profiles}

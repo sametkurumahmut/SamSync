@@ -580,7 +580,7 @@ export class Service implements Api {
       const plan = await buildSendPlan(this.ctx(), req, {
         cancel,
         scans,
-        onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total }),
+        onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total, targets: p.targets }),
       });
       this.plans.set(plan.id, plan);
       this.planScans.set(plan.id, scans);
@@ -605,7 +605,7 @@ export class Service implements Api {
       const r = await writeSendPack(this.ctx(), req, file, {
         cancel,
         password,
-        onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total }),
+        onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total, targets: p.targets }),
       });
       this.log.info(t('Paket'), t('Paket yazıldı: {file} ({files} dosya, {size} → {packed})', { file, files: r.files, size: formatBytes(r.size), packed: formatBytes(r.packed) }));
       return r;
@@ -1377,5 +1377,15 @@ export class Service implements Api {
   rootLabel(nodeId: string) {
     const n = findNode(this.config, nodeId);
     return n ? nodeRootLabel(this.config, n) : '';
+  }
+
+  /** Opens where a send lands on a machine in the file manager: this machine's own root, or the share or folder. */
+  async openTarget(nodeId: string) {
+    const n = findNode(this.config, nodeId);
+    if (!n) throw new Error(t('Hedef bulunamadı: {ids}', { ids: nodeId }));
+    if (n.transport === 'sftp') throw new Error(t('SFTP hedefi dosya yöneticisinde açılamaz.'));
+    const ctx = this.ctx();
+    const root = n.id === ctx.localNodeId && ctx.localRoots[0] ? ctx.localRoots[0] : nodeRootLabel(this.config, n);
+    await this.host.openPath?.(root);
   }
 }

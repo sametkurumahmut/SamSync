@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GitCompare, Play, Send, Search, WifiOff, Folder, FileText, ArrowLeftRight } from 'lucide-react';
 import type { DiffResult, PlanCategory, PlanOp, SendPlan, SourceSpec } from '@shared/types';
+import { samePath } from '@shared/sources';
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
 import { Button, Empty, Segmented } from '../components/ui';
@@ -36,7 +37,10 @@ const srcFor = (op: PlanOp): SourceSpec | null => {
  * are new, changed, newer on the target or extra there, and the line diff of the one you pick.
  */
 export function ComparePage() {
-  const sendPaths = useApp((s) => s.sendPaths);
+  const allPaths = useApp((s) => s.sendPaths);
+  const off = useApp((s) => s.sendOff);
+  // sources turned off on the Send page are left out here too
+  const sendPaths = allPaths.filter((p) => !off.some((o) => samePath(o, p)));
   const targets = useApp((s) => s.targets);
   const setTargets = useApp((s) => s.setTargets);
   const options = useApp((s) => s.options);
