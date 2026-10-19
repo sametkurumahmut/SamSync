@@ -1,5 +1,13 @@
 # Sürüm Geçmişi
 
+## 2.2.3 — 2026-10-19
+
+- **Her kaynağın hedefteki yeri:** yer listesi artık yalnızca kök dışı kaynaklarda değil, her kaynakta var: yerel köke göre yol (varsayılan), üstteki klasörlerin hedef kökü sayıldığı yerler, tam yol ve hedef köküne göre elle yazılan bir yol (**Başka bir yol yaz…**, örneğin `Contents`).
+- **Çakışan kaynaklar:** aynı yere giden iki klasörün içerikleri birleştiriliyor (eskiden ikincisi sessizce atlanıyordu); ikisinde de olan dosya listede önce gelenden alınıyor ve inceleme bunu bildiriyor. Başka bir kaynağın yerinin içine düşen, başka bir yerden gelen kaynak hedeflerin o kısmını devralıyor: `Release` köke, başka bir diskteki `Contents` de `Contents`'e gidiyorsa `Release` hedefteki `Contents`'e hiç dokunmuyor, ayna kipinde de orada silmiyor.
+- **Kaynak listesi:** tıklama, Ctrl ve Shift ile çoklu seçim (Ctrl+A hepsi); seçilenleri etkinleştir, devre dışı bırak ya da çıkar. Devre dışı kaynak listede kalıyor ama gönderilmiyor, karşılaştırılmıyor, pakete yazılmıyor, izlenmiyor. Sağ tık: **Explorer’da göster**, **Yolu kopyala**, etkinleştir/devre dışı bırak, **Listeden çıkar**. Liste doluyken de altta **Dosya seç**, **Klasör seç** ve yol yapıştırma kutusu duruyor. Büyük bir klasör sayılırken satırı "Okunuyor" yazıyor; yeni eklenen kaynak, öncekileri yeniden saymadan okunuyor.
+- **Hedef listesinde sağ tık:** **Explorer’da göster** gönderimin o makinede vardığı klasörü (paylaşımı ya da bu makinenin kendi kökünü) açıyor; **Yolu kopyala** ve **Yalnızca bunu seç**.
+- **Düzeltme:** inceleme penceresindeki makine satırları pencereye ulaşmıyordu; artık listeleme, karşılaştırma ve okunan içerik görünüyor, hedefteki klasörler listelenirken çubuk bekleme çubuğu olarak dönüyor.
+
 ## 2.2.2 — 2026-10-19
 
 - **İnceleme ilerlemesi:** inceleme hazırlanırken pencere her makine için bir satır gösteriyor: sırada, erişim deneniyor, hedefteki klasörler listeleniyor, "8.400 / 20.013 dosya karşılaştırıldı • 1,2 GB içerik okundu" ya da bitti. Üstteki çubuk makine sayısı yerine karşılaştırılan dosyalara göre ilerliyor; eskiden bütün makineler bitene dek boş kalıyordu.
@@ -8,7 +16,7 @@
 
 ## 2.2.1 — 2026-10-19
 
-- **Kök dışı kaynaklar:** hiçbir yerel kökün altında olmayan bir klasör artık hedefte sürücü harfiyle tam yoluna (`C/…/Releasex64/…`) gitmiyor; kendi klasörü hedef kökünün yerine geçiyor, yani içindekiler doğrudan hedef köküne yazılıyor. Bir dosya da hedef köküne adıyla gidiyor. Gönder sayfasında kaynağın altındaki listeden başka bir yer seçilebilir: üstündeki her klasör hedef kökü olabilir ya da eski tam yol korunabilir. **Yerel kök yap** seçili klasörü bu makinenin yerel köklerine ekler. Seçim sekmede, hızlı gönderimde, izlemede ve geçmişteki **Yeniden gönder**de saklanıyor; Karşılaştır sayfası ve paket yazma da aynı yeri kullanıyor. Ayarlar › Kopyalama › **Kök dışı kaynakları tam yoluyla gönder** eski davranışı varsayılan yapar.
+- **Kök dışı kaynaklar:** hiçbir yerel kökün altında olmayan bir klasör artık hedefte sürücü harfiyle tam yoluna (`C/…/Release/…`) gitmiyor; kendi klasörü hedef kökünün yerine geçiyor, yani içindekiler doğrudan hedef köküne yazılıyor. Bir dosya da hedef köküne adıyla gidiyor. Gönder sayfasında kaynağın altındaki listeden başka bir yer seçilebilir: üstündeki her klasör hedef kökü olabilir ya da eski tam yol korunabilir. **Yerel kök yap** seçili klasörü bu makinenin yerel köklerine ekler. Seçim sekmede, hızlı gönderimde, izlemede ve geçmişteki **Yeniden gönder**de saklanıyor; Karşılaştır sayfası ve paket yazma da aynı yeri kullanıyor. Ayarlar › Kopyalama › **Kök dışı kaynakları tam yoluyla gönder** eski davranışı varsayılan yapar.
 - **Düzeltme:** güncellemeden sonra görev çubuğunda SamSync yerine Electron simgesi görünebiliyordu. Geliştirme ve test çalıştırmaları kurulu uygulamayla aynı Windows uygulama kimliğini kullanıyordu; Electron bildirim için bu kimlikle bir Başlat menüsü kısayolu açınca Windows kurulu uygulamayı o kısayola bağlıyordu. Geliştirme çalıştırmaları artık kendi kimliğini kullanıyor.
 - **Düzeltme:** web arayüzündeki oturum kapatma düğmesi İngilizce arayüzde "Quit" yazıyordu; artık **Oturumu kapat** / **Sign out**.
 - **Belgeler:** İngilizce README ve proje sitesi artık arayüzü İngilizce etiketleriyle anlatıyor.
