@@ -448,7 +448,6 @@ const d: Dict = {
   'console.anthropic.com’dan alınır; bu makinede işletim sisteminin şifreli deposunda saklanır, yapılandırmaya yazılmaz. Her soru kendi ücretiyle API’ye gider.': 'From console.anthropic.com; kept in the operating system\'s encrypted store on this machine, never written to the configuration. Every question goes to the API at its own cost.',
   Bot: 'Bot',
   'v{version} indirildi; yeniden başlayınca kurulur': 'v{version} is downloaded; it installs on the next start',
-  'SamSync v{version} kurulup yeniden başlatılsın mı? Süren bir gönderim varsa önce bitmesini bekleyin.': 'Install SamSync v{version} and restart now? If a send is running, let it finish first.',
   'Yeniden başlat ve güncelle': 'Restart and update',
   'Örnek: {src} kaydedilince birkaç saniye sonra {grp} makinelerine gider': 'Example: a few seconds after {src} is saved, it goes to the {grp} machines',
   'Örnek: her gece 02:00’de yedek sunucusuyla eşitle': 'Example: sync with the backup server every night at 02:00',
@@ -515,6 +514,16 @@ const d: Dict = {
   'Yalnızca hata varsa': 'Only when something failed',
   'Başarı sesi': 'Success sound',
   'Hata sesi': 'Failure sound',
+  'SamSync v{version} kurulmaya hazır': 'SamSync v{version} is ready to install',
+  'Kurulum birkaç saniye sürer; uygulama kapanıp yeni sürümle açılır.': 'Installing takes a few seconds; the app closes and opens again as the new version.',
+  'Daha sonra': 'Later',
+  'Önce süren gönderimin bitmesini bekleyin': 'Let the running send finish first',
+  'Şimdi kur ve yeniden başlat': 'Install now and restart',
+  'Yayın: {date}': 'Released: {date}',
+  'Şu an: v{version}': 'Now: v{version}',
+  '{n} gönderim sürüyor. Kurulum uygulamayı kapatır; önce bitmesini bekleyin.': '{n} sends are running. Installing closes the app; let them finish first.',
+  'Bu sürümde': 'In this version',
+  'Sürüm notları, yayın sayfasında.': 'The release notes are on the release page.',
 };
 
 export default d;

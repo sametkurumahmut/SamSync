@@ -762,7 +762,7 @@ function UpdateStatus() {
           </Button>
         )}
         {p === 'ready' && (
-          <Button size="sm" variant="primary" onClick={() => void api.updateInstall()}>
+          <Button size="sm" variant="primary" onClick={() => useApp.setState({ updatePrompt: true })}>
             {t('Yeniden başlat ve kur')}
           </Button>
         )}

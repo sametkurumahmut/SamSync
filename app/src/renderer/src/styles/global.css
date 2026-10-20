@@ -644,6 +644,19 @@ a {
 .plan-progress-row.failed .step {
   color: var(--red);
 }
+/* the update dialog's release notes: plain text from the feed, scrolling when long */
+.update-notes {
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-inset);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .select.sm {
   height: 24px;
   padding: 0 24px 0 8px;

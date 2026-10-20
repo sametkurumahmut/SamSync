@@ -259,7 +259,7 @@ Settings → Updates; the source is stored in the shared configuration:
 | Web address | Any HTTP(S) folder that holds `latest.yml` and the installers. |
 | Network folder | For machines without internet: `npm run release:folder -- "\\server\Dist\SamSync"`. Machines read `latest.yml`, verify the installer with SHA-512 and install it silently. |
 
-Updates are checked at start and every 6 hours, downloaded in the background, and installed with “Restart and install”. The version number is the `version` field in `package.json`. On macOS, auto-update needs a signed package.
+Updates are checked at start and every 6 hours, downloaded in the background, and installed with “Restart and install”. That button opens a window of the app's own: the version, its release date and notes, and a warning while a send is still running (installing restarts the app), with **Later** and **Install now and restart**. The version number is the `version` field in `package.json`. On macOS, auto-update needs a signed package.
 
 The GitHub repository is not written in the code: `scripts/dist.mjs` reads it from the git remote (or `GITHUB_REPOSITORY` in CI) at build time and electron-builder stores it in the package.
 

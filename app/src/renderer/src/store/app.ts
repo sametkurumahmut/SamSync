@@ -183,6 +183,8 @@ interface State {
   options: SendOptions;
 
   planning: { taskId: string; message: string; done?: number; total?: number; targets?: PlanTargetProgress[] } | null;
+  /** The downloaded update is offered for installing (the title-bar pill or Settings opened the dialog). */
+  updatePrompt: boolean;
   review: Review | null;
 
   runs: Record<string, LiveRun>;
@@ -338,6 +340,7 @@ export const useApp = create<State>((set, get) => ({
   activeWorkspace: 'w1',
   options: DEFAULT_OPTIONS,
   planning: null,
+  updatePrompt: false,
   review: null,
   runs: {},
   runPanel: false,
@@ -747,6 +750,9 @@ function mergeInfos(cur: SourceInfo[], fresh: SourceInfo[], order: string[]): So
   const all = [...cur.filter((i) => !fresh.some((f) => samePath(f.path, i.path))), ...fresh];
   return all.filter((i) => at(i.path) >= 0).sort((a, b) => at(a.path) - at(b.path));
 }
+
+// a development run can reach the store from the page (the web preview, a screenshot script): never in a packaged build
+if (import.meta.env.DEV) (window as unknown as { __samsync?: typeof useApp }).__samsync = useApp;
 
 useApp.subscribe((s, prev) => {
   if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.sendOff === prev.sendOff && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;

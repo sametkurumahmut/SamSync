@@ -27,13 +27,13 @@ import {
 import { useApp, PAGES, stepUiScale, uiScaleOf, type Page } from './store/app';
 import { ShortcutsModal } from './components/Shortcuts';
 import { WhatsNewModal } from './components/WhatsNew';
+import { UpdateDialog } from './components/UpdateDialog';
 import { HelpBot } from './components/HelpBot';
 import { NoticeBell, NotificationCenter } from './components/NotificationCenter';
 import { ServerPicker } from './components/ServerPicker';
 import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
 import { Button, PageSkeleton } from './components/ui';
-import { api } from './lib/api';
 import { Toasts } from './components/Toasts';
 import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
@@ -246,10 +246,9 @@ function Shell() {
             tip={update.phase === 'ready' ? t('v{version} indirildi; yeniden başlayınca kurulur', { version: update.version ?? '' }) : undefined}
             tipPos="bottom"
             onClick={() => {
-              // downloaded: one click restarts into the new version; otherwise the Settings page has the details
-              if (update.phase === 'ready') {
-                if (confirm(t('SamSync v{version} kurulup yeniden başlatılsın mı? Süren bir gönderim varsa önce bitmesini bekleyin.', { version: update.version ?? '' }))) void api.updateInstall();
-              } else setPage('settings');
+              // downloaded: the dialog says what the version brings and restarts into it; otherwise the Settings page has the details
+              if (update.phase === 'ready') useApp.setState({ updatePrompt: true });
+              else setPage('settings');
             }}
           >
             {update.phase === 'ready' ? t('Yeniden başlat ve güncelle') : update.phase === 'downloading' ? t('İndiriliyor %{pct}', { pct: Math.round(update.percent ?? 0) }) : t('v{version} çıktı', { version: update.version ?? '' })}
@@ -347,6 +346,7 @@ function Shell() {
       <CommandPalette />
       <ShortcutsModal />
       <WhatsNewModal />
+      <UpdateDialog />
       <HelpBot />
       <NotificationCenter />
       <ServerPicker />

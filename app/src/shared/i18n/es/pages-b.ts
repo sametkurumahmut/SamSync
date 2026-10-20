@@ -451,7 +451,6 @@ const d: Dict = {
   'console.anthropic.com’dan alınır; bu makinede işletim sisteminin şifreli deposunda saklanır, yapılandırmaya yazılmaz. Her soru kendi ücretiyle API’ye gider.': 'Se obtiene en console.anthropic.com; se guarda en el almacén cifrado del sistema operativo de este equipo y nunca se escribe en la configuración. Cada pregunta va a la API con su propio coste.',
   Bot: 'Bot',
   'v{version} indirildi; yeniden başlayınca kurulur': 'v{version} descargada; se instala en el próximo inicio',
-  'SamSync v{version} kurulup yeniden başlatılsın mı? Süren bir gönderim varsa önce bitmesini bekleyin.': '¿Instalar SamSync v{version} y reiniciar ahora? Si hay un envío en curso, espera a que termine.',
   'Yeniden başlat ve güncelle': 'Reiniciar y actualizar',
   'Örnek: {src} kaydedilince birkaç saniye sonra {grp} makinelerine gider': 'Ejemplo: unos segundos después de guardar {src}, se envía a los equipos de {grp}',
   'Örnek: her gece 02:00’de yedek sunucusuyla eşitle': 'Ejemplo: sincronizar con el servidor de copias de seguridad cada noche a las 02:00',
@@ -518,6 +517,16 @@ const d: Dict = {
   'Yalnızca hata varsa': 'Solo si hay errores',
   'Başarı sesi': 'Sonido de éxito',
   'Hata sesi': 'Sonido de error',
+  'SamSync v{version} kurulmaya hazır': 'SamSync v{version} está lista para instalarse',
+  'Kurulum birkaç saniye sürer; uygulama kapanıp yeni sürümle açılır.': 'La instalación tarda unos segundos; la aplicación se cierra y vuelve a abrirse con la nueva versión.',
+  'Daha sonra': 'Más tarde',
+  'Önce süren gönderimin bitmesini bekleyin': 'Espera primero a que termine el envío en curso',
+  'Şimdi kur ve yeniden başlat': 'Instalar ahora y reiniciar',
+  'Yayın: {date}': 'Publicada: {date}',
+  'Şu an: v{version}': 'Ahora: v{version}',
+  '{n} gönderim sürüyor. Kurulum uygulamayı kapatır; önce bitmesini bekleyin.': '{n} envíos en curso. La instalación cierra la aplicación; espera primero a que terminen.',
+  'Bu sürümde': 'En esta versión',
+  'Sürüm notları, yayın sayfasında.': 'Las notas de la versión están en la página de la publicación.',
 };
 
 export default d;

@@ -448,7 +448,6 @@ const d: Dict = {
   'console.anthropic.com’dan alınır; bu makinede işletim sisteminin şifreli deposunda saklanır, yapılandırmaya yazılmaz. Her soru kendi ücretiyle API’ye gider.': 'Erhältlich auf console.anthropic.com; wird auf diesem Rechner im verschlüsselten Speicher des Betriebssystems abgelegt und nie in die Konfiguration geschrieben. Jede Frage geht zu ihren eigenen Kosten an die API.',
   Bot: 'Bot',
   'v{version} indirildi; yeniden başlayınca kurulur': 'v{version} wurde heruntergeladen; es wird beim nächsten Start installiert',
-  'SamSync v{version} kurulup yeniden başlatılsın mı? Süren bir gönderim varsa önce bitmesini bekleyin.': 'SamSync v{version} jetzt installieren und neu starten? Läuft gerade eine Übertragung, warten Sie zuerst, bis sie beendet ist.',
   'Yeniden başlat ve güncelle': 'Neu starten und aktualisieren',
   'Örnek: {src} kaydedilince birkaç saniye sonra {grp} makinelerine gider': 'Beispiel: Einige Sekunden nach dem Speichern von {src} geht es an die Rechner der Gruppe {grp}',
   'Örnek: her gece 02:00’de yedek sunucusuyla eşitle': 'Beispiel: jede Nacht um 02:00 mit dem Sicherungsserver synchronisieren',
@@ -515,6 +514,16 @@ const d: Dict = {
   'Yalnızca hata varsa': 'Nur bei Fehlern',
   'Başarı sesi': 'Erfolgston',
   'Hata sesi': 'Fehlerton',
+  'SamSync v{version} kurulmaya hazır': 'SamSync v{version} ist bereit zur Installation',
+  'Kurulum birkaç saniye sürer; uygulama kapanıp yeni sürümle açılır.': 'Die Installation dauert ein paar Sekunden; die App schließt sich und öffnet sich als neue Version.',
+  'Daha sonra': 'Später',
+  'Önce süren gönderimin bitmesini bekleyin': 'Warten Sie zuerst, bis das laufende Senden fertig ist',
+  'Şimdi kur ve yeniden başlat': 'Jetzt installieren und neu starten',
+  'Yayın: {date}': 'Veröffentlicht: {date}',
+  'Şu an: v{version}': 'Jetzt: v{version}',
+  '{n} gönderim sürüyor. Kurulum uygulamayı kapatır; önce bitmesini bekleyin.': '{n} Übertragungen laufen. Die Installation schließt die App; warten Sie zuerst, bis sie fertig sind.',
+  'Bu sürümde': 'In dieser Version',
+  'Sürüm notları, yayın sayfasında.': 'Die Versionshinweise stehen auf der Release-Seite.',
 };
 
 export default d;
