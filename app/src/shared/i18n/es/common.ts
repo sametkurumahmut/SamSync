@@ -372,6 +372,9 @@ const d: Dict = {
   'Yol panoya kopyalandı': 'Ruta copiada al portapapeles',
   'Yalnızca bunu seç': 'Seleccionar solo este',
   'Kaynaklar okunamadı': 'No se pudieron leer las fuentes',
+  'Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır': 'Vuelve a planificar las mismas fuentes a las mismas máquinas; lo que ya llegó se omite',
+  'Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar': 'Vuelve a planificar las mismas fuentes solo a las máquinas que fallaron',
+  'Yeniden dene': 'Reintentar',
 };
 
 export default d;

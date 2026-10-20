@@ -92,6 +92,8 @@ const d: Dict = {
   'Önce bir kez “İncele ve gönder” ile gönderin; sonra aynı hedefler ve seçenekler tek tıkla kullanılır.': 'Senden Sie zuerst einmal mit „Prüfen und senden“; danach sind dieselben Ziele und Optionen mit einem Klick verfügbar.',
   'Gönderim hedefte silme yapacak': 'Diese Übertragung löscht auf den Zielen',
   '{n} öğe silinecek; göndermeden önce gözden geçirin.': pl('{n} Element wird gelöscht; prüfen Sie es vor dem Senden.', '{n} Elemente werden gelöscht; prüfen Sie sie vor dem Senden.'),
+  'Masaüstü bildirimi bu sistemde desteklenmiyor': 'Desktop-Benachrichtigungen werden auf diesem System nicht unterstützt',
+  'Masaüstü bildirimi gösterilemedi: {error}': 'Die Desktop-Benachrichtigung ließ sich nicht anzeigen: {error}',
 };
 
 export default d;

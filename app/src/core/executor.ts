@@ -454,6 +454,27 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       }
     };
 
+    /**
+     * A file a program on the target holds open cannot be replaced; when it already holds exactly what would be
+     * written (copied earlier without its date, so the time comparison keeps picking it), only its date is
+     * aligned, and the item counts as done rather than failed. False when the content differs or nothing is known.
+     */
+    const alignInUse = async (op: ExecOp): Promise<boolean> => {
+      if (op.kind !== 'copy' || !op.src || s.dryRun) return false;
+      const cur = await tgt.stat(op.rel);
+      if (!cur || cur.isDir || cur.size !== op.size) return false;
+      const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(op.rel))]);
+      if (a !== b) return false;
+      const mtime = op.mtimeMs ?? (op.src.kind === 'fs' ? fs.statSync(op.src.abs).mtimeMs : undefined);
+      if (mtime == null) return false;
+      await tgt.setMtime(op.rel, mtime);
+      ctx.hashCache?.set(tgt.root, op.rel, op.size, mtime, a);
+      st.bytesDone += op.size;
+      st.current = op.rel;
+      log('info', t('{path}: dosya kullanımda ama içeriği zaten aynı; yalnızca tarihi eşitlendi', { path: op.rel }), g.key);
+      return true;
+    };
+
     const backupOrRemoveForReplace = async (op: ExecOp): Promise<boolean> => {
       // a file is replaced by the rename itself; only something to keep, or a folder in the way, needs a look first
       if (!op.replaceType && (nothingToKeep || op.dstExists === false)) return false;
@@ -489,8 +510,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           return;
         } catch (e) {
           lastErr = e;
-          // a file in use stays in use for the retry period: say so at once
-          if (e instanceof InUseError) break;
+          // a file in use stays in use for the retry period: say so at once, unless it is the same file already
+          if (e instanceof InUseError) {
+            if (await alignInUse(op).catch(() => false)) {
+              record(op, true, undefined, false);
+              return;
+            }
+            break;
+          }
           if (attempt < s.retryCount && !gc.cancelled) {
             log('warn', t('{path}: {error} — yeniden denenecek ({attempt}/{max})', { path: op.rel, error: errMessage(e), attempt: attempt + 1, max: s.retryCount }), g.key);
             await sleep(s.waitSeconds * 1000);

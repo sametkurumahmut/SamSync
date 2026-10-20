@@ -92,6 +92,8 @@ const d: Dict = {
   'Önce bir kez “İncele ve gönder” ile gönderin; sonra aynı hedefler ve seçenekler tek tıkla kullanılır.': 'Envía primero una vez con “Revisar y enviar”; después, los mismos destinos y opciones se usan con un solo clic.',
   'Gönderim hedefte silme yapacak': 'Este envío eliminará elementos en los destinos',
   '{n} öğe silinecek; göndermeden önce gözden geçirin.': pl('Se eliminará {n} elemento; revísalo antes de enviar.', 'Se eliminarán {n} elementos; revísalos antes de enviar.'),
+  'Masaüstü bildirimi bu sistemde desteklenmiyor': 'Las notificaciones de escritorio no se admiten en este sistema',
+  'Masaüstü bildirimi gösterilemedi: {error}': 'No se pudo mostrar la notificación de escritorio: {error}',
 };
 
 export default d;

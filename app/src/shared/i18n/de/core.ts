@@ -367,6 +367,7 @@ const d: Dict = {
   '{path} hedeflerde {other} ile aynı yere gidiyor ({rel}); yalnızca {other} gönderilecek.': '{path} landet auf den Zielen an derselben Stelle wie {other} ({rel}); nur {other} wird gesendet.',
   'Hedef bulunamadı: {ids}': 'Ziel nicht gefunden: {ids}',
   'SFTP hedefi dosya yöneticisinde açılamaz.': 'Ein SFTP-Ziel lässt sich nicht im Dateimanager öffnen.',
+  '{path}: dosya kullanımda ama içeriği zaten aynı; yalnızca tarihi eşitlendi': '{path}: in Benutzung, enthält aber bereits denselben Inhalt; nur das Datum wurde angeglichen',
 };
 
 export default d;

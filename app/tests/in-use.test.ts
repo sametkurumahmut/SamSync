@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { buildSendPlan } from '../src/core/plan';
 import { startRun } from '../src/core/executor';
 import { transportForNode } from '../src/core/transport';
-import { tmpDir, write, pathNode, makeCtx, defaultOptions, sleep } from './helpers';
+import { tmpDir, write, pathNode, makeCtx, defaultOptions, sleep, daysAgo } from './helpers';
 
 const win = process.platform === 'win32';
 
@@ -55,6 +55,60 @@ describe('a file in use on the target', () => {
       expect(Date.now() - started).toBeLessThan(1800);
       expect(fs.readdirSync(tgt).filter((n) => n.includes('samsync-tmp'))).toEqual([]);
       expect(d.log.filter((l) => l.message.includes('yeniden denenecek'))).toEqual([]);
+    } finally {
+      child.kill();
+      await sleep(300);
+      await fsp.rm(base, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
+  it.skipIf(!win)('that already holds the same content only gets its date aligned, and counts as done', async () => {
+    const base = await tmpDir();
+    const src = path.join(base, 'src');
+    const tgt = path.join(base, 't');
+    await fsp.mkdir(src, { recursive: true });
+    await fsp.mkdir(tgt, { recursive: true });
+    // the same program on both sides; the target's copy was made without its date (a tool that keeps none)
+    await fsp.copyFile(process.execPath, path.join(src, 'held.exe'));
+    await fsp.copyFile(process.execPath, path.join(tgt, 'held.exe'));
+    const stamp = daysAgo(3);
+    await fsp.utimes(path.join(src, 'held.exe'), stamp, stamp);
+    await write(path.join(src, 'other.txt'), 'x');
+    await write(path.join(tgt, 'other.txt'), 'y', daysAgo(1));
+    const child = spawn(path.join(tgt, 'held.exe'), ['-e', 'setTimeout(() => {}, 15000)'], { stdio: 'ignore' });
+    await sleep(600);
+    try {
+      const ctx = makeCtx({ nodes: [pathNode('T', tgt)], copy: { retryCount: 2, waitSeconds: 1 } as never }, [src], path.join(base, 'ud'));
+      const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: defaultOptions, origin: 'send' });
+      const tp = plan.targets[0];
+      // the dates differ, so the time comparison wants to write it and overwrite mode selects it
+      expect(tp.ops.find((o) => o.rel === 'held.exe')?.selected).toBe(true);
+      const ops = tp.ops.filter((o) => o.selected).map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, dstExists: o.dstMtime != null }));
+      const h = startRun(ctx, [{ key: 'T', title: 'T', rootLabel: tp.root, open: () => transportForNode(ctx, ctx.config.nodes[0]), ops }], {
+        label: 'same content',
+        origin: 'send',
+        dryRun: false,
+        backup: false,
+        backupKeep: 0,
+        backupFolderName: '_y',
+        verify: false,
+        retryCount: 2,
+        waitSeconds: 1,
+        parallelGroups: 1,
+        parallelFiles: 4,
+        postCommandTimeoutSeconds: 5,
+        sources: [],
+        targetIds: [],
+      });
+      const d = await h.done;
+      expect(d.status).toBe('ok');
+      expect(d.results.find((r) => r.rel === 'held.exe')?.ok).toBe(true);
+      expect(d.results.find((r) => r.rel === 'other.txt')?.ok).toBe(true);
+      expect(d.log.some((l) => /tarihi eşitlendi|date aligned/.test(l.message))).toBe(true);
+      expect(Math.abs(fs.statSync(path.join(tgt, 'held.exe')).mtimeMs - stamp.getTime())).toBeLessThan(2000);
+      // the next plan sees nothing to do for it
+      const again = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: defaultOptions, origin: 'send' });
+      expect(again.targets[0].ops.find((o) => o.rel === 'held.exe')).toBeUndefined();
     } finally {
       child.kill();
       await sleep(300);

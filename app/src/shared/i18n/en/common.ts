@@ -372,6 +372,9 @@ const d: Dict = {
   'Yol panoya kopyalandı': 'Path copied to the clipboard',
   'Yalnızca bunu seç': 'Select only this one',
   'Kaynaklar okunamadı': 'Could not read the sources',
+  'Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır': 'Plans the same sources to the same machines again; what already went through is skipped',
+  'Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar': 'Plans the same sources again, only to the machines that failed',
+  'Yeniden dene': 'Try again',
 };
 
 export default d;

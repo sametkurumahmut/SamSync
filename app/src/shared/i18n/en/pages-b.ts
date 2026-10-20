@@ -509,6 +509,12 @@ const d: Dict = {
   'Oturumu kapat': 'Sign out',
   'Kök dışı kaynakları tam yoluyla gönder': 'Send sources outside the roots with their full path',
   'Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.': 'The old way: a folder that is not under any local root lands on the targets with its full path, drive letter included. When off, the folder itself stands for the target root; the Send page can also pick this for each source.',
+  'Bitince ses': 'Sound when done',
+  'Gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Deneme çalıştırmaları ve iptaller sessizdir.': 'A short sound when a send ends: two rising notes when it went through, a low warning when something failed. Dry runs and cancels stay silent.',
+  'Her bitişte': 'Every time',
+  'Yalnızca hata varsa': 'Only when something failed',
+  'Başarı sesi': 'Success sound',
+  'Hata sesi': 'Failure sound',
 };
 
 export default d;

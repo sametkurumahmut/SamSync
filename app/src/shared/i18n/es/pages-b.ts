@@ -512,6 +512,12 @@ const d: Dict = {
   'Oturumu kapat': 'Cerrar sesión',
   'Kök dışı kaynakları tam yoluyla gönder': 'Enviar con su ruta completa las fuentes fuera de las raíces',
   'Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.': 'El comportamiento anterior: una carpeta que no está bajo ninguna raíz local llega a los destinos con su ruta completa, con la letra de unidad. Desactivado, la propia carpeta hace de raíz de destino; en la página Enviar también se puede elegir para cada fuente.',
+  'Bitince ses': 'Sonido al terminar',
+  'Gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Deneme çalıştırmaları ve iptaller sessizdir.': 'Un sonido breve al terminar un envío: dos notas ascendentes si salió bien, un aviso grave si algo falló. Las pruebas y las cancelaciones no suenan.',
+  'Her bitişte': 'Siempre',
+  'Yalnızca hata varsa': 'Solo si hay errores',
+  'Başarı sesi': 'Sonido de éxito',
+  'Hata sesi': 'Sonido de error',
 };
 
 export default d;

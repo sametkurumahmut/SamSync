@@ -26,6 +26,7 @@ import type {
 import type { IntegrationStatus } from '@shared/api';
 import { api, newTaskId, onEvent } from '../lib/api';
 import { readStored, writeStored } from '../lib/persist';
+import { playFinishSound } from '../lib/sounds';
 import { fsSources, pathWithin, relsFor, samePath } from '@shared/sources';
 import { pushSample, type Sample } from '../lib/rates';
 import { APP_PAGES, type AppPage } from '@shared/pages';
@@ -815,6 +816,9 @@ function handleEvent(e: AppEvent) {
         runId: r.id,
         read: r.status === 'ok',
       });
+      // a sound says how it ended, so the window can stay in the background; a dry run and a cancel stay silent
+      const sound = st.boot?.settings.finishSound ?? 'always';
+      if (!r.dryRun && r.status !== 'cancelled' && sound !== 'never' && (sound === 'always' || r.status !== 'ok')) playFinishSound(r.status === 'ok' ? 'ok' : 'error');
       if (r.status === 'ok') {
         st.toast('ok', r.dryRun ? t('Deneme tamamlandı') : t('Gönderim tamamlandı'), `${t('{n} işlem', { n: r.opsOk })} • ${t('{n} hedef', { n: r.targets.length })}`);
         if (st.boot?.settings.closeRunPanelOnSuccess && st.activeRunId === r.id) useApp.setState({ runPanel: false });

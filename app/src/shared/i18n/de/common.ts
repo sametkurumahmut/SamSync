@@ -372,6 +372,9 @@ const d: Dict = {
   'Yol panoya kopyalandı': 'Pfad in die Zwischenablage kopiert',
   'Yalnızca bunu seç': 'Nur diesen auswählen',
   'Kaynaklar okunamadı': 'Die Quellen ließen sich nicht lesen',
+  'Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır': 'Plant dieselben Quellen erneut für dieselben Rechner; was schon angekommen ist, wird übersprungen',
+  'Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar': 'Plant dieselben Quellen erneut, nur für die Rechner mit Fehlern',
+  'Yeniden dene': 'Erneut versuchen',
 };
 
 export default d;

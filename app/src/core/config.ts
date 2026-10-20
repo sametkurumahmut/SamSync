@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: LocalSettings = {
   probeIntervalSec: 45,
   confirmBeforeRun: true,
   closeRunPanelOnSuccess: false,
+  finishSound: 'always',
   updateAutoCheck: true,
   updateAutoDownload: true,
   watches: [],

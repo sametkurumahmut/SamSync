@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2 } from 'lucide-react';
-import type { CopySettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2, Volume2 } from 'lucide-react';
+import type { CopySettings, LocalSettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
+import { playFinishSound } from '../lib/sounds';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls, dateTime } from '../lib/format';
 import { t, tk } from '@shared/i18n';
@@ -214,6 +215,21 @@ export function SettingsPage() {
             </Field>
             <div className="divider" />
             <ToggleRow title={t('Başarılı gönderimden sonra paneli kapat')} on={s.closeRunPanelOnSuccess} onChange={(v) => void saveSettings({ closeRunPanelOnSuccess: v })} />
+            <Field label={t('Bitince ses')} help={t('Gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Deneme çalıştırmaları ve iptaller sessizdir.')} style={{ marginTop: 10 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <select className="select" style={{ width: 220 }} aria-label={t('Bitince ses')} value={s.finishSound ?? 'always'} onChange={(e) => void saveSettings({ finishSound: e.target.value as LocalSettings['finishSound'] })}>
+                  <option value="always">{t('Her bitişte')}</option>
+                  <option value="errors">{t('Yalnızca hata varsa')}</option>
+                  <option value="never">{t('Kapalı')}</option>
+                </select>
+                <Button size="sm" variant="ghost" icon={<Volume2 size={13} />} onClick={() => playFinishSound('ok')}>
+                  {t('Başarı sesi')}
+                </Button>
+                <Button size="sm" variant="ghost" icon={<Volume2 size={13} />} onClick={() => playFinishSound('error')}>
+                  {t('Hata sesi')}
+                </Button>
+              </div>
+            </Field>
           </Section>
 
           <Section id="background" icon={<PanelBottomClose size={15} />} title={t('Arka plan ve başlangıç')} desc={t('Otomasyonun pencere kapalıyken de sürmesi için')}>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play } from 'lucide-react';
+import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw } from 'lucide-react';
 import type { RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, Segmented, useEscapeLayer } from './ui';
@@ -160,6 +160,17 @@ export function RunPanel() {
 
   if (!open || !run) return null;
   const s = run.summary;
+  /** A run that was cancelled or went wrong can be tried again: the same sources to the failed machines (every one after a cancel), with the review first. */
+  const canRetry = run.done && s.status !== 'ok' && (s.origin === 'send' || s.origin === 'git') && s.sources.length > 0;
+  const retry = async () => {
+    const st = useApp.getState();
+    const failed = s.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => x.key);
+    const targets = s.status === 'cancelled' || !failed.length ? s.targetIds : failed;
+    useApp.setState({ runPanel: false, activeRunId: undefined });
+    st.setPage('send');
+    await st.newWorkspace({ name: s.label, paths: s.sources, rels: s.sourceRels, targets });
+    await useApp.getState().startPlan({ sources: useApp.getState().sendSources(), origin: 'send', targetIds: targets, label: s.label });
+  };
   const tot = totals(run);
   const elapsed = (run.done ? s.finishedAt ?? now : now) - s.startedAt;
   // the pace so far and what it leaves: the network to the machines is often the slow part
@@ -343,7 +354,12 @@ export function RunPanel() {
               {t('Geçmişte aç')}
             </Button>
           )}
-          <Button variant={run.done ? 'primary' : 'default'} onClick={() => useApp.setState({ runPanel: false })}>
+          {canRetry && (
+            <Button variant="primary" icon={<RotateCcw size={14} />} tip={s.status === 'cancelled' ? t('Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır') : t('Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar')} onClick={() => void retry()}>
+              {t('Yeniden dene')}
+            </Button>
+          )}
+          <Button variant={run.done && !canRetry ? 'primary' : 'default'} onClick={() => useApp.setState({ runPanel: false })}>
             {run.done ? t('Kapat') : t('Arka planda sürdür')}
           </Button>
         </div>

@@ -216,6 +216,8 @@ export interface LocalSettings {
   probeIntervalSec: number;
   confirmBeforeRun: boolean;
   closeRunPanelOnSuccess: boolean;
+  /** A short sound when a run ends: never, only when something failed, or always (dry runs stay silent). */
+  finishSound?: 'never' | 'errors' | 'always';
   updateAutoCheck: boolean;
   updateAutoDownload: boolean;
   /** Folder watches that send changes automatically (this machine only). */

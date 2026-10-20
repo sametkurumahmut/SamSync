@@ -128,17 +128,27 @@ if (launch.removeIntegrations) {
       awake = null;
     }
   };
-  // the taskbar button shows how far the running sends are, so the window can stay in the background
+  // the taskbar button shows how far the running sends and the reviews being prepared (comparisons, packs) are,
+  // so the window can stay in the background; a review that has no count yet shows as a marquee
   const runProgress = new Map<string, number>();
+  const taskProgress = new Map<string, number | null>();
   const showProgress = () => {
     if (!win || win.isDestroyed()) return;
-    if (!runProgress.size) return win.setProgressBar(-1);
+    if (!runProgress.size && !taskProgress.size) return win.setProgressBar(-1);
+    const known = [...runProgress.values(), ...[...taskProgress.values()].filter((v): v is number => v != null)];
+    if (!known.length) return win.setProgressBar(1, { mode: 'indeterminate' });
     let sum = 0;
-    for (const v of runProgress.values()) sum += v;
-    win.setProgressBar(Math.min(0.999, Math.max(0.01, sum / runProgress.size)));
+    for (const v of known) sum += v;
+    win.setProgressBar(Math.min(0.999, Math.max(0.01, sum / known.length)), { mode: 'normal' });
   };
+  /** The api methods that run as a task with progress events, and where their task id sits in the arguments. */
+  const TASK_ARG: Record<string, number> = { planSend: 1, writePack: 2, discoverHosts: 0 };
   const emit = (e: AppEvent) => {
     if (e.type === 'config-changed') integrations.refresh();
+    if (e.type === 'task-progress' && taskProgress.has(e.taskId)) {
+      taskProgress.set(e.taskId, e.total ? Math.min(1, (e.done ?? 0) / e.total) : null);
+      showProgress();
+    }
     if (e.type === 'run-start') {
       activeRuns.add(e.run.id);
       runProgress.set(e.run.id, 0);
@@ -369,12 +379,18 @@ if (launch.removeIntegrations) {
       }
     },
     notify(title, body) {
-      if (!Notification.isSupported()) return;
+      // Windows shows a toast only for an app whose Start Menu shortcut carries the app id (the installer sets it),
+      // and not while a full-screen program or focus assist holds notifications back; the log says what happened
+      if (!Notification.isSupported()) {
+        service.log.warn(t('Bildirim'), t('Masaüstü bildirimi bu sistemde desteklenmiyor'));
+        return;
+      }
       const n = new Notification({ title, body, icon: iconPath, silent: false });
       n.on('click', () => {
         win?.show();
         win?.focus();
       });
+      n.on('failed', (_e, error) => service.log.warn(t('Bildirim'), t('Masaüstü bildirimi gösterilemedi: {error}', { error })));
       n.show();
     },
     integrations: {
@@ -447,7 +463,20 @@ if (launch.removeIntegrations) {
   ipcMain.handle('samsync:api', async (_e, method: string, args: unknown[]) => {
     const fn = (service as unknown as Record<string, unknown>)[method];
     if (!isApiMethod(method) || typeof fn !== 'function') throw new Error(t('Bilinmeyen işlem: {method}', { method }));
-    const result = await (fn as (...a: unknown[]) => unknown).apply(service, args);
+    const taskId = method in TASK_ARG && typeof args[TASK_ARG[method]] === 'string' ? (args[TASK_ARG[method]] as string) : null;
+    if (taskId) {
+      taskProgress.set(taskId, null);
+      showProgress();
+    }
+    let result: unknown;
+    try {
+      result = await (fn as (...a: unknown[]) => unknown).apply(service, args);
+    } finally {
+      if (taskId) {
+        taskProgress.delete(taskId);
+        showProgress();
+      }
+    }
     if (method === 'bootstrap') {
       // the renderer subscribes to events before it asks for the bootstrap
       setTimeout(() => {

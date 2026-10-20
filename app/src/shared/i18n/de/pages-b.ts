@@ -509,6 +509,12 @@ const d: Dict = {
   'Oturumu kapat': 'Abmelden',
   'Kök dışı kaynakları tam yoluyla gönder': 'Quellen außerhalb der Stämme mit vollem Pfad senden',
   'Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.': 'Das alte Verhalten: Ein Ordner, der unter keinem lokalen Stamm liegt, landet auf den Zielen mit vollem Pfad samt Laufwerksbuchstaben. Ausgeschaltet steht der Ordner selbst für den Zielstamm; auf der Seite Senden lässt sich das auch je Quelle wählen.',
+  'Bitince ses': 'Ton am Ende',
+  'Gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Deneme çalıştırmaları ve iptaller sessizdir.': 'Ein kurzer Ton, wenn ein Senden endet: zwei steigende Noten bei Erfolg, ein tiefer Warnton bei Fehlern. Probeläufe und Abbrüche bleiben stumm.',
+  'Her bitişte': 'Jedes Mal',
+  'Yalnızca hata varsa': 'Nur bei Fehlern',
+  'Başarı sesi': 'Erfolgston',
+  'Hata sesi': 'Fehlerton',
 };
 
 export default d;
