@@ -353,8 +353,16 @@ export function Popover({
   useEffect(() => {
     const down = (e: MouseEvent) => {
       const t = e.target as Node;
-      // clicks inside a modal opened from this popover (or any other portal above it) do not count as outside
-      if (ref.current && !ref.current.contains(t) && !anchor?.contains(t) && !(t instanceof Element && t.closest('.scrim'))) onClose();
+      if (!ref.current || ref.current.contains(t) || anchor?.contains(t)) return;
+      // clicks inside a modal opened from this popover, or inside a popover opened later than this one (a menu
+      // inside the target picker on the Git page), do not count as outside: portals mount in order, so what was
+      // opened from here comes after this one in the document
+      if (t instanceof Element) {
+        if (t.closest('.scrim')) return;
+        const above = t.closest('.popover');
+        if (above && above !== ref.current && ref.current.compareDocumentPosition(above) & Node.DOCUMENT_POSITION_FOLLOWING) return;
+      }
+      onClose();
     };
     window.addEventListener('mousedown', down);
     return () => window.removeEventListener('mousedown', down);
