@@ -1,5 +1,13 @@
 # Sürüm Geçmişi
 
+## 2.2.5 — 2026-10-20
+
+- **Kullanımdaki dosya, aynı içerik:** hedefte bir programın açık tuttuğu dosya değiştirilemediğinde SamSync artık içeriğini kaynakla karşılaştırıyor; aynıysa yalnızca tarihini eşitliyor ve öğeyi hata değil tamamlanmış sayıyor. Tarihleri korumayan bir araçla kopyalanmış dosyalar eskiden her gönderimde "dosya kullanımda" hatası veriyordu; bir kez tarih eşitlenince bir daha seçilmiyor.
+- **Yeniden dene:** iptal edilen ya da hatalı biten çalıştırmanın panelinde **Yeniden dene**: aynı kaynaklar iptalden sonra bütün makinelere (zaten gitmiş olanlar atlanır), hatadan sonra yalnızca hatalı makinelere yeniden planlanır; önce inceleme açılır.
+- **Görev çubuğu ilerlemesi:** inceleme hazırlanırken ve karşılaştırırken de görev çubuğundaki düğme ilerliyor; hedefteki klasörler listelenirken bekleme çubuğu olarak dönüyor.
+- **Bitince ses:** gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Ayarlar › Genel: her bitişte (varsayılan), yalnızca hata varsa ya da kapalı; iki sesi dinleme düğmeleri. Deneme çalıştırmaları ve iptaller sessizdir.
+- **Bildirimler:** masaüstü bildirimi gösterilemediğinde (Windows tam ekran bir program ya da odak yardımı yüzünden tutuyorsa) nedeni günlüğe yazılıyor.
+
 ## 2.2.4 — 2026-10-20
 
 - **Düzeltme:** Git sayfasındaki hedef seçicide **Seç** menüsünün komutları (görünenlerin tümünü seç, seçimi temizle, erişilebilirleri seç, profiller…) çalışmıyordu: menüye tıklamak, seçicinin açılır penceresini dışarı tıklama sayıp kapatıyordu. Aynı durum oradaki sağ tık menüsü için de geçerliydi. Bir açılır pencerenin içinden açılan menü artık dışarı sayılmıyor; dışarı tıklama pencereyi yine kapatıyor.
