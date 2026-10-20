@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
-import type {
+import type { FileTrace,
   DiscoveredHost,
   DirListing,
   WebUiSettings,
@@ -47,7 +47,7 @@ import { createLogger, type Logger } from './logger';
 import { History, pruneReports } from './history';
 import { buildSendPlan, describeSources, writeSendPack, type PlanScans } from './plan';
 import { discoverHosts } from './discover';
-import { hashPassword } from './webserver';
+import { hashPassword, verifyPassword } from './webserver';
 import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
 import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assistantSystem } from './assistant';
@@ -427,15 +427,18 @@ export class Service implements Api {
     return { available: false, enabled: !!w?.enabled, running: false, port: w?.port ?? 8780, lan: w?.lan ?? true, hasPassword: !!w?.passwordHash, urls: [], clients: 0, sessions: 0 };
   }
 
-  async webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null }): Promise<WebUiState> {
+  async webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState> {
     const cur: WebUiSettings = this.settings.webUi ?? { enabled: false, port: 8780, lan: true };
     const next: WebUiSettings = {
       enabled: patch.enabled ?? cur.enabled,
       port: Math.max(1024, Math.min(65535, Math.round(patch.port ?? cur.port) || 8780)),
       lan: patch.lan ?? cur.lan,
       passwordHash: patch.password === undefined ? cur.passwordHash : patch.password ? hashPassword(patch.password) : undefined,
+      viewerHash: patch.viewerPassword === undefined ? cur.viewerHash : patch.viewerPassword ? hashPassword(patch.viewerPassword) : undefined,
     };
     if (patch.password != null && patch.password.length < 8) throw new Error(t('Parola en az 8 karakter olmalı'));
+    if (patch.viewerPassword != null && patch.viewerPassword.length < 8) throw new Error(t('Parola en az 8 karakter olmalı'));
+    if (next.viewerHash && next.passwordHash && patch.viewerPassword && verifyPassword(patch.viewerPassword, next.passwordHash)) throw new Error(t('İzleyici parolası ana paroladan farklı olmalı'));
     if (next.enabled && !next.passwordHash) throw new Error(t('Önce bir parola belirleyin'));
     this.settings = { ...this.settings, webUi: next };
     await this.persistSettings();
@@ -596,7 +599,7 @@ export class Service implements Api {
   }
 
   /** The sources as one pack file in `dir` (named after the label and the time), for a release carried on a disk. */
-  async writePack(req: SendRequest, dir: string, taskId: string, password?: string): Promise<PackWriteResult> {
+  async writePack(req: SendRequest, dir: string, taskId: string, password?: string, since?: { pack?: string; targetId?: string }): Promise<PackWriteResult> {
     const cancel = new CancelToken();
     this.tasks.set(taskId, cancel);
     const file = path.join(dir, packFileName(req.label || t('Gönderim')));
@@ -605,6 +608,7 @@ export class Service implements Api {
       const r = await writeSendPack(this.ctx(), req, file, {
         cancel,
         password,
+        since,
         onProgress: (p) => this.host.emit({ type: 'task-progress', taskId, message: p.message, done: p.done, total: p.total, targets: p.targets }),
       });
       this.log.info(t('Paket'), t('Paket yazıldı: {file} ({files} dosya, {size} → {packed})', { file, files: r.files, size: formatBytes(r.size), packed: formatBytes(r.packed) }));
@@ -650,6 +654,7 @@ export class Service implements Api {
       parallelFiles: c.parallelFiles,
       relayAckMs: (c.relayAckSeconds ?? 60) * 1000,
       relayDoneMs: (c.relayTimeoutMinutes ?? 15) * 60_000,
+      preCommand: o.runPreCommand !== false ? c.preCommand || undefined : undefined,
       postCommand: o.runPostCommand ? c.postCommand : undefined,
       postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
       bandwidthMBps: c.bandwidthMBps,
@@ -716,7 +721,7 @@ export class Service implements Api {
       // the sources by their path on the share; a source that is gone is a deletion on the relayed machines too
       sources: plan.sources.filter((s) => s.exists || !s.error).map((s) => ({ rel: s.rel, kind: s.exists ? ('fs' as const) : ('delete' as const) })),
       targetIds: (relayed.get(relayId) ?? []).map((n) => n.id),
-      options: { ...req.options, dryRun: false, notify: false, runPostCommand: req.options.runPostCommand },
+      options: { ...req.options, dryRun: false, notify: false, runPostCommand: req.options.runPostCommand, runPreCommand: req.options.runPreCommand },
     });
     for (const tp of plan.targets) {
       if (tp.via) continue;
@@ -1149,6 +1154,52 @@ export class Service implements Api {
     const handle = startRun(ctx, groups, s);
     this.track(handle, true);
     return handle.id;
+  }
+
+  /**
+   * Brings the tagged run's machines back to how that run left them: every later send to any of them is undone from
+   * its backups, newest first, one after the other. A run that kept no backup (or whose backups are gone) is skipped
+   * and named in the result.
+   */
+  async restoreToTag(runId: string, backupCurrent: boolean): Promise<{ restored: number; skipped: string[] }> {
+    const all = await this.runs();
+    const tag = all.find((r) => r.id === runId);
+    if (!tag) throw new Error(t('Çalıştırma bulunamadı.'));
+    const machines = new Set(tag.targetIds);
+    const later = all
+      .filter((r) => r.startedAt > tag.startedAt && (r.origin === 'send' || r.origin === 'git') && !r.dryRun && r.targetIds.some((id) => machines.has(id)))
+      .sort((a, b) => b.startedAt - a.startedAt);
+    const skipped: string[] = [];
+    let restored = 0;
+    for (const r of later) {
+      try {
+        const id = await this.restoreRun(r.id, backupCurrent);
+        const d = await this.runsActive.get(id)?.done;
+        if (d && d.status !== 'ok') skipped.push(`${r.label}: ${t('{ok} başarılı, {failed} hatalı', { ok: d.opsOk, failed: d.opsFailed })}`);
+        else restored++;
+      } catch (e) {
+        skipped.push(`${r.label}: ${errMessage(e)}`);
+      }
+    }
+    this.log.info(t('Geçmiş'), t('{name} noktasına dönüldü: {n} gönderim geri alındı, {skipped} atlandı', { name: tag.label, n: restored, skipped: skipped.length }));
+    return { restored, skipped };
+  }
+
+  /** Where a file went: the runs whose results name it, newest first; `limit` lines at most. */
+  async findInHistory(query: string, limit = 300): Promise<FileTrace[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const out: FileTrace[] = [];
+    for (const r of (await this.runs()).slice(0, 400)) {
+      const d = await this.history.get(r.id).catch(() => null);
+      if (!d) continue;
+      for (const x of d.results) {
+        if (!x.rel.toLowerCase().includes(q)) continue;
+        out.push({ runId: r.id, startedAt: r.startedAt, label: r.label, origin: r.origin, target: x.key, rel: x.rel, kind: x.kind, ok: x.ok });
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
   }
 
   /** The text difference of the same file on two machines (the Compare page's machine mode). */

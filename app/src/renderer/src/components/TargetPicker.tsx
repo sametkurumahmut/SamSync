@@ -6,7 +6,7 @@ import { MODE_OPTIONS } from '../pages/SendPage';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type MenuEntry } from './ui';
 import { api } from '../lib/api';
-import { cls } from '../lib/format';
+import { bytes, cls } from '../lib/format';
 import { MachineName } from './MachineName';
 import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from './ContextMenu';
 
@@ -206,7 +206,12 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                           </span>
                         }
                       />
-                      {p?.ok && p.latencyMs != null && <span className="faint tabular" style={{ fontSize: 11 }}>{p.latencyMs} ms</span>}
+                      {p?.ok && p.latencyMs != null && (
+                        <span className="faint tabular nowrap" style={{ fontSize: 11 }} data-tip={p.freeBytes != null ? t('Hedef diskinde boş alan: {size}', { size: bytes(p.freeBytes) }) : undefined}>
+                          {p.latencyMs} ms
+                          {p.freeBytes != null && <span style={{ color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }}> • {bytes(p.freeBytes)}</span>}
+                        </span>
+                      )}
                       {overrides && <TargetOverride id={n.id} />}
                     </div>
                   );

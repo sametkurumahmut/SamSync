@@ -254,6 +254,11 @@ function Shell() {
             {update.phase === 'ready' ? t('Yeniden başlat ve güncelle') : update.phase === 'downloading' ? t('İndiriliyor %{pct}', { pct: Math.round(update.percent ?? 0) }) : t('v{version} çıktı', { version: update.version ?? '' })}
           </Button>
         )}
+        {boot.readOnly && (
+          <span className="badge amber no-drag" data-tip={t('İzleyici parolasıyla girildi: her şey görünür, hiçbir şey değiştirilemez')} data-tip-pos="bottom">
+            {t('salt okunur')}
+          </span>
+        )}
         {boot.remote && (
           <a className="titlebar-btn no-drag" href="/logout" data-tip={t('Tarayıcı oturumunu kapat')} data-tip-pos="bottom">
             <LogOut size={14} />

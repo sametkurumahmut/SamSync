@@ -64,6 +64,8 @@ export interface ExecSettings {
   waitSeconds: number;
   parallelGroups: number;
   parallelFiles: number;
+  /** Runs before the first file goes to a target; a non-zero exit skips that target. */
+  preCommand?: string;
   postCommand?: string;
   postCommandTimeoutSeconds: number;
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
@@ -533,6 +535,15 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         await runPacked(g, st, tgt);
         return;
       }
+      // the pre-copy command (stop the program that holds the files, say): when it fails, nothing is written here
+      if (!s.dryRun && s.preCommand && g.node && g.ops.length) {
+        const ok = await runHook(t('Öncesi komut'), s.preCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
+        if (!ok) {
+          for (const op of g.ops) record(op, false, t('Öncesi komut başarısız; bu makineye yazılmadı'));
+          st.status = 'failed';
+          return;
+        }
+      }
       const mkdirs = g.ops.filter((o) => o.kind === 'mkdir').sort((a, b) => relDepth(a.rel) - relDepth(b.rel));
       const copies = g.ops.filter((o) => o.kind === 'copy').sort((a, b) => b.size - a.size);
       const deletes = g.ops.filter((o) => o.kind === 'delete');
@@ -583,7 +594,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         const took = Date.now() - (st.startedAt ?? startedAt);
         if (st.bytesDone > 0 && took >= 500 && !s.dryRun) log('info', t('{size} • {s} sn • {speed}/sn', { size: formatBytes(st.bytesDone), s: (took / 1000).toFixed(1), speed: formatBytes((st.bytesDone / took) * 1000) }), g.key);
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
-          await runPostCommand(s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
+          await runHook(t('Sonrası komut'), s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
         }
         if (g.relay) {
           if (s.dryRun) for (const r of relayed.get(g.key) ?? []) Object.assign(r, { status: 'ok', done: r.total, startedAt: Date.now(), finishedAt: Date.now() });
@@ -851,14 +862,16 @@ export async function pruneBackups(tgt: Transport, folder: string, keep: number,
   return removed;
 }
 
-async function runPostCommand(
+/** Runs a pre- or post-copy command with the target's values filled in; true when it exited with 0. */
+async function runHook(
+  label: string,
   template: string,
   timeoutSec: number,
   g: ExecGroup,
   tgt: Transport,
   source: ExecSettings['postSource'],
   log: (lvl: RunLogLine['level'], m: string) => void,
-): Promise<void> {
+): Promise<boolean> {
   const n = g.node!;
   const cmd = template
     .replace(/\{address\}/g, n.address)
@@ -867,8 +880,8 @@ async function runPostCommand(
     .replace(/\{networkRoot\}/g, n.networkRoot)
     .replace(/\{destination\}/g, source ? joinRoot(tgt.root, source.rel) : tgt.root)
     .replace(/\{source\}/g, source?.path ?? '');
-  log('info', t('Sonrası komut: {cmd}', { cmd }));
-  await new Promise<void>((resolve) => {
+  log('info', `${label}: ${cmd}`);
+  return new Promise<boolean>((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin ? spawn('cmd.exe', ['/d', '/s', '/c', cmd], { windowsHide: true, windowsVerbatimArguments: true }) : spawn('sh', ['-c', cmd]);
     let out = '';
@@ -876,19 +889,19 @@ async function runPostCommand(
     child.stderr?.on('data', (d) => (out += d.toString()));
     const timer = setTimeout(() => {
       child.kill();
-      log('error', t('Sonrası komut {s} sn içinde bitmedi, durduruldu', { s: timeoutSec }));
+      log('error', t('{label} {s} sn içinde bitmedi, durduruldu', { label, s: timeoutSec }));
     }, timeoutSec * 1000);
     child.on('error', (e) => {
       clearTimeout(timer);
-      log('error', t('Sonrası komut çalıştırılamadı: {error}', { error: e.message }));
-      resolve();
+      log('error', t('{label} çalıştırılamadı: {error}', { label, error: e.message }));
+      resolve(false);
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       const tail = out.trim().split(/\r?\n/).slice(-5).join(' | ');
       const codeText = String(code);
-      log(code === 0 ? 'ok' : 'error', tail ? t('Sonrası komut bitti (kod {code}): {output}', { code: codeText, output: tail }) : t('Sonrası komut bitti (kod {code})', { code: codeText }));
-      resolve();
+      log(code === 0 ? 'ok' : 'error', tail ? t('{label} bitti (kod {code}): {output}', { label, code: codeText, output: tail }) : t('{label} bitti (kod {code})', { label, code: codeText }));
+      resolve(code === 0);
     });
   });
 }

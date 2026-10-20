@@ -65,6 +65,8 @@ export interface CopySettings {
   relayQueueDays?: number;
   /** A manifest SamSync left on a target stands in for a walk over the network for this many days (0 = always walk). */
   manifestMaxDays?: number;
+  /** Runs on this machine before the first file goes to a target (stop the program that holds the files, say); a failing one skips the target. */
+  preCommand?: string;
   postCommand?: string;
   postCommandTimeoutSeconds: number;
   /** Upper bound per transfer in MB/s (0 = unlimited), like robocopy /IPG in the PowerShell tool. */
@@ -93,6 +95,8 @@ export interface SendOptions {
   /** Git: delete on targets the files that were deleted in the selected changes. */
   propagateDeletes: boolean;
   runPostCommand: boolean;
+  /** Run the pre-copy command of the settings before each target (default on when one is set). */
+  runPreCommand?: boolean;
   notify: boolean;
   /** Per target (node id) mode and backup that differ from the ones above. */
   perTarget?: Record<string, TargetOptions>;
@@ -218,6 +222,8 @@ export interface LocalSettings {
   closeRunPanelOnSuccess: boolean;
   /** A short sound when a run ends: never, only when something failed, or always (dry runs stay silent). */
   finishSound?: 'never' | 'errors' | 'always';
+  /** Named runs in the history (a release that went out); the machines can be brought back to one. */
+  releaseTags?: ReleaseTag[];
   updateAutoCheck: boolean;
   updateAutoDownload: boolean;
   /** Folder watches that send changes automatically (this machine only). */
@@ -252,6 +258,9 @@ export interface WebUiSettings {
   /** scrypt hash of the password; never sent to a window (the settings it gets say hasPassword instead). */
   passwordHash?: string;
   hasPassword?: boolean;
+  /** A second password for a viewer: a browser signed in with it sees everything but can change nothing. */
+  viewerHash?: string;
+  hasViewer?: boolean;
 }
 
 export interface WebUiState {
@@ -262,6 +271,8 @@ export interface WebUiState {
   port: number;
   lan: boolean;
   hasPassword: boolean;
+  /** A viewer password is set (a sign-in that only looks). */
+  hasViewer?: boolean;
   /** Where browsers reach it. */
   urls: string[];
   clients: number;
@@ -498,12 +509,35 @@ export interface Bootstrap {
   repositoryUrl?: string;
   /** This window is a browser on another computer (server mode): dialogs, opening files and window control are not here. */
   remote?: boolean;
+  /** The browser signed in with the viewer password: the server refuses every call that would change something. */
+  readOnly?: boolean;
+}
+
+/** A run named as a release point: everything sent to its machines after it can be undone back to it. */
+export interface ReleaseTag {
+  runId: string;
+  name: string;
+  at: number;
+}
+
+/** Where a file went, from the history: one line per run and machine. */
+export interface FileTrace {
+  runId: string;
+  startedAt: number;
+  label: string;
+  origin: RunSummary['origin'];
+  target: string;
+  rel: string;
+  kind: PlanOp['kind'];
+  ok: boolean;
 }
 
 export interface ProbeResult {
   nodeId: string;
   ok: boolean;
   latencyMs?: number;
+  /** Free space on the target's root, when the probe could ask. */
+  freeBytes?: number;
   detail: string;
   root: string;
   checkedAt: number;
@@ -626,7 +660,7 @@ export interface SourceInfo {
   defaultRel?: string;
   error?: string;
   /** The source is a pack file (.samsync-pack): what it carries and where it was made. */
-  pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[]; encrypted?: boolean };
+  pack?: { label: string; createdAt: number; from: string; files: number; size: number; subtrees: string[]; encrypted?: boolean; refs?: number; since?: string };
   /** A password-protected pack that is still closed: no password yet, or a wrong one. */
   locked?: 'password' | 'wrong';
 }
@@ -708,6 +742,10 @@ export interface TargetPlan {
   relayDown?: boolean;
   /** Someone else is writing to this machine right now (a fresh lock from another computer). */
   lock?: { host: string; user: string; label: string; startedAt: number };
+  /** Files to be replaced that a program on the target holds open right now (checked for the biggest ones). */
+  inUse?: string[];
+  /** An incremental pack expected these files on the target, but they are missing or differ there: a full pack is needed for them. */
+  missingFromPack?: string[];
   /** The target's folders came from its manifest (written then) after a check, not from a walk over the network. */
   fromManifest?: number;
 }
@@ -716,6 +754,8 @@ export interface TargetPlan {
 export interface PackWriteResult {
   file: string;
   files: number;
+  /** An incremental pack: files left out because the target should already hold them. */
+  skipped?: number;
   /** Original bytes, and the pack's size on disk. */
   size: number;
   packed: number;

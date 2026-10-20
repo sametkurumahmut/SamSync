@@ -277,6 +277,11 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
+                        {!isLocal && p?.ok && p.freeBytes != null && (
+                          <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
+                            <HardDrive size={12} /> {t('{size} boş', { size: bytes(p.freeBytes) })}
+                          </span>
+                        )}
                         {!isLocal && (latency[n.id]?.length ?? 0) > 2 && (
                           <span data-tip={t('Son {n} yoklamanın gecikmesi; kırmızı çizgi yanıt alınamayan yoklama', { n: latency[n.id].length })} style={{ display: 'inline-flex' }}>
                             <LatencySpark values={latency[n.id]} />

@@ -36,6 +36,8 @@ export interface PackSubtree {
 /** A file or folder in the pack; `rel` is relative to the target root. Folders have no member. */
 export interface PackIndexEntry extends PackEntry {
   isDir?: boolean;
+  /** Not in this pack: the target is expected to hold the file already, with this size and time (an incremental pack). */
+  ref?: boolean;
 }
 
 export interface PackIndex {
@@ -48,6 +50,9 @@ export interface PackIndex {
   /** Original bytes of all files, and how many files there are (folders not counted). */
   size: number;
   files: number;
+  /** An incremental pack: how many files were left out because the target should already hold them, and what that was judged by. */
+  refs?: number;
+  since?: string;
   /** Set when the index was read out of a password-protected pack (not stored in the file). */
   encrypted?: boolean;
 }
@@ -63,7 +68,7 @@ export interface PackWriteSource extends PackSource {
  */
 export async function writePackFile(
   file: string,
-  args: { label: string; subtrees: PackSubtree[]; files: PackSource[]; dirs: string[]; node?: string; version?: string; signal?: AbortSignal; password?: string },
+  args: { label: string; subtrees: PackSubtree[]; files: PackSource[]; dirs: string[]; refs?: { rel: string; size: number; mtimeMs: number }[]; since?: string; node?: string; version?: string; signal?: AbortSignal; password?: string },
   onFile?: (done: number, bytes: number) => void,
 ): Promise<PackIndex> {
   await fsp.mkdir(path.dirname(file), { recursive: true });
@@ -80,7 +85,8 @@ export async function writePackFile(
       onFile?.(done, bytes);
     });
     for await (const chunk of stream as AsyncIterable<Buffer>) yield chunk;
-    const entries: PackIndexEntry[] = [...args.dirs.map((rel) => ({ rel, isDir: true, size: 0, mtimeMs: 0, offset: 0, length: 0, method: 'store' as const })), ...members];
+    const refs: PackIndexEntry[] = (args.refs ?? []).map((r) => ({ rel: r.rel, size: r.size, mtimeMs: r.mtimeMs, ref: true, offset: 0, length: 0, method: 'store' as const }));
+    const entries: PackIndexEntry[] = [...args.dirs.map((rel) => ({ rel, isDir: true, size: 0, mtimeMs: 0, offset: 0, length: 0, method: 'store' as const })), ...members, ...refs];
     index = {
       version: 1,
       label: args.label,
@@ -90,6 +96,7 @@ export async function writePackFile(
       entries,
       size: members.reduce((a, e) => a + e.size, 0),
       files: members.length,
+      ...(refs.length ? { refs: refs.length, since: args.since } : {}),
     };
     const json = Buffer.from(JSON.stringify(index), 'utf8');
     const len = Buffer.alloc(8);
@@ -161,15 +168,15 @@ export async function readPackIndex(file: string, password?: string): Promise<Pa
 }
 
 /** The pack's entries below one subtree, keyed like a scan (lower case, rel relative to the subtree). */
-export function packSubtreeEntries(idx: PackIndex, subtree: string): Map<string, Entry & { member?: PackEntry }> {
-  const out = new Map<string, Entry & { member?: PackEntry }>();
+export function packSubtreeEntries(idx: PackIndex, subtree: string): Map<string, Entry & { member?: PackEntry; ref?: boolean }> {
+  const out = new Map<string, Entry & { member?: PackEntry; ref?: boolean }>();
   const prefix = subtree ? subtree.toLowerCase() + '/' : '';
   for (const e of idx.entries) {
     const low = e.rel.toLowerCase();
     if (subtree && !low.startsWith(prefix)) continue;
     const rel = subtree ? e.rel.slice(subtree.length + 1) : e.rel;
     if (!rel) continue;
-    out.set(rel.toLowerCase(), { rel, isDir: !!e.isDir, size: e.size, mtimeMs: e.mtimeMs, member: e.isDir ? undefined : e });
+    out.set(rel.toLowerCase(), { rel, isDir: !!e.isDir, size: e.size, mtimeMs: e.mtimeMs, member: e.isDir || e.ref ? undefined : e, ref: e.ref || undefined });
   }
   return out;
 }

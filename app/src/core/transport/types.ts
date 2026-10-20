@@ -1,5 +1,7 @@
 import type { Readable } from 'node:stream';
 
+import type { Lister } from '../winlist';
+
 export interface Entry {
   rel: string;
   isDir: boolean;
@@ -33,6 +35,8 @@ export interface Transport {
   stat(rel: string): Promise<Entry | null>;
   /** Direct children of a folder. */
   list(rel: string): Promise<Entry[]>;
+  /** A batched folder lister for walks over this root (a Windows share: one query per folder), or null to list folder by folder. */
+  lister?(): Lister | null;
   readStream(rel: string, range?: ReadRange): Promise<Readable>;
   /** Writes a whole file from a stream (no atomicity, see writeAtomic). */
   writeStream(rel: string, data: Readable, opts?: WriteOptions): Promise<number>;

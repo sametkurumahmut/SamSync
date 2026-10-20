@@ -155,11 +155,6 @@ const d: Dict = {
   Silme: 'Delete',
   'Eski yedek silindi: {path}': 'Old backup deleted: {path}',
   'Eski yedek silinemedi: {path} ({error})': 'Could not delete the old backup: {path} ({error})',
-  'Sonrası komut: {cmd}': 'Post command: {cmd}',
-  'Sonrası komut {s} sn içinde bitmedi, durduruldu': 'Post command did not finish within {s} s, stopped',
-  'Sonrası komut çalıştırılamadı: {error}': 'Could not run the post command: {error}',
-  'Sonrası komut bitti (kod {code}): {output}': 'Post command finished (code {code}): {output}',
-  'Sonrası komut bitti (kod {code})': 'Post command finished (code {code})',
 
   // Git
   'HEAD (ayrık)': 'HEAD (detached)',
@@ -368,6 +363,24 @@ const d: Dict = {
   'Hedef bulunamadı: {ids}': 'Target not found: {ids}',
   'SFTP hedefi dosya yöneticisinde açılamaz.': 'An SFTP target cannot be opened in the file manager.',
   '{path}: dosya kullanımda ama içeriği zaten aynı; yalnızca tarihi eşitlendi': '{path}: in use, but it already holds the same content; only its date was aligned',
+  'Öncesi komut': 'Pre-copy command',
+  'Öncesi komut başarısız; bu makineye yazılmadı': 'The pre-copy command failed; nothing was written to this machine',
+  '{label} {s} sn içinde bitmedi, durduruldu': '{label} did not finish within {s} s and was stopped',
+  '{label} çalıştırılamadı: {error}': '{label} could not be run: {error}',
+  '{label} bitti (kod {code}): {output}': '{label} finished (code {code}): {output}',
+  '{label} bitti (kod {code})': '{label} finished (code {code})',
+  'Hedefte kullanımda: bir program açık tutuyor.': 'In use on the target: a program holds it open.',
+  '{name}: {n} dosya hedefte kullanımda ({files}); program kapatılmazsa yazılamaz, içerik aynıysa yalnızca tarihi eşitlenir.': '{name}: {n} files are in use on the target ({files}); unless the program is closed they cannot be written, and where the content is the same only the date is aligned.',
+  'Klasör listeleyici beklenmedik biçimde kapandı': 'The folder lister stopped unexpectedly',
+  '{name}: artımlı paket {n} dosyayı hedefte bekliyordu ama orada yok ya da farklı ({files}); bunlar için tam paket gerekir.': '{name}: the incremental pack expected {n} files on the target, but they are missing or differ there ({files}); those need a full pack.',
+  '{file} paketine göre': 'relative to the pack {file}',
+  '{name} makinesine erişilemiyor; artımlı paket için önceki paketi seçin.': '{name} cannot be reached; pick an earlier pack for the incremental pack instead.',
+  '{name} makinesinde bu klasörler için manifest yok; artımlı paket için önceki paketi seçin.': '{name} holds no manifest for these folders; pick an earlier pack for the incremental pack instead.',
+  '{name} makinesindeki sürüme göre': 'relative to what {name} holds',
+  'Artımlı paket için önceki paket ya da makine seçin.': 'Pick an earlier pack or a machine for the incremental pack.',
+  'Hedefte olmayan ya da değişen dosya yok: paket yalnızca listeyi taşıyor.': 'Nothing is new or changed against the target: the pack carries only the list.',
+  'İzleyici parolası ana paroladan farklı olmalı': 'The viewer password must differ from the main password',
+  '{name} noktasına dönüldü: {n} gönderim geri alındı, {skipped} atlandı': 'Back at {name}: {n} sends undone, {skipped} skipped',
 };
 
 export default d;

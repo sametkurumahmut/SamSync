@@ -480,6 +480,28 @@ function TargetOps({
           </Button>
         )}
       </div>
+      {plan.missingFromPack && plan.missingFromPack.length > 0 && (
+        <div className="alert warn" style={{ margin: '8px 12px 0', fontSize: 12 }}>
+          <AlertTriangle size={14} />
+          <span>
+            {t('Artımlı paket {n} dosyayı bu makinede bekliyordu ama yok ya da farklı: {files}. Bunlar için tam paket gerekir.', {
+              n: plan.missingFromPack.length,
+              files: plan.missingFromPack.slice(0, 5).join(', ') + (plan.missingFromPack.length > 5 ? ` +${plan.missingFromPack.length - 5}` : ''),
+            })}
+          </span>
+        </div>
+      )}
+      {plan.inUse && plan.inUse.length > 0 && (
+        <div className="alert warn" style={{ margin: '8px 12px 0', fontSize: 12 }}>
+          <AlertTriangle size={14} />
+          <span>
+            {t('{n} dosya bu makinede kullanımda: {files}. Bir program açık tutuyor; kapatılmazsa bu dosyalar yazılamaz (içerik zaten aynıysa yalnızca tarihleri eşitlenir).', {
+              n: plan.inUse.length,
+              files: plan.inUse.slice(0, 5).join(', ') + (plan.inUse.length > 5 ? ` +${plan.inUse.length - 5}` : ''),
+            })}
+          </span>
+        </div>
+      )}
       {plan.lock && (
         <div className="alert warn" style={{ margin: '8px 12px 0', fontSize: 12 }}>
           <AlertTriangle size={14} />

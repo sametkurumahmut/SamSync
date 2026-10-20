@@ -199,4 +199,45 @@ describe('pack files', () => {
     const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: bogus }], targetIds: ['T'], options: defaultOptions, origin: 'send' });
     expect(plan.warnings.some((w) => /Paket okunamadı|could not be read/.test(w))).toBe(true);
   });
+
+  it('writes an incremental pack since an earlier pack and applies it on top of it', async () => {
+    const base = await tmpDir();
+    const root = path.join(base, 'root');
+    const rel = path.join(root, 'Release');
+    await write(path.join(rel, 'bin', 'app.exe'), 'v1', new Date('2026-01-02T10:00:00Z'));
+    await write(path.join(rel, 'data', 'cfg.ini'), 'a=1', new Date('2026-01-03T10:00:00Z'));
+    const sender = makeCtx({ nodes: [pathNode('Me', root)] }, [root], path.join(base, 'ud1'));
+    const full = path.join(base, 'full.samsync-pack');
+    await writeSendPack(sender, { sources: [{ kind: 'fs', path: rel }], targetIds: [], options: defaultOptions, origin: 'send', label: 'x' }, full);
+    // the machine applies the full pack
+    const other = path.join(base, 'other');
+    await fsp.mkdir(other, { recursive: true });
+    const receiver = makeCtx({ nodes: [pathNode('Other', other)] }, [path.join(base, 'elsewhere')], path.join(base, 'ud2'));
+    await runPlan(receiver, [full], ['Other']);
+    expect(read(path.join(other, 'Release', 'bin', 'app.exe'))).toBe('v1');
+    // a new build changes one file and adds one
+    await write(path.join(rel, 'bin', 'app.exe'), 'v2-longer', new Date('2026-02-02T10:00:00Z'));
+    await write(path.join(rel, 'data', 'new.txt'), 'n', new Date('2026-02-02T10:00:00Z'));
+    const inc = path.join(base, 'inc.samsync-pack');
+    const r = await writeSendPack(sender, { sources: [{ kind: 'fs', path: rel }], targetIds: [], options: defaultOptions, origin: 'send', label: 'x' }, inc, { since: { pack: full } });
+    expect(r.files).toBe(2);
+    expect(r.skipped).toBe(1);
+    const idx = await readPackIndex(inc);
+    expect(idx.refs).toBe(1);
+    expect(idx.entries.find((e) => e.rel === 'Release/data/cfg.ini')?.ref).toBe(true);
+    // applied on top of the full pack: the changed and the new file are written, the untouched one is left alone
+    const { plan, d } = await runPlan(receiver, [inc], ['Other']);
+    expect(plan.targets[0].missingFromPack).toBeUndefined();
+    expect(d?.status).toBe('ok');
+    expect(read(path.join(other, 'Release', 'bin', 'app.exe'))).toBe('v2-longer');
+    expect(read(path.join(other, 'Release', 'data', 'new.txt'))).toBe('n');
+    expect(read(path.join(other, 'Release', 'data', 'cfg.ini'))).toBe('a=1');
+    // a machine that never got the full pack: the review says what is missing
+    const empty = path.join(base, 'empty');
+    await fsp.mkdir(empty, { recursive: true });
+    const fresh = makeCtx({ nodes: [pathNode('Fresh', empty)] }, [path.join(base, 'elsewhere')], path.join(base, 'ud3'));
+    const { plan: p2 } = await runPlan(fresh, [inc], ['Fresh']);
+    expect(p2.targets[0].missingFromPack).toEqual(['Release/data/cfg.ini']);
+    expect(p2.warnings.some((w) => /tam paket|full pack/.test(w))).toBe(true);
+  });
 });

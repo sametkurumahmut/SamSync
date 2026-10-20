@@ -7,11 +7,11 @@ import { expandTargetIds } from './context';
 import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
 import { isUnder, mapSource, mapToRel, normalizeAbs, outsidePlaces, pathKey, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
 import { scanTree } from './scan';
-import { FsTransport, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
-import { compareMeta, gitBlobId, hashStream, streamsEqual } from './compare';
+import { FsTransport, InUseError, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
+import { compareMeta, gitBlobId, hashStream, sameTime, streamsEqual } from './compare';
 import { blobInfo, blobStream } from './git';
 import { openPackEntry, type PackEntry, type PackSource } from './pack';
-import { isPackFile, packFileEntry, packSubtreeEntries, readPackIndex, writePackFile, type PackIndex, type PackSubtree } from './packfile';
+import { isPackFile, packFileEntry, packSubtreeEntries, readPackIndex, writePackFile, type PackIndex, type PackIndexEntry, type PackSubtree } from './packfile';
 import { PackLockedError, PackPasswordError } from './packcrypt';
 import { probeNode } from './probe';
 import { otherBackupRoots } from './backups';
@@ -26,7 +26,7 @@ import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
 
 /** member: where a pack holds the file. abs: a file merged in from another folder sent to the same place. */
-type PackedEntry = Entry & { member?: PackEntry; abs?: string };
+type PackedEntry = Entry & { member?: PackEntry; abs?: string; ref?: boolean };
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
@@ -35,7 +35,7 @@ type Unit =
   | { kind: 'git'; sourceIndex: number; rel: string; repo: string; rev: string; path: string; blob: string; size: number; mtimeMs: number }
   | { kind: 'delete'; sourceIndex: number; rel: string; abs: string }
   /** A file or a folder carried in a pack file (.samsync-pack); members are read straight out of it. */
-  | { kind: 'packfile'; sourceIndex: number; rel: string; file: string; size: number; mtimeMs: number; member: PackEntry }
+  | { kind: 'packfile'; sourceIndex: number; rel: string; file: string; size: number; mtimeMs: number; member: PackIndexEntry }
   | { kind: 'packdir'; sourceIndex: number; rel: string; file: string; entries: Map<string, PackedEntry>; skip?: string[] };
 
 const packRef = (file: string, m: PackEntry) => ({ kind: 'pack' as const, file, offset: m.offset, length: m.length, method: m.method });
@@ -129,7 +129,7 @@ async function countTree(dir: string, maxFiles = 20000, budgetMs = 2500): Promis
 /** Describes the sources (for the header chips and the plan) without touching any target. */
 /** What the Send page shows for a pack file: its label, what is in it and where it came from. */
 function packInfo(idx: PackIndex): NonNullable<SourceInfo['pack']> {
-  return { label: idx.label, createdAt: idx.createdAt, from: idx.from.user ? `${idx.from.user}@${idx.from.host}` : idx.from.host, files: idx.files, size: idx.size, subtrees: idx.subtrees.map((s) => s.rel || '/'), encrypted: idx.encrypted || undefined };
+  return { label: idx.label, createdAt: idx.createdAt, from: idx.from.user ? `${idx.from.user}@${idx.from.host}` : idx.from.host, files: idx.files, size: idx.size, subtrees: idx.subtrees.map((s) => s.rel || '/'), encrypted: idx.encrypted || undefined, refs: idx.refs, since: idx.since };
 }
 
 /** A password-protected pack that could not be opened, as the Send page shows it (with the pack's size on disk). */
@@ -471,6 +471,7 @@ async function planTarget(
   let fromManifest: number | undefined;
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
+  const missingFromPack: string[] = [];
 
   const classify = async (src: { size: number; mtimeMs: number }, dst: Entry, readSrc: () => Promise<NodeJS.ReadableStream>, rel: string, srcId: string): Promise<PlanCategory> => {
     const v = compareMeta(src, dst, opt.compare, time);
@@ -545,6 +546,11 @@ async function planTarget(
         cat = (await gitBlobId(await tgt.readStream(u.rel), dst.size)) === u.blob ? 'same' : 'changed';
         st.read = (st.read ?? 0) + dst.size;
       }
+    } else if (u.kind === 'packfile' && u.member.ref) {
+      // an incremental pack: the file is expected on the target as it was; anything else needs a full pack
+      if (dst.size === u.size && sameTime(u.mtimeMs, dst.mtimeMs, time)) return push(b, { ...common, category: 'same', selected: false });
+      missingFromPack.push(u.rel);
+      return;
     } else if (u.kind === 'packfile') {
       cat = await classify(u, dst, async () => openPackEntry(u.file, u.member), u.rel, `${u.file}#${u.member.offset}`);
     } else {
@@ -608,6 +614,13 @@ async function planTarget(
       cancel.throwIfCancelled();
       const rel = relJoin(u.rel, e.rel);
       const d = dstEntries.get(key);
+      if (e.ref) {
+        // an incremental pack: the target should hold this file as it was; otherwise a full pack is needed
+        if (d && !d.isDir && d.size === e.size && sameTime(e.mtimeMs, d.mtimeMs, time)) b.counts.same++;
+        else missingFromPack.push(rel);
+        st.done++;
+        return;
+      }
       const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
       try {
         if (!d) return push(b, { ...common, category: 'new', selected: true });
@@ -629,15 +642,43 @@ async function planTarget(
   }
 
   st.phase = 'done';
+  if (missingFromPack.length) {
+    missingFromPack.sort((x, y) => x.localeCompare(y));
+    warn(t('{name}: artımlı paket {n} dosyayı hedefte bekliyordu ama orada yok ya da farklı ({files}); bunlar için tam paket gerekir.', { name: node.name, n: missingFromPack.length, files: missingFromPack.slice(0, 4).join(', ') + (missingFromPack.length > 4 ? '…' : '') }));
+  }
   b.ops.sort((x, y) => x.rel.localeCompare(y.rel));
   b.ops.forEach((op, i) => (op.id = String(i)));
+  // files a program on the target holds open: the review says so before anything is tried (the biggest ones are checked)
+  let inUse: string[] | undefined;
+  const held = tgt.checkReplaceable
+    ? b.ops
+        .filter((o) => o.kind === 'copy' && o.selected && !o.isDir && o.dstMtime != null)
+        .sort((x, y) => y.size - x.size)
+        .slice(0, 150)
+    : [];
+  if (held.length) {
+    const found: string[] = [];
+    await mapLimit(held, 8, async (o) => {
+      try {
+        await tgt.checkReplaceable!(o.rel);
+      } catch (e) {
+        if (e instanceof InUseError) found.push(o.rel);
+      }
+    });
+    if (found.length) {
+      inUse = found.sort((x, y) => x.localeCompare(y));
+      const set = new Set(inUse);
+      for (const o of b.ops) if (set.has(o.rel)) o.note = t('Hedefte kullanımda: bir program açık tutuyor.');
+      warn(t('{name}: {n} dosya hedefte kullanımda ({files}); program kapatılmazsa yazılamaz, içerik aynıysa yalnızca tarihi eşitlenir.', { name: node.name, n: inUse.length, files: inUse.slice(0, 4).join(', ') + (inUse.length > 4 ? '…' : '') }));
+    }
+  }
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
   const freeBytes = await freeSpace;
   const alive = await heartbeat;
   const other = await lock;
   await tgt.close();
   if (other) warn(t('{name}: {user} ({host}) {ago} önce yazmaya başladı ({label}); aynı anda gönderirseniz dosyalar karışabilir.', { name: node.name, user: other.user, host: other.host, ago: agoMinutes(other.startedAt), label: other.label }));
-  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined, fromManifest };
+  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined, fromManifest, inUse, missingFromPack: missingFromPack.length ? missingFromPack : undefined };
 }
 
 function agoMinutes(at: number): string {
@@ -756,7 +797,41 @@ export async function buildSendPlan(
  * Writes the sources of a send to a pack file instead of to machines: everything the plan would have compared,
  * with the send's exclusions and ignore files applied. The pack is a source like a folder afterwards.
  */
-export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: string, opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void; password?: string } = {}): Promise<PackWriteResult> {
+/**
+ * What a target is believed to hold already, for an incremental pack: from an earlier pack's index (every file it
+ * carried or itself referred to) or from the manifest SamSync left on the machine (it has to be reachable for that).
+ */
+async function knownOnTarget(ctx: CoreContext, since: { pack?: string; targetId?: string }, subtrees: string[]): Promise<{ map: Map<string, { size: number; mtimeMs: number }>; label: string }> {
+  const map = new Map<string, { size: number; mtimeMs: number }>();
+  if (since.pack) {
+    const idx = await readPackIndex(since.pack);
+    for (const e of idx.entries) if (!e.isDir) map.set(relKey(e.rel, true), { size: e.size, mtimeMs: e.mtimeMs });
+    return { map, label: t('{file} paketine göre', { file: path.basename(since.pack) }) };
+  }
+  if (since.targetId) {
+    const node = ctx.config.nodes.find((n) => n.id === since.targetId);
+    if (!node) throw new Error(t('Hedef bulunamadı: {ids}', { ids: since.targetId }));
+    const probe = await probeNode(ctx.config, node, 3000, false);
+    if (!probe.ok) throw new Error(t('{name} makinesine erişilemiyor; artımlı paket için önceki paketi seçin.', { name: node.name }));
+    const tgt = await transportForNode(ctx, node);
+    try {
+      let any = false;
+      for (const sub of subtrees) {
+        const m = await manifestEntries(tgt, sub, Date.now(), Number.POSITIVE_INFINITY).catch(() => null);
+        if (!m) continue;
+        any = true;
+        for (const e of m.entries.values()) if (!e.isDir) map.set(relKey(relJoin(sub, e.rel), true), { size: e.size, mtimeMs: e.mtimeMs });
+      }
+      if (!any) throw new Error(t('{name} makinesinde bu klasörler için manifest yok; artımlı paket için önceki paketi seçin.', { name: node.name }));
+    } finally {
+      await tgt.close();
+    }
+    return { map, label: t('{name} makinesindeki sürüme göre', { name: node.name }) };
+  }
+  throw new Error(t('Artımlı paket için önceki paket ya da makine seçin.'));
+}
+
+export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: string, opts: { cancel?: CancelToken; onProgress?: (p: PlanProgress) => void; password?: string; since?: { pack?: string; targetId?: string } } = {}): Promise<PackWriteResult> {
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
   const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
@@ -764,32 +839,49 @@ export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: st
   const files: PackSource[] = [];
   const dirs: string[] = [];
   const subtrees: PackSubtree[] = [];
+  // an incremental pack leaves out what the target holds as it is, and records those files as expected there
+  const known = opts.since ? await knownOnTarget(ctx, opts.since, units.filter((u) => u.kind !== 'delete').map((u) => u.rel)) : null;
+  const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
+  const refs: { rel: string; size: number; mtimeMs: number }[] = [];
+  const skipIfKnown = (rel: string, size: number, mtimeMs: number): boolean => {
+    const k = known?.map.get(relKey(rel, true));
+    if (!k || k.size !== size || !sameTime(k.mtimeMs, mtimeMs, time)) return false;
+    refs.push({ rel, size, mtimeMs });
+    return true;
+  };
   for (const u of units) {
     if (u.kind === 'delete') {
       warnings.push(t('{path} silme olarak işaretli; paket silme taşımaz, atlandı.', { path: u.abs }));
       continue;
     }
     subtrees.push({ rel: u.rel, isDir: u.kind === 'dir' || u.kind === 'packdir' });
-    if (u.kind === 'file') files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => fs.createReadStream(u.abs, { highWaterMark: 1024 * 1024 }) });
-    else if (u.kind === 'git') files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => blobStream(u.repo, u.rev, u.path) });
-    else if (u.kind === 'packfile') files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => openPackEntry(u.file, u.member) });
-    else {
+    if (u.kind === 'file') {
+      if (!skipIfKnown(u.rel, u.size, u.mtimeMs)) files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => fs.createReadStream(u.abs, { highWaterMark: 1024 * 1024 }) });
+    } else if (u.kind === 'git') {
+      if (!skipIfKnown(u.rel, u.size, u.mtimeMs)) files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => blobStream(u.repo, u.rev, u.path) });
+    } else if (u.kind === 'packfile') {
+      if (u.member.ref) refs.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs });
+      else if (!skipIfKnown(u.rel, u.size, u.mtimeMs)) files.push({ rel: u.rel, size: u.size, mtimeMs: u.mtimeMs, open: () => openPackEntry(u.file, u.member) });
+    } else {
       const local = u.kind === 'dir' ? new FsTransport(u.abs) : null;
       for (const e of u.entries.values() as Iterable<PackedEntry>) {
         const rel = relJoin(u.rel, e.rel);
         if (e.isDir) dirs.push(rel);
+        else if (e.ref) refs.push({ rel, size: e.size, mtimeMs: e.mtimeMs });
+        else if (skipIfKnown(rel, e.size, e.mtimeMs)) continue;
         else if (local) files.push({ rel, size: e.size, mtimeMs: e.mtimeMs, open: () => fs.createReadStream(e.abs ?? local.localPath(e.rel), { highWaterMark: 1024 * 1024 }) });
         else files.push({ rel, size: e.size, mtimeMs: e.mtimeMs, open: () => openPackEntry((u as { file: string }).file, e.member!) });
       }
     }
   }
-  if (!files.length && !dirs.length) throw new Error(t('Pakete yazılacak bir şey yok.'));
+  if (!files.length && !dirs.length && !refs.length) throw new Error(t('Pakete yazılacak bir şey yok.'));
+  if (known && !files.length) warnings.push(t('Hedefte olmayan ya da değişen dosya yok: paket yalnızca listeyi taşıyor.'));
   const total = files.length;
   const label = req.label || t('Gönderim');
   progress({ message: t('Paket yazılıyor'), done: 0, total });
-  const idx = await writePackFile(file, { label, subtrees, files, dirs, node: ctx.localNodeId, version: ctx.appVersion, signal: cancel.signal, password: opts.password }, (done, bytes) =>
+  const idx = await writePackFile(file, { label, subtrees, files, dirs, refs, since: known?.label, node: ctx.localNodeId, version: ctx.appVersion, signal: cancel.signal, password: opts.password }, (done, bytes) =>
     progress({ message: t('Paket yazılıyor: {done}/{total} dosya, {size}', { done, total, size: formatBytes(bytes) }), done, total }),
   );
   const packed = (await fsp.stat(file)).size;
-  return { file, files: idx.files, size: idx.size, packed, warnings };
+  return { file, files: idx.files, size: idx.size, packed, warnings, skipped: idx.refs || undefined };
 }

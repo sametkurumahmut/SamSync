@@ -326,6 +326,13 @@ export function SettingsPage() {
               </Field>
             </div>
             <Field
+              label={t('Kopyalama öncesi komut')}
+              help={t('{vars} — her hedefe ilk dosya gitmeden önce bu bilgisayarda bir kez çalışır; sıfırdan farklı kodla biterse o makineye yazılmaz. Hedefteki programı durdurmak için (bir zamanlanmış görevi tetiklemek gibi).', { vars: '{address} {targetId} {targetName} {networkRoot} {destination} {source}' })}
+              style={{ marginTop: 12 }}
+            >
+              <input className="input mono" value={copy.preCommand ?? ''} onChange={(e) => setCopy({ ...copy, preCommand: e.target.value })} placeholder={'schtasks /run /s {address} /tn "Programi Durdur"'} />
+            </Field>
+            <Field
               label={t('Kopyalama sonrası komut')}
               help={t('{vars} — her başarılı hedeften sonra bir kez çalışır', { vars: '{address} {targetId} {targetName} {networkRoot} {destination} {source}' })}
               style={{ marginTop: 12 }}

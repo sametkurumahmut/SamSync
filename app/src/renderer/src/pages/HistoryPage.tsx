@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2 } from 'lucide-react';
-import type { RunDetail, RunSummary } from '@shared/types';
+import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2, Tag, Search } from 'lucide-react';
+import type { RunDetail, RunSummary, ReleaseTag } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
-import { Button, Empty, ListSkeleton, SearchInput, Segmented } from '../components/ui';
+import { Button, Empty, Field, ListSkeleton, Modal, SearchInput, Segmented } from '../components/ui';
+import { FileTraceModal } from '../components/FileTrace';
 import { StatusIcon } from '../components/RunPanel';
 import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
@@ -60,6 +61,9 @@ export function HistoryPage() {
   const [active, setActive] = useState<string | null>(null);
   /** A day picked on the chart: only its runs are listed. */
   const [day, setDay] = useState<number | null>(null);
+  const [trace, setTrace] = useState(false);
+  const tags = useApp((s) => s.boot?.settings.releaseTags ?? NO_TAGS);
+  const tagOf = (id: string) => tags.find((x) => x.runId === id);
 
   const openRunId = useApp((s) => s.openRunId);
   const load = () => void api.runs().then(setRuns);
@@ -85,6 +89,22 @@ export function HistoryPage() {
           <h1>{t('Geçmiş')}</h1>
           <div className="sub">{t('Her çalıştırmanın hedef bazında sonucu, hataları ve günlüğü. Son 300 çalıştırma saklanır.')}</div>
         </div>
+        <Button icon={<Search size={14} />} onClick={() => setTrace(true)} tip={t('Bir dosyanın hangi gönderimle hangi makineye gittiğini bul')}>
+          {t('Dosya izi')}
+        </Button>
+        {trace && (
+          <FileTraceModal
+            onClose={() => setTrace(false)}
+            onOpen={(id) => {
+              setTrace(false);
+              setOrigin('all');
+              setRange('all');
+              setDay(null);
+              setQ('');
+              setActive(id);
+            }}
+          />
+        )}
         {runs && runs.length > 0 && (
           <Button
             variant="ghost"
@@ -153,6 +173,11 @@ export function HistoryPage() {
                           <span className="ellipsis" style={{ fontWeight: 580 }}>
                             {r.label}
                           </span>
+                          {tagOf(r.id) && (
+                            <span className="badge violet" data-tip={t('Sürüm noktası: makineler bu duruma geri getirilebilir')}>
+                              <Tag size={10} /> {tagOf(r.id)!.name}
+                            </span>
+                          )}
                           {r.dryRun && <span className="badge amber">{t('deneme')}</span>}
                         </div>
                         <div className="row faint" style={{ fontSize: 11.5, gap: 6 }}>
@@ -259,6 +284,9 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           <Button size="sm" icon={<Undo2 size={13} />} tip={t('Bu gönderimi yedeklerinden geri al')} onClick={() => void undo()}>
             {t('Geri al')}
           </Button>
+        )}
+        {(summary.origin === 'send' || summary.origin === 'git') && !summary.dryRun && summary.opsOk > 0 && (
+          <ReleasePointActions summary={summary} />
         )}
         <Button
           size="sm"
@@ -397,5 +425,126 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
         )}
       </div>
     </div>
+  );
+}
+
+const NO_TAGS: ReleaseTag[] = [];
+
+/**
+ * A run named as a release point, and the way back to it: every later send to its machines is undone from the
+ * backups, newest first. The names live in this machine's settings, next to the history they belong to.
+ */
+function ReleasePointActions({ summary }: { summary: RunSummary }) {
+  const tags = useApp((s) => s.boot?.settings.releaseTags ?? NO_TAGS);
+  const saveSettings = useApp((s) => s.saveSettings);
+  const toast = useApp((s) => s.toast);
+  const tag = tags.find((x) => x.runId === summary.id);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  const [back, setBack] = useState<{ later: RunSummary[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    const n = name.trim();
+    if (!n) return;
+    await saveSettings({ releaseTags: [...tags.filter((x) => x.runId !== summary.id), { runId: summary.id, name: n, at: Date.now() }] });
+    setNaming(false);
+    toast('ok', t('Sürüm noktası kaydedildi'), n);
+  };
+  const remove = async () => {
+    await saveSettings({ releaseTags: tags.filter((x) => x.runId !== summary.id) });
+  };
+  const askBack = async () => {
+    const all = await api.runs();
+    const machines = new Set(summary.targetIds);
+    const later = all.filter((r) => r.startedAt > summary.startedAt && (r.origin === 'send' || r.origin === 'git') && !r.dryRun && r.targetIds.some((id) => machines.has(id)));
+    setBack({ later });
+  };
+  const goBack = async () => {
+    setBusy(true);
+    try {
+      const r = await api.restoreToTag(summary.id, true);
+      setBack(null);
+      if (r.skipped.length) toast('warn', t('{n} gönderim geri alındı, {skipped} atlandı', { n: r.restored, skipped: r.skipped.length }), r.skipped.join('\n'));
+      else toast('ok', t('{name} noktasına dönüldü', { name: tag?.name ?? summary.label }), t('{n} gönderim geri alındı', { n: r.restored }));
+    } catch (e) {
+      toast('error', t('Geri dönülemedi'), (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      {tag ? (
+        <>
+          <span className="badge violet" data-tip={t('Sürüm noktası, {ago} işaretlendi', { ago: ago(tag.at) })}>
+            <Tag size={10} /> {tag.name}
+          </span>
+          <Button size="sm" icon={<RotateCcw size={13} />} tip={t('Bu makinelere bundan sonra giden her gönderimi yedeklerinden geri alır, en yenisinden başlayarak')} onClick={() => void askBack()}>
+            {t('Bu noktaya dön…')}
+          </Button>
+          <Button size="sm" variant="ghost" iconOnly icon={<XCircle size={13} />} tip={t('Sürüm noktasını kaldır')} onClick={() => void remove()} />
+        </>
+      ) : (
+        <Button size="sm" icon={<Tag size={13} />} tip={t('Bu gönderimi sürüm noktası olarak adlandır; makineler sonradan bu duruma geri getirilebilir')} onClick={() => setNaming(true)}>
+          {t('Sürüm noktası…')}
+        </Button>
+      )}
+      {naming && (
+        <Modal
+          title={t('Sürüm noktası')}
+          icon={<Tag size={16} />}
+          onClose={() => setNaming(false)}
+          footer={
+            <>
+              <Button onClick={() => setNaming(false)}>{t('Vazgeç')}</Button>
+              <Button variant="primary" disabled={!name.trim()} onClick={() => void save()}>
+                {t('Kaydet')}
+              </Button>
+            </>
+          }
+        >
+          <Field label={t('Ad')} help={t('Örneğin bir sürüm numarası ya da tarih. Geri dönüş bu gönderimin yedeklerine ve sonrakilerin yedeklerine dayanır; yedek alınmadan yapılan gönderimler geri alınamaz.')}>
+            <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void save()} placeholder={summary.label} />
+          </Field>
+        </Modal>
+      )}
+      {back && (
+        <Modal
+          title={t('{name} noktasına dön', { name: tag?.name ?? summary.label })}
+          icon={<RotateCcw size={16} />}
+          onClose={() => setBack(null)}
+          closeOnScrim={!busy}
+          footer={
+            <>
+              <Button onClick={() => setBack(null)} disabled={busy}>
+                {t('Vazgeç')}
+              </Button>
+              <Button variant="danger" loading={busy} disabled={!back.later.length} onClick={() => void goBack()}>
+                {t('{n} gönderimi geri al', { n: back.later.length })}
+              </Button>
+            </>
+          }
+        >
+          {back.later.length ? (
+            <>
+              <p className="muted" style={{ marginTop: 0 }}>
+                {t('Bu makinelere bu noktadan sonra giden gönderimler, en yenisinden başlayarak yedeklerinden geri alınır. Şimdiki hâller de yedeklenir. Yedek almadan yapılmış bir gönderim atlanır ve sonuçta belirtilir.')}
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+                {back.later.slice(0, 12).map((r) => (
+                  <li key={r.id}>
+                    {r.label} • {ago(r.startedAt)} • {t('{n} hedef', { n: r.targetIds.length })}
+                    {!r.options?.backup && <span className="badge amber" style={{ marginLeft: 6 }}>{t('yedeksiz')}</span>}
+                  </li>
+                ))}
+                {back.later.length > 12 && <li>…</li>}
+              </ul>
+            </>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>{t('Bu noktadan sonra bu makinelere giden bir gönderim yok; makineler zaten bu durumda.')}</p>
+          )}
+        </Modal>
+      )}
+    </>
   );
 }

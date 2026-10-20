@@ -524,6 +524,13 @@ const d: Dict = {
   '{n} gönderim sürüyor. Kurulum uygulamayı kapatır; önce bitmesini bekleyin.': '{n} sends are running. Installing closes the app; let them finish first.',
   'Bu sürümde': 'In this version',
   'Sürüm notları, yayın sayfasında.': 'The release notes are on the release page.',
+  'Kopyalama öncesi komut': 'Pre-copy command',
+  '{vars} — her hedefe ilk dosya gitmeden önce bu bilgisayarda bir kez çalışır; sıfırdan farklı kodla biterse o makineye yazılmaz. Hedefteki programı durdurmak için (bir zamanlanmış görevi tetiklemek gibi).': '{vars} — runs once on this computer before the first file goes to each target; when it exits with a code other than zero, nothing is written to that machine. For stopping the program on the target (triggering a scheduled task, say).',
+  'İkinci bir parola: onunla giren her şeyi görür ama hiçbir şeyi değiştiremez (gönderemez, ayar yapamaz)': 'A second password: whoever signs in with it sees everything but can change nothing (no sends, no settings)',
+  'İzleyici parolasını değiştir…': 'Change the viewer password…',
+  'İzleyici parolası…': 'Viewer password…',
+  'İzleyiciyi kaldır': 'Remove the viewer',
+  'İzleyici parolası': 'Viewer password',
 };
 
 export default d;

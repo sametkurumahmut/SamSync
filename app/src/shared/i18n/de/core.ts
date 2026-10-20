@@ -155,11 +155,6 @@ const d: Dict = {
   Silme: 'Löschen',
   'Eski yedek silindi: {path}': 'Alte Sicherung gelöscht: {path}',
   'Eski yedek silinemedi: {path} ({error})': 'Alte Sicherung konnte nicht gelöscht werden: {path} ({error})',
-  'Sonrası komut: {cmd}': 'Folgebefehl: {cmd}',
-  'Sonrası komut {s} sn içinde bitmedi, durduruldu': 'Der Folgebefehl wurde nicht innerhalb von {s} s beendet und gestoppt',
-  'Sonrası komut çalıştırılamadı: {error}': 'Der Folgebefehl konnte nicht ausgeführt werden: {error}',
-  'Sonrası komut bitti (kod {code}): {output}': 'Folgebefehl beendet (Code {code}): {output}',
-  'Sonrası komut bitti (kod {code})': 'Folgebefehl beendet (Code {code})',
 
   // Git
   'HEAD (ayrık)': 'HEAD (losgelöst)',
@@ -368,6 +363,24 @@ const d: Dict = {
   'Hedef bulunamadı: {ids}': 'Ziel nicht gefunden: {ids}',
   'SFTP hedefi dosya yöneticisinde açılamaz.': 'Ein SFTP-Ziel lässt sich nicht im Dateimanager öffnen.',
   '{path}: dosya kullanımda ama içeriği zaten aynı; yalnızca tarihi eşitlendi': '{path}: in Benutzung, enthält aber bereits denselben Inhalt; nur das Datum wurde angeglichen',
+  'Öncesi komut': 'Befehl davor',
+  'Öncesi komut başarısız; bu makineye yazılmadı': 'Der Befehl davor ist fehlgeschlagen; auf diesen Rechner wurde nichts geschrieben',
+  '{label} {s} sn içinde bitmedi, durduruldu': '{label} war nach {s} s nicht fertig und wurde beendet',
+  '{label} çalıştırılamadı: {error}': '{label} ließ sich nicht ausführen: {error}',
+  '{label} bitti (kod {code}): {output}': '{label} beendet (Code {code}): {output}',
+  '{label} bitti (kod {code})': '{label} beendet (Code {code})',
+  'Hedefte kullanımda: bir program açık tutuyor.': 'Auf dem Ziel in Benutzung: ein Programm hält die Datei offen.',
+  '{name}: {n} dosya hedefte kullanımda ({files}); program kapatılmazsa yazılamaz, içerik aynıysa yalnızca tarihi eşitlenir.': '{name}: {n} Dateien sind auf dem Ziel in Benutzung ({files}); solange das Programm läuft, können sie nicht geschrieben werden; bei gleichem Inhalt wird nur das Datum angeglichen.',
+  'Klasör listeleyici beklenmedik biçimde kapandı': 'Der Ordnerlister wurde unerwartet beendet',
+  '{name}: artımlı paket {n} dosyayı hedefte bekliyordu ama orada yok ya da farklı ({files}); bunlar için tam paket gerekir.': '{name}: Das inkrementelle Paket erwartete {n} Dateien auf dem Ziel, sie fehlen dort aber oder weichen ab ({files}); dafür ist ein vollständiges Paket nötig.',
+  '{file} paketine göre': 'bezogen auf das Paket {file}',
+  '{name} makinesine erişilemiyor; artımlı paket için önceki paketi seçin.': '{name} ist nicht erreichbar; wählen Sie für das inkrementelle Paket stattdessen ein früheres Paket.',
+  '{name} makinesinde bu klasörler için manifest yok; artımlı paket için önceki paketi seçin.': '{name} hat für diese Ordner kein Manifest; wählen Sie für das inkrementelle Paket stattdessen ein früheres Paket.',
+  '{name} makinesindeki sürüme göre': 'bezogen auf den Stand von {name}',
+  'Artımlı paket için önceki paket ya da makine seçin.': 'Wählen Sie für das inkrementelle Paket ein früheres Paket oder einen Rechner.',
+  'Hedefte olmayan ya da değişen dosya yok: paket yalnızca listeyi taşıyor.': 'Gegenüber dem Ziel ist nichts neu oder geändert: Das Paket enthält nur die Liste.',
+  'İzleyici parolası ana paroladan farklı olmalı': 'Das Betrachter-Passwort muss sich vom Hauptpasswort unterscheiden',
+  '{name} noktasına dönüldü: {n} gönderim geri alındı, {skipped} atlandı': 'Zurück bei {name}: {n} Übertragungen rückgängig gemacht, {skipped} übersprungen',
 };
 
 export default d;

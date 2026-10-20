@@ -1,24 +1,35 @@
 // The two small dialogs around password-protected packs: writing one (an optional password, typed twice) and
 // opening one that arrived closed (the password, checked against the file at once).
 import { useState } from 'react';
-import { KeyRound, Package } from 'lucide-react';
+import { FileInput, KeyRound, Package } from 'lucide-react';
 import { useApp } from '../store/app';
-import { Button, Checkbox, Field, Modal, ToggleRow } from './ui';
+import { Button, Checkbox, Field, Modal, Segmented, ToggleRow } from './ui';
+import { useTargetNodes } from './TargetPicker';
+import { api } from '../lib/api';
 import { baseName } from '../lib/format';
 import { t } from '@shared/i18n';
 
-export function PackWriteDialog({ onClose, onWrite }: { onClose: () => void; onWrite: (password?: string) => void }) {
+type PackKind = 'full' | 'pack' | 'machine';
+
+export function PackWriteDialog({ onClose, onWrite }: { onClose: () => void; onWrite: (password?: string, since?: { pack?: string; targetId?: string }) => void }) {
   const [protect, setProtect] = useState(false);
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [show, setShow] = useState(false);
+  // an incremental pack carries only what changed since an earlier pack, or since what a reachable machine holds
+  const [kind, setKind] = useState<PackKind>('full');
+  const [sincePack, setSincePack] = useState('');
+  const nodes = useTargetNodes();
+  const [sinceNode, setSinceNode] = useState(nodes[0]?.id ?? '');
+  const isElectron = useApp((s) => s.boot!.isElectron);
   const short = protect && pw.length < 4;
   const mismatch = protect && pw2 !== '' && pw !== pw2;
-  const ready = !protect || (!short && pw === pw2);
+  const sinceOk = kind === 'full' || (kind === 'pack' ? !!sincePack : !!sinceNode);
+  const ready = (!protect || (!short && pw === pw2)) && sinceOk;
   const go = () => {
     if (!ready) return;
     onClose();
-    onWrite(protect ? pw : undefined);
+    onWrite(protect ? pw : undefined, kind === 'pack' ? { pack: sincePack } : kind === 'machine' ? { targetId: sinceNode } : undefined);
   };
   return (
     <Modal
@@ -37,6 +48,45 @@ export function PackWriteDialog({ onClose, onWrite }: { onClose: () => void; onW
       <p className="muted" style={{ marginTop: 0 }}>
         {t('Kaynaklar tek bir .samsync-pack dosyasına yazılır; diskle götürülür, hedef makinede SamSync ile uygulanır ve manifest bırakılır.')}
       </p>
+      <Field label={t('İçerik')} style={{ marginBottom: 10 }}>
+        <Segmented<PackKind>
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'full', label: t('Tam'), tip: t('Seçili kaynakların tamamı') },
+            { value: 'pack', label: t('Önceki pakete göre'), tip: t('Yalnızca o paketten beri değişen ya da eklenen dosyalar; paket yine bütün listeyi taşır') },
+            { value: 'machine', label: t('Makinedeki sürüme göre'), tip: t('Makinenin manifestine göre değişenler; makineye şimdi erişilebilmeli') },
+          ]}
+        />
+      </Field>
+      {kind === 'pack' && (
+        <Field label={t('Önceki paket')} help={t('Hedef makineye en son uygulanan paket. Uygulanmamış bir paket seçilirse yeni paket o makinede eksik kalır.')} style={{ marginBottom: 10 }}>
+          <div className="row" style={{ gap: 6 }}>
+            <input className="input mono" value={sincePack} onChange={(e) => setSincePack(e.target.value.trim())} placeholder="…\\surum-20261020-1030.samsync-pack" spellCheck={false} />
+            <Button
+              icon={<FileInput size={14} />}
+              disabled={!isElectron}
+              onClick={async () => {
+                const [p] = await api.pick({ files: true, title: t('Önceki paket'), filters: [{ name: 'SamSync pack', extensions: ['samsync-pack'] }] });
+                if (p) setSincePack(p);
+              }}
+            >
+              {t('Seç…')}
+            </Button>
+          </div>
+        </Field>
+      )}
+      {kind === 'machine' && (
+        <Field label={t('Makine')} help={t('Paket, bu makinenin manifestinde olduğu gibi duran dosyaları atlar; uygulandığında bunlar yerinde olmalıdır.')} style={{ marginBottom: 10 }}>
+          <select className="select" aria-label={t('Makine')} value={sinceNode} onChange={(e) => setSinceNode(e.target.value)}>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <ToggleRow title={t('Parolayla koru')} desc={t('İçerik AES-256 ile şifrelenir; uygulayan makinede parola sorulur. Parola kaybolursa paket açılamaz.')} on={protect} onChange={setProtect} />
       {protect && (
         <div className="col" style={{ gap: 10, marginTop: 10 }}>

@@ -64,13 +64,23 @@ export async function probeNode(cfg: AppConfig, node: NodeConfig, timeoutMs = 15
     try {
       const st = await withTimeout(fsp.stat(smbRoot(cfg, node)), Math.max(timeoutMs * 4, 6000));
       if (!st.isDirectory()) return { ...base, ok: false, latencyMs: r.ms, detail: t('{path} bir klasör değil', { path: smbRoot(cfg, node) }) };
-      const ok: ProbeResult = { ...base, ok: true, latencyMs: Date.now() - start, detail: t('Paylaşım erişilebilir ({ms} ms)', { ms: Date.now() - start }) };
+      const ok: ProbeResult = { ...base, ok: true, latencyMs: Date.now() - start, detail: t('Paylaşım erişilebilir ({ms} ms)', { ms: Date.now() - start }), freeBytes: await freeSpaceOf(smbRoot(cfg, node)) };
       return withRelayAlive(ok, smbRoot(cfg, node), node);
     } catch (e) {
       return { ...base, ok: false, latencyMs: r.ms, detail: t('SMB yanıt verdi ama {path} açılamadı: {error}', { path: smbRoot(cfg, node), error: errMessage(e) }) };
     }
   }
   return { ...base, ok: true, latencyMs: r.ms, detail: t('SMB (445) yanıt verdi ({ms} ms)', { ms: r.ms }) };
+}
+
+/** Free space on a root the probe could open, or nothing when the file system does not say. */
+async function freeSpaceOf(root: string): Promise<number | undefined> {
+  try {
+    const s = await withTimeout(fsp.statfs(root), 4000);
+    return Number(s.bavail) * Number(s.bsize);
+  } catch {
+    return undefined;
+  }
 }
 
 /** For a machine marked as relay: reads the heartbeat SamSync there writes, so the window can say whether it runs. */

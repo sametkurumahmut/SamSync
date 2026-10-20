@@ -1,4 +1,4 @@
-import type {
+import type { FileTrace,
   AppConfig,
   BackupLookup,
   AssistantReply,
@@ -111,7 +111,7 @@ export interface Api {
   listDir(path: string | null): Promise<DirListing>;
   /** Server mode: its state, and switching it on or off, the port, network access and the password (from the desktop only). */
   webUiState(): Promise<WebUiState>;
-  webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null }): Promise<WebUiState>;
+  webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState>;
   /** Scans this computer's subnets for machines that answer on file sharing or SSH; cancellable through cancelTask. */
   discoverHosts(taskId: string): Promise<DiscoveredHost[]>;
   /** Every enabled machine's manifest, read now: which release each one holds under each sent folder. */
@@ -122,7 +122,8 @@ export interface Api {
 
   planSend(req: SendRequest, taskId: string): Promise<SendPlan>;
   /** Writes the request's sources to a pack file (.samsync-pack) in `dir`, for a release that travels on a disk; with a password, encrypted. */
-  writePack(req: SendRequest, dir: string, taskId: string, password?: string): Promise<PackWriteResult>;
+  /** `since`: an incremental pack, leaving out what an earlier pack carried or what a reachable machine holds by its manifest. */
+  writePack(req: SendRequest, dir: string, taskId: string, password?: string, since?: { pack?: string; targetId?: string }): Promise<PackWriteResult>;
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
   executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean }): Promise<string>;
@@ -165,6 +166,10 @@ export interface Api {
   restore(rel: string, picks: { targetId: string; stamp: string; folder?: string }[], backupCurrent: boolean): Promise<string>;
   /** Undoes a whole run from its backups (replaced and deleted files come back, created ones go); the run id of the restore. */
   restoreRun(runId: string, backupCurrent: boolean): Promise<string>;
+  /** Undoes, newest first, every send to the tagged run's machines that came after it; each undo waits for the one before. */
+  restoreToTag(runId: string, backupCurrent: boolean): Promise<{ restored: number; skipped: string[] }>;
+  /** Where a file went: runs whose results hold the text, newest first (file name or part of a path). */
+  findInHistory(query: string, limit?: number): Promise<FileTrace[]>;
   /** The text difference of the same file on two machines. */
   diffNodes(leftId: string, rightId: string, rel: string): Promise<DiffResult>;
 
@@ -266,6 +271,8 @@ export const API_METHODS = {
   browseBackup: true,
   restore: true,
   restoreRun: true,
+  restoreToTag: true,
+  findInHistory: true,
   diffNodes: true,
   findWizardState: true,
   importWizardState: true,

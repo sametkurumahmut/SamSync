@@ -96,6 +96,7 @@ const d: Dict = {
   'Masaüstü bildirimi gösterilemedi: {error}': 'The desktop notification could not be shown: {error}',
   'Ekran görüntüsü': 'Screenshot',
   'Alınamadı ({attempt}/{max}): {error}': 'Could not be taken ({attempt}/{max}): {error}',
+  'Bu giriş yalnızca bakar: hiçbir şeyi değiştiremez.': 'This sign-in only looks: it cannot change anything.',
 };
 
 export default d;

@@ -193,10 +193,10 @@ if (launch.removeIntegrations) {
       .filter((a): a is os.NetworkInterfaceInfo => !!a && a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.'))
       .map((a) => a.address);
     const urls = st?.running ? (s?.lan ? ips.map((ip) => `http://${ip}:${port}`) : [`http://127.0.0.1:${port}`]) : [];
-    return { available: true, enabled: !!s?.enabled, running: !!st?.running, port, lan: s?.lan ?? true, hasPassword: !!s?.passwordHash, urls, clients: st?.clients ?? 0, sessions: st?.sessions ?? 0, error: webError };
+    return { available: true, enabled: !!s?.enabled, running: !!st?.running, port, lan: s?.lan ?? true, hasPassword: !!s?.passwordHash, hasViewer: !!s?.viewerHash, urls, clients: st?.clients ?? 0, sessions: st?.sessions ?? 0, error: webError };
   };
   const applyWebUi = async (s: WebUiSettings | undefined): Promise<WebUiState> => {
-    const want = s?.enabled && s.passwordHash ? JSON.stringify([s.port, s.lan, s.passwordHash]) : '';
+    const want = s?.enabled && s.passwordHash ? JSON.stringify([s.port, s.lan, s.passwordHash, s.viewerHash ?? '']) : '';
     if (want === webKey) return webState();
     const old = web;
     web = null;
@@ -208,9 +208,10 @@ if (launch.removeIntegrations) {
         port: s.port,
         host: s.lan ? '0.0.0.0' : '127.0.0.1',
         passwordHash: s.passwordHash!,
+        viewerHash: s.viewerHash,
         staticDir: path.join(__dirname, '../renderer'),
         call: (method: ApiMethod, args: unknown[]) => (service[method] as (...a: unknown[]) => Promise<unknown>).apply(service, args),
-        texts: () => ({ title: 'SamSync', password: t('Parola'), signIn: t('Giriş yap'), wrong: t('Parola yanlış'), locked: t('Çok fazla deneme; bir dakika bekleyin') }),
+        texts: () => ({ title: 'SamSync', password: t('Parola'), signIn: t('Giriş yap'), wrong: t('Parola yanlış'), locked: t('Çok fazla deneme; bir dakika bekleyin'), readOnly: t('Bu giriş yalnızca bakar: hiçbir şeyi değiştiremez.') }),
         log: (level, m) => service.log[level](t('Web arayüzü'), m),
       });
       try {

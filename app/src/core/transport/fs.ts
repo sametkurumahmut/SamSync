@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import type { Entry, ReadRange, Transport, WriteOptions } from './types';
 import { joinRoot } from '../paths';
 import { isWin, mapLimit } from '../util';
+import { WinLister, wantsFastList, type Lister } from '../winlist';
 import { t } from '../../shared/i18n';
 
 const STREAM_THRESHOLD = 16 * 1024 * 1024;
@@ -110,6 +111,10 @@ export class FsTransport implements Transport {
       if (isMissing(e)) return null;
       throw e;
     }
+  }
+
+  lister(): Lister | null {
+    return wantsFastList(this.root) ? new WinLister() : null;
   }
 
   async list(rel: string): Promise<Entry[]> {

@@ -12,6 +12,7 @@ import { t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { pickOverrides } from '@shared/options';
 import { pathWithin, samePath } from '@shared/sources';
+import { coverageOf } from '@shared/coverage';
 import { useStartWatchFromSend } from './AutomationPage';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { ScheduleFields } from '../components/ScheduleFields';
@@ -403,6 +404,18 @@ export function SendPage() {
                             </span>
                           </div>
                         )}
+                        {(() => {
+                          // sources that overlap on the targets: what this folder leaves to others, or who it is merged with
+                          const c = coverageOf(i, infos);
+                          if (!c) return null;
+                          return (
+                            <div className="faint" style={{ fontSize: 11.5, marginTop: 2 }}>
+                              {c.without.length > 0 && <span>{t('{parts} hariç: orayı başka bir kaynak alıyor', { parts: c.without.map((r) => `${r}/`).join(', ') })}</span>}
+                              {c.without.length > 0 && c.mergedWith.length > 0 && ' • '}
+                              {c.mergedWith.length > 0 && <span>{t('{names} ile aynı yere gidiyor; içerikleri birleştirilir, ikisinde de olan dosya listede önce gelenden alınır', { names: c.mergedWith.map(baseName).join(', ') })}</span>}
+                            </div>
+                          );
+                        })()}
                       </div>
                       {i.locked && (
                         <Button size="sm" icon={<KeyRound size={13} />} onClick={() => setUnlock(i.path)}>
@@ -482,7 +495,7 @@ export function SendPage() {
           <Button size="lg" icon={<Package size={15} />} disabled={!onCount || hasPack || !isElectron} onClick={() => setPackDialog(true)} tip={t('Kaynakları makineler yerine tek bir pakete yazar (.samsync-pack):\ndiskle götürülen sürüm, hedefte SamSync ile uygulanır ve manifesti bırakır')}>
             {t('Paket yaz')}
           </Button>
-          {packDialog && <PackWriteDialog onClose={() => setPackDialog(false)} onWrite={(pw) => void writePack(pw)} />}
+          {packDialog && <PackWriteDialog onClose={() => setPackDialog(false)} onWrite={(pw, since) => void writePack(pw, since)} />}
           {unlock && <PackUnlockDialog path={unlock} onClose={() => setUnlock(null)} />}
           <Button size="lg" icon={<FlaskConical size={15} />} disabled={!onCount || !targets.length} onClick={() => startPlan({ sources: sendSources(), origin: 'send', options: { dryRun: true }, label: t('Deneme') })}>
             {t('Deneme')}
@@ -610,6 +623,7 @@ export function OptionsCard({ git }: { git?: boolean }) {
   const options = useApp((s) => s.options);
   const set = useApp((s) => s.setOptions);
   const postCommand = useApp((s) => s.boot!.config.copy.postCommand);
+  const preCommand = useApp((s) => s.boot!.config.copy.preCommand);
   const [filters, setFilters] = useState(false);
   return (
     <div className="card options-card">
@@ -639,6 +653,7 @@ export function OptionsCard({ git }: { git?: boolean }) {
           <ToggleRow icon={<ScanSearch size={16} className="faint" />} title={t('Hedefi baştan tara')} desc={t('SamSync’in hedefte bıraktığı manifeste güvenmez, klasörleri ağ üzerinden gezer (yavaş ama kesin)')} on={!!options.fullScan} onChange={(v) => set({ fullScan: v || undefined })} />
           {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinenleri hedefte de sil')} desc={t('Git’te silinen ya da taşınan dosyalar hedeften kaldırılır')} on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}
           <ToggleRow icon={<Bell size={16} className="faint" />} title={t('Bitince bildir')} desc={t('Masaüstü bildirimi gösterir')} on={options.notify} onChange={(v) => set({ notify: v })} />
+          {preCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Öncesi komut')} desc={<span className="mono">{preCommand}</span>} on={options.runPreCommand !== false} onChange={(v) => set({ runPreCommand: v })} />}
           {postCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Sonrası komut')} desc={<span className="mono">{postCommand}</span>} on={options.runPostCommand} onChange={(v) => set({ runPostCommand: v })} />}
         </div>
         <button className="link-btn row" style={{ gap: 4, marginTop: 4 }} onClick={() => setFilters((f) => !f)}>

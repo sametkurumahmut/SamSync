@@ -1,7 +1,7 @@
 // Settings › Web interface: server mode on or off, its port, whether the network may reach it, and its password.
 // Changed only at the computer itself; a browser sees the state.
 import { useEffect, useState } from 'react';
-import { Globe, KeyRound, Copy, AlertTriangle } from 'lucide-react';
+import { Globe, KeyRound, Copy, AlertTriangle, Eye } from 'lucide-react';
 import type { WebUiState } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
@@ -14,6 +14,7 @@ export function WebUiSection({ Section }: { Section: (p: { id: string; icon: Rea
   const [st, setSt] = useState<WebUiState | null>(null);
   const [port, setPort] = useState('');
   const [pwOpen, setPwOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const load = () =>
     void api.webUiState().then((s) => {
@@ -58,6 +59,10 @@ export function WebUiSection({ Section }: { Section: (p: { id: string; icon: Rea
             <Button icon={<KeyRound size={14} />} onClick={() => setPwOpen(true)}>
               {st.hasPassword ? t('Parolayı değiştir…') : t('Parola belirle…')}
             </Button>
+            <Button icon={<Eye size={14} />} onClick={() => setViewerOpen(true)} tip={t('İkinci bir parola: onunla giren her şeyi görür ama hiçbir şeyi değiştiremez (gönderemez, ayar yapamaz)')}>
+              {st.hasViewer ? t('İzleyici parolasını değiştir…') : t('İzleyici parolası…')}
+            </Button>
+            {st.hasViewer && <Button variant="ghost" onClick={() => void apply({ viewerPassword: null })}>{t('İzleyiciyi kaldır')}</Button>}
           </div>
           {st.running && st.urls.length > 0 && (
             <div className="col" style={{ gap: 4, marginTop: 12 }}>
@@ -80,20 +85,21 @@ export function WebUiSection({ Section }: { Section: (p: { id: string; icon: Rea
             <span>{t('Giren kişi bu bilgisayarın dosyalarını seçip makinelere gönderebilir. Bağlantı şifrelenmez (HTTP): yalnızca güvenilen ağda kullanın ya da önüne TLS ekleyen bir ters vekil koyun.')}</span>
           </div>
           {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} onSave={(pw) => void apply({ password: pw })} />}
+          {viewerOpen && <PasswordDialog title={t('İzleyici parolası')} onClose={() => setViewerOpen(false)} onSave={(pw) => void apply({ viewerPassword: pw })} />}
         </>
       )}
     </Section>
   );
 }
 
-function PasswordDialog({ onClose, onSave }: { onClose: () => void; onSave: (pw: string) => void }) {
+function PasswordDialog({ title, onClose, onSave }: { title?: string; onClose: () => void; onSave: (pw: string) => void }) {
   const [a, setA] = useState('');
   const [b, setB] = useState('');
   const short = a.length > 0 && a.length < 8;
   const ok = a.length >= 8 && a === b;
   return (
     <Modal
-      title={t('Web arayüzü parolası')}
+      title={title ?? t('Web arayüzü parolası')}
       icon={<KeyRound size={16} />}
       onClose={onClose}
       footer={

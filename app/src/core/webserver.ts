@@ -32,6 +32,45 @@ export const REMOTE_DENIED: ReadonlySet<string> = new Set<ApiMethod>([
   'webUiConfigure',
 ]);
 
+/** What a viewer may call: everything that only reads (plans and comparisons write nothing until a run starts). */
+export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
+  'bootstrap',
+  'probe',
+  'describeSources',
+  'mapPath',
+  'planSend',
+  'cancelTask',
+  'compareWithTarget',
+  'runs',
+  'run',
+  'gitRepos',
+  'gitStatus',
+  'gitLog',
+  'gitBranches',
+  'gitSources',
+  'gitDiff',
+  'compareJob',
+  'syncItemDiff',
+  'browse',
+  'findBackups',
+  'backupSets',
+  'browseBackup',
+  'diffNodes',
+  'whatsNew',
+  'assistantStatus',
+  'assistantAsk',
+  'statFile',
+  'integrationStatus',
+  'updateState',
+  'automationState',
+  'relayState',
+  'inventory',
+  'findInHistory',
+  'rootLabel',
+  'webUiState',
+  'discoverHosts',
+]);
+
 const COOKIE = 'samsync_session';
 const SESSION_MS = 12 * 3600_000;
 const MAX_BODY = 32 * 1024 * 1024;
@@ -65,12 +104,14 @@ export interface WebServerOptions {
   /** 127.0.0.1 (this computer only) or 0.0.0.0 (the network). */
   host: string;
   passwordHash: string;
+  /** A browser signed in with this password only looks: every call that would change something is refused. */
+  viewerHash?: string;
   /** The built renderer (index.html and assets/). */
   staticDir: string;
   /** Runs an API method as the window would; the server has checked it is allowed. */
   call(method: ApiMethod, args: unknown[]): Promise<unknown>;
   /** Texts of the login page, in the app's language. */
-  texts?: () => { title: string; password: string; signIn: string; wrong: string; locked: string };
+  texts?: () => { title: string; password: string; signIn: string; wrong: string; locked: string; readOnly?: string };
   log?: (level: 'info' | 'warn', message: string) => void;
 }
 
@@ -129,7 +170,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 export class WebServer {
   private server: http.Server | null = null;
   private clients = new Set<http.ServerResponse>();
-  private sessions = new Map<string, number>();
+  private sessions = new Map<string, { until: number; role: 'admin' | 'viewer' }>();
   private fails = new Map<string, { n: number; until: number }>();
   private lastError: string | undefined;
 
@@ -175,17 +216,17 @@ export class WebServer {
 
   private prune(): void {
     const now = Date.now();
-    for (const [k, until] of this.sessions) if (until < now) this.sessions.delete(k);
+    for (const [k, s] of this.sessions) if (s.until < now) this.sessions.delete(k);
     for (const [k, f] of this.fails) if (f.until && f.until < now) this.fails.delete(k);
   }
 
-  private session(req: http.IncomingMessage): string | null {
+  private session(req: http.IncomingMessage): { token: string; role: 'admin' | 'viewer' } | null {
     const token = cookies(req)[COOKIE];
     if (!token) return null;
-    const until = this.sessions.get(token);
-    if (!until || until < Date.now()) return null;
-    this.sessions.set(token, Date.now() + SESSION_MS); // sliding
-    return token;
+    const s = this.sessions.get(token);
+    if (!s || s.until < Date.now()) return null;
+    s.until = Date.now() + SESSION_MS; // sliding
+    return { token, role: s.role };
   }
 
   private headers(res: http.ServerResponse): void {
@@ -225,14 +266,20 @@ export class WebServer {
       return this.redirect(res, '/login', `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
     }
 
-    const signedIn = !!this.session(req);
+    const session = this.session(req);
+    const signedIn = !!session;
     if (url.pathname.startsWith('/api/')) {
-      if (!signedIn) return this.fail(res, 401, 'not signed in');
+      if (!session) return this.fail(res, 401, 'not signed in');
       if (req.method !== 'POST') return this.fail(res, 405, 'POST only');
       // a cross-site form cannot set this header, and the server allows no cross-origin requests
       if (req.headers['x-samsync'] !== '1') return this.fail(res, 403, 'missing header');
       const method = url.pathname.slice(5);
       if (!isApiMethod(method) || REMOTE_DENIED.has(method)) return this.fail(res, 403, `not available in the browser: ${method}`);
+      if (session.role === 'viewer' && !VIEWER_ALLOWED.has(method)) {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: false, error: this.o.texts?.().readOnly ?? 'This sign-in only looks: it cannot change anything.' }));
+        return;
+      }
       let args: unknown[];
       try {
         const body = await readBody(req);
@@ -243,7 +290,7 @@ export class WebServer {
       }
       try {
         let result = await this.o.call(method, args);
-        if (method === 'bootstrap' && result && typeof result === 'object') result = { ...(result as object), remote: true };
+        if (method === 'bootstrap' && result && typeof result === 'object') result = { ...(result as object), remote: true, readOnly: session.role === 'viewer' || undefined };
         res.setHeader('content-type', 'application/json');
         res.end(JSON.stringify({ ok: true, result: result ?? null }));
       } catch (e) {
@@ -272,8 +319,9 @@ export class WebServer {
     const f = this.fails.get(ip);
     if (f && f.until > Date.now()) return this.redirect(res, '/login?e=locked');
     const form = new URLSearchParams(await readBody(req));
-    const ok = verifyPassword(form.get('password') ?? '', this.o.passwordHash);
-    if (!ok) {
+    const given = form.get('password') ?? '';
+    const role: 'admin' | 'viewer' | null = verifyPassword(given, this.o.passwordHash) ? 'admin' : this.o.viewerHash && verifyPassword(given, this.o.viewerHash) ? 'viewer' : null;
+    if (!role) {
       const n = (f?.n ?? 0) + 1;
       this.fails.set(ip, { n, until: n >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
       this.o.log?.('warn', `web UI: wrong password from ${ip} (${n})`);
@@ -281,8 +329,8 @@ export class WebServer {
     }
     this.fails.delete(ip);
     const token = crypto.randomBytes(32).toString('base64url');
-    this.sessions.set(token, Date.now() + SESSION_MS);
-    this.o.log?.('info', `web UI: signed in from ${ip}`);
+    this.sessions.set(token, { until: Date.now() + SESSION_MS, role });
+    this.o.log?.('info', role === 'viewer' ? `web UI: viewer signed in from ${ip}` : `web UI: signed in from ${ip}`);
     return this.redirect(res, '/', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}`);
   }
 

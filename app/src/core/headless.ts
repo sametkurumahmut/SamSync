@@ -237,7 +237,7 @@ export async function runHeadless(
 
   const to = resolveHeadlessTargets(ctx.config, settings, req.targets, ctx.localNodeId);
   if (to.empty.length) return fail(t('Hedef bulunamadı ya da boş: {ids}', { ids: to.empty.join(', ') }));
-  const options: SendOptions = { ...baseSendOptions(ctx.config.copy, settings.sendDefaults), ...to.options, dryRun: false, notify: false, runPostCommand: false };
+  const options: SendOptions = { ...baseSendOptions(ctx.config.copy, settings.sendDefaults), ...to.options, dryRun: false, notify: false, runPostCommand: false, runPreCommand: false };
   const paths = req.paths.map((p) => normalizeAbs(p));
 
   if (req.mode === 'plan') {

@@ -375,6 +375,10 @@ const d: Dict = {
   'Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır': 'Plant dieselben Quellen erneut für dieselben Rechner; was schon angekommen ist, wird übersprungen',
   'Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar': 'Plant dieselben Quellen erneut, nur für die Rechner mit Fehlern',
   'Yeniden dene': 'Erneut versuchen',
+  '{n} dosya hedefte zaten var sayıldı': '{n} Dateien als bereits auf dem Ziel vorhanden angenommen',
+  'İzleyici parolasıyla girildi: her şey görünür, hiçbir şey değiştirilemez': 'Mit dem Betrachter-Passwort angemeldet: Alles ist sichtbar, nichts lässt sich ändern',
+  'salt okunur': 'nur lesen',
+  'Hedef diskinde boş alan: {size}': 'Freier Platz auf der Zielplatte: {size}',
 };
 
 export default d;

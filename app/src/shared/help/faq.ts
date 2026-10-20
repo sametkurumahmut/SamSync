@@ -78,6 +78,50 @@ export const FAQ: FaqEntry[] = [
     keywords: ['tanımsız makine', 'unknown machine', 'kimlik', 'identity', 'hostname'],
     page: 'targets',
   },
+  {
+    id: 'compare-speed',
+    topic: 'review',
+    q: { tr: 'Karşılaştırma ve inceleme neden uzun sürüyor, nasıl hızlanır?', en: 'Why does a comparison or review take long, and how does it get faster?' },
+    a: {
+      tr: 'Hedefin klasörleri ağ üzerinden listelenir. Bir ağ paylaşımında SamSync bunu işletim sisteminin klasör sorgusuyla yapar: bir klasörün bütün dosyaları boyut ve tarihle tek seferde gelir, dışlanan klasörler atlanır. Yine de "İçerik" karşılaştırması aynı boyuttaki her dosyayı iki taraftan da baştan sona okur; büyük klasörlerde "Tarih + boyut" seçip gerekirse "Doğrula"yı açmak çok daha hızlıdır. İnceleme penceresi her makinede ne yapıldığını gösterir.',
+      en: "The target's folders are listed over the network. On a network share SamSync does that with the operating system's directory query: every file of a folder comes back with its size and time in one go, and excluded folders are skipped. A comparison by **content** still reads every file of equal size on both sides from start to end; for big folders pick **date + size** and, if needed, turn on **verify**, which is far faster. The review window shows what each machine is doing.",
+    },
+    keywords: ['yavaş', 'slow', 'hız', 'speed', 'karşılaştırma', 'comparison', 'listeleme', 'listing'],
+    page: 'compare',
+  },
+  {
+    id: 'incremental-pack',
+    topic: 'pack',
+    q: { tr: 'Paket çok büyük; yalnızca değişenleri taşıyan bir paket yazabilir miyim?', en: 'The pack is huge; can I write one that carries only what changed?' },
+    a: {
+      tr: '**Paket yaz** penceresinde **Önceki pakete göre** (makineye en son uygulanan paket) ya da **Makinedeki sürüme göre** (makinenin manifesti; makine o an erişilebilir olmalı) seçin. Orada olduğu gibi duran dosyalar pakete yalnızca liste olarak girer, içerik yalnızca değişenler için yazılır. Alan makinede inceleme, beklenen bir dosya eksik ya da farklıysa bunu söyler; o dosyalar için tam paket gerekir.',
+      en: 'In **Write pack** pick **Since an earlier pack** (the one applied to the machine last) or **Since what a machine holds** (its manifest; the machine has to be reachable then). Files that stand there as they are go into the pack as a list only; content is written for what changed. On the receiving machine the review says when an expected file is missing or differs; those need a full pack.',
+    },
+    keywords: ['artımlı', 'incremental', 'paket', 'pack', 'usb', 'küçük', 'small'],
+    page: 'send',
+  },
+  {
+    id: 'release-point',
+    topic: 'backup',
+    q: { tr: 'Bütün makineleri önceki bir sürüme nasıl geri döndürürüm?', en: 'How do I bring every machine back to an earlier release?' },
+    a: {
+      tr: 'Geçmiş sayfasında o sürümü gönderen çalıştırmayı seçip **Sürüm noktası…** ile adlandırın (yedek alınarak yapılmış olmalı). Sonra **Bu noktaya dön…**: o makinelere bundan sonra giden her gönderim, en yenisinden başlayarak yedeklerinden geri alınır; şimdiki hâller de yedeklenir. Yedek almadan yapılan bir gönderim atlanır ve sonuçta belirtilir.',
+      en: 'On the History page pick the run that sent that release and name it with **Release point…** (it has to have been made with a backup). Then **Go back to this point…**: every later send to those machines is undone from its backups, newest first; the current state is backed up too. A send made without a backup is skipped and named in the result.',
+    },
+    keywords: ['sürüm noktası', 'release point', 'geri dön', 'roll back', 'rollback', 'önceki sürüm', 'earlier release'],
+    page: 'history',
+  },
+  {
+    id: 'viewer-password',
+    topic: 'settings',
+    q: { tr: 'Web arayüzünü birine yalnızca izlemesi için açabilir miyim?', en: 'Can I open the web interface to someone who should only watch?' },
+    a: {
+      tr: 'Ayarlar › Web arayüzü › **İzleyici parolası**. Onunla giren tarayıcı her şeyi görür, incelemeleri ve karşılaştırmaları açabilir ama gönderemez, ayar değiştiremez; başlık çubuğunda *salt okunur* yazar. İzleyici parolası ana paroladan farklı olmalıdır.',
+      en: 'Settings › Web interface › **Viewer password**. A browser signed in with it sees everything and can open reviews and comparisons, but cannot send or change settings; the title bar says *read-only*. The viewer password has to differ from the main one.',
+    },
+    keywords: ['izleyici', 'viewer', 'salt okunur', 'read-only', 'web', 'parola', 'password'],
+    page: 'settings',
+  },
   // ---- send
   {
     id: 'overlapping-sources',

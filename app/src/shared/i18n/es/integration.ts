@@ -96,6 +96,7 @@ const d: Dict = {
   'Masaüstü bildirimi gösterilemedi: {error}': 'No se pudo mostrar la notificación de escritorio: {error}',
   'Ekran görüntüsü': 'Captura de pantalla',
   'Alınamadı ({attempt}/{max}): {error}': 'No se pudo tomar ({attempt}/{max}): {error}',
+  'Bu giriş yalnızca bakar: hiçbir şeyi değiştiremez.': 'Este inicio de sesión solo mira: no puede cambiar nada.',
 };
 
 export default d;

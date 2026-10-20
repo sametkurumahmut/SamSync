@@ -12,6 +12,7 @@ export const DEFAULT_SEND_OPTIONS: SendOptions = {
   parallelTargets: 8,
   propagateDeletes: true,
   runPostCommand: true,
+  runPreCommand: true,
   notify: true,
 };
 
