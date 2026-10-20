@@ -1,5 +1,17 @@
 # Sürüm Geçmişi
 
+## 2.3.0 — 2026-10-20
+
+- **Hızlı karşılaştırma:** ağ paylaşımındaki klasörler artık işletim sisteminin klasör sorgusuyla listeleniyor; bir klasörün bütün dosyaları boyut ve tarihle tek seferde geliyor, dört klasör aynı anda soruluyor. Eskiden her dosya için ayrı bir sorgu gidiyordu ve on binlerce dosyalık bir karşılaştırma Wi-Fi'da dakikalar sürüyordu. Dışlanan klasörler yine atlanıyor; yerel klasörler düz gezintiyle kalıyor.
+- **Kopyalama öncesi komut:** Ayarlar › Kopyalama. Her hedefe ilk dosya gitmeden önce bu bilgisayarda çalışır, sonrası komutla aynı yer tutucuları alır; sıfırdan farklı kodla biterse o makineye yazılmaz. Gönder sayfasında gönderim başına açılıp kapatılır. Hedefteki programı durdurup (sonrası komutla) yeniden başlatmak için.
+- **Kullanımda uyarısı:** inceleme, değişecek dosyaların hedefte açık tutulup tutulmadığını önceden deniyor (en büyük 150 dosya) ve makine başlığında adlarıyla uyarıyor; satırda da not düşüyor.
+- **Kapsam notu:** kaynaklar hedefte iç içe gidince ya da aynı yere gidince satırın altında ne olacağı yazıyor: "Contents/ hariç: orayı başka bir kaynak alıyor", "X ile aynı yere gidiyor; içerikleri birleştirilir".
+- **Artımlı paket:** Paket yaz penceresinde "Önceki pakete göre" ya da "Makinedeki sürüme göre". Orada olduğu gibi duran dosyalar pakete yalnızca liste olarak girer; alan makinedeki inceleme eksik ya da farklı çıkanları söyler.
+- **Sürüm noktası:** Geçmiş'te bir gönderimi adlandırın; "Bu noktaya dön…" o makinelere sonradan giden gönderimleri en yenisinden başlayarak yedeklerinden geri alır, yedeksiz olanları atlayıp belirtir.
+- **Dosya izi:** Geçmiş'te bir dosya adıyla hangi gönderimle hangi makineye gittiğini bulma, en yenisi üstte; tıklayınca çalıştırma açılır.
+- **Boş alan:** erişilebilen makinenin diskindeki boş alan Hedefler sayfasında ve hedef listesinde (2 GB altında kırmızı).
+- **İzleyici parolası:** Ayarlar › Web arayüzü'nde ikinci bir parola; onunla giren tarayıcı her şeyi görür, hiçbir şeyi değiştiremez; başlık çubuğunda "salt okunur". Ana paroladan farklı olmalı.
+
 ## 2.2.6 — 2026-10-20
 
 - **Güncelleme penceresi:** indirilen sürüm artık sistemin düz iletişim kutusu yerine uygulamanın kendi penceresinde sunuluyor: sürüm rozeti, yayın tarihi, şu anki sürüm, sürüm notları ve süren bir gönderim varsa uyarı (kurulum uygulamayı yeniden başlatır; gönderim sürerken kurma düğmesi kapalı). **Daha sonra** ve **Şimdi kur ve yeniden başlat**. Başlık çubuğundaki düğme ve Ayarlar › Güncelleme aynı pencereyi açar.
