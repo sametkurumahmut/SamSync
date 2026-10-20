@@ -94,6 +94,8 @@ const d: Dict = {
   '{n} öğe silinecek; göndermeden önce gözden geçirin.': pl('{n} Element wird gelöscht; prüfen Sie es vor dem Senden.', '{n} Elemente werden gelöscht; prüfen Sie sie vor dem Senden.'),
   'Masaüstü bildirimi bu sistemde desteklenmiyor': 'Desktop-Benachrichtigungen werden auf diesem System nicht unterstützt',
   'Masaüstü bildirimi gösterilemedi: {error}': 'Die Desktop-Benachrichtigung ließ sich nicht anzeigen: {error}',
+  'Ekran görüntüsü': 'Bildschirmfoto',
+  'Alınamadı ({attempt}/{max}): {error}': 'Konnte nicht aufgenommen werden ({attempt}/{max}): {error}',
 };
 
 export default d;

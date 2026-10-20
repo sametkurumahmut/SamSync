@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Geliştirme:** `SAMSYNC_SCREENSHOT` ile alınan pencere görüntüsü ilk denemede alınamazsa (sanal ekranda derleyici henüz kare üretmemişse) birkaç kez daha denenir ve alınamazsa uygulama yine kapanır; duman testi beklemek yerine eksik görüntüyü bildirir.
+
 ## 2.2.5 — 2026-10-20
 
 - **Kullanımdaki dosya, aynı içerik:** hedefte bir programın açık tuttuğu dosya değiştirilemediğinde SamSync artık içeriğini kaynakla karşılaştırıyor; aynıysa yalnızca tarihini eşitliyor ve öğeyi hata değil tamamlanmış sayıyor. Tarihleri korumayan bir araçla kopyalanmış dosyalar eskiden her gönderimde "dosya kullanımda" hatası veriyordu; bir kez tarih eşitlenince bir daha seçilmiyor.

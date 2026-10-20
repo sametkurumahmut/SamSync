@@ -585,8 +585,19 @@ if (launch.removeIntegrations) {
             await win!.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(process.env.SAMSYNC_SCREENSHOT_SCROLL)})?.scrollIntoView({ block: 'start' })`);
             await new Promise((r) => setTimeout(r, 1000));
           }
-          const img = await win!.webContents.capturePage();
-          fs.writeFileSync(process.env.SAMSYNC_SCREENSHOT!, img.toPNG());
+          // the compositor may not have a frame yet (a virtual display on a build machine): a few tries, then give
+          // up without hanging, so a smoke test reports the missing picture instead of waiting for the app to quit
+          let img: Electron.NativeImage | null = null;
+          for (let attempt = 0; attempt < 6 && !img; attempt++) {
+            try {
+              img = await win!.webContents.capturePage();
+              if (img.isEmpty()) img = null;
+            } catch (e) {
+              service.log.warn(t('Ekran görüntüsü'), t('Alınamadı ({attempt}/{max}): {error}', { attempt: attempt + 1, max: 6, error: e instanceof Error ? e.message : String(e) }));
+            }
+            if (!img) await new Promise((r) => setTimeout(r, 1500));
+          }
+          if (img) fs.writeFileSync(process.env.SAMSYNC_SCREENSHOT!, img.toPNG());
           if (process.env.SAMSYNC_SCREENSHOT_EXIT) app.quit();
         }, Number(process.env.SAMSYNC_SCREENSHOT_DELAY || 2500));
       });
