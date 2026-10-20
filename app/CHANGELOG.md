@@ -1,7 +1,8 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.2.6 — 2026-10-20
 
+- **Güncelleme penceresi:** indirilen sürüm artık sistemin düz iletişim kutusu yerine uygulamanın kendi penceresinde sunuluyor: sürüm rozeti, yayın tarihi, şu anki sürüm, sürüm notları ve süren bir gönderim varsa uyarı (kurulum uygulamayı yeniden başlatır; gönderim sürerken kurma düğmesi kapalı). **Daha sonra** ve **Şimdi kur ve yeniden başlat**. Başlık çubuğundaki düğme ve Ayarlar › Güncelleme aynı pencereyi açar.
 - **Geliştirme:** `SAMSYNC_SCREENSHOT` ile alınan pencere görüntüsü ilk denemede alınamazsa (sanal ekranda derleyici henüz kare üretmemişse) birkaç kez daha denenir ve alınamazsa uygulama yine kapanır; duman testi beklemek yerine eksik görüntüyü bildirir.
 
 ## 2.2.5 — 2026-10-20
