@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## 2.2.4 — 2026-10-20
+
+- **Düzeltme:** Git sayfasındaki hedef seçicide **Seç** menüsünün komutları (görünenlerin tümünü seç, seçimi temizle, erişilebilirleri seç, profiller…) çalışmıyordu: menüye tıklamak, seçicinin açılır penceresini dışarı tıklama sayıp kapatıyordu. Aynı durum oradaki sağ tık menüsü için de geçerliydi. Bir açılır pencerenin içinden açılan menü artık dışarı sayılmıyor; dışarı tıklama pencereyi yine kapatıyor.
+
 ## 2.2.3 — 2026-10-19
 
 - **Her kaynağın hedefteki yeri:** yer listesi artık yalnızca kök dışı kaynaklarda değil, her kaynakta var: yerel köke göre yol (varsayılan), üstteki klasörlerin hedef kökü sayıldığı yerler, tam yol ve hedef köküne göre elle yazılan bir yol (**Başka bir yol yaz…**, örneğin `Contents`).
