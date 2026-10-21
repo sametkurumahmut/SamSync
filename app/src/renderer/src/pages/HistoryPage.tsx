@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2, Tag, Search } from 'lucide-react';
-import type { RunDetail, RunSummary, ReleaseTag } from '@shared/types';
+import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2, Tag, Search, FileDiff, FileCode } from 'lucide-react';
+import type { RunDetail, RunSummary, ReleaseDiff, ReleaseTag } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, ListSkeleton, Modal, SearchInput, Segmented } from '../components/ui';
 import { FileTraceModal } from '../components/FileTrace';
-import { StatusIcon } from '../components/RunPanel';
+import { CheckBadge, StatusIcon } from '../components/RunPanel';
 import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
 import { MachineName } from '../components/MachineName';
@@ -372,6 +372,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
                 <div className="row" style={{ gap: 8 }}>
                   <MachineName name={tg.title} layout="inline" />
                   {tg.deferred && <span className="badge amber">{t('kuyrukta')}</span>}
+                  {tg.check && <CheckBadge check={tg.check} />}
                 </div>
                 <div className="faint mono ellipsis selectable" style={{ fontSize: 11.5 }}>
                   {tg.via ? t('{relay} üzerinden', { relay: summary.targets.find((y) => y.key === tg.via && !y.via)?.title ?? tg.via }) : tg.root}
@@ -433,6 +434,116 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
 
 const NO_TAGS: ReleaseTag[] = [];
 
+/** What changed on the machines between this release point and another one (or the latest send), with a report to save. */
+function ReleaseDiffModal({ summary, onClose }: { summary: RunSummary; onClose: () => void }) {
+  const tags = useApp((s) => s.boot?.settings.releaseTags ?? NO_TAGS);
+  const toast = useApp((s) => s.toast);
+  // a browser on another computer cannot open the report file
+  const remote = useApp((s) => !!s.boot?.remote);
+  const others = tags.filter((x) => x.runId !== summary.id).sort((a, b) => b.at - a.at);
+  const [other, setOther] = useState<string>('');
+  const [diff, setDiff] = useState<ReleaseDiff | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    let alive = true;
+    setDiff(null);
+    setError(null);
+    api
+      .releaseDiff(summary.id, other || null)
+      .then((d) => alive && setDiff(d))
+      .catch((e) => alive && setError((e as Error).message));
+    return () => {
+      alive = false;
+    };
+  }, [summary.id, other]);
+  const save = async (format: 'csv' | 'html') => {
+    try {
+      const f = await api.exportReleaseDiff(summary.id, other || null, format);
+      await api.openPath(f).catch(() => undefined);
+      toast('ok', t('Rapor oluşturuldu'), f);
+    } catch (e) {
+      toast('error', t('Rapor yazılamadı'), (e as Error).message);
+    }
+  };
+  const ql = q.trim().toLowerCase();
+  const shown = (diff?.files ?? []).filter((f) => !ql || f.rel.toLowerCase().includes(ql)).slice(0, 500);
+  const changeText = { added: t('eklendi'), changed: t('değişti'), removed: t('silindi') };
+  const sign = { added: '+', changed: '~', removed: '−' };
+  return (
+    <Modal
+      size="wide"
+      title={t('Sürüm farkı')}
+      icon={<FileDiff size={16} />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button icon={<FileSpreadsheet size={14} />} disabled={!diff?.files.length || remote} onClick={() => void save('csv')}>
+            {t('CSV olarak kaydet')}
+          </Button>
+          <Button icon={<FileCode size={14} />} disabled={!diff?.files.length || remote} onClick={() => void save('html')}>
+            {t('HTML olarak kaydet')}
+          </Button>
+          <span className="spacer" />
+          <Button variant="primary" onClick={onClose}>
+            {t('Kapat')}
+          </Button>
+        </>
+      }
+    >
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <span className="badge violet">
+          <Tag size={10} /> {tags.find((x) => x.runId === summary.id)?.name ?? summary.label}
+        </span>
+        <ArrowLeftRight size={14} className="faint" />
+        <select className="select" aria-label={t('Öbür uç')} style={{ width: 'auto', height: 28 }} value={other} onChange={(e) => setOther(e.target.value)}>
+          <option value="">{t('Bu makinelere son gönderim')}</option>
+          {others.map((x) => (
+            <option key={x.runId} value={x.runId}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+        <span className="spacer" />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Ara')} style={{ width: 200 }} />
+      </div>
+      {error && <div className="alert error">{error}</div>}
+      {!diff && !error && <ListSkeleton rows={6} />}
+      {diff && (
+        <>
+          <div className="row faint" style={{ gap: 10, fontSize: 12.5, marginBottom: 8 }}>
+            <span>{t('{n} gönderim', { n: diff.runs })}</span>
+            <span className="badge green">+{num(diff.counts.added)}</span>
+            <span className="badge amber">~{num(diff.counts.changed)}</span>
+            <span className="badge red">−{num(diff.counts.removed)}</span>
+            <span>
+              {dateTime(diff.from.at)} → {dateTime(diff.to.at)}
+            </span>
+          </div>
+          {!diff.files.length ? (
+            <div className="faint" style={{ fontSize: 12.5 }}>
+              {t('Bu iki nokta arasında bu makinelerde değişen dosya yok.')}
+            </div>
+          ) : (
+            <div className="diff-files">
+              {shown.map((f) => (
+                <div key={f.rel} className={cls('diff-file', f.change)} data-tip={[changeText[f.change], f.machines.join(', '), t('{n} gönderim', { n: f.sends }), dateTime(f.lastAt)].join('\n')}>
+                  <span className="sign">{sign[f.change]}</span>
+                  <span className="mono truncate grow">{f.rel}</span>
+                  <span className="faint truncate" style={{ maxWidth: 220 }}>
+                    {f.machines.join(', ')}
+                  </span>
+                </div>
+              ))}
+              {diff.files.length > shown.length && !ql && <div className="faint" style={{ fontSize: 12, padding: 6 }}>{t('… ve {n} dosya daha (raporda hepsi var)', { n: diff.files.length - shown.length })}</div>}
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
 /**
  * A run named as a release point, and the way back to it: every later send to its machines is undone from the
  * backups, newest first. The names live in this machine's settings, next to the history they belong to.
@@ -445,6 +556,7 @@ function ReleasePointActions({ summary }: { summary: RunSummary }) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const [back, setBack] = useState<{ later: RunSummary[] } | null>(null);
+  const [diffing, setDiffing] = useState(false);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     const n = name.trim();
@@ -485,6 +597,9 @@ function ReleasePointActions({ summary }: { summary: RunSummary }) {
           <Button size="sm" icon={<RotateCcw size={13} />} tip={t('Bu makinelere bundan sonra giden her gönderimi yedeklerinden geri alır, en yenisinden başlayarak')} onClick={() => void askBack()}>
             {t('Bu noktaya dön…')}
           </Button>
+          <Button size="sm" icon={<FileDiff size={13} />} tip={t('Bu noktadan sonra makinelerde nelerin değiştiği: başka bir sürüm noktasına ya da son gönderime kadar')} onClick={() => setDiffing(true)}>
+            {t('Farkı göster…')}
+          </Button>
           <Button size="sm" variant="ghost" iconOnly icon={<XCircle size={13} />} tip={t('Sürüm noktasını kaldır')} onClick={() => void remove()} />
         </>
       ) : (
@@ -492,6 +607,7 @@ function ReleasePointActions({ summary }: { summary: RunSummary }) {
           {t('Sürüm noktası…')}
         </Button>
       )}
+      {diffing && <ReleaseDiffModal summary={summary} onClose={() => setDiffing(false)} />}
       {naming && (
         <Modal
           title={t('Sürüm noktası')}

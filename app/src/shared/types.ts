@@ -65,11 +65,15 @@ export interface CopySettings {
   relayQueueMinutes?: number;
   /** Queued jobs older than this are dropped. */
   relayQueueDays?: number;
+  /** A group whose relay does not run SamSync gets another machine of it that does as its relay for that send. */
+  relayTakeover?: boolean;
   /** A manifest SamSync left on a target stands in for a walk over the network for this many days (0 = always walk). */
   manifestMaxDays?: number;
   /** Runs on this machine before the first file goes to a target (stop the program that holds the files, say); a failing one skips the target. */
   preCommand?: string;
   postCommand?: string;
+  /** A post-copy command that exits non-zero marks its machine as failed (default: only shown). */
+  postCommandFails?: boolean;
   postCommandTimeoutSeconds: number;
   /** Upper bound per transfer in MB/s (0 = unlimited), like robocopy /IPG in the PowerShell tool. */
   bandwidthMBps: number;
@@ -77,6 +81,8 @@ export interface CopySettings {
   excludeDirs: string[];
   /** Sources outside every local root: their own folder stands for the target root (default), or the full path is kept. */
   outsideRoots?: OutsideRoots;
+  /** Text files (patterns like the exclusions) whose {{machine.id}} and the like are filled in for each machine; empty: off. */
+  templateFiles?: string[];
   /**
    * A folder by this name at the top of a sent folder holds files for single machines: its sub folder named after a
    * machine (id, name, address) or a group is laid over the rest for those machines only, and is never sent as it is.
@@ -112,6 +118,8 @@ export interface SendOptions {
   fullScan?: boolean;
   /** All or nothing: a machine where the send failed partway is put back as it was before it (from the backup, which this turns on). */
   rollbackOnFailure?: boolean;
+  /** Stage and switch: the new files are written next to their places first and all go in at once, or none does. */
+  stageSwitch?: boolean;
 }
 
 export interface Profile {
@@ -551,6 +559,20 @@ export interface AgentSettings {
   acceptUpdates?: boolean;
   /** Senders may close the programs that hold files open here, from the run window (off by default). */
   allowClose?: boolean;
+  /** The command after applying works as a health check: a non-zero exit marks the send to this machine as failed. */
+  afterApplyFails?: boolean;
+  /** Watches the folders sent here: a file changed by hand shows on the senders' cards at once (live drift). */
+  watchDrift?: boolean;
+}
+
+/** Live drift on a machine: what changed in its sent folders since the last send, as SamSync there last counted it. */
+export interface DriftSummary {
+  at: number;
+  changed: number;
+  added: number;
+  removed: number;
+  /** A few of the paths, changed ones first. */
+  sample: string[];
 }
 
 /** What SamSync on a machine says about itself in the heartbeat on its share (read by the probe). */
@@ -576,6 +598,8 @@ export interface AgentInfo {
   asks?: string[];
   /** Its network cards, for waking it up. */
   macs?: string[];
+  /** Live drift, when the machine watches its sent folders. */
+  drift?: DriftSummary;
 }
 
 /** One sent folder of a machine against its manifest: what changed there after the last send (paths from the root). */
@@ -728,6 +752,8 @@ export interface RelayState {
   pending?: RelayPending[];
   /** Problems found with this machine's setup (its first local root, its share). */
   checks?: AgentCheck[];
+  /** Live drift of this machine's sent folders (when it watches them). */
+  drift?: DriftSummary;
   lastError?: { at: number; text: string };
 }
 
@@ -851,12 +877,18 @@ export interface PlanTargetProgress {
   read?: number;
 }
 
-export type SrcRef =
+/** A source that can be read on its own: a file, a Git blob, a member of a pack file. */
+export type PlainSrc =
   | { kind: 'fs'; abs: string }
   | { kind: 'git'; repo: string; rev: string; path: string; blob?: string }
+  /** A member of a pack file (a pack added as a source, or the one a sender left on a relay). */
+  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' };
+
+export type SrcRef =
+  | PlainSrc
   | { kind: 'endpoint'; key: string; rel: string }
-  /** A member of a pack file a sender left on this machine (the relay side). */
-  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' }
+  /** A text file with machine variables, filled in for one machine (see core/template.ts); the op's size is the filled-in one. */
+  | { kind: 'vars'; from: PlainSrc; vars: Record<'id' | 'name' | 'title' | 'address' | 'group', string> }
   /** A pack member holding only the blocks that differ; the others come from `base`, the file already there. */
   | { kind: 'patch'; file: string; offset: number; length: number; method: 'gzip' | 'store'; base: string; size: number; blockSize: number; blocks: number[]; baseSize: number; baseMtimeMs: number; hash: string };
 
@@ -936,6 +968,26 @@ export interface SendPlan {
   sources: SourceInfo[];
   warnings: string[];
   durationMs: number;
+  /** relay id -> what it needs besides its own copy to send the machine-specific files on (see plan.ts). */
+  stash?: Record<string, { info: RelayStash; files: StashFile[] }>;
+}
+
+/**
+ * What a relay gets besides its own copy, so the machines behind it get their own files: per sent folder the machine
+ * folder as it is (m/), the common files its own copy holds in another version (c/) and the files only it got
+ * (drop), plus the raw text of the files with machine variables (raw/).
+ */
+export interface RelayStash {
+  units: { rel: string; dir: string; common: string[]; drop: string[] }[];
+  raw: string[];
+}
+
+/** One file of a relay's stash: its path below the stash folder and where it is read from here. */
+export interface StashFile {
+  rel: string;
+  src: PlainSrc;
+  size: number;
+  mtimeMs: number;
 }
 
 // ---------------------------------------------------------------- runs
@@ -963,6 +1015,32 @@ export interface RunTargetState {
   relayUnanswered?: boolean;
   /** The machine was off: the relay queued the job and delivers it when the machine answers again. */
   deferred?: boolean;
+  /** The command after the copy (here) or after applying (on the machine): how it ended. */
+  check?: TargetCheck;
+}
+
+/** A send in two stages: the first machines got it, the rest wait for them to go through (and for a go, unless automatic). */
+export interface StagedSend {
+  /** The first stage's run. */
+  runId: string;
+  label: string;
+  rest: { key: string; name: string }[];
+  /** waiting: the first machines went through, a go is due; stopped: one of them did not; continued: the rest go now. */
+  status: 'waiting' | 'stopped' | 'continued' | 'dropped';
+  firstOk: boolean;
+  nextRunId?: string;
+  at: number;
+}
+
+/** How a command run after a machine got its files ended: a health check of the machine. */
+export interface TargetCheck {
+  label: string;
+  ok: boolean;
+  code: number | null;
+  /** Its last lines. */
+  output: string;
+  /** Run on the machine itself (the agent's command), or on this computer. */
+  there?: boolean;
 }
 
 export interface RunOpResult {
@@ -975,6 +1053,28 @@ export interface RunOpResult {
   backedUp?: boolean;
   /** Failed because a program on the target held the file open. */
   inUse?: boolean;
+  /** The file was not on the target before (a copy that added it rather than replaced it). */
+  created?: boolean;
+}
+
+/** One file in the diff between two points of the history: its net change on the machines. */
+export interface ReleaseDiffFile {
+  rel: string;
+  change: 'added' | 'changed' | 'removed';
+  machines: string[];
+  /** How many sends in the span touched it, and when the last did. */
+  sends: number;
+  lastAt: number;
+}
+
+/** What changed on the machines between two runs (release points): from the run results in the history. */
+export interface ReleaseDiff {
+  from: { runId: string; label: string; at: number; name?: string };
+  to: { runId: string; label: string; at: number; name?: string };
+  /** The runs in between that reached these machines (the later end included). */
+  runs: number;
+  files: ReleaseDiffFile[];
+  counts: { added: number; changed: number; removed: number };
 }
 
 export interface RunLogLine {
@@ -1028,7 +1128,8 @@ export type AppEvent =
   | { type: 'pending-sends'; items: PendingSend[] }
   | { type: 'update'; state: UpdateState }
   | { type: 'automation'; state: AutomationState }
-  | { type: 'drift'; reports: DriftReport[] };
+  | { type: 'drift'; reports: DriftReport[] }
+  | { type: 'staged'; state: StagedSend };
 
 // ---------------------------------------------------------------- git
 

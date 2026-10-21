@@ -1,5 +1,17 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Aşamalı gönderim:** incelemede **Aşamalı gönder** ile önce seçilen makinelere gidiyor; onlar sorunsuz biterse (varsa sağlık denetimi de evet derse) ötekiler kendiliğinden ya da çalıştırma penceresindeki **Kalanlara gönder** onayıyla gidiyor. İlk makinelerden biri hatalıysa gönderim duruyor; **Yine de kalanlara gönder** ya da **Vazgeç**. Her aşama Geçmiş'te ayrı bir çalıştırma.
+- **Sağlık denetimi:** ajanın "Uyguladıktan sonra komut"u ve bu bilgisayarın "Kopyalama sonrası komut"u nasıl bittiyse (kod ve son satırlar) çalıştırma penceresinde ve Geçmiş'te makine satırında **denetim** rozeti olarak görünüyor. İsteyen için başarısız komut makineyi hatalı sayıyor: Ayarlar › Ajan ve Ayarlar › Kopyalama'da birer anahtar (varsayılan kapalı).
+- **Röle devralma:** Ayarlar › Kopyalama › *Röle kapalıysa gruptan başka bir makine röle olsun* (varsayılan kapalı). Rölesinde SamSync çalışmayan gruba gönderimde, grupta SamSync çalışan ilk makine o gönderim için röle oluyor; dosyalar yavaş bağlantıdan yine bir kez geçiyor.
+- **Hazırla, sonra tek seferde değiştir:** gönderim seçeneği. Dosyalar hedefte önce geçici adla yazılıyor, hepsi gelip hiçbiri kullanımda değilse bir anda yerlerine konuyor; program yarım sürüm görmüyor. Bir dosya gelmezse canlı klasöre hiç dokunulmuyor.
+- **Anlık sapma:** Ayarlar › Ajan › *Gönderilen klasörleri izle* (varsayılan kapalı). Gönderilen klasörlerde elle yapılan değişiklik birkaç saniye içinde makine kartında **sapma n** olarak görünüyor; SamSync'in kendi gönderimleri sayılmıyor.
+- **Sürüm farkı:** Geçmiş'te sürüm noktasında **Farkı göster…**: o noktadan başka bir sürüm noktasına ya da son gönderime kadar makinelerde eklenen, değişen ve silinen dosyalar; CSV ya da HTML rapor olarak kaydedilebiliyor.
+- **Makine değişkenli dosyalar:** Ayarlar › Kopyalama › *Makine değişkenli dosyalar* (örneğin `*.ini`, varsayılan boş = kapalı). Uyan UTF-8 metin dosyalarında `{{machine.id}}`, `{{machine.name}}`, `{{machine.title}}`, `{{machine.address}}`, `{{machine.group}}` her makine için dolduruluyor; tek dosya bütün makinelere yetiyor.
+- **Düzeltme:** röle üzerinden gönderim alan makinelere makineye özel klasördeki dosyalar gitmiyordu; röle artık bu dosyaları, kendi sürümüyle tuttuğu ortak dosyaları ve değişkenli dosyaların ham hâlini kenarda tutup her makineye kendininkini gönderiyor.
+- **Düzeltme:** `.samsync-pack` dosyasından SamSync çalışan bir makineye gönderim, paket içindeki dosyalar ajanın paketine konamadığı için hata veriyordu.
+
 ## 2.4.3 — 2026-10-21
 
 - **Ajan durumu kartta:** kalp atışı artık SamSync sürümünü, paylaşımın gösterdiği klasörü, son işi ve son hatayı da taşıyor. Makine kartında **ajan 2.4.2** (bu kopyadan eskiyse sarı, *eski*), oradaki SamSync haber vermeden yanıt vermez olduysa **ajan durmuş**, son hata için bir uyarı işareti. Makinenin kendisinde "Bu makine" kartı ve Ayarlar › Ajan, ilk yerel kök yoksa ya da paylaşım başka bir klasörü gösteriyorsa (rölede ya da gönderenlerin zaten yazdığı yerde) uyarıyor; **Düzelt** paylaşımın klasörünü ilk yerel kök yapıyor.

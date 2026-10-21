@@ -4,6 +4,7 @@ import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestR
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
 import { compareVersions } from '@shared/version';
+import { driftCounts } from '@shared/drift';
 import { AgentChecks } from '../components/AgentSettings';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, bytes, cls, duration } from '../lib/format';
@@ -215,6 +216,12 @@ export function TargetsPage() {
                     </div>
                   )}
                   {relayState?.active && <AgentChecks />}
+                  {relayState?.active && relayState.drift && relayState.drift.changed + relayState.drift.added + relayState.drift.removed > 0 && (
+                    <div className="row" style={{ gap: 6, marginTop: 6, fontSize: 12 }} data-tip={relayState.drift.sample.join('\n')}>
+                      <AlertTriangle size={12} color="var(--amber)" />
+                      <span>{t('Son gönderimden sonra bu makinede değişenler: {counts}', { counts: driftCounts(relayState.drift) })}</span>
+                    </div>
+                  )}
                   {relayState?.active && relayState.lastError && (
                     <div className="row faint" style={{ gap: 6, marginTop: 6, fontSize: 12 }}>
                       <AlertTriangle size={12} color="var(--amber)" />
@@ -468,6 +475,11 @@ function AgentBadges({ node, p, own, updating, onUpdate }: { node: NodeConfig; p
             {old ? ` • ${t('eski')}` : ''}
           </span>
         )
+      )}
+      {a.alive && a.drift && a.drift.changed + a.drift.added + a.drift.removed > 0 && (
+        <span className="badge amber" data-tip={[t('Son gönderimden sonra bu makinede değişenler ({ago})', { ago: ago(a.drift.at) }), ...a.drift.sample].join('\n')}>
+          {t('sapma {n}', { n: a.drift.changed + a.drift.added + a.drift.removed })}
+        </span>
       )}
       {a.alive && old && a.updates && <Button size="sm" variant="ghost" iconOnly icon={<ArrowUpCircle size={13} />} loading={updating} tip={t('SamSync {v} sürümüne güncelle: kurulum makineye bırakılır, iş bitince kendisi kurar', { v: own })} onClick={onUpdate} />}
       {a.lastError && Date.now() - a.lastError.at < 7 * 86400_000 && (

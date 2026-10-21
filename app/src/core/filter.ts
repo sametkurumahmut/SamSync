@@ -73,6 +73,12 @@ function matches(rules: Rule[], rel: string, isDir: boolean): boolean {
   return false;
 }
 
+/** A test for paths by patterns written like the exclusions ("*.ini" any such name, "config/*.json" by path). */
+export function pathMatcher(patterns: readonly string[], ci = isWin): (rel: string, isDir?: boolean) => boolean {
+  const rules = compileRules(patterns, ci);
+  return (rel, isDir = false) => matches(rules, rel, isDir);
+}
+
 export interface PathFilter {
   dir(rel: string): boolean;
   file(rel: string, size?: number, mtimeMs?: number): boolean;

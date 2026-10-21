@@ -322,6 +322,13 @@ export function SettingsPage() {
               />
             </Field>
             <Field
+              label={t('Makine değişkenli dosyalar')}
+              help={t('Bu kalıplara uyan metin dosyalarında {vars} her makine için doldurularak gönderilir; böylece tek bir dosya bütün makinelere yeter. Değişken içermeyen dosya olduğu gibi gider. Boş = kapalı.', { vars: '{{machine.id}} {{machine.name}} {{machine.title}} {{machine.address}} {{machine.group}}' })}
+              style={{ marginTop: 12 }}
+            >
+              <TagInput value={copy.templateFiles ?? []} onChange={(v) => setCopy({ ...copy, templateFiles: v.length ? v : undefined })} placeholder="*.ini" />
+            </Field>
+            <Field
               label={t('Makineye özel klasör')}
               help={t('Gönderilen klasörün en üstünde bu adda bir klasör varsa içindeki her alt klasör (makine kimliği, adı, adresi ya da grup adı) yalnızca o makinelere, ortak dosyaların üstüne gider; klasörün kendisi gönderilmez. Boş = kapalı.')}
               style={{ marginTop: 12 }}
@@ -336,6 +343,12 @@ export function SettingsPage() {
             <div style={{ marginTop: 6 }}>
               <ToggleRow title={t('Yazdıktan sonra doğrula')} desc={t('İçerik özetini karşılaştırır (daha yavaş)')} on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
               <ToggleRow title={t('1 saatlik yaz saati farkını yok say')} desc={t('Saat dilimi kaymış dosyaları aynı sayar')} on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />
+              <ToggleRow
+                title={t('Röle kapalıysa gruptan başka bir makine röle olsun')}
+                desc={t('Rölesinde SamSync çalışmayan bir gruba gönderirken, grupta SamSync çalışan ilk makine o gönderim için röle olur; dosyalar yavaş bağlantıdan bir kez geçer. Kapalıyken grubun makinelerine doğrudan yazılır.')}
+                on={copy.relayTakeover === true}
+                onChange={(v) => setCopy({ ...copy, relayTakeover: v || undefined })}
+              />
               <ToggleRow
                 title={t('Kök dışı kaynakları tam yoluyla gönder')}
                 desc={t('Eski davranış: hiçbir yerel kökün altında olmayan bir klasör hedefte sürücü harfiyle birlikte tam yoluyla yer alır. Kapalıyken klasörün kendisi hedef kökünün yerine geçer; Gönder sayfasında her kaynak için ayrıca seçilebilir.')}
@@ -363,8 +376,14 @@ export function SettingsPage() {
               help={t('{vars} — her başarılı hedeften sonra bir kez çalışır', { vars: '{address} {targetId} {targetName} {networkRoot} {destination} {source}' })}
               style={{ marginTop: 12 }}
             >
-              <input className="input mono" value={copy.postCommand ?? ''} onChange={(e) => setCopy({ ...copy, postCommand: e.target.value })} placeholder={'schtasks /run /s {address} /tn "Sim Yeniden Baslat"'} />
+              <input className="input mono" value={copy.postCommand ?? ''} onChange={(e) => setCopy({ ...copy, postCommand: e.target.value })} placeholder={'schtasks /run /s {address} /tn "Programi Baslat"'} />
             </Field>
+            <ToggleRow
+              title={t('Sonrası komut başarısızsa makine hatalı sayılsın')}
+              desc={t('Komut bir sağlık denetimi gibi çalışır: sıfırdan farklı kodla biterse o makine hatalı görünür, aşamalı gönderim durur, “Hata olursa makineyi geri al” açıksa makine geri alınır.')}
+              on={copy.postCommandFails === true}
+              onChange={(v) => setCopy({ ...copy, postCommandFails: v || undefined })}
+            />
           </Section>
 
           <Section id="config" icon={<FileJson size={15} />} title={t('Yapılandırma dosyası')} desc={t('Makineler, gruplar, profiller ve senkron işleri')}>

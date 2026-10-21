@@ -99,6 +99,53 @@ function HoldersBox({ runId }: { runId: string }) {
   );
 }
 
+/** How the command after the copy (or after applying, on the machine) ended: a small health-check badge. */
+export function CheckBadge({ check }: { check: NonNullable<RunTargetState['check']> }) {
+  const tip = [`${check.label}${check.there ? ` (${t('makinede')})` : ''}: ${t('kod {code}', { code: String(check.code) })}`, check.output].filter(Boolean).join('\n');
+  return (
+    <span className={cls('badge', check.ok ? 'green' : 'red')} data-tip={tip}>
+      {check.ok ? <CheckCircle2 size={10} /> : <XCircle size={10} />} {t('denetim')}
+    </span>
+  );
+}
+
+/** The second stage of a staged send, waiting for a go (or stopped because a first machine did not go through). */
+function StagedBox({ runId }: { runId: string }) {
+  const staged = useApp((s) => s.staged[runId]);
+  const toast = useApp((s) => s.toast);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    // after a reload the event is gone: ask once
+    if (!useApp.getState().staged[runId]) void api.stagedSend(runId).then((st) => st && useApp.setState((s) => ({ staged: { ...s.staged, [runId]: st } })));
+  }, [runId]);
+  if (!staged || (staged.status !== 'waiting' && staged.status !== 'stopped')) return null;
+  const go = async () => {
+    setBusy(true);
+    try {
+      useApp.getState().watchRun(await api.continueStaged(runId));
+    } catch (e) {
+      toast('error', t('Kalanlara gönderilemedi'), (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const names = staged.rest.map((r) => r.name).join(', ');
+  return (
+    <div className={cls('staged-box', staged.firstOk ? 'ok' : 'bad')}>
+      <div className="grow">
+        <b>{staged.firstOk ? t('İlk aşama tamam') : t('İlk aşama hatalı: gönderim durdu')}</b>
+        <div className="faint" style={{ fontSize: 12 }} data-tip={names}>
+          {t('Kalan {n} makine bekliyor: {names}', { n: staged.rest.length, names: staged.rest.slice(0, 4).map((r) => r.name).join(', ') + (staged.rest.length > 4 ? '…' : '') })}
+        </div>
+      </div>
+      <Button onClick={() => void api.dropStaged(runId)}>{t('Vazgeç')}</Button>
+      <Button variant={staged.firstOk ? 'primary' : 'danger'} icon={<Play size={13} />} loading={busy} onClick={() => void go()}>
+        {staged.firstOk ? t('Kalanlara gönder') : t('Yine de kalanlara gönder')}
+      </Button>
+    </div>
+  );
+}
+
 function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -341,6 +388,7 @@ export function RunPanel() {
                         <Clock size={10} /> {t('kuyrukta')}
                       </span>
                     )}
+                    {x.check && <CheckBadge check={x.check} />}
                     <span className="spacer" />
                     <span className="faint tabular" style={{ fontSize: 11.5 }}>
                       {x.done}/{x.total}
@@ -395,6 +443,7 @@ export function RunPanel() {
           ))}
         </div>
 
+        {run.done && <StagedBox runId={s.id} />}
         {run.done && (s.inUseFailed ?? 0) > 0 && <HoldersBox runId={s.id} />}
         <div className="drawer-foot">
           {!run.done ? (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers } from 'lucide-react';
 import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
@@ -15,6 +15,61 @@ import { t, tk } from '@shared/i18n';
 import { MODE_OPTIONS } from '../pages/SendPage';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
+
+/**
+ * A staged send: the machines picked here get it first, the others once these went through (and their health
+ * check said yes); then by themselves, or after a go in the run window. Off unless switched on for this send.
+ */
+function StagesCard({ targets, selected }: { targets: TargetPlan[]; selected: Record<string, Set<string>> }) {
+  const stages = useApp((s) => s.review?.stages);
+  const setStages = useApp((s) => s.setReviewStages);
+  // machines written to from here (a relay takes its group along); one with nothing to write is not worth a stage
+  const eligible = targets.filter((tp) => !tp.via && tp.reachable && ((selected[tp.targetId]?.size ?? 0) > 0 || targets.some((x) => x.via === tp.targetId)));
+  if (eligible.length < 2) return null;
+  const on = !!stages;
+  const first = new Set(stages?.first ?? []);
+  const toggle = (id: string) => {
+    const next = new Set(first);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // at least one first, and never all of them
+    if (next.size === 0 || next.size >= eligible.length) return;
+    setStages({ first: [...next], auto: stages?.auto ?? false });
+  };
+  return (
+    <div className={cls('stages-card', on && 'on')}>
+      <div className="row" style={{ gap: 8 }}>
+        <Layers size={15} className="faint" />
+        <div className="grow">
+          <b style={{ fontSize: 12.5 }}>{t('Aşamalı gönder')}</b>
+          <div className="faint" style={{ fontSize: 12 }}>
+            {t('Önce seçtiğiniz makinelere gider; onlar sorunsuz biterse ötekilere')}
+          </div>
+        </div>
+        <Switch on={on} label={t('Aşamalı gönder')} onChange={(v) => setStages(v ? { first: [eligible[0].targetId], auto: false } : undefined)} />
+      </div>
+      {on && (
+        <>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            <span className="faint" style={{ fontSize: 12 }}>
+              {t('Önce:')}
+            </span>
+            {eligible.map((tp) => (
+              <button key={tp.targetId} className={cls('chip', first.has(tp.targetId) && 'on')} aria-pressed={first.has(tp.targetId)} onClick={() => toggle(tp.targetId)}>
+                {tp.targetName}
+                {targets.some((x) => x.via === tp.targetId) ? ` + ${t('grubu')}` : ''}
+              </button>
+            ))}
+          </div>
+          <label className="check-label" style={{ marginTop: 8 }} onClick={() => setStages({ first: [...first], auto: !stages!.auto })}>
+            <Switch on={stages!.auto} onChange={(v) => setStages({ first: [...first], auto: v })} />
+            {t('Sorunsuz biterse ötekilere kendiliğinden geç (kapalıyken çalıştırma penceresinden onay beklenir)')}
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function opStatus(op: PlanOp, selected: boolean): string {
   switch (op.category) {
@@ -264,6 +319,7 @@ export function PlanReview() {
             </div>
           </div>
         )}
+        {!dryRun && <StagesCard targets={targets} selected={selected} />}
         <div className="plan-split">
           <div className="plan-targets">
             {targets.map((tp) => {

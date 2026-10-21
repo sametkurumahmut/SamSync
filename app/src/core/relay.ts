@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCheck, AgentSettings, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { AgentCheck, AgentSettings, DriftSummary, RelayStash, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
@@ -22,7 +22,7 @@ import { ASK_DIR, ASK_KINDS, answerAsks, pruneAsks, type AgentAsk } from './agen
 import { agentChecks, localShares } from './shares';
 import { UPDATE_DIR, finishOrder, putUpdate, readOrder, sha512Of, type UpdateOrder, type UpdateOutcome } from './agentupdate';
 import { compareVersions } from '../shared/version';
-import { MANIFEST_FILE } from '../shared/files';
+import { LOCK_FILE, MANIFEST_FILE } from '../shared/files';
 import { CancelToken, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
 
@@ -44,6 +44,8 @@ interface PendingJob {
   sources: RelaySource[];
   options: SendOptions;
   createdAt: number;
+  /** the machine-specific files, still in _SamSyncRelay/stash/<id> */
+  stash?: RelayStash;
 }
 /** The relay's delivery queue for one machine: _SamSyncRelay/pending/<id>.json. */
 interface PendingFile {
@@ -80,6 +82,8 @@ export interface Heartbeat {
   forwardUpdates?: boolean;
   /** its network cards, for waking it up */
   macs?: string[];
+  /** live drift of its sent folders, when it watches them */
+  drift?: DriftSummary;
 }
 
 /** The MAC addresses of this computer's network cards (lower case, colons). */
@@ -194,7 +198,7 @@ export interface RelayHost {
   /** This machine's settings as a receiver: commands around the apply, the notification. */
   agent?(): AgentSettings | undefined;
   /** Runs one of those commands here; true when it exited with 0. */
-  runHook?(label: string, cmd: string): Promise<boolean>;
+  runHook?(label: string, cmd: string): Promise<{ ok: boolean; code: number | null; output: string }>;
   notify?(title: string, body: string): void;
   /** Answers a sender's question about this machine (see agentask.ts). */
   answer?(ask: AgentAsk): Promise<unknown>;
@@ -221,6 +225,9 @@ export class RelayService {
   private askWatcher: fs.FSWatcher | null = null;
   private lastError?: { at: number; text: string };
   private updating = false;
+  private driftWatcher: fs.FSWatcher | null = null;
+  private driftTimer: NodeJS.Timeout | null = null;
+  private drift?: DriftSummary;
   private lastPrune = 0;
   private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
@@ -292,6 +299,66 @@ export class RelayService {
     void this.poll();
     void this.refreshPending();
     void this.selfCheck(rootExisted);
+    this.refreshDriftWatch();
+  }
+
+  // ------------------------------------------------------------------ live drift
+
+  /** Starts or stops watching the sent folders, as Settings › Agent says. */
+  refreshDriftWatch(): void {
+    const on = this.host.agent?.()?.watchDrift === true && !!this.host.answer;
+    if (on && !this.driftWatcher) {
+      try {
+        this.driftWatcher = fs.watch(this.localRoot, { recursive: true }, (_ev, name) => this.driftChanged(String(name ?? '')));
+        this.driftWatcher.on('error', () => undefined);
+        this.scheduleDrift(1000);
+      } catch (e) {
+        this.problem(t('Gönderilen klasörler izlenemiyor: {error}', { error: errMessage(e) }));
+      }
+    } else if (!on && this.driftWatcher) {
+      this.driftWatcher.close();
+      this.driftWatcher = null;
+      if (this.driftTimer) clearTimeout(this.driftTimer);
+      this.driftTimer = null;
+      this.drift = undefined;
+      this.stats = { ...this.stats, drift: undefined };
+      this.tell();
+    }
+  }
+
+  /** A change below the root: SamSync's own files and folders do not count. */
+  private driftChanged(name: string): void {
+    const rel = name.replace(/\\/g, '/');
+    const top = rel.split('/')[0].toLowerCase();
+    if (!rel || top === RELAY_FOLDER.toLowerCase() || top === this.host.ctx().config.copy.backupFolderName.toLowerCase()) return;
+    if (/(^|\/)samsync-[^/]*\.json$|\.samsync-tmp$/i.test(rel)) return;
+    this.scheduleDrift(5000);
+  }
+
+  private scheduleDrift(ms: number): void {
+    if (this.driftTimer) clearTimeout(this.driftTimer);
+    this.driftTimer = setTimeout(() => void this.countDrift(), ms);
+  }
+
+  /** Counts the drift against the manifest, once nothing writes here (a send in progress is not drift). */
+  private async countDrift(): Promise<void> {
+    this.driftTimer = null;
+    if (!this.driftWatcher || !this.host.answer) return;
+    if (this.busy.size || !(this.host.idle?.() ?? true) || fs.existsSync(path.join(this.localRoot, LOCK_FILE))) {
+      this.scheduleDrift(15_000);
+      return;
+    }
+    try {
+      const r = (await this.host.answer({ kind: 'drift' })) as { manifest: boolean; subtrees: { changed: string[]; added: string[]; removed: string[]; counts: { changed: number; added: number; removed: number } }[] };
+      const sum = (k: 'changed' | 'added' | 'removed') => r.subtrees.reduce((n, s) => n + s.counts[k], 0);
+      const sample = r.subtrees.flatMap((s) => [...s.changed.map((x) => `~ ${x}`), ...s.added.map((x) => `+ ${x}`), ...s.removed.map((x) => `− ${x}`)]).slice(0, 10);
+      this.drift = r.manifest ? { at: Date.now(), changed: sum('changed'), added: sum('added'), removed: sum('removed'), sample } : undefined;
+      this.stats = { ...this.stats, drift: this.drift };
+      this.tell();
+      void this.heartbeat();
+    } catch (e) {
+      this.host.ctx().log.warn(t('Ajan'), t('Sapma sayılamadı: {error}', { error: errMessage(e) }));
+    }
   }
 
   /** Records what went wrong last: this machine's card and the senders' cards (through the heartbeat) show it. */
@@ -326,6 +393,10 @@ export class RelayService {
     this.hashWatcher = null;
     this.askWatcher?.close();
     this.askWatcher = null;
+    this.driftWatcher?.close();
+    this.driftWatcher = null;
+    if (this.driftTimer) clearTimeout(this.driftTimer);
+    this.driftTimer = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
     fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
     if (this.stats.active) {
@@ -366,6 +437,7 @@ export class RelayService {
       updates,
       forwardUpdates: updates && this.role === 'relay',
       macs: macAddresses(),
+      drift: this.drift,
     };
     try {
       await fsp.writeFile(`${file}.tmp`, JSON.stringify(h));
@@ -441,7 +513,7 @@ export class RelayService {
       if (!job.targetIds.length) throw null;
       const sources: SourceSpec[] = job.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
       const req: SendRequest = { sources, targetIds: job.targetIds, options: { ...job.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle: {label}', { label: job.label }), direct: true };
-      const plan = await buildSendPlan(ctx, req);
+      const plan = await buildSendPlan(ctx, req, job.stash ? { stash: { ...job.stash, dir: this.stashDir(id) } } : {});
       const handle = this.host.runPlan(plan, req.label!);
       const detail: RunDetail | null = handle ? await handle.done : null;
       for (const tp of plan.targets) {
@@ -449,7 +521,7 @@ export class RelayService {
         const r: RelayTargetResult = !tp.reachable
           ? await this.deferOrFail(job, tp.targetId, tp.error)
           : got
-            ? { targetId: tp.targetId, status: got.status === 'queued' || got.status === 'running' ? 'failed' : got.status, opsOk: got.done - got.failed, opsFailed: got.failed, bytes: got.bytesDone, error: got.error }
+            ? { targetId: tp.targetId, status: got.status === 'queued' || got.status === 'running' ? 'failed' : got.status, opsOk: got.done - got.failed, opsFailed: got.failed, bytes: got.bytesDone, error: got.error, check: got.check }
             : { targetId: tp.targetId, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
         result.targets.push(r);
       }
@@ -462,6 +534,10 @@ export class RelayService {
       }
     }
     result.finishedAt = Date.now();
+    // the stash goes once nobody waits for it (a machine that was off gets it later from the queue)
+    if (job.stash && !result.targets.some((x) => x.status === 'deferred')) await fsp.rm(this.stashDir(id), { recursive: true, force: true }).catch(() => undefined);
+    // what just arrived is no drift: count again once the manifest is written
+    if (this.driftWatcher) this.scheduleDrift(3000);
     this.stats = { ...this.stats, jobs: this.stats.jobs + 1, lastJobAt: result.finishedAt, lastOk: result.targets.every((x) => x.status === 'ok'), lastLabel: job.label, lastError: this.lastError };
     this.tell();
     try {
@@ -550,6 +626,11 @@ export class RelayService {
     }
   }
 
+  /** Where the machine-specific files of a job wait (see RelayStash). */
+  private stashDir(jobId: string): string {
+    return path.join(this.localRoot, RELAY_FOLDER, 'stash', jobId);
+  }
+
   // ------------------------------------------------------------------ the delivery queue
 
   private queueOn(): boolean {
@@ -606,7 +687,7 @@ export class RelayService {
     try {
       const list = await this.readPending();
       const p: PendingFile = list.find((x) => x.targetId === targetId) ?? { targetId, since: Date.now(), attempts: 0, jobs: [] };
-      if (!p.jobs.some((j) => j.id === job.id)) p.jobs.push({ id: job.id, label: job.label, from: job.from, sources: job.sources, options: job.options, createdAt: job.createdAt });
+      if (!p.jobs.some((j) => j.id === job.id)) p.jobs.push({ id: job.id, label: job.label, from: job.from, sources: job.sources, options: job.options, createdAt: job.createdAt, stash: job.stash });
       if (p.jobs.length > PENDING_MAX_JOBS) p.jobs.splice(0, p.jobs.length - PENDING_MAX_JOBS);
       p.lastError = why;
       await this.writePending(p);
@@ -665,7 +746,7 @@ export class RelayService {
           const sources: SourceSpec[] = j.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
           const req: SendRequest = { sources, targetIds: [p.targetId], options: { ...j.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle (kuyruktan): {label}', { label: j.label }), direct: true };
           try {
-            const plan = await buildSendPlan(ctx, req);
+            const plan = await buildSendPlan(ctx, req, j.stash ? { stash: { ...j.stash, dir: this.stashDir(j.id) } } : {});
             const tp = plan.targets.find((x) => x.targetId === p.targetId);
             if (tp && !tp.reachable) throw new Error(tp.error ?? t('erişilemedi'));
             const h = this.host.runPlan(plan, req.label!, true);
@@ -698,7 +779,7 @@ export class RelayService {
     const log = this.host.ctx().log;
     // this machine's own command first (stop the program that holds the files); when it fails, nothing is applied
     if (agent?.beforeApply && this.host.runHook && job.pack!.ops.length) {
-      const ok = await this.host.runHook(t('Uygulama öncesi komut'), agent.beforeApply);
+      const { ok } = await this.host.runHook(t('Uygulama öncesi komut'), agent.beforeApply);
       if (!ok) {
         own.status = 'failed';
         own.error = t('Uygulama öncesi komut başarısız; paket uygulanmadı');
@@ -745,7 +826,15 @@ export class RelayService {
       await fsp.rm(packFile, { force: true }).catch(() => undefined);
     }
     // the program comes back whatever happened, and the machine says what arrived
-    if (agent?.afterApply && this.host.runHook && job.pack!.ops.length) await this.host.runHook(t('Uygulama sonrası komut'), agent.afterApply);
+    if (agent?.afterApply && this.host.runHook && job.pack!.ops.length) {
+      const r = await this.host.runHook(t('Uygulama sonrası komut'), agent.afterApply);
+      // the sender sees how it ended; with the setting on, a failing command fails the send to this machine
+      own.check = { label: t('Uygulama sonrası komut'), ok: r.ok, code: r.code, output: r.output, there: true };
+      if (!r.ok && agent.afterApplyFails && own.status === 'ok') {
+        own.status = 'failed';
+        own.error = t('Uygulama sonrası komut başarısız (kod {code})', { code: String(r.code) });
+      }
+    }
     if (agent?.notifyOnApply !== false && job.pack!.ops.length) {
       const sender = job.from ? (this.host.ctx().config.nodes.find((n) => n.id === job.from)?.name ?? job.from) : undefined;
       const who = sender ? t('{from} gönderdi', { from: sender }) : t('paket');
@@ -777,6 +866,18 @@ export class RelayService {
       }
     } catch {
       /* nothing to prune */
+    }
+    // stashes no queued job needs any more
+    try {
+      const waiting = new Set((await this.readPending()).flatMap((p) => p.jobs.map((j) => j.id)));
+      const dir = path.join(this.localRoot, RELAY_FOLDER, 'stash');
+      for (const n of await fsp.readdir(dir)) {
+        if (waiting.has(n)) continue;
+        const st = await fsp.stat(path.join(dir, n)).catch(() => null);
+        if (st && st.mtimeMs < Date.now() - 3600_000) await fsp.rm(path.join(dir, n), { recursive: true, force: true });
+      }
+    } catch {
+      /* no stash */
     }
   }
 }

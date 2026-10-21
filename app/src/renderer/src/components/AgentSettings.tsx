@@ -88,6 +88,12 @@ export function AgentSection({ Section }: { Section: (p: { id: string; icon: Rea
             onChange={(v) => setA({ ...a, acceptUpdates: v || undefined })}
           />
           <ToggleRow
+            title={t('Gönderilen klasörleri izle (anlık sapma)')}
+            desc={t('Gönderilen klasörlerde bir dosya elle değişince, eklenince ya da silinince gönderenlerin makine kartında hemen görünür; SamSync’in kendi gönderimleri sayılmaz.')}
+            on={a.watchDrift === true}
+            onChange={(v) => setA({ ...a, watchDrift: v || undefined })}
+          />
+          <ToggleRow
             title={t('Gönderenler dosyayı tutan programı kapatabilsin')}
             desc={t('Çalıştırma penceresindeki “Kapat ve tekrar dene” bu makinede dosyayı açık tutan programı kapatır. Kapalıyken gönderen yalnızca hangi programın tuttuğunu görür.')}
             on={a.allowClose === true}
@@ -100,13 +106,19 @@ export function AgentSection({ Section }: { Section: (p: { id: string; icon: Rea
                 <input className="input mono" value={a.beforeApply ?? ''} onChange={(e) => setA({ ...a, beforeApply: e.target.value || undefined })} placeholder="taskkill /im app.exe /f" spellCheck={false} />
               </div>
             </Field>
-            <Field label={t('Uyguladıktan sonra komut')} help={t('Paket uygulandıktan sonra (başarısız olsa da) çalışır; programı yeniden başlatmak için.')}>
+            <Field label={t('Uyguladıktan sonra komut')} help={t('Paket uygulandıktan sonra (başarısız olsa da) çalışır; programı yeniden başlatmak için. Nasıl bittiği gönderenin çalıştırma penceresinde görünür.')}>
               <div className="input-wrap">
                 <Terminal size={14} />
                 <input className="input mono" value={a.afterApply ?? ''} onChange={(e) => setA({ ...a, afterApply: e.target.value || undefined })} placeholder='start "" "C:\\App\\app.exe"' spellCheck={false} />
               </div>
             </Field>
           </div>
+          <ToggleRow
+            title={t('Uyguladıktan sonraki komut başarısızsa gönderim hatalı sayılsın')}
+            desc={t('Komut bir sağlık denetimi gibi çalışır: sıfırdan farklı kodla biterse gönderen bu makineyi hatalı görür, aşamalı gönderim durur, “Hata olursa makineyi geri al” açıksa makine geri alınır.')}
+            on={a.afterApplyFails === true}
+            onChange={(v) => setA({ ...a, afterApplyFails: v || undefined })}
+          />
         </>
       )}
     </Section>

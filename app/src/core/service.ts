@@ -7,6 +7,8 @@ import type { FileTrace,
   AgentUpdateResult,
   HolderReport,
   DriftReport,
+  ReleaseDiff,
+  StagedSend,
   DiscoveredHost,
   DirListing,
   WebUiSettings,
@@ -80,6 +82,7 @@ import { RelayService, heartbeatFresh, readHeartbeat } from './relay';
 import { driftFilter, driftOf, driftTime, type DriftResult } from './drift';
 import { drifted, driftCounts } from '../shared/drift';
 import { arpTable, broadcastAddresses, normalizeMac, subnetBroadcast, wake } from './wol';
+import { releaseDiff, writeReleaseDiff } from './releasediff';
 import { installerFromFile, putUpdate, type Installer } from './agentupdate';
 import { askAgent } from './agentask';
 import { HOLDERS_MAX_FILES, closePrograms, holdersUnder } from './holders';
@@ -460,7 +463,10 @@ export class Service implements Api {
       this.syncRelay();
     }
     if ('updateAutoCheck' in patch || 'updateAutoDownload' in patch) this.host.updater?.configure(this.config.update, this.settings);
-    if ('agent' in patch) this.syncRelay();
+    if ('agent' in patch) {
+      this.syncRelay();
+      this.relay?.refreshDriftWatch();
+    }
     if ('automationPaused' in patch || 'automation' in patch) this.automation?.setPaused();
     if ('language' in patch) setLang(this.uiLang());
     if (this.automation) this.host.applySettings?.(this.settings, this.automation.snapshot());
@@ -1037,6 +1043,7 @@ export class Service implements Api {
       relayDoneMs: (c.relayTimeoutMinutes ?? 15) * 60_000,
       preCommand: o.runPreCommand !== false ? c.preCommand || undefined : undefined,
       postCommand: o.runPostCommand ? c.postCommand : undefined,
+      postCommandFails: c.postCommandFails === true,
       postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
       bandwidthMBps: c.bandwidthMBps,
       retryInUseAtEnd: this.settings.retryInUseAtEnd === true,
@@ -1079,11 +1086,15 @@ export class Service implements Api {
   }
 
   /** Runs a plan; 'default' runs every operation the planner selected. Throws when there is nothing to do. */
-  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean } = {}): RunHandle {
+  runPlan(
+    plan: SendPlan,
+    selected: Record<string, string[]> | 'default',
+    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; stages?: { first: string[]; auto: boolean } } = {},
+  ): RunHandle {
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
     const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
-    const groups: ExecGroup[] = [];
+    let groups: ExecGroup[] = [];
     const req = plan.request;
     // the machines behind a relay: they ride on the relay's group
     const relayed = new Map<string, NodeConfig[]>();
@@ -1105,6 +1116,8 @@ export class Service implements Api {
       sources: plan.sources.filter((s) => s.exists || !s.error).map((s) => ({ rel: s.rel, kind: s.exists ? ('fs' as const) : ('delete' as const) })),
       targetIds: (relayed.get(relayId) ?? []).map((n) => n.id),
       options: { ...req.options, dryRun: false, notify: false, runPostCommand: req.options.runPostCommand, runPreCommand: req.options.runPreCommand },
+      // the machine-specific files of the machines behind it, which its own copy does not hold for them
+      stash: relayed.get(relayId)?.length ? plan.stash?.[relayId]?.info : undefined,
     });
     for (const tp of plan.targets) {
       if (tp.via) continue;
@@ -1139,6 +1152,7 @@ export class Service implements Api {
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
         relay: behind || takesPack ? { targets: behind ?? [], job: relayJob(tp.targetId) } : undefined,
         manifest: this.planScans.get(plan.id)?.get(tp.targetId),
+        stash: behind?.length ? plan.stash?.[tp.targetId]?.files : undefined,
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));
@@ -1153,18 +1167,82 @@ export class Service implements Api {
       postSource: last ? { path: last.path, rel: last.rel } : undefined,
       targetIds: plan.targets.map((tp) => tp.targetId),
     });
-    const handle = startRun(ctx, groups, s);
-    this.keepGroups(handle.id, groups, s);
+    // a staged send: the first machines now, the rest once they went through (a machine behind a relay rides with it)
+    const first = new Set(overrides.stages && !opts.dryRun ? overrides.stages.first : []);
+    const later = first.size ? groups.filter((g) => !first.has(g.key)) : [];
+    const stages = later.length && later.length < groups.length ? overrides.stages : undefined;
+    let s1 = s;
+    let s2: ExecSettings | null = null;
+    if (stages) {
+      groups = groups.filter((g) => first.has(g.key));
+      const keysOf = (list: ExecGroup[]) => list.flatMap((g) => [g.key, ...(g.relay?.targets.map((n) => n.id) ?? [])]);
+      s1 = { ...s, label: t('{label} (1. aşama)', { label }), targetIds: keysOf(groups) };
+      s2 = { ...s, label: t('{label} (2. aşama)', { label }), targetIds: keysOf(later) };
+    }
+    const handle = startRun(ctx, groups, s1);
+    this.keepGroups(handle.id, groups, s1);
+    const after = async (d: RunDetail) => {
+      await this.rollbackFailed(d, opts);
+      await this.relayFallback(plan, d, overrides);
+    };
     this.track(
       handle,
       overrides.notify ?? opts.notify !== false,
       async (d) => {
-        await this.rollbackFailed(d, opts);
-        await this.relayFallback(plan, d, overrides);
+        await after(d);
+        if (stages && s2) await this.firstStageDone(d, label, later, s2, stages.auto, after, overrides.notify ?? opts.notify !== false, overrides.channel !== false);
       },
       overrides.channel !== false,
     );
     return handle;
+  }
+
+  // ------------------------------------------------------------ staged sends
+
+  /** First stage run id -> what the second stage sends, kept until it goes or is dropped (the last few only). */
+  private staged = new Map<string, { state: StagedSend; groups: ExecGroup[]; settings: ExecSettings; notify: boolean; channel: boolean; after: (d: RunDetail) => Promise<void> }>();
+
+  /**
+   * The first machines of a staged send are done: when every one of them went through (and its health check, if
+   * any, said yes) the rest go now with `auto`, or wait for a go; otherwise the send stops here and waits.
+   */
+  private async firstStageDone(d: RunDetail, label: string, later: ExecGroup[], settings: ExecSettings, auto: boolean, after: (d: RunDetail) => Promise<void>, notify: boolean, channel: boolean): Promise<void> {
+    const firstOk = d.status === 'ok' && d.targets.every((x) => x.status === 'ok' && x.check?.ok !== false);
+    const rest = later.flatMap((g) => [{ key: g.key, name: g.title }, ...(g.relay?.targets.map((n) => ({ key: n.id, name: n.name })) ?? [])]);
+    const state: StagedSend = { runId: d.id, label, rest, status: firstOk ? 'waiting' : 'stopped', firstOk, at: Date.now() };
+    this.staged.set(d.id, { state, groups: later, settings, notify, channel, after });
+    while (this.staged.size > 20) this.staged.delete(this.staged.keys().next().value!);
+    if (firstOk && auto) {
+      await this.continueStaged(d.id);
+      return;
+    }
+    this.host.emit({ type: 'staged', state });
+    this.log[firstOk ? 'info' : 'warn'](t('Aşamalı gönderim'), firstOk ? t('{label}: ilk makineler tamam; kalan {n} makine onay bekliyor', { label, n: rest.length }) : t('{label}: ilk makinelerde hata var; kalan {n} makineye gönderilmedi', { label, n: rest.length }));
+    this.host.notify?.(firstOk ? t('{label}: ilk aşama tamam', { label }) : t('{label}: ilk aşama hatalı', { label }), firstOk ? t('Kalan {n} makine onayınızı bekliyor', { n: rest.length }) : t('Kalan {n} makineye gönderilmedi', { n: rest.length }));
+  }
+
+  async stagedSend(runId: string): Promise<StagedSend | null> {
+    return this.staged.get(runId)?.state ?? null;
+  }
+
+  async continueStaged(runId: string): Promise<string> {
+    const st = this.staged.get(runId);
+    if (!st || st.state.status === 'continued' || st.state.status === 'dropped') throw new Error(t('Bu gönderimin bekleyen aşaması yok.'));
+    const handle = startRun(this.ctx(), st.groups, st.settings);
+    this.keepGroups(handle.id, st.groups, st.settings);
+    this.track(handle, st.notify, st.after, st.channel);
+    st.state = { ...st.state, status: 'continued', nextRunId: handle.id };
+    this.host.emit({ type: 'staged', state: st.state });
+    this.log.info(t('Aşamalı gönderim'), t('{label}: kalan {n} makineye gönderiliyor', { label: st.state.label, n: st.state.rest.length }));
+    return handle.id;
+  }
+
+  async dropStaged(runId: string): Promise<void> {
+    const st = this.staged.get(runId);
+    if (!st || st.state.status === 'continued') return;
+    st.state = { ...st.state, status: 'dropped' };
+    st.groups = [];
+    this.host.emit({ type: 'staged', state: st.state });
   }
 
   /**
@@ -1222,7 +1300,7 @@ export class Service implements Api {
         runHook: async (label, cmd) => {
           const r = await runLocalCommand(cmd, this.config.copy.postCommandTimeoutSeconds);
           this.log[r.ok ? 'info' : 'error'](t('Ajan'), r.error ? t('{label} çalıştırılamadı: {error}', { label, error: r.error }) : r.timedOut ? t('{label} {s} sn içinde bitmedi, durduruldu', { label, s: this.config.copy.postCommandTimeoutSeconds }) : r.output ? t('{label} bitti (kod {code}): {output}', { label, code: String(r.code), output: r.output }) : t('{label} bitti (kod {code})', { label, code: String(r.code) }));
-          return r.ok;
+          return { ok: r.ok, code: r.code, output: r.error ?? (r.timedOut ? t('{label} {s} sn içinde bitmedi, durduruldu', { label, s: this.config.copy.postCommandTimeoutSeconds }) : r.output) };
         },
         notify: (title, body) => this.host.notify?.(title, body),
         acceptsUpdates: () => this.settings.agent?.acceptUpdates === true && (this.host.canInstallUpdates?.() ?? false),
@@ -1270,10 +1348,10 @@ export class Service implements Api {
   }
 
   /** remember: false for the one-click menu sends, so "send with last settings" keeps what was last reviewed. */
-  async executePlan(planId: string, selected: Record<string, string[]>, overrides: { dryRun?: boolean; remember?: boolean } = {}): Promise<string> {
+  async executePlan(planId: string, selected: Record<string, string[]>, overrides: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean } } = {}): Promise<string> {
     const plan = this.plans.get(planId);
     if (!plan) throw new Error(t('Plan bulunamadı ya da eskidi; yeniden inceleyin.'));
-    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true, queueUnreachable: true });
+    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true, queueUnreachable: true, stages: overrides.stages });
     if (overrides.remember !== false) {
       // remember what the user picked, not just the targets that happened to need changes
       this.settings.lastTargets = plan.targets.map((tp) => tp.targetId);
@@ -1345,6 +1423,15 @@ export class Service implements Api {
   }
   private reportsDir() {
     return path.join(this.host.userDataPath, 'reports');
+  }
+
+  async releaseDiff(fromRunId: string, toRunId: string | null): Promise<ReleaseDiff> {
+    const names = new Map((this.settings.releaseTags ?? []).map((x) => [x.runId, x.name]));
+    return releaseDiff(await this.history.list(), (id) => this.history.get(id), fromRunId, toRunId, names);
+  }
+
+  async exportReleaseDiff(fromRunId: string, toRunId: string | null, format: 'csv' | 'html'): Promise<string> {
+    return writeReleaseDiff(await this.releaseDiff(fromRunId, toRunId), this.reportsDir(), format);
   }
 
   exportRunCsv(id: string) {

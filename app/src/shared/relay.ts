@@ -1,7 +1,7 @@
 // Relay: a machine that passes a send on to the other machines of its group. The sender reaches only the
 // relay (one copy over its own, often slow, link); SamSync on the relay sends the files on from its local
 // disk over the group's own network. The two sides talk through job files in a folder on the relay's share.
-import type { NodeConfig, SendOptions } from './types';
+import type { NodeConfig, RelayStash, SendOptions } from './types';
 
 /** Folder under the relay's share root that holds the job and result files; never sent, never mirrored away. */
 export const RELAY_FOLDER = '_SamSyncRelay';
@@ -38,6 +38,8 @@ export interface RelayJob {
   /** Machines the relay sends on to (none: the relay only takes the pack for itself). */
   targetIds: string[];
   options: SendOptions;
+  /** Machine-specific files for the machines behind the relay, carried in the pack under _SamSyncRelay/stash/<id>. */
+  stash?: RelayStash;
   /**
    * The sender's changes for the relay itself, compressed into `<id>.pack` next to the job instead of
    * copied one by one: the relay applies them to its disk first, then sends on.
@@ -66,6 +68,8 @@ export interface RelayTargetResult {
   inUseOps?: string[];
   /** The operations whose old file went to the backup folder (an undo restores these, and removes the rest it wrote). */
   backedUpOps?: string[];
+  /** The machine's command after applying, as a health check. */
+  check?: import('./types').TargetCheck;
 }
 
 export interface RelayResult {

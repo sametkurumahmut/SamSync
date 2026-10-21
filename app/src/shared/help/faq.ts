@@ -200,6 +200,83 @@ export const FAQ: FaqEntry[] = [
   },
   // ---- send
   {
+    id: 'staged-send',
+    topic: 'send',
+    q: { tr: 'Önce bir iki makineye gönderip sorun yoksa ötekilere geçebilir miyim?', en: 'Can I send to one or two machines first and go on to the others only when they are fine?' },
+    a: {
+      tr: 'Evet: incelemede **Aşamalı gönder**i açın ve önce gidecek makineleri seçin. Onlar sorunsuz biterse (varsa sağlık denetimi de evet derse) ötekiler ya kendiliğinden gider ya da çalıştırma penceresindeki **Kalanlara gönder** onayını bekler. İlk makinelerden biri hatalı biterse gönderim durur; **Yine de kalanlara gönder** ya da **Vazgeç** seçilebilir. Her aşama Geçmiş’te ayrı bir çalıştırmadır.',
+      en: 'Yes: switch on **Staged send** in the review and pick the machines that go first. When they went through (and their health check, if any, said yes), the others follow by themselves or after **Send to the others** in the run window. When one of the first machines failed, the send stops; **Send to the others anyway** or **Cancel** can be chosen. Each stage is a run of its own in History.',
+    },
+    keywords: ['aşamalı', 'staged', 'canary', 'önce', 'first', 'kademeli', 'rollout', 'deneme makinesi', 'test machine'],
+    page: 'send',
+  },
+  {
+    id: 'health-check',
+    topic: 'trouble',
+    q: { tr: 'Gönderimden sonra programın gerçekten çalıştığını nasıl denetlerim?', en: 'How do I check that the program really works after a send?' },
+    a: {
+      tr: 'Bir komutu sağlık denetimi olarak kullanın: o makinede Ayarlar › Ajan › **Uyguladıktan sonra komut** ya da bu bilgisayarda Ayarlar › Kopyalama › **Kopyalama sonrası komut**. Nasıl bittiği çalıştırma penceresinde ve Geçmiş’te makinenin satırında **denetim** rozeti olarak görünür (üstüne gelince kod ve son satırlar). *Uyguladıktan sonraki komut başarısızsa gönderim hatalı sayılsın* ve *Sonrası komut başarısızsa makine hatalı sayılsın* açılırsa sıfırdan farklı çıkış makineyi hatalı sayar: aşamalı gönderim durur, *Hata olursa makineyi geri al* açıksa makine geri alınır.',
+      en: 'Use a command as a health check: Settings › Agent › **Command after applying** on that machine, or Settings › Copy › **Post-copy command** on this computer. How it ended shows as a **check** badge on the machine’s row in the run window and in History (hover for the code and the last lines). With *A failing command after applying fails the send* and *A failing post-copy command fails the machine* on, a non-zero exit marks the machine as failed: a staged send stops, and with *Undo a machine on failure* on the machine is put back.',
+    },
+    keywords: ['sağlık', 'health', 'denetim', 'check', 'komut', 'command', 'çıkış kodu', 'exit code', 'çalışıyor mu', 'works'],
+    page: 'settings',
+  },
+  {
+    id: 'relay-takeover',
+    topic: 'relay',
+    q: { tr: 'Röle kapalıyken gruba gönderim yine yavaş bağlantıdan bir kez geçebilir mi?', en: 'Can a send to a group still cross the slow link once when its relay is off?' },
+    a: {
+      tr: 'Evet: Ayarlar › Kopyalama › **Röle kapalıysa gruptan başka bir makine röle olsun** açıkken, rölesinde SamSync çalışmayan bir gruba gönderimde grupta SamSync çalışan ilk makine o gönderim için röle olur; inceleme bunu bir uyarıyla söyler. Kapalıyken (varsayılan) grubun makinelerine buradan doğrudan yazılır.',
+      en: 'Yes: with Settings › Copy › **When a relay is off, another machine of the group becomes the relay** on, a send to a group whose relay does not run SamSync makes the first machine of the group that does the relay for that send; the review says so in a warning. When off (the default), the group’s machines are written to directly from here.',
+    },
+    keywords: ['röle kapalı', 'relay off', 'yedek röle', 'stand-in', 'devral', 'takeover', 'grup', 'group'],
+    page: 'settings',
+  },
+  {
+    id: 'stage-switch',
+    topic: 'send',
+    q: { tr: 'Gönderim sürerken hedefteki program yarım sürümle karşılaşmasın; mümkün mü?', en: 'Can the program on the target be kept from seeing half a release while the send runs?' },
+    a: {
+      tr: 'Gönderim seçeneklerinde **Hazırla, sonra tek seferde değiştir**i açın. Dosyalar hedefte önce yerlerinin yanına geçici adla yazılır; hepsi gelince ve değiştirilecek dosyaların hiçbiri açık tutulmuyorsa hepsi bir anda yerine konur. Bir dosya gelmezse ya da biri kullanımdaysa canlı klasöre hiç dokunulmaz ve geçici dosyalar silinir. Kopyalama dakikalar sürse de değiştirme saniyeler sürer.',
+      en: 'Switch on **Stage, then switch at once** in the send options. The files are first written next to their places on the target under temporary names; once all of them are there and none of the files to be replaced is held open, they all go in at once. When one does not arrive or one is in use, the live folder is not touched and the temporary files go. The copy may take minutes; the switch takes seconds.',
+    },
+    keywords: ['yarım', 'half', 'atomik', 'atomic', 'tek seferde', 'at once', 'geçici', 'temporary', 'değiştir', 'switch', 'kesinti', 'downtime'],
+    page: 'send',
+  },
+  {
+    id: 'live-drift',
+    topic: 'targets',
+    q: { tr: 'Bir makinede dosya elle değişince hemen görebilir miyim?', en: 'Can I see at once when a file is changed by hand on a machine?' },
+    a: {
+      tr: 'O makinede Ayarlar › Ajan › **Gönderilen klasörleri izle (anlık sapma)** açılırsa (varsayılan kapalı) SamSync kendisine gönderilen klasörleri izler; bir değişiklikten birkaç saniye sonra son gönderimden farklı olanları sayar ve makinenin kartında **sapma n** görünür (üstüne gelince yollar). SamSync’in kendi gönderimleri sayılmaz. Bütün makineleri bir kerede denetlemek için Makine envanterindeki **Sapma denetle** de var.',
+      en: 'On that machine, with Settings › Agent › **Watch the sent folders (live drift)** on (off by default), SamSync watches the folders sent to it; a few seconds after a change it counts what differs from the last send, and the machine’s card shows **drift n** (hover for the paths). SamSync’s own sends do not count. To check every machine in one go, there is **Check drift** in the machine inventory too.',
+    },
+    keywords: ['anlık', 'live', 'sapma', 'drift', 'izle', 'watch', 'elle', 'by hand', 'değişti', 'changed'],
+    page: 'targets',
+  },
+  {
+    id: 'release-diff',
+    topic: 'backup',
+    q: { tr: 'İki sürüm arasında makinelerde hangi dosyalar değişti?', en: 'Which files changed on the machines between two releases?' },
+    a: {
+      tr: 'Geçmiş’te bir sürüm noktasında **Farkı göster…**: o noktadan sonra, seçtiğiniz başka bir sürüm noktasına ya da son gönderime kadar makinelerde eklenen, değişen ve silinen dosyalar, makineleri ve gönderim sayılarıyla listelenir. **CSV olarak kaydet** ve **HTML olarak kaydet** bunu rapor klasörüne yazar. Liste geçmişteki çalıştırmalardan çıkarılır; makinelerin açık olması gerekmez.',
+      en: '**Show diff…** on a release point in History: the files added, changed and removed on the machines after that point, up to another release point you pick or the latest send, with the machines and the number of sends. **Save as CSV** and **Save as HTML** write it to the reports folder. The list comes from the runs in the history; the machines need not be on.',
+    },
+    keywords: ['fark', 'diff', 'sürüm', 'release', 'değişenler', 'changes', 'rapor', 'report', 'csv', 'html', 'sürüm notu', 'release notes'],
+    page: 'history',
+  },
+  {
+    id: 'machine-vars',
+    topic: 'send',
+    q: { tr: 'Bir ayar dosyasında makinenin adını ya da adresini her makineye ayrı nasıl yazdırırım?', en: 'How do I get each machine’s own name or address into a settings file?' },
+    a: {
+      tr: 'Ayarlar › Kopyalama › **Makine değişkenli dosyalar** alanına dosyaları kalıpla yazın (örneğin `*.ini`). O dosyalarda `{{machine.id}}`, `{{machine.name}}`, `{{machine.title}}`, `{{machine.address}}` ve `{{machine.group}}` gönderilirken her makine için doldurulur; tek bir dosya hepsine yeter. Bir röle de arkasındaki makineler için kendisine verilen ham metinden doldurur. Yalnızca UTF-8 metin dosyalarında ve 4 MB’a kadar çalışır; değişkensiz dosya olduğu gibi gider.',
+      en: 'Write the files as patterns into Settings › Copy › **Files with machine variables** (for example `*.ini`). In those files `{{machine.id}}`, `{{machine.name}}`, `{{machine.title}}`, `{{machine.address}}` and `{{machine.group}}` are filled in for each machine as they are sent; one file serves them all. A relay fills them in for the machines behind it from the raw text it is given. It works for UTF-8 text files up to 4 MB; a file without variables goes as it is.',
+    },
+    keywords: ['değişken', 'variable', 'şablon', 'template', 'ayar dosyası', 'config', 'ini', 'makine adı', 'machine name', 'adres', 'address', 'yer tutucu', 'placeholder'],
+    page: 'settings',
+  },
+  {
     id: 'agent-status',
     topic: 'relay',
     q: { tr: 'Makine kartında "ajan durmuş", "eski" ya da bir uyarı işareti ne demek?', en: 'What do "agent stopped", "old" or a warning sign on a machine card mean?' },

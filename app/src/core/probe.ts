@@ -115,6 +115,7 @@ export function agentInfo(h: Heartbeat, alive = heartbeatFresh(h)): AgentInfo {
     forwardUpdates: h.forwardUpdates,
     asks: h.asks,
     macs: h.macs,
+    drift: h.drift,
   };
 }
 

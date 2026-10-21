@@ -10,6 +10,7 @@ import type {
   QuickSend,
   RelayState,
   PendingSend,
+  StagedSend,
   RunLogLine,
   RunSummary,
   RunTargetState,
@@ -118,6 +119,8 @@ export interface LiveRun {
 export interface Review {
   plan: SendPlan;
   selected: Record<string, Set<string>>;
+  /** A staged send: these machines first, the rest once they went through (by themselves with auto). */
+  stages?: { first: string[]; auto: boolean };
 }
 
 export const DEFAULT_OPTIONS: SendOptions = DEFAULT_SEND_OPTIONS;
@@ -143,6 +146,8 @@ interface State {
   relayState?: RelayState;
   /** Sends waiting on this computer for machines that were off. */
   pendingSends: PendingSend[];
+  /** Staged sends by the run id of their first stage. */
+  staged: Record<string, StagedSend>;
   probing: boolean;
   update: UpdateState | null;
   automation: AutomationState | null;
@@ -244,6 +249,7 @@ interface State {
   unlockPack(path: string, password: string): Promise<'ok' | 'wrong'>;
   closeReview(): void;
   setReviewSelection(targetId: string, ids: Set<string>): void;
+  setReviewStages(stages: Review['stages']): void;
   executeReview(dryRun?: boolean): Promise<void>;
   watchRun(runId: string): void;
 
@@ -322,6 +328,7 @@ export const useApp = create<State>((set, get) => ({
   },
   probing: false,
   pendingSends: [],
+  staged: {},
   update: null,
   automation: null,
   toasts: [],
@@ -735,6 +742,10 @@ export const useApp = create<State>((set, get) => ({
     if (!r) return;
     set({ review: { ...r, selected: { ...r.selected, [targetId]: ids } } });
   },
+  setReviewStages(stages) {
+    const r = get().review;
+    if (r) set({ review: { ...r, stages } });
+  },
   async executeReview(dryRun) {
     const r = get().review;
     if (!r) return;
@@ -746,7 +757,7 @@ export const useApp = create<State>((set, get) => ({
     const dry = dryRun ?? r.plan.request.options.dryRun;
     if (deletes && !dry && !confirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }))) return;
     try {
-      const runId = await api.executePlan(r.plan.id, selected, dryRun != null ? { dryRun } : undefined);
+      const runId = await api.executePlan(r.plan.id, selected, { ...(dryRun != null ? { dryRun } : {}), ...(r.stages?.first.length && !dry ? { stages: r.stages } : {}) });
       set({ review: null });
       get().watchRun(runId);
     } catch (e) {
@@ -819,6 +830,11 @@ function handleEvent(e: AppEvent) {
       break;
     case 'pending-sends':
       useApp.setState({ pendingSends: e.items });
+      break;
+    case 'staged':
+      useApp.setState((s) => ({ staged: { ...s.staged, [e.state.runId]: e.state } }));
+      // the second stage started by itself: the run panel follows it
+      if (e.state.status === 'continued' && e.state.nextRunId && st.activeRunId === e.state.runId) st.watchRun(e.state.nextRunId);
       break;
     case 'run-start':
       useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, paused: e.run.paused, samples: [{ t: Date.now(), b: 0 }] } } }));

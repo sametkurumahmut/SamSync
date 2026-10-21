@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { CategoryCounts, NodeConfig, OutsideRoots, PackWriteResult, PlanCategory, PlanOp, PlanTargetProgress, SendPlan, SendRequest, SourceInfo, SourcePlace, TargetPlan } from '../shared/types';
+import { Readable } from 'node:stream';
+import type { CategoryCounts, NodeConfig, OutsideRoots, PackWriteResult, PlainSrc, PlanCategory, PlanOp, PlanTargetProgress, RelayStash, SendPlan, SendRequest, SourceInfo, SourcePlace, SrcRef, StashFile, TargetPlan } from '../shared/types';
 import type { CoreContext } from './context';
 import { expandTargetIds } from './context';
-import { makeFilter, withTopDirsExcluded, type PathFilter } from './filter';
+import { makeFilter, pathMatcher, withTopDirsExcluded, type PathFilter } from './filter';
 import { isUnder, mapSource, mapToRel, normalizeAbs, outsidePlaces, pathKey, relKey, relIsWithin, relJoin, toPosix, type SourceMapping } from './paths';
 import { scanTree } from './scan';
 import { FsTransport, InUseError, transportForNode, nodeRootLabel, type Transport, type Entry } from './transport';
@@ -26,6 +27,7 @@ import { AgentHasher } from './agenthash';
 import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
 import { machineLabel } from '../shared/machine';
+import { TEMPLATE_MAX, fillMachineVars, machineVars, readPlain, templateText } from './template';
 
 /** member: where a pack holds the file. abs: a file merged in from another folder sent to the same place. */
 /** overlay: the machine or group folder this entry came from (Settings › Copy › machine folder). */
@@ -218,10 +220,15 @@ function splitOverlays(u: Extract<Unit, { kind: 'dir' | 'packdir' }>, folder: st
   if (overlays.size) u.overlays = overlays;
 }
 
+/** The machine folder names that are a machine's own, its group's first (lower case). */
+function overlayNames(node: NodeConfig): string[] {
+  return [...new Set([node.group, machineLabel(node.name, node.address).title, node.address, node.name, node.id].filter((x): x is string => !!x).map((x) => x.toLowerCase()))];
+}
+
 /** The units as one machine gets them: its group's folder over the common files, then its own over both. */
 function withOverlays(units: Unit[], node: NodeConfig): Unit[] {
   if (!units.some((u) => (u.kind === 'dir' || u.kind === 'packdir') && u.overlays)) return units;
-  const names = [...new Set([node.group, machineLabel(node.name, node.address).title, node.address, node.name, node.id].filter((x): x is string => !!x).map((x) => x.toLowerCase()))];
+  const names = overlayNames(node);
   return units.map((u) => {
     if ((u.kind !== 'dir' && u.kind !== 'packdir') || !u.overlays) return u;
     const picked = names.map((n) => u.overlays!.get(n)).filter((m): m is Map<string, PackedEntry> => !!m);
@@ -232,8 +239,115 @@ function withOverlays(units: Unit[], node: NodeConfig): Unit[] {
   });
 }
 
+/** Files with machine variables: which ones, their text once read, the raw files a relay needs, and on a relay its stash. */
+interface VarsCtx {
+  match: (rel: string) => boolean;
+  texts: Map<string, Promise<string | null>>;
+  /** target rel -> the raw file it was filled in from (for the stash of a relay) */
+  used: Map<string, { src: PlainSrc; size: number; mtimeMs: number }>;
+  /** on a relay: the raw file a sender left for a target rel (its own copy is filled in for itself) */
+  raw?: (rel: string) => string | undefined;
+}
+
+const plainKey = (s: PlainSrc) => (s.kind === 'fs' ? s.abs : s.kind === 'pack' ? `${s.file}#${s.offset}` : `${s.repo}#${s.rev}#${s.path}`);
+
+/** A file with machine variables, filled in for this machine; null for any other file. */
+async function varsFor(v: VarsCtx | undefined, rel: string, src: PlainSrc, size: number, mtimeMs: number, node: NodeConfig): Promise<{ buf: Buffer; src: SrcRef } | null> {
+  if (!v || size > TEMPLATE_MAX || !v.match(rel)) return null;
+  const rawAbs = v.raw?.(rel);
+  const from: PlainSrc = rawAbs ? { kind: 'fs', abs: rawAbs } : src;
+  const key = plainKey(from);
+  let text = v.texts.get(key);
+  if (!text) {
+    text = readPlain(from)
+      .then(templateText)
+      .catch(() => null);
+    v.texts.set(key, text);
+  }
+  const body = await text;
+  if (body == null) return null;
+  if (!rawAbs) v.used.set(rel, { src: from, size, mtimeMs });
+  const vars = machineVars(node);
+  return { buf: fillMachineVars(body, vars), src: { kind: 'vars', from, vars } };
+}
+
+/** On a relay: the stash a sender left for this job (see RelayStash), in the folder named. */
+export interface StashIn extends RelayStash {
+  dir: string;
+}
+
+/** On a relay: the common files, the files only it got and the machine folder, from the stash, for the machines behind it. */
+async function applyStash(units: Unit[], stash: StashIn): Promise<void> {
+  for (const s of stash.units) {
+    const u = units.find((x): x is Extract<Unit, { kind: 'dir' }> => x.kind === 'dir' && relKey(x.rel, true) === relKey(s.rel, true));
+    if (!u) continue;
+    const base = path.join(stash.dir, s.dir);
+    for (const rel of s.common) {
+      const abs = path.join(base, 'c', ...rel.split('/'));
+      const st = await fsp.stat(abs).catch(() => null);
+      if (st?.isFile()) u.entries.set(relKey(rel, true), { rel, isDir: false, size: st.size, mtimeMs: Math.floor(st.mtimeMs), abs });
+    }
+    for (const rel of s.drop) u.entries.delete(relKey(rel, true));
+    const mdir = path.join(base, 'm');
+    const scan = await scanTree(new FsTransport(mdir), '', { caseInsensitive: true }).catch(() => null);
+    if (!scan?.exists) continue;
+    const overlays = u.overlays ?? new Map<string, Map<string, PackedEntry>>();
+    for (const e of scan.entries.values()) {
+      const parts = e.rel.split('/');
+      if (parts.length < 2) continue;
+      const rel = parts.slice(1).join('/');
+      const m = overlays.get(parts[0].toLowerCase()) ?? new Map<string, PackedEntry>();
+      m.set(relKey(rel, true), { ...e, rel, overlay: parts[0], abs: path.join(mdir, ...parts) });
+      overlays.set(parts[0].toLowerCase(), m);
+    }
+    if (overlays.size) u.overlays = overlays;
+  }
+}
+
+/**
+ * What each relay with machines behind it needs besides its own copy: its own copy holds its own machine files and
+ * its own filled-in variables, so the machine folder, the common files it replaced, the files only it got and the
+ * raw text of the files with variables go to its stash, and it sends the right ones on to each machine.
+ */
+function relayStashes(ctx: CoreContext, units: Unit[], vars: VarsCtx | undefined, relayIds: string[]): SendPlan['stash'] {
+  type Folder = Extract<Unit, { kind: 'dir' | 'packdir' }>;
+  const folders = units.filter((u): u is Folder => (u.kind === 'dir' || u.kind === 'packdir') && !!u.overlays);
+  if (!relayIds.length || (!folders.length && !vars?.used.size)) return undefined;
+  const srcOfEntry = (u: Folder, e: PackedEntry): PlainSrc => (u.kind === 'dir' ? { kind: 'fs', abs: e.abs ?? path.join(u.abs, ...e.rel.split('/')) } : packRef(u.file, e.member!));
+  const out: NonNullable<SendPlan['stash']> = {};
+  for (const id of relayIds) {
+    const node = ctx.config.nodes.find((n) => n.id === id);
+    if (!node) continue;
+    const info: RelayStash = { units: [], raw: [] };
+    const files: StashFile[] = [];
+    folders.forEach((u, i) => {
+      const dir = `u${i}`;
+      for (const [name, m] of u.overlays!) for (const e of m.values()) if (!e.isDir) files.push({ rel: `${dir}/m/${e.overlay ?? name}/${e.rel}`, src: srcOfEntry(u, e), size: e.size, mtimeMs: e.mtimeMs });
+      const common: string[] = [];
+      const drop: string[] = [];
+      for (const name of overlayNames(node)) {
+        for (const [key, e] of u.overlays!.get(name) ?? []) {
+          if (e.isDir || common.includes(e.rel) || drop.includes(e.rel)) continue;
+          const c = u.entries.get(key);
+          if (c && !c.isDir) {
+            common.push(e.rel);
+            files.push({ rel: `${dir}/c/${e.rel}`, src: srcOfEntry(u, c), size: c.size, mtimeMs: c.mtimeMs });
+          } else drop.push(e.rel);
+        }
+      }
+      info.units.push({ rel: u.rel, dir, common, drop });
+    });
+    for (const [rel, v] of vars?.used ?? []) {
+      info.raw.push(rel);
+      files.push({ rel: `raw/${rel}`, src: v.src, size: v.size, mtimeMs: v.mtimeMs });
+    }
+    out[id] = { info, files };
+  }
+  return out;
+}
+
 /** `overlays` false keeps the machine folder in the folders as it is (a pack carries it to wherever it is applied). */
-async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilter, cancel: CancelToken, progress: (p: PlanProgress) => void, overlays = true) {
+async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilter, cancel: CancelToken, progress: (p: PlanProgress) => void, overlays = true, stash?: StashIn) {
   const units: Unit[] = [];
   const warnings: string[] = [];
   const sources: SourceInfo[] = [];
@@ -348,6 +462,7 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
   const layered = layerUnits(units, warnings);
   const folder = overlays ? ctx.config.copy.machineFolder : '';
   if (folder) for (const u of layered) if (u.kind === 'dir' || u.kind === 'packdir') splitOverlays(u, folder);
+  if (stash) await applyStash(layered, stash);
   return { units: layered, warnings, sources };
 }
 
@@ -468,6 +583,7 @@ async function planTarget(
   scans?: Map<string, Map<string, Entry>>,
   /** Updated as the work goes on; the caller passes it on to the window. */
   st: PlanTargetProgress = { id: node.id, name: node.name, phase: 'wait', done: 0, total: 0 },
+  vars?: VarsCtx,
 ): Promise<TargetPlan> {
   // this target's own mode and backup, when the send gives it exceptions
   const opt = targetOptions(req.options, node.id);
@@ -598,11 +714,15 @@ async function planTarget(
   async function fileUnit(u: Extract<Unit, { kind: 'file' | 'git' | 'packfile' }>): Promise<void> {
     const dst = await tgt.stat(u.rel);
     const src = u.kind === 'file' ? ({ kind: 'fs', abs: u.abs } as const) : u.kind === 'git' ? ({ kind: 'git', repo: u.repo, rev: u.rev, path: u.path, blob: u.blob } as const) : packRef(u.file, u.member);
-    const common = { kind: 'copy' as const, rel: u.rel, isDir: false, src, size: u.size, srcMtime: u.mtimeMs, sourceIndex: u.sourceIndex };
+    // a file with machine variables goes filled in for this machine
+    const tpl = u.kind === 'packfile' && u.member.ref ? null : await varsFor(vars, u.rel, src, u.size, u.mtimeMs, node);
+    const size = tpl ? tpl.buf.length : u.size;
+    const common = { kind: 'copy' as const, rel: u.rel, isDir: false, src: tpl ? tpl.src : (src as SrcRef), size, srcMtime: u.mtimeMs, sourceIndex: u.sourceIndex };
     if (!dst) return push(b, { ...common, category: 'new', selected: true });
     if (dst.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: dst.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var; klasör kaldırılıp dosya yazılacak.') });
     let cat: PlanCategory;
-    if (u.kind === 'git' || (u.kind === 'file' && u.blob)) {
+    if (tpl) cat = await classify({ size, mtimeMs: u.mtimeMs }, dst, async () => Readable.from([tpl.buf]), u.rel, `vars:${node.id}:${u.rel}`);
+    else if (u.kind === 'git' || (u.kind === 'file' && u.blob)) {
       // Commit content: the blob id tells equality exactly, time stamps mean nothing here.
       if (dst.size !== u.size) cat = 'changed';
       else {
@@ -697,11 +817,15 @@ async function planTarget(
         st.done++;
         return;
       }
-      const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex, ...(e.overlay ? { note: t('Bu makineye özel ({name})', { name: e.overlay }) } : {}) };
+      // a file with machine variables goes filled in for this machine
+      const tpl = await varsFor(vars, rel, srcOf(e), e.size, e.mtimeMs, node);
+      const common = { kind: 'copy' as const, rel, isDir: false, src: tpl ? tpl.src : (srcOf(e) as SrcRef), size: tpl ? tpl.buf.length : e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex, ...(e.overlay ? { note: t('Bu makineye özel ({name})', { name: e.overlay }) } : {}) };
       try {
         if (!d) return push(b, { ...common, category: 'new', selected: true });
         if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
-        const cat = await classify(e, d, () => readSrc(e), rel, local ? e.abs ?? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
+        const cat = tpl
+          ? await classify({ size: tpl.buf.length, mtimeMs: e.mtimeMs }, d, async () => Readable.from([tpl.buf]), rel, `vars:${node.id}:${rel}`)
+          : await classify(e, d, () => readSrc(e), rel, local ? e.abs ?? local.localPath(e.rel) : `${(u as { file: string }).file}#${e.member!.offset}`);
         push(b, { ...common, category: cat, dstMtime: d.mtimeMs, dstSize: d.size, selected: cat === 'targetNewer' ? opt.mode !== 'update' : cat !== 'same' });
       } finally {
         st.done++;
@@ -786,13 +910,18 @@ export async function buildSendPlan(
     relay?: boolean;
     /** Filled with what the plan saw on each target, so the run can leave an up-to-date manifest there. */
     scans?: PlanScans;
+    /** On a relay: what the sender left in the stash for this job (machine folder, raw files with variables). */
+    stash?: StashIn;
   } = {},
 ): Promise<SendPlan> {
   const started = Date.now();
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
   const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
-  const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress);
+  const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress, true, opts.stash);
+  const patterns = ctx.config.copy.templateFiles ?? [];
+  const stashRaw = opts.stash ? new Map(opts.stash.raw.map((r) => [relKey(r, true), path.join(opts.stash!.dir, 'raw', ...r.split('/'))])) : null;
+  const vars: VarsCtx | undefined = patterns.length ? { match: pathMatcher(patterns, true), texts: new Map(), used: new Map(), raw: stashRaw ? (rel) => stashRaw.get(relKey(rel, true)) : undefined } : undefined;
 
   const requested = req.targetIds;
   // a pack, or a release from somewhere outside this machine's roots, may be applied to this very machine
@@ -833,7 +962,7 @@ export async function buildSendPlan(
   let planned: TargetPlan[];
   try {
     planned = await mapLimit(nodes, 6, async (n, i) => {
-      const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), states[i]);
+      const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), states[i], vars);
       if (!tp.reachable) states[i].phase = 'failed';
       done++;
       report();
@@ -844,30 +973,52 @@ export async function buildSendPlan(
   }
   // a relay whose SamSync is not running: the machines behind it are looked at and written to from here
   const behindDown = new Map<string, NodeConfig[]>();
+  /** relay id -> its "goes directly" warning, replaced when a stand-in takes over */
+  const downWarning = new Map<string, number>();
   for (const tp of planned) {
     if (!tp.relayDown || !routing.via.has(tp.targetId)) continue;
     const behind = routing.via.get(tp.targetId) ?? [];
     behindDown.set(tp.targetId, behind);
     routing.via.delete(tp.targetId);
+    downWarning.set(tp.targetId, warnings.length);
     warnings.push(t('{name} röle olarak işaretli ama orada SamSync çalışmıyor; {names} doğrudan gönderilecek.', { name: tp.targetName, names: behind.map((n) => n.name).join(', ') }));
+  }
+  // when asked to, another machine of such a group that runs SamSync stands in for the relay in this send
+  if (ctx.config.copy.relayTakeover) {
+    for (const [relayId, behind] of behindDown) {
+      const standIn = await standInRelay(ctx, behind, cancel);
+      if (!standIn) continue;
+      behindDown.set(relayId, [standIn]);
+      routing.via.set(standIn.id, behind.filter((n) => n.id !== standIn.id));
+      // the warning above said they go directly: they go through the stand-in instead
+      const msg = t('{name} röle olarak işaretli ama orada SamSync çalışmıyor; bu gönderimde {standIn} röle oluyor.', { name: planned.find((p) => p.targetId === relayId)?.targetName ?? relayId, standIn: standIn.name });
+      const at = downWarning.get(relayId);
+      if (at != null) warnings[at] = msg;
+      else warnings.push(msg);
+    }
   }
   const directPlanned = new Map<string, TargetPlan>();
   await mapLimit([...behindDown.values()].flat(), 6, async (n) => {
-    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id)));
+    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), undefined, vars));
   });
   // the relayed machines follow their relay in the list, reachable as far as the relay is
   const targets: TargetPlan[] = [];
-  for (const tp of planned) {
-    targets.push(tp);
-    for (const n of behindDown.get(tp.targetId) ?? []) {
-      const d = directPlanned.get(n.id);
-      if (d) targets.push(d);
-    }
+  const pushVia = (tp: TargetPlan) => {
     for (const n of routing.via.get(tp.targetId) ?? []) {
       const opt = targetOptions(req.options, n.id);
       const base = { targetId: n.id, targetName: n.name, root: nodeRootLabel(ctx.config, n), mode: opt.mode, backup: opt.backup, ops: [], counts: emptyCounts(), bytes: 0, via: tp.targetId };
       targets.push(tp.reachable ? { ...base, reachable: true } : { ...base, reachable: false, error: t('Röle {name} erişilemedi', { name: tp.targetName }) });
     }
+  };
+  for (const tp of planned) {
+    targets.push(tp);
+    for (const n of behindDown.get(tp.targetId) ?? []) {
+      const d = directPlanned.get(n.id);
+      if (!d) continue;
+      targets.push(d);
+      pushVia(d);
+    }
+    pushVia(tp);
   }
   if (routing.via.size) warnings.push(t('{names} dosyaları {relays} üzerinden alacak: önce oraya gider, oradaki SamSync dağıtır.', { names: [...routing.via.values()].flat().map((n) => n.name).join(', '), relays: [...routing.via.keys()].map((id) => planned.find((p) => p.targetId === id)?.targetName ?? id).join(', ') }));
 
@@ -880,7 +1031,32 @@ export async function buildSendPlan(
     const del = mirrors.reduce((s, tp) => s + tp.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
     if (del) warnings.push(t('Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.', { n: del }));
   }
-  return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started };
+  // the relays that send on: what they need for each machine's own files
+  const stash = relayStashes(ctx, units, vars, [...routing.via.keys()].filter((id) => routing.via.get(id)!.length));
+  return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started, stash };
+}
+
+/**
+ * The first machine of a group (behind a relay that does not run SamSync) whose own SamSync answers: its heartbeat on
+ * its share is fresh. It takes the others of the group in this send, as the relay would have.
+ */
+async function standInRelay(ctx: CoreContext, behind: NodeConfig[], cancel: CancelToken): Promise<NodeConfig | null> {
+  for (const n of behind) {
+    cancel.throwIfCancelled();
+    if (n.transport === 'sftp' || n.id === ctx.localNodeId) continue;
+    const p = await probeNode(ctx.config, n, 1500, false).catch(() => null);
+    if (!p?.ok) continue;
+    let tgt: Transport | null = null;
+    try {
+      tgt = await transportForNode(ctx, n);
+      if (heartbeatFresh(await readHeartbeat(tgt))) return n;
+    } catch {
+      /* not this one */
+    } finally {
+      await tgt?.close().catch(() => undefined);
+    }
+  }
+  return null;
 }
 
 /**

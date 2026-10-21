@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { Transform, type Readable } from 'node:stream';
-import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
+import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef, StashFile } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
 import { RelayError, heartbeatFresh, readHeartbeat, submitRelayJob, submitRelayPack, waitRelayResult } from './relay';
@@ -10,6 +10,7 @@ import { DELTA_BLOCK, DELTA_MIN, changedBlocks, patchedStream, type BlockList, t
 import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
 import type { PackOp, RelayJob } from '../shared/relay';
 import { blobStream } from './git';
+import { openPlain, openVars } from './template';
 import { hashStream, hashing } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
@@ -50,6 +51,8 @@ export interface ExecGroup {
   relay?: { targets: NodeConfig[]; job: RelayJob };
   /** What the plan saw below each sent folder on this target: the run leaves it, updated, as the target's manifest. */
   manifest?: Map<string, Map<string, Entry>>;
+  /** A relay: the files it keeps aside for the machines behind it (machine folder, raw templates), carried in its pack. */
+  stash?: StashFile[];
 }
 
 export interface ExecSettings {
@@ -69,6 +72,8 @@ export interface ExecSettings {
   /** Runs before the first file goes to a target; a non-zero exit skips that target. */
   preCommand?: string;
   postCommand?: string;
+  /** A failing post-copy command marks the target as failed. */
+  postCommandFails?: boolean;
   postCommandTimeoutSeconds: number;
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
   bandwidthMBps?: number;
@@ -315,7 +320,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     log('info', backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
 
     const record = (op: ExecOp, ok: boolean, error?: string, backedUp?: boolean, inUse?: boolean) => {
-      results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp, inUse: inUse || undefined });
+      results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp, inUse: inUse || undefined, created: (ok && op.kind === 'copy' && op.dstExists === false) || undefined });
       st.done++;
       if (!ok) {
         st.failed++;
@@ -392,6 +397,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
       if (src.kind === 'pack') return openPackEntry(src.file, src);
       if (src.kind === 'patch') return patchedStream(openPackEntry(src.file, src), src.base, src.size, src);
+      if (src.kind === 'vars') return openVars(src);
       const et = await endpoint(src.key);
       return et.readStream(src.rel);
     };
@@ -407,7 +413,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return 0;
     };
 
-    const doCopy = async (op: ExecOp): Promise<boolean> => {
+    /** Stage and switch: copies written next to their places, waiting to go in together (see switchStaged). */
+    const switching = !!s.options?.stageSwitch && !s.dryRun && !g.trash;
+    const staged: { op: ExecOp; tmp: string; hashed: { digest: () => string } | null; mtime?: number }[] = [];
+
+    const doCopy = async (op: ExecOp, stage?: typeof staged): Promise<boolean> => {
       const big = op.size >= RESUME_MIN;
       const tmp = big ? partRelFor(op.rel) : tmpRelFor(op.rel);
       let base = 0;
@@ -423,7 +433,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         const src = op.src!;
         const mtime = op.mtimeMs ?? (src.kind === 'git' ? Date.now() : undefined);
         // a big file that a program on the target holds open would fail at the rename, after the whole copy
-        if (op.dstExists && op.size >= IN_USE_CHECK_MIN && tgt.checkReplaceable) await tgt.checkReplaceable(op.rel);
+        // (staged copies are checked all together, right before the switch)
+        if (!stage && op.dstExists && op.size >= IN_USE_CHECK_MIN && tgt.checkReplaceable) await tgt.checkReplaceable(op.rel);
         const from = big ? await resumePoint(op, tmp) : 0;
         // the writer reports what it wrote; a file that changed size since the plan is caught here
         let written: number;
@@ -452,6 +463,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           const [a, b] = await Promise.all([hashStream(await openSource(op)), hashStream(await tgt.readStream(tmp))]);
           if (a !== b) throw new Error(t('Doğrulama başarısız: içerik özeti tutmuyor'));
           hashed = { digest: () => a };
+        }
+        if (stage) {
+          stage.push({ op, tmp, hashed, mtime: finalMtime });
+          return false;
         }
         const backedUp = await backupOrRemoveForReplace(op);
         await tgt.rename(tmp, op.rel);
@@ -494,6 +509,53 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return keepOld(op.rel); // otherwise the rename replaces it
     };
 
+    /** Puts every staged copy in its place, after checking that none is held open; when one did not come, none goes in. */
+    const switchStaged = async (deletes: ExecOp[]): Promise<boolean> => {
+      const abort = async (why: string, held = new Set<string>()) => {
+        for (const x of staged.splice(0)) {
+          await tgt.remove(x.tmp, false).catch(() => undefined);
+          record(x.op, false, why, undefined, held.has(x.op.id));
+        }
+        for (const op of deletes) record(op, false, why);
+        log('error', why, g.key);
+        return false;
+      };
+      if (gc.cancelled) return abort(t('İptal edildi; bu makinede hiçbir dosya değiştirilmedi'));
+      if (st.failed > 0) return abort(t('Hazırlık tamamlanmadı; bu makinede hiçbir dosya değiştirilmedi'));
+      // a program holding a file would stop the switch halfway: all of them are looked at before the first goes in
+      if (tgt.checkReplaceable) {
+        const busy = new Set<string>();
+        await mapLimit(
+          staged.filter((x) => x.op.dstExists),
+          8,
+          async (x) => {
+            try {
+              await tgt.checkReplaceable!(x.op.rel);
+            } catch (e) {
+              if (e instanceof InUseError) busy.add(x.op.id);
+            }
+          },
+        );
+        if (busy.size) return abort(t('{n} dosya kullanımda; bu makinede hiçbir dosya değiştirilmedi', { n: busy.size }), busy);
+      }
+      if (!staged.length) return true;
+      const t0 = Date.now();
+      log('info', t('{n} dosya hazır; hepsi birden yerine konuyor', { n: staged.length }), g.key);
+      await mapLimit(staged.splice(0), s.parallelFiles, async (x) => {
+        try {
+          const backedUp = await backupOrRemoveForReplace(x.op);
+          await tgt.rename(x.tmp, x.op.rel);
+          if (x.hashed && ctx.hashCache && x.mtime != null) ctx.hashCache.set(tgt.root, x.op.rel, x.op.size, x.mtime, x.hashed.digest());
+          record(x.op, true, undefined, backedUp);
+        } catch (e) {
+          await tgt.remove(x.tmp, false).catch(() => undefined);
+          record(x.op, false, errMessage(e), undefined, e instanceof InUseError);
+        }
+      });
+      log('info', t('Değiştirme {ms} ms sürdü', { ms: Date.now() - t0 }), g.key);
+      return true;
+    };
+
     // files a program held open, tried once more at the end when asked for: the program may have let go by then
     const held: ExecOp[] = [];
     let heldAt = 0;
@@ -512,6 +574,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         if (gc.cancelled) return;
         try {
           let backedUp = false;
+          if (op.kind === 'copy' && switching) {
+            // written beside its place; it is recorded when the switch puts it in
+            await doCopy(op, staged);
+            return;
+          }
           if (op.kind === 'copy') backedUp = await doCopy(op);
           else if (op.kind === 'mkdir') {
             if (op.dstExists !== false || op.replaceType) {
@@ -556,7 +623,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       }
       // the pre-copy command (stop the program that holds the files, say): when it fails, nothing is written here
       if (!s.dryRun && s.preCommand && g.node && g.ops.length) {
-        const ok = await runHook(t('Öncesi komut'), s.preCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
+        const { ok } = await runHook(t('Öncesi komut'), s.preCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
         if (!ok) {
           for (const op of g.ops) record(op, false, t('Öncesi komut başarısız; bu makineye yazılmadı'));
           st.status = 'failed';
@@ -576,8 +643,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       // folders the plan saw on the target need no look before the first file goes into them
       if (tgt.assumeDir) for (const op of copies) if (op.dstExists) tgt.assumeDir(relParent(op.rel));
       await mapLimit(copies, s.parallelFiles, runOp);
-      await mapLimit(delFiles, s.parallelFiles, runOp);
-      for (const d of delDirs) await runOp(d);
+      // stage and switch: everything came, so everything goes in now (and only then are things deleted); else nothing
+      if (switching && !(await switchStaged(deletes))) {
+        /* the live folder stays as it was */
+      } else {
+        await mapLimit(delFiles, s.parallelFiles, runOp);
+        for (const d of delDirs) await runOp(d);
+      }
       if (held.length && !gc.cancelled) {
         await sleep(Math.max(0, heldAt + IN_USE_RETRY_WAIT_MS - Date.now()));
         log('info', t('{n} kullanımdaki dosya bir kez daha deneniyor', { n: held.length }), g.key);
@@ -618,7 +690,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         const took = Date.now() - (st.startedAt ?? startedAt);
         if (st.bytesDone > 0 && took >= 500 && !s.dryRun) log('info', t('{size} • {s} sn • {speed}/sn', { size: formatBytes(st.bytesDone), s: (took / 1000).toFixed(1), speed: formatBytes((st.bytesDone / took) * 1000) }), g.key);
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
-          await runHook(t('Sonrası komut'), s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
+          const r = await runHook(t('Sonrası komut'), s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
+          st.check = { label: t('Sonrası komut'), ok: r.ok, code: r.code, output: r.output };
+          // the command as a health check of the machine: when it says no, the machine did not get a working release
+          if (!r.ok && s.postCommandFails) {
+            st.status = 'failed';
+            st.error = t('Sonrası komut başarısız (kod {code})', { code: String(r.code) });
+          }
         }
         if (g.relay) {
           if (s.dryRun) for (const r of relayed.get(g.key) ?? []) Object.assign(r, { status: 'ok', done: r.total, startedAt: Date.now(), finishedAt: Date.now() });
@@ -696,12 +774,19 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         if (d && src.kind === 'fs') return changedBlocks(fs.createReadStream(src.abs, { highWaterMark: DELTA_BLOCK }), d.list, DELTA_BLOCK, d.out);
         if (src.kind === 'fs') return fs.createReadStream(src.abs, { highWaterMark: 1024 * 1024 });
         if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
+        // a member of a pack file added as a source goes into the machine's pack as it is
+        if (src.kind === 'pack') return openPackEntry(src.file, src) as Readable;
+        if (src.kind === 'vars') return openVars(src);
         throw new Error(t('Kaynak uç bulunamadı: {key}', { key: (src as { key?: string }).key ?? '' }));
       },
     }));
+    // a relay keeps the machine-specific files of the machines behind it aside, in its relay folder (not counted as sent)
+    const stashRel = (f: StashFile) => relJoin(RELAY_FOLDER, 'stash', job.id, f.rel);
+    for (const f of g.stash ?? []) sources.push({ rel: stashRel(f), size: f.size, mtimeMs: f.mtimeMs, open: () => openPlain(f.src) });
     let written = 0;
     let packed = 0;
     const stream = packStream(sources, entries, (src) => {
+      if (src.rel.startsWith(`${RELAY_FOLDER}/`)) return;
       written += src.size;
       st.bytesDone = written;
       st.current = src.rel;
@@ -736,6 +821,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       if (op.kind === 'mkdir') return { kind: 'mkdir', id: op.id, rel: op.rel, replaceType: op.replaceType, dstExists: op.dstExists };
       return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir };
     });
+    for (const [i, f] of (g.stash ?? []).entries()) {
+      const e = byRel.get(stashRel(f));
+      if (e) ops.push({ kind: 'copy', id: `stash-${i}`, rel: e.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, dstExists: false });
+    }
     job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify, subtrees: g.manifest ? [...g.manifest.keys()] : undefined };
     const rows = relayed.get(g.key) ?? [];
     const now = Date.now();
@@ -770,10 +859,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         for (const op of g.ops) {
           const ok = own.status === 'ok' || !failedIds.has(op.id);
           const backedUp = ok && op.kind !== 'mkdir' && (backedIds ? backedIds.has(op.id) : packBackup && !!op.dstExists);
-          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı'), inUse: (!ok && heldIds.has(op.id)) || undefined, backedUp: backedUp || undefined });
+          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı'), inUse: (!ok && heldIds.has(op.id)) || undefined, backedUp: backedUp || undefined, created: (ok && op.kind === 'copy' && op.dstExists === false) || undefined });
         }
         st.failed = own.opsFailed;
         if (own.backupPath) st.backupPath = own.backupPath;
+        if (own.check) st.check = own.check;
         log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
       }
       st.done = g.ops.length;
@@ -797,7 +887,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   }
 
   /** The rows of the machines behind a relay follow what the relay reported for them. */
-  function applyRelayResult(rows: RunTargetState[], result: { targets: { targetId: string; status: string; opsOk: number; opsFailed: number; bytes: number; error?: string }[] }) {
+  function applyRelayResult(rows: RunTargetState[], result: { targets: { targetId: string; status: string; opsOk: number; opsFailed: number; bytes: number; error?: string; check?: RunTargetState['check'] }[] }) {
     for (const r of rows) {
       const got = result.targets.find((x) => x.targetId === r.key);
       if (!got) {
@@ -807,7 +897,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         Object.assign(r, { status: 'failed', deferred: true, done: r.total, failed: r.total, error: got.error ?? t('Makine kapalı; röle açılınca teslim edecek') });
         log('warn', t('{name}: kapalı; röle açılınca teslim edecek', { name: r.title }), r.key);
       } else {
-        Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error });
+        Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error, check: got.check });
         if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
         else log('ok', t('{name}: röle dağıttı ({ok} işlem, {size})', { name: r.title, ok: got.opsOk, size: formatBytes(got.bytes) }), r.key);
       }
@@ -912,7 +1002,7 @@ export async function pruneBackups(tgt: Transport, folder: string, keep: number,
   return removed;
 }
 
-/** Runs a pre- or post-copy command with the target's values filled in; true when it exited with 0. */
+/** Runs a pre- or post-copy command with the target's values filled in; ok when it exited with 0. */
 async function runHook(
   label: string,
   template: string,
@@ -921,7 +1011,7 @@ async function runHook(
   tgt: Transport,
   source: ExecSettings['postSource'],
   log: (lvl: RunLogLine['level'], m: string) => void,
-): Promise<boolean> {
+): Promise<{ ok: boolean; code: number | null; output: string }> {
   const n = g.node!;
   const cmd = template
     .replace(/\{address\}/g, n.address)
@@ -931,7 +1021,7 @@ async function runHook(
     .replace(/\{destination\}/g, source ? joinRoot(tgt.root, source.rel) : tgt.root)
     .replace(/\{source\}/g, source?.path ?? '');
   log('info', `${label}: ${cmd}`);
-  return new Promise<boolean>((resolve) => {
+  return new Promise((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin ? spawn('cmd.exe', ['/d', '/s', '/c', cmd], { windowsHide: true, windowsVerbatimArguments: true }) : spawn('sh', ['-c', cmd]);
     let out = '';
@@ -944,14 +1034,14 @@ async function runHook(
     child.on('error', (e) => {
       clearTimeout(timer);
       log('error', t('{label} çalıştırılamadı: {error}', { label, error: e.message }));
-      resolve(false);
+      resolve({ ok: false, code: null, output: e.message });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       const tail = out.trim().split(/\r?\n/).slice(-5).join(' | ');
       const codeText = String(code);
       log(code === 0 ? 'ok' : 'error', tail ? t('{label} bitti (kod {code}): {output}', { label, code: codeText, output: tail }) : t('{label} bitti (kod {code})', { label, code: codeText }));
-      resolve(code === 0);
+      resolve({ ok: code === 0, code, output: tail });
     });
   });
 }

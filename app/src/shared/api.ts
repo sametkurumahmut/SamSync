@@ -1,4 +1,6 @@
 import type { FileTrace,
+  ReleaseDiff,
+  StagedSend,
   DriftReport,
   HolderReport,
   AgentUpdateResult,
@@ -150,7 +152,12 @@ export interface Api {
   writePack(req: SendRequest, dir: string, taskId: string, password?: string, since?: { pack?: string; targetId?: string }): Promise<PackWriteResult>;
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
-  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean }): Promise<string>;
+  /** `stages`: the machines that get it first; the rest follow once they went through (by themselves with `auto`). */
+  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean } }): Promise<string>;
+  /** A staged send whose first stage was this run, and going on with it (the second stage's run id) or dropping it. */
+  stagedSend(runId: string): Promise<StagedSend | null>;
+  continueStaged(runId: string): Promise<string>;
+  dropStaged(runId: string): Promise<void>;
   cancelRun(runId: string): Promise<void>;
   /** Holds a running send between files (a streamed copy stops mid-file) until resumed with false. */
   pauseRun(runId: string, paused: boolean): Promise<void>;
@@ -163,6 +170,9 @@ export interface Api {
   deleteRun(id: string): Promise<void>;
   clearRuns(): Promise<void>;
   exportRunCsv(id: string): Promise<string | null>;
+  /** What changed on the machines between two runs (`to` null: the latest send to them), and the same as a report file. */
+  releaseDiff(fromRunId: string, toRunId: string | null): Promise<ReleaseDiff>;
+  exportReleaseDiff(fromRunId: string, toRunId: string | null, format: 'csv' | 'html'): Promise<string>;
 
   gitRepos(): Promise<GitRepoInfo[]>;
   gitAddRepo(path: string): Promise<GitRepoInfo | null>;
@@ -265,6 +275,9 @@ export const API_METHODS = {
   writePack: true,
   cancelTask: true,
   executePlan: true,
+  stagedSend: true,
+  continueStaged: true,
+  dropStaged: true,
   cancelRun: true,
   pauseRun: true,
   cancelRunTarget: true,
@@ -274,6 +287,8 @@ export const API_METHODS = {
   deleteRun: true,
   clearRuns: true,
   exportRunCsv: true,
+  releaseDiff: true,
+  exportReleaseDiff: true,
   gitRepos: true,
   gitAddRepo: true,
   gitRemoveRepo: true,

@@ -535,6 +535,60 @@
   cursor: pointer;
 }
 
+/* the diff between two release points */
+.diff-files {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.diff-file {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-file .sign {
+  width: 12px;
+  font-weight: 700;
+}
+.diff-file.added .sign {
+  color: var(--green);
+}
+.diff-file.changed .sign {
+  color: var(--amber);
+}
+.diff-file.removed .sign {
+  color: var(--red);
+}
+
+/* a staged send: the choice in the review, and the go for the rest in the run window */
+.stages-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.stages-card.on {
+  border-color: var(--accent);
+}
+.staged-box {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.staged-box.ok b {
+  color: var(--green);
+}
+.staged-box.bad b {
+  color: var(--red);
+}
+
 /* the programs that held files open, above the footer of a finished run */
 .holders-box {
   display: flex;
