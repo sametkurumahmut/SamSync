@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.4 — 2026-10-21
 
 - **Aşamalı gönderim:** incelemede **Aşamalı gönder** ile önce seçilen makinelere gidiyor; onlar sorunsuz biterse (varsa sağlık denetimi de evet derse) ötekiler kendiliğinden ya da çalıştırma penceresindeki **Kalanlara gönder** onayıyla gidiyor. İlk makinelerden biri hatalıysa gönderim duruyor; **Yine de kalanlara gönder** ya da **Vazgeç**. Her aşama Geçmiş'te ayrı bir çalıştırma.
 - **Sağlık denetimi:** ajanın "Uyguladıktan sonra komut"u ve bu bilgisayarın "Kopyalama sonrası komut"u nasıl bittiyse (kod ve son satırlar) çalıştırma penceresinde ve Geçmiş'te makine satırında **denetim** rozeti olarak görünüyor. İsteyen için başarısız komut makineyi hatalı sayıyor: Ayarlar › Ajan ve Ayarlar › Kopyalama'da birer anahtar (varsayılan kapalı).
