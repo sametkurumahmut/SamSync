@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.0 — 2026-10-21
 
 - **Ajan, her makinede:** SamSync çalışan her makine kendisine gönderileni sıkıştırılmış tek paket olarak alıp kendisi uyguluyor; eskiden bu yalnızca rölelerde vardı. Ayarlar › Ajan (varsayılan açık): uygulamadan önce komut (dosyaları tutan programı durdurmak için; başarısız olursa hiçbir şeye dokunulmaz), uyguladıktan sonra komut, varış bildirimi. Makine kartı ve incelemede **ajan** rozeti. Klasör (`_SamSyncRelay`) ilk yerel kökte durur, Windows'ta gizlidir, hiçbir gönderime girmez, ajan kapatılınca silinir.
 - **Hedefte içerik karşılaştırması:** içeriğe göre karşılaştırmada ajan olan makinenin dosyaları ağ üzerinden geri okunmuyor; o makine dosyaların SHA-256 özetini kendi diskinde hesaplayıp yazıyor, burada kendi kopyalarınızın özetiyle karşılaştırılıyor. İncelemede "N özet orada" rozeti. Yanıt vermeyen makine eskisi gibi ağdan okunur.
