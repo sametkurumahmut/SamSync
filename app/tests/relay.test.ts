@@ -63,6 +63,9 @@ async function setup(opts: { relayRunning: boolean; ackSeconds?: number; agentOn
   const me = await side('Me');
   const relay = opts.relayRunning ? await side('T') : null;
   const agent = opts.agentOn ? await side('PC1') : null;
+  // a plan made before the first heartbeat is written sees no SamSync there and writes directly: wait for it
+  if (relay) await until(() => fs.existsSync(path.join(server, '_SamSyncRelay', 'alive.json')));
+  if (agent) await until(() => fs.existsSync(path.join(pc1, '_SamSyncRelay', 'alive.json')));
   const stop = () => {
     agent?.svc.automation?.stop();
     agent?.svc.relay?.stop();
