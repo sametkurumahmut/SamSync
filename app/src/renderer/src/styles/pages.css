@@ -535,6 +535,23 @@
   cursor: pointer;
 }
 
+/* Targets › Select: the bar of actions for the machines picked */
+.bulk-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  margin-top: 16px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgb(0 0 0 / 25%));
+}
+.target-card.picked {
+  outline: 2px solid var(--accent);
+}
+
 /* a machine's history */
 .timeline {
   max-height: 60vh;

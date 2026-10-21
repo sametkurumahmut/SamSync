@@ -1,4 +1,5 @@
 import type { FileTrace,
+  NodeConfig,
   TimelineEntry,
   InventoryEntry,
   SendMode,
@@ -108,6 +109,9 @@ export interface Api {
   configText(path?: string): Promise<string>;
   saveConfigText(text: string): Promise<Bootstrap>;
   exportConfig(dest: string): Promise<void>;
+  /** The machine list as a CSV file at `dest`, and a CSV file read back as machines (nothing saved yet). */
+  exportMachinesCsv(dest: string): Promise<void>;
+  readMachinesCsv(path: string): Promise<{ nodes: NodeConfig[]; errors: string[] }>;
   pickSave(opts: PickOptions): Promise<string | null>;
   useConfigFile(path: string | null): Promise<Bootstrap>;
   saveSettings(patch: Partial<LocalSettings>): Promise<LocalSettings>;
@@ -265,6 +269,8 @@ export interface Api {
   scheduleRunNow(jobId: string): Promise<void>;
   /** A test message to the webhook / Telegram chat in the settings; per channel 'ok' or the error. */
   notifyTest(): Promise<{ webhook?: string; telegram?: string }>;
+  /** The weekly summary to the team's channel now (the setting's own schedule is not changed). */
+  sendWeeklySummary(): Promise<{ webhook?: string; telegram?: string }>;
 
   windowControl(action: 'minimize' | 'maximize' | 'close' | 'devtools' | 'reload'): Promise<void>;
   /** Native theme + title bar overlay colours, so the window buttons match the app theme; zoom is the UI scale (1 = 100%). */
@@ -283,6 +289,8 @@ export const API_METHODS = {
   configText: true,
   saveConfigText: true,
   exportConfig: true,
+  exportMachinesCsv: true,
+  readMachinesCsv: true,
   pickSave: true,
   useConfigFile: true,
   saveSettings: true,
@@ -384,6 +392,7 @@ export const API_METHODS = {
   inventory: true,
   scheduleRunNow: true,
   notifyTest: true,
+  sendWeeklySummary: true,
   windowControl: true,
   setChrome: true,
   clientError: true,

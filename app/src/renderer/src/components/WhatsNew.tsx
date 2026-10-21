@@ -6,10 +6,10 @@ import { api } from '../lib/api';
 import { Button, Modal } from './ui';
 import { t } from '@shared/i18n';
 
-/** The little markdown the changelog uses: **bold** and `code`. */
+/** The little markdown the changelog uses: **bold**, *italic* and `code`. */
 export function inlineMarkdown(s: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  const re = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let k = 0;
@@ -17,6 +17,7 @@ export function inlineMarkdown(s: string): ReactNode[] {
     if (m.index > last) out.push(s.slice(last, m.index));
     const tok = m[0];
     if (tok.startsWith('**')) out.push(<b key={k++}>{tok.slice(2, -2)}</b>);
+    else if (tok.startsWith('*')) out.push(<i key={k++}>{tok.slice(1, -1)}</i>);
     else out.push(<code key={k++}>{tok.slice(1, -1)}</code>);
     last = m.index + tok.length;
   }

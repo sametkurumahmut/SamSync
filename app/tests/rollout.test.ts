@@ -207,6 +207,8 @@ describe('live drift', () => {
         return d && d.changed === 1 ? d : null;
       });
       expect(drift.sample[0]).toContain('Data/a.txt');
+      // the card reads the heartbeat file: wait for the one written after the change
+      await w.svc.PC1!.relay!.heartbeat();
       const [p] = await w.me.probe(['PC1']);
       expect(p.agent?.drift?.changed).toBe(1);
     } finally {

@@ -47,6 +47,12 @@ export function machineTitle(name: string, address?: string): string {
 }
 
 /** A MAC address as "aa:bb:cc:dd:ee:ff", from any common way of writing one; null when it is not one. */
+/** Whether this much free space is under the limit set in Settings (2 GB when none is set; 0 turns it off). */
+export function lowOnSpace(free: number | undefined, minFreeGB: number | undefined): boolean {
+  const gb = minFreeGB ?? 2;
+  return free != null && gb > 0 && free < gb * 1024 ** 3;
+}
+
 export function normalizeMac(s: string): string | null {
   const hex = s.replace(/[^0-9a-f]/gi, '').toLowerCase();
   if (hex.length !== 12 || /^0+$/.test(hex) || /^f+$/.test(hex)) return null;

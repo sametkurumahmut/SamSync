@@ -71,6 +71,11 @@ export interface CopySettings {
   relayTakeover?: boolean;
   /** A send to machines another run is writing to waits until that run ends (otherwise both write at once). */
   queueSends?: boolean;
+  /** The machines a send failed on are tried again this many minutes later (0 or none: off), at most this many times. */
+  retryFailedMinutes?: number;
+  retryFailedTimes?: number;
+  /** Below this much free space (GB) a target shows red and a send that would leave less warns (none: 2, 0: off). */
+  minFreeGB?: number;
   /** A manifest SamSync left on a target stands in for a walk over the network for this many days (0 = always walk). */
   manifestMaxDays?: number;
   /** Runs on this machine before the first file goes to a target (stop the program that holds the files, say); a failing one skips the target. */
@@ -522,6 +527,10 @@ export interface NotificationSettings {
   telegramChatId?: string;
   onSuccess: boolean;
   onFailure: boolean;
+  /** A summary of the week every Monday at 09:00 (or at the first start after it); off by default. */
+  weekly?: boolean;
+  /** When the last weekly summary went (or the setting was switched on: the first one waits for the next Monday). */
+  weeklyLastAt?: number;
 }
 
 export interface Bootstrap {
@@ -739,6 +748,8 @@ export interface ProbeResult {
   agent?: AgentInfo;
   /** The MAC addresses known for the machine (set by hand, or learned while it was on): it can be woken up. */
   macs?: string[];
+  /** When it last answered a probe from this computer (kept across starts). */
+  lastSeenAt?: number;
 }
 
 /** A machine the network scan found: what answered, its name when it has one, and the node it already is. */
@@ -890,6 +901,9 @@ export interface SendRequest {
   origin: 'send' | 'git' | 'restore' | 'sync';
   /** Look at and write to every machine from here, even where a relay would take over (comparisons, checks). */
   direct?: boolean;
+  /** An automatic retry of the machines a send failed on: which one this is, and the first send's label (see copy.retryFailedMinutes). */
+  attempt?: number;
+  retryLabel?: string;
 }
 
 export type PlanCategory = 'new' | 'changed' | 'targetNewer' | 'extra' | 'deleted' | 'same';

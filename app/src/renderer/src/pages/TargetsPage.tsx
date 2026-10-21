@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon } from 'lucide-react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon, ListChecks } from 'lucide-react';
 import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
@@ -9,7 +9,9 @@ import { AgentChecks } from '../components/AgentSettings';
 import { BusyBadge, busyOf, dotClass } from '../components/BusyBadge';
 import { DistributeDialog } from '../components/DistributeDialog';
 import { MachineTimeline } from '../components/MachineTimeline';
-import { Button, Empty, Field, MenuButton, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { BulkBar } from '../components/BulkBar';
+import { MachinesCsvButtons } from '../components/MachinesCsv';
+import { Button, Checkbox, Empty, Field, MenuButton, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
 import { tx } from '../lib/i18n';
@@ -19,7 +21,7 @@ import { MachineName } from '../components/MachineName';
 import { PathLink } from '../components/PathLink';
 import { DiscoverDialog, nodeFromHost } from '../components/DiscoverDialog';
 import { LatencySpark } from '../components/charts';
-import { machineLabel, normalizeMac } from '@shared/machine';
+import { lowOnSpace, machineLabel, normalizeMac } from '@shared/machine';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -133,6 +135,15 @@ export function TargetsPage() {
   const [updating, setUpdating] = useState<string[]>([]);
   const [distributing, setDistributing] = useState<NodeConfig | null>(null);
   const [timeline, setTimeline] = useState<NodeConfig | null>(null);
+  // Select: several machines at once for the actions of the bar
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const pick = (ids: string[], on: boolean) =>
+    setPicked((s) => {
+      const next = new Set(s);
+      for (const x of ids) on ? next.add(x) : next.delete(x);
+      return next;
+    });
   const updateAgents = async (ids: string[]) => {
     if (!confirm(t('{n} makineye SamSync {version} kurulumu bırakılsın mı? Makineler ellerindeki iş bitince kurar ve yeniden açılır.', { n: ids.length, version: boot.appVersion }))) return;
     const nameOf = (nid: string) => cfg.nodes.find((n) => n.id === nid)?.name ?? nid;
@@ -178,6 +189,17 @@ export function TargetsPage() {
             {t('Ajanları güncelle ({n})', { n: outdated.length })}
           </Button>
         )}
+        <Button
+          icon={<ListChecks size={15} />}
+          variant={picking ? 'primary' : undefined}
+          tip={t('Birden çok makineyi seçip birlikte uyandırın, yeniden başlatın, etiketleyin…')}
+          onClick={() => {
+            setPicking(!picking);
+            setPicked(new Set());
+          }}
+        >
+          {t('Seç')}
+        </Button>
         <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')} disabled={!boot.configWritable}>
           {t('Hedef ekle')}
         </Button>
@@ -321,6 +343,7 @@ export function TargetsPage() {
                   {t('JSON olarak düzenle…')}
                 </Button>
                 {editingJson && <ConfigEditor onClose={() => setEditingJson(false)} />}
+                <MachinesCsvButtons />
                 <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => useApp.getState().setPage('settings')}>
                   {t('Dosyayı değiştir…')}
                 </Button>
@@ -346,6 +369,14 @@ export function TargetsPage() {
                 <span className="faint" style={{ fontSize: 12 }}>
                   {t('{n} makine', { n: list.length })} • {t('{n} erişilebilir', { n: list.filter((n) => probes[n.id]?.ok).length })}
                 </span>
+                {picking && (
+                  <Checkbox
+                    checked={list.every((n) => picked.has(n.id))}
+                    mixed={list.some((n) => picked.has(n.id)) && !list.every((n) => picked.has(n.id))}
+                    onChange={(v) => pick(list.filter((n) => n.id !== id.node?.id).map((n) => n.id), v)}
+                    label={t('{group} grubunun tamamı', { group: g || '-' })}
+                  />
+                )}
                 {list.filter(wakeable).length > 1 && (
                   <Button size="sm" variant="ghost" icon={<Power size={12} />} loading={waking.length > 1 && list.some((n) => waking.includes(n.id))} onClick={() => void wakeNodes(list.filter(wakeable).map((n) => n.id))} tip={list.filter(wakeable).map((n) => n.name).join('\n')}>
                     {t('Kapalıları uyandır ({n})', { n: list.filter(wakeable).length })}
@@ -357,8 +388,9 @@ export function TargetsPage() {
                   const p = probes[n.id];
                   const isLocal = n.id === id.node?.id;
                   return (
-                    <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local')}>
+                    <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local', picking && picked.has(n.id) && 'picked')}>
                       <div className="row" style={{ gap: 10 }}>
+                        {picking && !isLocal && <Checkbox checked={picked.has(n.id)} onChange={(v) => pick([n.id], v)} label={n.name} />}
                         <span className={cls('dot', isLocal ? 'ok' : dotClass(p, probing))} />
                         <MachineName
                           className="grow"
@@ -401,6 +433,7 @@ export function TargetsPage() {
                             <span className={cls('row faint nowrap')} style={{ fontSize: 11.5, gap: 4 }} data-tip={p.detail}>
                               {p.ok ? <Wifi size={12} color="var(--green)" /> : <WifiOff size={12} color="var(--red)" />}
                               {p.ok ? `${p.latencyMs ?? '?'} ms` : t('erişilemedi')} • {ago(p.checkedAt)}
+                              {!p.ok && p.lastSeenAt ? ` • ${t('son görülme {ago}', { ago: ago(p.lastSeenAt) })}` : ''}
                             </span>
                           ) : (
                             <span className="faint" style={{ fontSize: 11.5 }}>
@@ -410,7 +443,7 @@ export function TargetsPage() {
                         {!isLocal && <BusyBadge nodeId={n.id} name={n.name} programs={busyOf(p)} held={p?.agent?.holdWhileBusy} />}
                         {!isLocal && <AgentBadges node={n} p={p} own={boot.appVersion} updating={updating.includes(n.id)} onUpdate={() => void updateAgents([n.id])} />}
                         {!isLocal && p?.ok && p.freeBytes != null && (
-                          <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
+                          <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: lowOnSpace(p.freeBytes, boot.config.copy.minFreeGB) ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
                             <HardDrive size={12} /> {t('{size} boş', { size: bytes(p.freeBytes) })}
                           </span>
                         )}
@@ -476,6 +509,7 @@ export function TargetsPage() {
       </div>
       {distributing && <DistributeDialog source={distributing} onClose={() => setDistributing(null)} />}
       {timeline && <MachineTimeline node={timeline} onClose={() => setTimeline(null)} />}
+      {picking && picked.size > 0 && <BulkBar ids={[...picked]} onClear={() => setPicked(new Set())} onUpdate={(ids) => void updateAgents(ids)} onWake={(ids) => void wakeNodes(ids)} />}
       {editing && <NodeEditor node={editing === 'new' || 'prefill' in editing ? null : editing} prefill={editing !== 'new' && 'prefill' in editing ? editing.prefill : undefined} onClose={() => setEditing(null)} />}
       {discover && (
         <DiscoverDialog

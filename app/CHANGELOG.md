@@ -1,5 +1,15 @@
 # Sürüm Geçmişi
 
+## 2.4.6 — 2026-10-22
+
+- **Hatalı makineleri yeniden dene:** Ayarlar › Kopyalama › *Hatalı makineleri yeniden dene (dk)* (varsayılan 0 = kapalı) ve *En çok yeniden deneme* (varsayılan 3). Gönderimin hatalı ya da kısmen bittiği makinelere o kadar dakika sonra kendiliğinden yeniden gönderiliyor; her deneme Otomasyon sayfasında "(yeniden deneme 1/3)" adıyla bekliyor ve iptal edilebiliyor.
+- **Son görülme:** erişilemeyen makinenin kartında ve hedef seçicide en son ne zaman yanıt verdiği görünüyor (*son görülme 3 saat önce*); bilgi yeniden başlatmada korunuyor.
+- **Toplu işlemler:** Hedefler sayfasında **Seç** ile kartlar ya da bütün bir grup işaretleniyor. Alttaki çubuktan seçilenler birlikte uyandırılıyor, yeniden başlatılıyor ya da kapatılıyor (izin verenler), ajanları güncelleniyor, etkinleştiriliyor ya da devre dışı bırakılıyor, etiket ekleniyor ya da kaldırılıyor, başka gruba taşınıyor.
+- **Makine listesi CSV:** Hedefler › Yapılandırma'da **CSV olarak dışa aktar…** ve **CSV’den içe aktar…**. İçe aktarma kaydetmeden önce yeni ve değişen makineleri gösteriyor; dosyada olmayan makineler olduğu gibi kalıyor.
+- **Haftalık özet:** Ayarlar › Bildirimler › *Haftalık özet* (varsayılan kapalı). Her pazartesi 09:00'da (bilgisayar kapalıysa ilk açılışta) ekip kanalına son yedi günün gönderimleri, veri miktarı, en çok hata veren makineler, şu an erişilemeyenler ve sapma bulunan makineler gidiyor; **Özeti şimdi gönder** ile hemen.
+- **Boş alan alt sınırı:** Ayarlar › Kopyalama › *Boş alan alt sınırı (GB)* (varsayılan 2, 0 = kapalı). Altında kalan hedef kırmızı görünüyor; gönderimden sonra daha azı kalacaksa inceleme uyarıyor.
+- **Düzeltme:** "Bu sürümde yeni" penceresinde ve yardımda *italik* yazılar yıldızlarıyla görünüyordu.
+
 ## 2.4.5 — 2026-10-22
 
 - **Meşgul makineler:** SamSync çalışan makine dakikada bir hedef klasörün içinden çalışan programlara (ve Ayarlar › Ajan'daki listede olanlara) bakıyor. Varsa makinenin noktası sarı, yanında **meşgul** rozeti: kartta, hedef seçicide, ağ görünümünde ve incelemede. Üstüne gelince programlar, tıklayınca hedef klasörde açık tuttukları dosyalar listeleniyor. İsteyen makine *Meşgulken gönderimi beklet* ile gönderimi program kapanana kadar bekletebiliyor (varsayılan kapalı).

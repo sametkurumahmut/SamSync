@@ -144,8 +144,8 @@ export function SettingsPage() {
     }
   };
 
-  const num = (k: keyof CopySettings, min: number, max: number) => (
-    <input className="input" type="number" min={min} max={max} value={copy[k] as number} onChange={(e) => setCopy({ ...copy, [k]: Math.max(min, Math.min(max, Number(e.target.value) || 0)) })} />
+  const num = (k: keyof CopySettings, min: number, max: number, def = 0) => (
+    <input className="input" type="number" min={min} max={max} value={(copy[k] as number | undefined) ?? def} onChange={(e) => setCopy({ ...copy, [k]: Math.max(min, Math.min(max, Number(e.target.value) || 0)) })} />
   );
 
   return (
@@ -308,6 +308,13 @@ export function SettingsPage() {
               </Field>
               <Field label={t('Röle kuyruğu: en çok (gün)')} help={t('Bu kadar gün erişilemeyen makinenin bekleyen işleri düşürülür')}>
                 {num('relayQueueDays', 1, 90)}
+              </Field>
+              <Field label={t('Hatalı makineleri yeniden dene (dk)')} help={t('Gönderimin hatalı bittiği makinelere bu kadar dakika sonra kendiliğinden yeniden gönderilir; 0 = kapalı')}>
+                {num('retryFailedMinutes', 0, 1440)}
+              </Field>
+              <Field label={t('En çok yeniden deneme')}>{num('retryFailedTimes', 1, 20, 3)}</Field>
+              <Field label={t('Boş alan alt sınırı (GB)')} help={t('Bunun altında boş alanı olan hedef kırmızı görünür; gönderimden sonra daha azı kalacaksa inceleme uyarır; 0 = kapalı')}>
+                {num('minFreeGB', 0, 100000, 2)}
               </Field>
               <Field label={t('Manifeste güven (gün)')} help={t('Hedefte bırakılan manifest bu kadar gün ağ üzerinden gezinmenin yerine geçer (örnekle doğrulanır); 0 = her gönderimde tam tarama')}>
                 {num('manifestMaxDays', 0, 365)}
@@ -736,6 +743,12 @@ function NotificationsSection() {
         </div>
         <ToggleRow title={t('Başarılı gönderimlerde de bildir')} desc={t('Kapalıyken yalnızca hatalı ya da kısmi bitenler gider')} on={n.onSuccess} onChange={(v) => setN({ ...n, onSuccess: v })} />
         <ToggleRow title={t('Hatalı ve kısmi gönderimlerde bildir')} on={n.onFailure} onChange={(v) => setN({ ...n, onFailure: v })} />
+        <ToggleRow
+          title={t('Haftalık özet')}
+          desc={t('Her pazartesi 09:00’da (bilgisayar kapalıysa ilk açılışta) son yedi günün gönderimleri, hatalı makineler, erişilemeyenler ve sapma bir ileti olarak gider.')}
+          on={!!n.weekly}
+          onChange={(v) => setN({ ...n, weekly: v || undefined, weeklyLastAt: v ? n.weeklyLastAt : undefined })}
+        />
         <div className="row">
           <Button
             size="sm"
@@ -757,6 +770,19 @@ function NotificationsSection() {
           >
             {t('Sına')}
           </Button>
+          {n.weekly && (
+            <Button
+              size="sm"
+              disabled={!any || dirty}
+              onClick={async () => {
+                const r = await api.sendWeeklySummary();
+                const ok = Object.values(r).length > 0 && Object.values(r).every((x) => x === 'ok');
+                toast(ok ? 'ok' : 'error', ok ? t('Haftalık özet gitti') : t('Haftalık özet gönderilemedi'), Object.entries(r).map(([ch, res]) => `${ch}: ${res}`).join(' • '));
+              }}
+            >
+              {t('Özeti şimdi gönder')}
+            </Button>
+          )}
           <span className="faint" style={{ fontSize: 12 }}>
             {t('Deneme çalıştırmaları bildirilmez. Masaüstü bildirimi ayrıca "Bitince bildir" seçeneğine bağlıdır.')}
           </span>

@@ -88,6 +88,8 @@ import { driftFilter, driftOf, driftTime, type DriftResult } from './drift';
 import { drifted, driftCounts } from '../shared/drift';
 import { arpTable, broadcastAddresses, normalizeMac, subnetBroadcast, wake } from './wol';
 import { releaseDiff, writeReleaseDiff } from './releasediff';
+import { machinesFromCsv, machinesToCsv } from '../shared/machinecsv';
+import { lastMondayNine, weeklyMessage } from './weekly';
 import { busyFiles, busyPrograms, listProcesses } from './processes';
 import { ScheduledSends } from './scheduled';
 import { powerAction } from './power';
@@ -274,7 +276,8 @@ export class Service implements Api {
 
   /** Its time came: planned now, with the sources as they are, and run like a reviewed send. */
   private async runLater(item: ScheduledSend): Promise<void> {
-    const req: SendRequest = { ...item.request, label: t('Zamanlanmış: {label}', { label: item.label || t('Gönderim') }) };
+    // an automatic retry keeps its own label; a send set for later says so
+    const req: SendRequest = { ...item.request, label: item.request.attempt ? item.label : t('Zamanlanmış: {label}', { label: item.label || t('Gönderim') }) };
     const scans: PlanScans = new Map();
     const plan = await buildSendPlan(this.ctx(), req, { scans });
     this.plans.set(plan.id, plan);
@@ -385,8 +388,10 @@ export class Service implements Api {
     this.pending.start();
     await this.later.load();
     this.later.start();
-    // the drift check on schedule, when one is set (Targets › Machine inventory)
+    // the drift check on schedule, when one is set (Targets › Machine inventory), and the weekly summary
     setInterval(() => void this.driftTick(), 10 * 60_000).unref();
+    setInterval(() => void this.weeklyTick(), 10 * 60_000).unref();
+    setTimeout(() => void this.weeklyTick(), 60_000).unref();
   }
 
   private async loadConfigFrom(file: string) {
@@ -510,6 +515,14 @@ export class Service implements Api {
   }
 
   /** Saves a copy of the configuration file somewhere else. */
+  async exportMachinesCsv(dest: string): Promise<void> {
+    await fsp.writeFile(dest, machinesToCsv(this.config.nodes), 'utf8');
+  }
+
+  async readMachinesCsv(file: string): Promise<{ nodes: NodeConfig[]; errors: string[] }> {
+    return machinesFromCsv(await fsp.readFile(file, 'utf8'));
+  }
+
   async exportConfig(dest: string): Promise<void> {
     await fsp.writeFile(dest, await this.configText(), 'utf8');
     this.log.info(t('Config'), t('Yapılandırma dışa aktarıldı: {path}', { path: dest }));
@@ -544,6 +557,8 @@ export class Service implements Api {
     const pinChanged = 'localNodeId' in patch && patch.localNodeId !== this.settings.localNodeId;
     // the server mode is changed through webUiConfigure only (the settings a window sends back have no hash)
     const { webUi: _ignored, ...safe } = patch;
+    // the weekly summary's last time is kept here: the copy a window sends back may be older
+    if (safe.notifications?.weekly && this.settings.notifications?.weekly) safe.notifications = { ...safe.notifications, weeklyLastAt: this.settings.notifications.weeklyLastAt };
     this.settings = { ...this.settings, ...safe };
     await this.persistSettings();
     if (pinChanged) {
@@ -726,14 +741,44 @@ export class Service implements Api {
     const nodes = this.config.nodes.filter((n) => n.enabled && n.id !== this.identity.node?.id && (!nodeIds || nodeIds.includes(n.id)));
     const results = await probeNodes(this.config, nodes);
     await this.learnMacs(results, nodes);
+    await this.noteSeen(results);
     for (const r of results) {
       const n = nodes.find((x) => x.id === r.nodeId);
+      const seen = this.lastSeen.get(r.nodeId);
+      if (seen) r.lastSeenAt = seen;
       const macs = [...new Set([n?.mac, ...(this.macs.get(r.nodeId) ?? [])].filter((m): m is string => !!m))];
       if (macs.length) r.macs = macs;
       this.lastProbes.set(r.nodeId, r);
     }
     this.host.emit({ type: 'probe', results });
     return results;
+  }
+
+  /** node id -> when it last answered a probe (userData/last-seen.json, written at most every few minutes). */
+  private lastSeen = new Map<string, number>();
+  private lastSeenLoaded = false;
+  private lastSeenWritten = 0;
+
+  private async noteSeen(results: ProbeResult[]): Promise<void> {
+    const file = path.join(this.host.userDataPath, 'last-seen.json');
+    if (!this.lastSeenLoaded) {
+      this.lastSeenLoaded = true;
+      try {
+        for (const [id, at] of Object.entries((await readJson(file)) as Record<string, number>)) if (typeof at === 'number') this.lastSeen.set(id, at);
+      } catch {
+        /* nothing seen yet */
+      }
+    }
+    let fresh = false;
+    for (const r of results) {
+      if (!r.ok) continue;
+      fresh ||= !this.lastSeen.has(r.nodeId);
+      this.lastSeen.set(r.nodeId, r.checkedAt);
+    }
+    if (fresh || Date.now() - this.lastSeenWritten > 5 * 60_000) {
+      this.lastSeenWritten = Date.now();
+      await writeJsonAtomic(file, Object.fromEntries(this.lastSeen)).catch(() => undefined);
+    }
   }
 
   // ------------------------------------------------------------ waking machines up
@@ -1367,6 +1412,7 @@ export class Service implements Api {
       await this.rollbackFailed(d, opts);
       await this.relayFallback(plan, d, overrides);
       await this.powerAfter(d, opts);
+      await this.retryFailedLater(d, plan);
     };
     this.track(
       handle,
@@ -1426,6 +1472,26 @@ export class Service implements Api {
     st.state = { ...st.state, status: 'dropped' };
     st.groups = [];
     this.host.emit({ type: 'staged', state: st.state });
+  }
+
+  /**
+   * Settings › Copy › retry failed machines: the machines a send failed on (not those that were off and wait in the
+   * queue, nor a cancel) get the same send again some minutes later, planned anew then, a few times at most.
+   */
+  private async retryFailedLater(d: RunDetail, plan: SendPlan): Promise<void> {
+    const c = this.config.copy;
+    const req = plan.request;
+    const minutes = c.retryFailedMinutes ?? 0;
+    const times = c.retryFailedTimes ?? 3;
+    const attempt = (req.attempt ?? 0) + 1;
+    if (!minutes || d.dryRun || d.status === 'cancelled' || (req.origin !== 'send' && req.origin !== 'git') || attempt > times) return;
+    const waiting = new Set(this.pending.list().map((p) => p.targetId));
+    const failed = d.targets.filter((x) => (x.status === 'failed' || x.status === 'partial') && !x.deferred && !waiting.has(x.key) && findNode(this.config, x.key)).map((x) => x.key);
+    if (!failed.length) return;
+    const base = req.retryLabel ?? (req.label || t('Gönderim'));
+    const at = Date.now() + minutes * 60_000;
+    await this.later.add({ ...req, targetIds: failed, attempt, retryLabel: base, label: t('{label} (yeniden deneme {k}/{n})', { label: base, k: attempt, n: times }) }, at, false);
+    this.log.info(t('Yeniden deneme'), t('{names}: {m} dk sonra yeniden denenecek ({k}/{n})', { names: failed.map((id) => findNode(this.config, id)?.name ?? id).join(', '), m: minutes, k: attempt, n: times }));
   }
 
   /** A send option: the machines that got it (and allow it) restart or shut down a minute after. */
@@ -1808,6 +1874,32 @@ export class Service implements Api {
   }
 
   /** Sends a test message to the webhook and the Telegram chat set in the settings. */
+  async sendWeeklySummary(): Promise<{ webhook?: string; telegram?: string }> {
+    const s = this.settings.notifications;
+    if (!s || !(s.webhookUrl || (s.telegramToken && s.telegramChatId))) return {};
+    const names = new Map(this.config.nodes.map((n) => [n.id, n.name]));
+    const msg = weeklyMessage(await this.history.list(), [...this.lastProbes.values()], names, this.drift, { host: os.hostname(), user: whoami(), version: this.host.appVersion });
+    return sendNotification(s, msg);
+  }
+
+  /** Monday 09:00 (or the first start after it): the summary of the week, once. */
+  private async weeklyTick(now = new Date()): Promise<void> {
+    const s = this.settings.notifications;
+    if (!s?.weekly) return;
+    // switched on just now: the first summary is the next Monday's, not one straight away
+    if (!s.weeklyLastAt) {
+      this.settings.notifications = { ...s, weeklyLastAt: now.getTime() };
+      await this.persistSettings();
+      return;
+    }
+    const due = lastMondayNine(now);
+    if (s.weeklyLastAt >= due) return;
+    this.settings.notifications = { ...s, weeklyLastAt: now.getTime() };
+    await this.persistSettings();
+    const r = await this.sendWeeklySummary().catch((e) => ({ error: errMessage(e) }));
+    for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: String(res) }));
+  }
+
   async notifyTest(): Promise<{ webhook?: string; telegram?: string }> {
     const s = this.settings.notifications;
     if (!s) return {};

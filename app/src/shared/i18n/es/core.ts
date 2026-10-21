@@ -514,6 +514,14 @@ const d: Dict = {
   'Bekleyen yeniden başlatma ya da kapatma iptal edildi ({from})': 'Se canceló el reinicio o apagado pendiente ({from})',
   '{from} isteğiyle bir dakika içinde yeniden başlatılıyor': 'Reiniciando en un minuto a petición de {from}',
   '{from} isteğiyle bir dakika içinde kapatılıyor': 'Apagando en un minuto a petición de {from}',
+  '{name}: gönderimden sonra hedefte {left} boş kalacak (alt sınır {min} GB).': '{name}: quedarán {left} libres en el destino tras el envío (límite {min} GB).',
+  '{label} (yeniden deneme {k}/{n})': '{label} (reintento {k}/{n})',
+  '{names}: {m} dk sonra yeniden denenecek ({k}/{n})': '{names}: se reintentará en {m} min ({k}/{n})',
+  'SamSync haftalık özet ({from} – {to})': 'Resumen semanal de SamSync ({from} – {to})',
+  '{n} gönderim: {ok} başarılı, {partial} kısmen, {failed} hatalı • {size}': '{n} envíos: {ok} correctos, {partial} parciales, {failed} con error • {size}',
+  'Hatalı biten makineler: {list}': 'Equipos que terminaron con error: {list}',
+  'Şu an erişilemeyen: {list}': 'Sin conexión ahora: {list}',
+  'Sapma: {n} makinede son gönderimden sonra değişiklik': 'Desviación: cambios en {n} equipos desde el último envío',
 };
 
 export default d;

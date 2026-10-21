@@ -233,6 +233,72 @@ export const FAQ: FaqEntry[] = [
     page: 'settings',
   },
   {
+    id: 'retry-failed',
+    topic: 'send',
+    q: { tr: 'Gönderim bazı makinelerde hatalı bitti; kendiliğinden yeniden denenebilir mi?', en: 'A send failed on some machines; can it be tried again by itself?' },
+    a: {
+      tr: 'Evet: Ayarlar › Kopyalama › *Hatalı makineleri yeniden dene (dk)* alanına bir süre yazın (0 kapalıdır, varsayılan). Gönderimin hatalı ya da kısmen bittiği makinelere o kadar dakika sonra yeniden gönderilir, en çok *En çok yeniden deneme* kez (ayarlanmazsa 3). Denemeler Otomasyon sayfasında "(yeniden deneme 1/3)" adıyla bekler ve iptal edilebilir; saati gelince kaynaklar yeniden karşılaştırılır.',
+      en: 'Yes: put a time in Settings › Copy › *Retry failed machines (min)* (0 is off, the default). The machines a send failed or partly failed on get it again that many minutes later, at most *Most retries* times (3 unless set). The retries wait on the Automation page as "(retry 1/3)" and can be cancelled; at their time the sources are compared again.',
+    },
+    keywords: ['yeniden dene', 'retry', 'hatalı', 'failed', 'tekrar', 'again', 'otomatik', 'automatic'],
+    page: 'settings',
+  },
+  {
+    id: 'bulk-select',
+    topic: 'targets',
+    q: { tr: 'Birçok makineyi birlikte nasıl yeniden başlatır, etiketler ya da gruba taşırım?', en: 'How do I restart, tag or move many machines at once?' },
+    a: {
+      tr: 'Hedefler sayfasının başlığındaki **Seç** her karta ve her gruba bir kutu koyar. Makineleri işaretleyin; alttaki çubuk hepsini birlikte uyandırır, yeniden başlatır ya da kapatır (o makinede izin varsa), ajanlarını günceller, etkinleştirir ya da devre dışı bırakır, etiket ekler ya da kaldırır, başka bir gruba taşır. **Seçimi bırak** kutuları kaldırır.',
+      en: '**Select** in the Targets page header puts a box on each card and each group. Tick the machines; the bar at the bottom wakes, restarts or shuts them all down (where the machine allows it), updates their agents, enables or disables them, adds or removes a tag, or moves them to another group. **Clear selection** takes the boxes away.',
+    },
+    keywords: ['toplu', 'bulk', 'çoklu seçim', 'multi select', 'hepsini', 'all', 'etiket', 'tag', 'grup', 'group'],
+    page: 'targets',
+  },
+  {
+    id: 'machines-csv',
+    topic: 'targets',
+    q: { tr: 'Makine listesini bir tablo dosyasında hazırlayıp içeri alabilir miyim?', en: 'Can I prepare the machine list in a spreadsheet and bring it in?' },
+    a: {
+      tr: 'Evet: Hedefler › Yapılandırma kartında **CSV olarak dışa aktar…** listeyi yazar, **CSV’den içe aktar…** geri okur. Sütunlar `id;name;group;address;transport;networkRoot;path;localRoots;tags;mac;relay;enabled`; listeler `|` ile birleşir, virgüllü dosya da okunur. İçe aktarma kaydetmeden önce yeni ve değişen makineleri gösterir; dosyada olmayan makineler olduğu gibi kalır.',
+      en: 'Yes: **Export as CSV…** on the Targets › Configuration card writes the list and **Import from CSV…** reads it back. The columns are `id;name;group;address;transport;networkRoot;path;localRoots;tags;mac;relay;enabled`; lists are joined with `|`, and a file with commas is read too. The import shows the new and changed machines before anything is saved; machines the file does not name stay as they are.',
+    },
+    keywords: ['csv', 'excel', 'tablo', 'spreadsheet', 'içe aktar', 'import', 'dışa aktar', 'export', 'makine listesi', 'machine list'],
+    page: 'targets',
+  },
+  {
+    id: 'weekly-summary',
+    topic: 'settings',
+    q: { tr: 'Ekibe haftalık bir özet gidebilir mi?', en: 'Can the team get a weekly summary?' },
+    a: {
+      tr: 'Evet: Ayarlar › Bildirimler › *Haftalık özet* (varsayılan kapalı; bir web kancası ya da Telegram ayarlı olmalı). Her pazartesi 09:00’da, bilgisayar kapalıysa sonraki ilk açılışta, son yedi günün gönderimleri ve nasıl bittikleri, gönderilen veri, en çok hata veren makineler, şu an erişilemeyenler ve sapma bulunan makineler tek ileti olarak gider. **Özeti şimdi gönder** hemen gönderir.',
+      en: 'Yes: Settings › Notifications › *Weekly summary* (off by default; a webhook or Telegram must be set). Every Monday at 09:00, or at the first start after it when the computer was off, one message goes with the last seven days’ sends and how they ended, the data sent, the machines that failed most, the ones away now and the machines with drift. **Send the summary now** sends it at once.',
+    },
+    keywords: ['haftalık', 'weekly', 'özet', 'summary', 'rapor', 'report', 'pazartesi', 'monday', 'telegram', 'webhook'],
+    page: 'settings',
+  },
+  {
+    id: 'free-space',
+    topic: 'targets',
+    q: { tr: 'Boş alan neden kırmızı? Sınırı değiştirebilir miyim?', en: 'Why is the free space red? Can I change the limit?' },
+    a: {
+      tr: 'Hedef diskindeki boş alan Ayarlar › Kopyalama › *Boş alan alt sınırı (GB)* altında kalınca kırmızı görünür (ayarlanmazsa 2 GB, 0 kapatır). Gönderimden sonra bundan azı kalacaksa inceleme uyarır; yazılacak veri boş alandan büyükse her zaman uyarır.',
+      en: 'The free space on a target’s disk shows red below Settings › Copy › *Free space limit (GB)* (2 GB unless set, 0 turns it off). The review warns when a send would leave less than that, and always when the data to write is more than the free space.',
+    },
+    keywords: ['boş alan', 'free space', 'disk', 'kırmızı', 'red', 'dolu', 'full', 'gb'],
+    page: 'settings',
+  },
+  {
+    id: 'last-seen',
+    topic: 'targets',
+    q: { tr: 'Kapalı bir makine en son ne zaman açıktı?', en: 'When was a machine that is off last on?' },
+    a: {
+      tr: 'Erişilemeyen makinenin kartında ve hedef seçicideki noktanın ipucunda *son görülme* yazar: SamSync’in makineyi en son ne zaman yanıt verirken gördüğü. Bilgi bu bilgisayarda tutulur ve yeniden başlatmada kaybolmaz.',
+      en: 'The card of a machine that is away, and the tooltip of its dot in the target picker, say *last seen*: when SamSync last saw it answer. This is kept on this computer and survives a restart.',
+    },
+    keywords: ['son görülme', 'last seen', 'kapalı', 'off', 'erişilemiyor', 'unreachable', 'ne zaman', 'when'],
+    page: 'targets',
+  },
+  {
     id: 'tags',
     topic: 'targets',
     q: { tr: 'Farklı gruplardaki makineleri birlikte nasıl seçerim?', en: 'How do I pick machines from different groups together?' },

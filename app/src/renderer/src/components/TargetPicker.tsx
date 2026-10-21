@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check, FolderOpen, Copy, MousePointerClick, Hash } from 'lucide-react';
 import type { NodeConfig, Profile, TargetOptions } from '@shared/types';
 import { overrideFor, pickOverrides, setOverride } from '@shared/options';
+import { lowOnSpace } from '@shared/machine';
 import { MODE_OPTIONS } from '../pages/SendPage';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type MenuEntry } from './ui';
 import { api } from '../lib/api';
-import { bytes, cls } from '../lib/format';
+import { ago, bytes, cls } from '../lib/format';
 import { MachineName } from './MachineName';
 import { BusyBadge, busyOf, dotClass } from './BusyBadge';
 import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from './ContextMenu';
@@ -208,7 +209,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                   return (
                     <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))} onContextMenu={(e) => nodeMenu(e, n)}>
                       <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} label={n.name} />
-                      <span className={cls('dot', dotClass(p, probing))} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
+                      <span className={cls('dot', dotClass(p, probing))} data-tip={p ? [p.detail, !p.ok && p.lastSeenAt ? t('son görülme {ago}', { ago: ago(p.lastSeenAt) }) : ''].filter(Boolean).join('\n') : t('Henüz yoklanmadı')} />
                       <MachineName
                         className="grow"
                         node={n.transport === 'sftp' ? { name: n.name, address: n.sftp?.host || n.address } : n}
@@ -222,7 +223,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                       {p?.ok && p.latencyMs != null && (
                         <span className="faint tabular nowrap" style={{ fontSize: 11 }} data-tip={p.freeBytes != null ? t('Hedef diskinde boş alan: {size}', { size: bytes(p.freeBytes) }) : undefined}>
                           {p.latencyMs} ms
-                          {p.freeBytes != null && <span style={{ color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }}> • {bytes(p.freeBytes)}</span>}
+                          {p.freeBytes != null && <span style={{ color: lowOnSpace(p.freeBytes, cfg.copy.minFreeGB) ? 'var(--red)' : undefined }}> • {bytes(p.freeBytes)}</span>}
                         </span>
                       )}
                       {overrides && <TargetOverride id={n.id} />}

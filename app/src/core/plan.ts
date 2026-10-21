@@ -26,7 +26,7 @@ import { heartbeatFresh, readHeartbeat } from './relay';
 import { AgentHasher } from './agenthash';
 import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
-import { machineLabel } from '../shared/machine';
+import { lowOnSpace, machineLabel } from '../shared/machine';
 import { TEMPLATE_MAX, fillMachineVars, machineVars, readPlain, templateText } from './template';
 
 /** member: where a pack holds the file. abs: a file merged in from another folder sent to the same place. */
@@ -1032,6 +1032,8 @@ export async function buildSendPlan(
   for (const tp of targets) {
     if (tp.freeBytes != null && tp.bytes > tp.freeBytes)
       warnings.push(t('{name}: hedefte {free} boş alan var, {size} yazılacak.', { name: tp.targetName, free: formatBytes(tp.freeBytes), size: formatBytes(tp.bytes) }));
+    else if (tp.freeBytes != null && tp.bytes > 0 && lowOnSpace(tp.freeBytes - tp.bytes, ctx.config.copy.minFreeGB))
+      warnings.push(t('{name}: gönderimden sonra hedefte {left} boş kalacak (alt sınır {min} GB).', { name: tp.targetName, left: formatBytes(tp.freeBytes - tp.bytes), min: ctx.config.copy.minFreeGB ?? 2 }));
   }
   const mirrors = targets.filter((tp) => tp.mode === 'mirror');
   if (mirrors.length) {
