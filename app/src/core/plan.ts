@@ -468,10 +468,12 @@ async function planTarget(
   // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
   // SamSync running on the machine (relay or not) takes the changes as a pack; its heartbeat on the share says so
   const askBeat = node.transport !== 'sftp' && !req.direct && !isSelf;
-  const beat = askBeat ? readHeartbeat(tgt).catch(() => null) : Promise.resolve(null);
+  // content comparison: SamSync there hashes its own disk instead of every file coming back over the network;
+  // a direct look (the Compare page, --check-only) asks too: hashes are only read, nothing goes through the machine
+  const wantHashes = opt.compare === 'content' && node.transport !== 'sftp' && !isSelf && tgt.kind === 'fs';
+  const beat = askBeat || wantHashes ? readHeartbeat(tgt).catch(() => null) : Promise.resolve(null);
   const heartbeat = askBeat ? beat.then((h) => heartbeatFresh(h)) : Promise.resolve(!!node.relay && !req.direct);
-  // content comparison: SamSync there hashes its own disk instead of every file coming back over the network
-  const hasher = opt.compare === 'content' && askBeat && tgt.kind === 'fs' ? beat.then((h) => (heartbeatFresh(h) && h!.hashes ? new AgentHasher(tgt, () => cancel.cancelled) : null)) : Promise.resolve(null);
+  const hasher = wantHashes ? beat.then((h) => (heartbeatFresh(h) && h!.hashes ? new AgentHasher(tgt, () => cancel.cancelled) : null)) : Promise.resolve(null);
   // someone else writing here right now shows in the review
   const lock = otherLock(tgt, myLock(req.label ?? '', ctx.appVersion)).catch(() => null);
   let fromManifest: number | undefined;

@@ -171,6 +171,11 @@ export function MachineCompare() {
                 <span className="chip static">
                   <Equal size={11} /> {t('aynı')} <b>{counts.equal}</b>
                 </span>
+                {!!pair?.remoteHashed && (
+                  <span className="chip static" data-tip={t('{n} dosyanın içerik özeti hedef makinede, kendi diskinde hesaplandı; bu dosyalar ağ üzerinden okunmadı', { n: pair.remoteHashed })}>
+                    {t('{n} özet orada', { n: pair.remoteHashed })}
+                  </span>
+                )}
               </div>
               {pair?.error && (
                 <div className="alert warn">

@@ -175,6 +175,11 @@ export function ComparePage() {
                       </Button>
                     );
                   })}
+                  {!!tp?.agentHashed && (
+                    <span className="badge blue" data-tip={t('{n} dosyanın içerik özeti hedef makinede, kendi diskinde hesaplandı; bu dosyalar ağ üzerinden okunmadı', { n: tp.agentHashed })}>
+                      {t('{n} özet orada', { n: tp.agentHashed })}
+                    </span>
+                  )}
                   <span className="spacer" />
                   <Button size="sm" icon={<Send size={13} />} onClick={sendThese}>
                     {t('Bu farkları gönder…')}

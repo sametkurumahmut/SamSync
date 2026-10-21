@@ -1014,6 +1014,8 @@ export interface PairResult {
   rightOk: boolean;
   error?: string;
   items: CompareItem[];
+  /** Files whose content SamSync on a machine side hashed on its own disk (not read over the network). */
+  remoteHashed?: number;
 }
 
 export interface CompareStats {

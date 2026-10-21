@@ -5,12 +5,14 @@ import type { CoreContext } from './context';
 import { makeFilter, withTopDirsExcluded } from './filter';
 import { otherBackupRoots } from './backups';
 import { scanTree } from './scan';
-import { transportForEndpoint, endpointLabel, type Transport, type Entry } from './transport';
-import { compareMeta, sameTime, streamsEqual, type TimeOptions } from './compare';
+import { transportForEndpoint, transportForNode, endpointLabel, type Transport, type Entry } from './transport';
+import { compareMeta, hashStream, sameTime, streamsEqual, type TimeOptions } from './compare';
+import { AgentHasher } from './agenthash';
+import { heartbeatFresh, readHeartbeat } from './relay';
 import type { ExecGroup, ExecOp, ExecSettings } from './executor';
 import { IGNORE_FILE, readIgnore } from './ignore';
 import { CancelToken, errMessage, mapLimit, newId } from './util';
-import { joinRoot } from './paths';
+import { joinRoot, relJoin, toPosix } from './paths';
 import { t } from '../shared/i18n';
 import { RELAY_FOLDER } from '../shared/relay';
 import { OWN_FILE_PATTERNS } from '../shared/files';
@@ -72,7 +74,34 @@ interface PairCtx {
   time: TimeOptions;
   job: SyncJob;
   db: SyncDb;
+  /** SamSync running on a machine side: it hashes its own files for a content comparison */
+  lh?: SideHasher | null;
+  rh?: SideHasher | null;
 }
+
+interface SideHasher {
+  hasher: AgentHasher;
+  /** the endpoint's folder under the machine's root, where the hashes are asked by path */
+  prefix: string;
+  root: Transport;
+}
+
+/** A machine side whose SamSync answers hash requests (fresh heartbeat); null for a local folder or when it does not run. */
+async function sideHasher(ctx: CoreContext, ep: Endpoint, cancel: CancelToken): Promise<SideHasher | null> {
+  if (ep.kind !== 'node') return null;
+  const node = ctx.config.nodes.find((n) => n.id === ep.nodeId);
+  if (!node || node.transport === 'sftp') return null;
+  const root = await transportForNode(ctx, node).catch(() => null);
+  if (!root) return null;
+  const h = root.kind === 'fs' ? await readHeartbeat(root).catch(() => null) : null;
+  if (!h || !heartbeatFresh(h) || !h.hashes) {
+    await root.close().catch(() => undefined);
+    return null;
+  }
+  return { hasher: new AgentHasher(root, () => cancel.cancelled), prefix: ep.subPath ? toPosix(ep.subPath).replace(/^\/+|\/+$/g, '') : '', root };
+}
+
+const askHash = (s: SideHasher | null | undefined, rel: string, e: Entry): Promise<string | null> => (s ? s.hasher.hash(relJoin(s.prefix, rel), e.size, e.mtimeMs) : Promise.resolve(null));
 
 async function classify(p: PairCtx, rel: string, l: Entry | undefined, r: Entry | undefined): Promise<{ category: Category; conflict?: string }> {
   if (l && !r) return { category: 'leftOnly' };
@@ -84,6 +113,13 @@ async function classify(p: PairCtx, rel: string, l: Entry | undefined, r: Entry 
   const v = compareMeta(L, R, p.job.compare, p.time);
   if (v === 'equal') return { category: 'equal' };
   if (v === 'needsContent') {
+    const [a, b] = await Promise.all([askHash(p.lh, rel, L), askHash(p.rh, rel, R)]);
+    if (a && b) return { category: a === b ? 'equal' : 'different' };
+    if (a || b) {
+      // one side answered: only the other one is read
+      const other = await hashStream((a ? await p.right.readStream(rel) : await p.left.readStream(rel)) as never);
+      return { category: (a ?? b) === other ? 'equal' : 'different' };
+    }
     const eq = await streamsEqual(await p.left.readStream(rel), await p.right.readStream(rel));
     return { category: eq ? 'equal' : 'different' };
   }
@@ -165,6 +201,8 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
   const res: PairResult = { pairId: pair.id, leftLabel, rightLabel, leftOk: false, rightOk: false, items: [] };
   let left: Transport | null = null;
   let right: Transport | null = null;
+  let lh: SideHasher | null = null;
+  let rh: SideHasher | null = null;
   try {
     left = await transportForEndpoint(ctx, pair.left);
     right = await transportForEndpoint(ctx, pair.right);
@@ -200,8 +238,15 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
 
     const db = await loadDb(ctx, job.id, pair.id);
     const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
-    const pc: PairCtx = { left, right, time, job, db };
     const keys = [...new Set([...ls.entries.keys(), ...rs.entries.keys()])].sort();
+    if (job.compare === 'content') {
+      [lh, rh] = await Promise.all([sideHasher(ctx, pair.left, cancel), sideHasher(ctx, pair.right, cancel)]);
+      // one question per side for every file whose contents must be compared
+      const both = keys.map((k) => [ls.entries.get(k), rs.entries.get(k)] as const).filter(([l, r]) => l && r && !l.isDir && !r.isDir && compareMeta(l, r, 'content', time) === 'needsContent');
+      lh?.hasher.prefetch(both.map(([l]) => ({ rel: relJoin(lh!.prefix, l!.rel), size: l!.size, mtimeMs: l!.mtimeMs })));
+      rh?.hasher.prefetch(both.map(([, r]) => ({ rel: relJoin(rh!.prefix, r!.rel), size: r!.size, mtimeMs: r!.mtimeMs })));
+    }
+    const pc: PairCtx = { left, right, time, job, db, lh, rh };
     res.items = await mapLimit(keys, 16, async (key) => {
       cancel.throwIfCancelled();
       const l = ls.entries.get(key);
@@ -212,12 +257,16 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
       const d = defaultAction(job, base, db, time);
       return { ...base, category: d.category ?? category, conflict: d.conflict ?? conflict, action: d.action, defaultAction: d.action };
     });
+    const hashed = (lh?.hasher.answered ?? 0) + (rh?.hasher.answered ?? 0);
+    if (hashed) res.remoteHashed = hashed;
   } catch (e) {
     if (cancel.cancelled) throw e;
     res.error = errMessage(e);
   } finally {
     await left?.close().catch(() => undefined);
     await right?.close().catch(() => undefined);
+    await lh?.root.close().catch(() => undefined);
+    await rh?.root.close().catch(() => undefined);
   }
   return res;
 }

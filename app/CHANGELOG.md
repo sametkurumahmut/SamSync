@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Karşılaştır sayfası da hedefteki özetleri kullanıyor:** içeriğe göre karşılaştırmada Karşılaştır sayfası, `--check-only`, makine ↔ makine karşılaştırması ve senkron işleri de SamSync çalışan makineden dosyaların özetini istiyor; dosyalar ağ üzerinden okunmuyor. Makine ↔ makine karşılaştırmasında yalnızca bir tarafta SamSync çalışıyorsa yalnızca öbür taraf okunuyor. Kaç dosyanın orada özetlendiği sekmede ve sayaçların yanında görünüyor.
+
 ## 2.4.0 — 2026-10-21
 
 - **Ajan, her makinede:** SamSync çalışan her makine kendisine gönderileni sıkıştırılmış tek paket olarak alıp kendisi uyguluyor; eskiden bu yalnızca rölelerde vardı. Ayarlar › Ajan (varsayılan açık): uygulamadan önce komut (dosyaları tutan programı durdurmak için; başarısız olursa hiçbir şeye dokunulmaz), uyguladıktan sonra komut, varış bildirimi. Makine kartı ve incelemede **ajan** rozeti. Klasör (`_SamSyncRelay`) ilk yerel kökte durur, Windows'ta gizlidir, hiçbir gönderime girmez, ajan kapatılınca silinir.

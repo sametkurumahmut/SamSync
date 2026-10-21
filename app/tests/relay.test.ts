@@ -292,6 +292,41 @@ describe('content comparison through the agent', () => {
   }, 30000);
 });
 
+describe('direct comparisons through the agent', () => {
+  it('the Compare page and a machine-to-machine comparison use the hashes SamSync on the target makes', async () => {
+    const s = await setup({ relayRunning: false, agentOn: true });
+    try {
+      await write(path.join(s.src, 'same.txt'), 'AAAA');
+      await write(path.join(s.src, 'diff.txt'), 'BBBB');
+      await write(path.join(s.pc1, 'Data', 'same.txt'), 'AAAA');
+      await write(path.join(s.pc1, 'Data', 'diff.txt'), 'bbbb');
+      // the Compare page plans directly: no relay, no pack, but the hashes are still asked for
+      const plan = await s.me.planSend(req(s.src, { targetIds: ['PC1'], direct: true, options: { ...defaultOptions, propagateDeletes: false, compare: 'content' } }), 'c1');
+      expect(plan.targets[0].agent).toBeUndefined();
+      expect(plan.targets[0].agentHashed).toBe(2);
+      expect(plan.targets[0].ops.filter((o) => o.selected).map((o) => o.rel)).toEqual(['Data/diff.txt']);
+      // a folder here against the machine's Data folder: the machine side answers by path under its root
+      const job = {
+        id: 'mm',
+        name: 'mm',
+        pairs: [{ id: 'p', left: { kind: 'local' as const, path: s.src }, right: { kind: 'node' as const, nodeId: 'PC1', subPath: 'Data' } }],
+        compare: 'content' as const,
+        variant: 'mirror' as const,
+        filter: { include: [], exclude: [] },
+        deletion: 'versioning' as const,
+        versioningKeep: 0,
+      };
+      const r = await s.me.compareJob(job, 'c2');
+      const pair = r.pairs[0];
+      expect(pair.remoteHashed).toBe(2);
+      expect(Object.fromEntries(pair.items.map((it) => [it.rel, it.category]))).toEqual({ 'same.txt': 'equal', 'diff.txt': 'different' });
+      expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'hashes'))).toEqual([]);
+    } finally {
+      s.stop();
+    }
+  }, 30000);
+});
+
 describe('block delta through the agent', () => {
   it('a big file already on the target goes as the blocks that differ', async () => {
     const s = await setup({ relayRunning: false, agentOn: true });
