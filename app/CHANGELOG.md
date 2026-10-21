@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.3 — 2026-10-21
 
 - **Ajan durumu kartta:** kalp atışı artık SamSync sürümünü, paylaşımın gösterdiği klasörü, son işi ve son hatayı da taşıyor. Makine kartında **ajan 2.4.2** (bu kopyadan eskiyse sarı, *eski*), oradaki SamSync haber vermeden yanıt vermez olduysa **ajan durmuş**, son hata için bir uyarı işareti. Makinenin kendisinde "Bu makine" kartı ve Ayarlar › Ajan, ilk yerel kök yoksa ya da paylaşım başka bir klasörü gösteriyorsa (rölede ya da gönderenlerin zaten yazdığı yerde) uyarıyor; **Düzelt** paylaşımın klasörünü ilk yerel kök yapıyor.
 - **Ajanları ağdan güncelleme:** Hedefler sayfasında **Ajanları güncelle (n)** ve kartta bir ok: bu sürümün Windows kurulumu makinenin paylaşımına bırakılıyor, oradaki SamSync dosyayı SHA-512 ile denetleyip çalışan iş kalmayınca sessizce kuruyor ve yeniden açılıyor. Kurulum bu bilgisayarın sakladığı kopyadan, güncelleme klasöründen ya da sürüm sayfasından (bir kez indirilir) geliyor; hiçbiri yoksa dosya seçilebiliyor. Röle, grubundaki makinelere kendi ağları üzerinden iletiyor. Alan makinede Ayarlar › Ajan › *Ağdan güncellemeyi kabul et* gerekiyor (varsayılan kapalı).
