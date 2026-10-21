@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.1 — 2026-10-21
 
 - **Karşılaştır sayfası da hedefteki özetleri kullanıyor:** içeriğe göre karşılaştırmada Karşılaştır sayfası, `--check-only`, makine ↔ makine karşılaştırması ve senkron işleri de SamSync çalışan makineden dosyaların özetini istiyor; dosyalar ağ üzerinden okunmuyor. Makine ↔ makine karşılaştırmasında yalnızca bir tarafta SamSync çalışıyorsa yalnızca öbür taraf okunuyor. Kaç dosyanın orada özetlendiği sekmede ve sayaçların yanında görünüyor.
 
