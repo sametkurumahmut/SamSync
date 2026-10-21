@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag } from 'lucide-react';
-import type { NodeConfig, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power } from 'lucide-react';
+import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
-import { api } from '../lib/api';
+import { api, newTaskId } from '../lib/api';
+import { compareVersions } from '@shared/version';
+import { AgentChecks } from '../components/AgentSettings';
 import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
@@ -13,7 +15,7 @@ import { MachineName } from '../components/MachineName';
 import { PathLink } from '../components/PathLink';
 import { DiscoverDialog, nodeFromHost } from '../components/DiscoverDialog';
 import { LatencySpark } from '../components/charts';
-import { machineLabel } from '@shared/machine';
+import { machineLabel, normalizeMac } from '@shared/machine';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -93,6 +95,57 @@ export function TargetsPage() {
     await saveConfig({ ...cfg, nodes: cfg.nodes.map((x) => (x.id === n.id ? { ...x, enabled: on } : x)) });
   };
 
+  // SamSync on other machines that is older than this one and installs updates sent to it
+  const outdated = cfg.nodes.filter((n) => {
+    const a = probes[n.id]?.agent;
+    return n.enabled && n.id !== id.node?.id && a?.alive && a.updates && !!a.version && compareVersions(a.version, boot.appVersion) < 0;
+  });
+  // machines that are off but can be woken up: their MAC address is known
+  const wakeable = (n: NodeConfig) => n.enabled && n.id !== id.node?.id && probes[n.id] && !probes[n.id].ok && !!probes[n.id].macs?.length;
+  const [waking, setWaking] = useState<string[]>([]);
+  const wakeNodes = async (ids: string[]) => {
+    setWaking(ids);
+    try {
+      const r = await api.wake(ids);
+      const ok = r.filter((x) => x.ok).length;
+      const bad = r.filter((x) => !x.ok);
+      if (ok) toast('ok', t('Uyandırma paketi gönderildi ({n} makine)', { n: ok }), t('Açılması bir iki dakika sürebilir; kart yeşile dönünce hazırdır.'));
+      if (bad.length) toast('error', t('Uyandırılamadı'), bad.map((x) => `${cfg.nodes.find((n) => n.id === x.nodeId)?.name ?? x.nodeId}: ${x.error ?? ''}`).join('\n'));
+      // a look again once they had time to start
+      if (ok) setTimeout(() => void probe(ids), 60_000);
+    } catch (e) {
+      toast('error', t('Uyandırılamadı'), (e as Error).message);
+    } finally {
+      setWaking([]);
+    }
+  };
+  const [updating, setUpdating] = useState<string[]>([]);
+  const updateAgents = async (ids: string[]) => {
+    if (!confirm(t('{n} makineye SamSync {version} kurulumu bırakılsın mı? Makineler ellerindeki iş bitince kurar ve yeniden açılır.', { n: ids.length, version: boot.appVersion }))) return;
+    const nameOf = (nid: string) => cfg.nodes.find((n) => n.id === nid)?.name ?? nid;
+    setUpdating(ids);
+    try {
+      let r: AgentUpdateResult[];
+      try {
+        r = await api.updateAgents(ids, newTaskId());
+      } catch (e) {
+        // no Setup of this version here (no internet, a development copy): one picked by hand will do
+        toast('warn', t('Kurulum dosyası bulunamadı'), (e as Error).message);
+        const picked = boot.remote ? [] : await api.pick({ title: t('SamSync kurulum dosyasını seçin'), filters: [{ name: 'SamSync Setup', extensions: ['exe'] }] });
+        if (!picked.length) return;
+        r = await api.updateAgents(ids, newTaskId(), picked[0]);
+      }
+      const ok = r.filter((x) => x.ok);
+      const bad = r.filter((x) => !x.ok);
+      if (ok.length) toast('ok', t('Kurulum {n} makineye bırakıldı', { n: ok.length }), t('Makineler boşta olunca kurup yeniden açılır; kartlar birkaç dakika içinde yeni sürümü gösterir.'));
+      if (bad.length) toast('error', t('{n} makineye bırakılamadı', { n: bad.length }), bad.map((x) => `${nameOf(x.nodeId)}: ${x.error ?? ''}`).join('\n'));
+    } catch (e) {
+      toast('error', t('Güncelleme gönderilemedi'), (e as Error).message);
+    } finally {
+      setUpdating([]);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -107,6 +160,11 @@ export function TargetsPage() {
         <Button icon={<Radar size={15} />} onClick={() => setDiscover(true)} disabled={!boot.configWritable} tip={t('Alt ağdaki makineleri bulur; bulunanlar tek tıkla hedef olur')}>
           {t('Ağı tara')}
         </Button>
+        {outdated.length > 0 && (
+          <Button icon={<ArrowUpCircle size={15} />} loading={updating.length > 0} onClick={() => void updateAgents(outdated.map((n) => n.id))} tip={outdated.map((n) => `${n.name}: ${probes[n.id]?.agent?.version}`).join('\n')}>
+            {t('Ajanları güncelle ({n})', { n: outdated.length })}
+          </Button>
+        )}
         <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')} disabled={!boot.configWritable}>
           {t('Hedef ekle')}
         </Button>
@@ -154,6 +212,13 @@ export function TargetsPage() {
                         {relayState.role === 'agent' ? t('Bu makine gelen paketleri kendisi uygular') : t('Bu makine {group} grubunun rölesi', { group: relayState.group ?? '-' })} •{' '}
                         {relayState.jobs ? t('{n} iş alındı, son {ago}{ok}', { n: relayState.jobs, ago: ago(relayState.lastJobAt), ok: relayState.lastOk === false ? ` (${t('hatalı')})` : '' }) : relayState.role === 'agent' ? t('henüz paket gelmedi') : t('henüz iş gelmedi')}
                       </span>
+                    </div>
+                  )}
+                  {relayState?.active && <AgentChecks />}
+                  {relayState?.active && relayState.lastError && (
+                    <div className="row faint" style={{ gap: 6, marginTop: 6, fontSize: 12 }}>
+                      <AlertTriangle size={12} color="var(--amber)" />
+                      <span className="selectable">{t('Son hata ({ago}): {text}', { ago: ago(relayState.lastError.at), text: relayState.lastError.text })}</span>
                     </div>
                   )}
                   {relayState?.active && (relayState.pending?.length ?? 0) > 0 && (
@@ -256,6 +321,11 @@ export function TargetsPage() {
                 <span className="faint" style={{ fontSize: 12 }}>
                   {t('{n} makine', { n: list.length })} • {t('{n} erişilebilir', { n: list.filter((n) => probes[n.id]?.ok).length })}
                 </span>
+                {list.filter(wakeable).length > 1 && (
+                  <Button size="sm" variant="ghost" icon={<Power size={12} />} loading={waking.length > 1 && list.some((n) => waking.includes(n.id))} onClick={() => void wakeNodes(list.filter(wakeable).map((n) => n.id))} tip={list.filter(wakeable).map((n) => n.name).join('\n')}>
+                    {t('Kapalıları uyandır ({n})', { n: list.filter(wakeable).length })}
+                  </Button>
+                )}
               </div>
               <div className="target-grid">
                 {list.map((n) => {
@@ -312,11 +382,7 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
-                        {!isLocal && !n.relay && p?.agentAlive && (
-                          <span className="badge green" data-tip={t('SamSync orada çalışıyor: gönderimler sıkıştırılmış paket olarak gider, makine kendisi uygular')}>
-                            {t('ajan')}
-                          </span>
-                        )}
+                        {!isLocal && <AgentBadges node={n} p={p} own={boot.appVersion} updating={updating.includes(n.id)} onUpdate={() => void updateAgents([n.id])} />}
                         {!isLocal && p?.ok && p.freeBytes != null && (
                           <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
                             <HardDrive size={12} /> {t('{size} boş', { size: bytes(p.freeBytes) })}
@@ -333,6 +399,9 @@ export function TargetsPage() {
                           </span>
                         )}
                         <span className="spacer" />
+                        {wakeable(n) && (
+                          <Button size="sm" variant="ghost" iconOnly icon={<Power size={13} />} loading={waking.includes(n.id)} tip={t('Uyandır: ağ üzerinden açma paketi gönderir ({mac})', { mac: p!.macs!.join(', ') })} onClick={() => void wakeNodes([n.id])} />
+                        )}
                         {!isLocal && (
                           <Button size="sm" variant="ghost" iconOnly icon={<Gauge size={13} />} tip={t('Hız sına: 3 MB yazar, geri okur, siler')} loading={speed[n.id] === 'running'} disabled={!p?.ok} onClick={() => void testSpeed(n)} />
                         )}
@@ -370,6 +439,46 @@ export function TargetsPage() {
   );
 }
 
+/** What SamSync on the machine said in its heartbeat: its version (an old one can be updated from here), a stopped one, its last error. */
+function AgentBadges({ node, p, own, updating, onUpdate }: { node: NodeConfig; p?: ProbeResult; own: string; updating: boolean; onUpdate: () => void }) {
+  const a = p?.agent;
+  if (!a || !p?.ok) return null;
+  const old = !!a.version && compareVersions(a.version, own) < 0;
+  const tip = [
+    a.alive ? t('SamSync orada çalışıyor: gönderimler sıkıştırılmış paket olarak gider, makine kendisi uygular') : '',
+    a.version ? `SamSync ${a.version}${old ? ` • ${t('bu makinede {v}', { v: own })}` : ''}` : '',
+    [a.host, a.root].filter(Boolean).join(' • '),
+    a.lastJob ? t('Son iş {ago}: {label}{ok}', { ago: ago(a.lastJob.at), label: a.lastJob.label ?? '-', ok: a.lastJob.ok ? '' : ` (${t('hatalı')})` }) : '',
+    a.pending ? t('Teslimat kuyruğunda {n} makine', { n: a.pending }) : '',
+    old && !a.updates ? t('O makinede Ayarlar › Ajan › Ağdan güncellemeyi kabul et açılırsa buradan güncellenebilir') : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <>
+      {!a.alive ? (
+        <span className="badge" data-tip={t('SamSync orada {ago} çalışıyordu ama o zamandan beri yanıt vermiyor; kapanmış ya da takılmış olabilir', { ago: ago(a.seenAt) })}>
+          {t('ajan durmuş')}
+        </span>
+      ) : (
+        (!node.relay || old) && (
+          <span className={cls('badge', old ? 'amber' : 'green')} data-tip={tip}>
+            {node.relay ? '' : `${t('ajan')} `}
+            {a.version ?? ''}
+            {old ? ` • ${t('eski')}` : ''}
+          </span>
+        )
+      )}
+      {a.alive && old && a.updates && <Button size="sm" variant="ghost" iconOnly icon={<ArrowUpCircle size={13} />} loading={updating} tip={t('SamSync {v} sürümüne güncelle: kurulum makineye bırakılır, iş bitince kendisi kurar', { v: own })} onClick={onUpdate} />}
+      {a.lastError && Date.now() - a.lastError.at < 7 * 86400_000 && (
+        <span style={{ display: 'inline-flex' }} data-tip={t('Son hata ({ago}): {text}', { ago: ago(a.lastError.at), text: a.lastError.text })}>
+          <AlertTriangle size={12} color="var(--amber)" />
+        </span>
+      )}
+    </>
+  );
+}
+
 function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefill?: Partial<NodeConfig>; onClose: () => void }) {
   const boot = useApp((s) => s.boot!);
   const cfg = boot.config;
@@ -393,11 +502,15 @@ function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefi
   if (transport === 'smb' && !n.networkRoot) errors.networkRoot = t('Gerekli');
   if (transport === 'path' && !n.path) errors.path = t('Gerekli');
   if (transport === 'sftp' && !n.sftp?.username) errors.sftpUser = t('Gerekli');
+  if (n.mac && !normalizeMac(n.mac)) errors.mac = t('Geçerli bir MAC adresi değil');
+  const learnedMacs = node ? useApp.getState().probes[node.id]?.macs?.filter((m) => m !== node.mac) : undefined;
   const valid = Object.keys(errors).length === 0;
 
   const save = async () => {
     setSaving(true);
     const clean: NodeConfig = { ...n, name: n.name || n.id };
+    if (clean.mac) clean.mac = normalizeMac(clean.mac) ?? undefined;
+    if (!clean.mac) delete clean.mac;
     if (transport !== 'sftp') delete clean.sftp;
     if (transport !== 'path' && !clean.path) delete clean.path;
     if (!clean.group) delete clean.group;
@@ -560,10 +673,17 @@ function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefi
       </Field>
       <div className="form-grid" style={{ marginTop: 12 }}>
         <Field label={t('Bilgisayar adları (localNames)')} help={t('IP’si değişken makinelerin tanınması için')}>
-          <TagInput value={n.localNames ?? []} onChange={(v) => set({ localNames: v.length ? v : undefined })} placeholder="IG-14" />
+          <TagInput value={n.localNames ?? []} onChange={(v) => set({ localNames: v.length ? v : undefined })} placeholder="PC-14" />
         </Field>
         <Field label={t('Notlar')}>
           <input className="input" value={n.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} />
+        </Field>
+        <Field
+          label={t('MAC adresi (uyandırmak için)')}
+          error={errors.mac}
+          help={learnedMacs?.length ? t('Boşsa öğrenilen kullanılır: {macs}', { macs: learnedMacs.join(', ') }) : t('Boşsa makine açıkken kendiliğinden öğrenilir')}
+        >
+          <input className="input mono" value={n.mac ?? ''} onChange={(e) => set({ mac: e.target.value.trim() || undefined })} placeholder={learnedMacs?.[0] ?? 'aa:bb:cc:dd:ee:ff'} />
         </Field>
       </div>
       <div className="toggle-row" style={{ marginTop: 6 }} onClick={() => set({ enabled: !n.enabled })}>

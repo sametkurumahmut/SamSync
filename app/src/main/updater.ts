@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { app } from 'electron';
+import { app, net } from 'electron';
 import electronUpdater from 'electron-updater';
 import type { LocalSettings, UpdateConfig, UpdateState } from '../shared/types';
 import { t } from '../shared/i18n';
@@ -190,6 +190,81 @@ export class Updater {
       this.set(explainUpdateError(e));
     }
     return this.st;
+  }
+
+  /** This copy can run a Setup silently and restart on the new version: the installed Windows app. */
+  canInstallFile(): boolean {
+    return app.isPackaged && process.platform === 'win32' && !portableKind(app.isPackaged);
+  }
+
+  /** Runs a SamSync Setup silently (an update another machine sent) and quits; the installer starts the app again. */
+  installFile(file: string): boolean {
+    if (!this.canInstallFile()) return false;
+    spawn(file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    setTimeout(() => app.quit(), 300);
+    return true;
+  }
+
+  /**
+   * The Windows Setup of this very version, for updating SamSync on other machines: the copy kept from last time,
+   * the update folder's own, or downloaded once from the release this build came from (checked against its latest.yml).
+   */
+  async ownInstaller(onProgress?: (done: number, total: number) => void): Promise<{ file: string; version: string; sha512: string }> {
+    const version = app.getVersion();
+    const dir = path.join(app.getPath('userData'), 'agent-update');
+    const name = `SamSync-Setup-${version}.exe`;
+    const kept = path.join(dir, name);
+    try {
+      const sha512 = (await fsp.readFile(`${kept}.sha512`, 'utf8')).trim();
+      if (sha512 && fs.existsSync(kept)) return { file: kept, version, sha512 };
+    } catch {
+      /* not kept yet */
+    }
+    if (this.cfg.source === 'folder' && this.cfg.folder) {
+      try {
+        const info = parseLatestYml(await fsp.readFile(path.join(this.cfg.folder, 'latest.yml'), 'utf8'));
+        const file = info.path ? path.join(this.cfg.folder, info.path) : '';
+        if (info.version === version && info.sha512 && file && fs.existsSync(file)) return { file, version, sha512: info.sha512 };
+      } catch {
+        /* the folder holds another version, or cannot be read */
+      }
+    }
+    const feed = githubFeed();
+    if (!feed) throw new Error(t('Bu sürümün kurulum dosyası bulunamadı; bir SamSync-Setup dosyası seçin'));
+    const base = `https://github.com/${feed.owner}/${feed.repo}/releases/download/v${version}`;
+    const yml = await net.fetch(`${base}/latest.yml`).catch((e: unknown) => {
+      throw new Error(t('Kurulum dosyası indirilemedi: {error}', { error: e instanceof Error ? e.message : String(e) }));
+    });
+    if (!yml.ok) throw new Error(t('Kurulum dosyası indirilemedi: {error}', { error: `HTTP ${yml.status}` }));
+    const info = parseLatestYml(await yml.text());
+    if (info.version !== version || !info.path || !info.sha512) throw new Error(t('latest.yml içinde version/path yok'));
+    const res = await net.fetch(`${base}/${encodeURIComponent(info.path)}`);
+    if (!res.ok || !res.body) throw new Error(t('Kurulum dosyası indirilemedi: {error}', { error: `HTTP ${res.status}` }));
+    await fsp.mkdir(dir, { recursive: true });
+    const part = `${kept}.part`;
+    const total = Number(res.headers.get('content-length')) || 0;
+    const hash = createHash('sha512');
+    let done = 0;
+    const ws = fs.createWriteStream(part);
+    try {
+      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+        hash.update(chunk);
+        done += chunk.length;
+        onProgress?.(done, total);
+        if (!ws.write(chunk)) await new Promise<void>((r) => ws.once('drain', () => r()));
+      }
+    } finally {
+      await new Promise<void>((r) => ws.end(() => r()));
+    }
+    if (hash.digest('base64') !== info.sha512) {
+      await fsp.rm(part, { force: true });
+      throw new Error(t('Kurulum dosyasının özeti latest.yml ile tutmuyor'));
+    }
+    await fsp.rename(part, kept);
+    await fsp.writeFile(`${kept}.sha512`, info.sha512);
+    // the Setup of an older version is not needed any more
+    for (const n of await fsp.readdir(dir)) if (n !== name && n !== `${name}.sha512`) await fsp.rm(path.join(dir, n), { force: true }).catch(() => undefined);
+    return { file: kept, version, sha512: info.sha512 };
   }
 
   install() {

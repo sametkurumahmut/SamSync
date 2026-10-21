@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppConfig, CopySettings, NodeConfig, Profile, SyncJob, LocalSettings } from '../shared/types';
 import { t } from '../shared/i18n';
+import { normalizeMac } from '../shared/machine';
 
 export const DEFAULT_COPY: CopySettings = {
   retryCount: 2,
@@ -106,6 +107,8 @@ export function normalizeConfig(raw: unknown): AppConfig {
     if (n.color) node.color = String(n.color);
     if (n.notes) node.notes = String(n.notes);
     if (n.relay === true) node.relay = true;
+    const mac = n.mac ? normalizeMac(String(n.mac)) : null;
+    if (mac) node.mac = mac;
     if (n.sftp && typeof n.sftp === 'object') {
       node.sftp = {
         host: n.sftp.host ? String(n.sftp.host) : undefined,
@@ -146,6 +149,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     excludeFiles: c.excludeFiles !== undefined ? asStringArray(c.excludeFiles) : [...DEFAULT_COPY.excludeFiles],
     excludeDirs: c.excludeDirs !== undefined ? asStringArray(c.excludeDirs) : [...DEFAULT_COPY.excludeDirs],
     outsideRoots: c.outsideRoots === 'fullPath' ? 'fullPath' : 'own',
+    machineFolder: c.machineFolder ? String(c.machineFolder).replace(/[\\/:*?"<>|]/g, '').trim() || undefined : undefined,
   };
 
   const profiles: Profile[] = (Array.isArray(r.profiles) ? r.profiles : [])
@@ -233,6 +237,7 @@ export function serializeConfig(cfg: AppConfig): AppConfig {
     if (n.transport && n.transport !== 'smb') o.transport = n.transport;
     if (n.path) o.path = n.path;
     if (n.relay) o.relay = true;
+    if (n.mac) o.mac = n.mac;
     if (n.sftp) {
       const { hasPassword: _h, ...rest } = n.sftp;
       o.sftp = rest;

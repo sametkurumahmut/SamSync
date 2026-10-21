@@ -416,6 +416,9 @@ if (launch.removeIntegrations) {
       apply: () => integrations.apply(),
     },
     updater,
+    ownInstaller: (onProgress) => updater.ownInstaller(onProgress),
+    canInstallUpdates: () => updater.canInstallFile(),
+    installUpdate: (file) => updater.installFile(file),
     windowControl(action) {
       if (!win) return;
       if (action === 'minimize') win.minimize();

@@ -45,3 +45,10 @@ export function machineLabel(name: string, address?: string): MachineLabel {
 export function machineTitle(name: string, address?: string): string {
   return machineLabel(name, address).title;
 }
+
+/** A MAC address as "aa:bb:cc:dd:ee:ff", from any common way of writing one; null when it is not one. */
+export function normalizeMac(s: string): string | null {
+  const hex = s.replace(/[^0-9a-f]/gi, '').toLowerCase();
+  if (hex.length !== 12 || /^0+$/.test(hex) || /^f+$/.test(hex)) return null;
+  return hex.match(/../g)!.join(':');
+}

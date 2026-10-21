@@ -64,6 +64,8 @@ export interface RelayTargetResult {
   backupPath?: string;
   /** Of those, the ones a program held open on the machine. */
   inUseOps?: string[];
+  /** The operations whose old file went to the backup folder (an undo restores these, and removes the rest it wrote). */
+  backedUpOps?: string[];
 }
 
 export interface RelayResult {
@@ -81,7 +83,7 @@ export interface RelayRouting {
 
 /**
  * Splits the chosen machines: a relay that is among them takes over the other chosen machines of its group.
- * A machine is relayed only when its relay was chosen too, so a send to one IG alone never touches the relay.
+ * A machine is relayed only when its relay was chosen too, so a send to one machine of the group alone never touches the relay.
  */
 export function relayRouting(nodes: NodeConfig[]): RelayRouting {
   const direct: NodeConfig[] = [];

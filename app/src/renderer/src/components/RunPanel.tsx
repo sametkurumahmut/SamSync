@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw } from 'lucide-react';
-import type { RunTargetState, RunLogLine } from '@shared/types';
+import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw, Lock, PowerOff } from 'lucide-react';
+import type { HolderReport, RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, Segmented, useEscapeLayer } from './ui';
 import { Sparkline } from './charts';
@@ -18,6 +18,85 @@ export function StatusIcon({ status, size = 16 }: { status: RunTargetState['stat
   if (status === 'partial') return <AlertTriangle size={size} color="var(--amber)" />;
   if (status === 'cancelled') return <MinusCircle size={size} color="var(--text-3)" />;
   return <CircleDashed size={size} color="var(--text-3)" />;
+}
+
+/**
+ * The programs that held the files a run could not replace, asked on each machine when the run window opens on it;
+ * where SamSync there allows it (or on this machine), they can be closed and the files written again.
+ */
+function HoldersBox({ runId }: { runId: string }) {
+  const toast = useApp((s) => s.toast);
+  const [reports, setReports] = useState<HolderReport[] | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setReports(null);
+    api
+      .whoHolds(runId)
+      .then((r) => alive && setReports(r))
+      .catch(() => alive && setReports([]));
+    return () => {
+      alive = false;
+    };
+  }, [runId]);
+  const closeAndRetry = async (r: HolderReport) => {
+    const progs = r.programs.filter((p) => p.closable !== false);
+    if (!progs.length) return;
+    if (!confirm(t('{machine} makinesinde {names} kapatılsın ve kullanımdaki dosyalar yeniden yazılsın mı? O programlardaki kaydedilmemiş işler kaybolabilir.', { machine: r.title, names: progs.map((p) => p.name).join(', ') }))) return;
+    setClosing(r.key);
+    try {
+      const c = await api.closeHolders(runId, r.key, progs.map((p) => p.pid));
+      if (c.failed.length) toast('warn', t('{n} program kapatılamadı', { n: c.failed.length }), c.failed.join('\n'));
+      useApp.getState().watchRun(await api.retryInUse(runId));
+    } catch (e) {
+      toast('error', t('Kapat ve tekrar dene'), (e as Error).message);
+    } finally {
+      setClosing(null);
+    }
+  };
+  return (
+    <div className="holders-box">
+      <div className="row" style={{ gap: 6, fontWeight: 600, fontSize: 12.5 }}>
+        <Lock size={13} color="var(--amber)" />
+        {t('Dosyaları açık tutan programlar')}
+        {!reports && <Loader2 size={13} className="spin faint" />}
+      </div>
+      {reports?.map((r) => (
+        <div key={r.key} className="holders-row">
+          <MachineName name={r.title} size="sm" />
+          <div className="grow col" style={{ gap: 2, minWidth: 0 }}>
+            {r.error ? (
+              <span className="faint" style={{ fontSize: 12 }}>
+                {r.error}
+              </span>
+            ) : r.programs.length ? (
+              r.programs.map((p) => (
+                <span key={p.pid} className="truncate" style={{ fontSize: 12 }} data-tip={[p.path, ...p.rels.slice(0, 12)].filter(Boolean).join('\n')}>
+                  <b>{p.name}</b> <span className="faint">PID {p.pid} • {t('{n} dosya', { n: p.rels.length })}</span>
+                </span>
+              ))
+            ) : (
+              <span className="faint" style={{ fontSize: 12 }}>
+                {t('Şu an hiçbir program tutmuyor; tekrar denemek yeter')}
+              </span>
+            )}
+          </div>
+          {r.programs.some((p) => p.closable !== false) && (
+            <Button
+              size="sm"
+              icon={<PowerOff size={12} />}
+              disabled={!r.canClose}
+              loading={closing === r.key}
+              tip={r.canClose ? t('Bu programları kapatır, sonra kullanımdaki dosyaları yeniden yazar') : t('O makinede Ayarlar › Ajan › Gönderenler dosyayı tutan programı kapatabilsin açık değil')}
+              onClick={() => void closeAndRetry(r)}
+            >
+              {t('Kapat ve tekrar dene')}
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function useNow(active: boolean) {
@@ -316,6 +395,7 @@ export function RunPanel() {
           ))}
         </div>
 
+        {run.done && (s.inUseFailed ?? 0) > 0 && <HoldersBox runId={s.id} />}
         <div className="drawer-foot">
           {!run.done ? (
             <>

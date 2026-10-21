@@ -763,9 +763,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         st.error = own.error;
         const failedIds = new Set(own.failedOps ?? []);
         const heldIds = new Set(own.inUseOps ?? []);
+        // what went to the backup there, so an undo restores it instead of removing it; an older SamSync does not
+        // say: a file that was there before is backed up whenever the pack carries a backup
+        const backedIds = own.backedUpOps ? new Set(own.backedUpOps) : null;
+        const packBackup = !!job.pack?.backup && !!own.backupPath;
         for (const op of g.ops) {
           const ok = own.status === 'ok' || !failedIds.has(op.id);
-          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı'), inUse: (!ok && heldIds.has(op.id)) || undefined });
+          const backedUp = ok && op.kind !== 'mkdir' && (backedIds ? backedIds.has(op.id) : packBackup && !!op.dstExists);
+          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı'), inUse: (!ok && heldIds.has(op.id)) || undefined, backedUp: backedUp || undefined });
         }
         st.failed = own.opsFailed;
         if (own.backupPath) st.backupPath = own.backupPath;

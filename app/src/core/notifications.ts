@@ -1,8 +1,9 @@
 // Telling the team: when a run ends, a message to a webhook (any HTTP endpoint, a Teams/Slack flow) and/or
 // to a Telegram chat through a bot, as set in this machine's settings. Nothing here blocks the run.
-import type { NotificationSettings, RunDetail } from '../shared/types';
+import type { DriftReport, NotificationSettings, RunDetail } from '../shared/types';
 import { formatBytes } from './util';
 import { t } from '../shared/i18n';
+import { driftCounts } from '../shared/drift';
 
 export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
@@ -50,6 +51,19 @@ export function runMessage(run: RunDetail, from: { host: string; version?: strin
 }
 
 /** Whether this run should go out, by the settings. */
+/** The message of a drift check that found changes: one line per machine. */
+export function driftMessage(reports: DriftReport[], from: { host: string; version?: string; user?: string }): RunMessage {
+  const drifted = reports.filter((r) => r.changed + r.added + r.removed > 0);
+  const lines = [`△ ${t('Sapma: {n} makinede son gönderimden sonra değişen dosyalar var', { n: drifted.length })}`];
+  for (const r of drifted.slice(0, 20)) lines.push(`• ${r.name}: ${driftCounts(r)}`);
+  if (drifted.length > 20) lines.push(t('… ve {n} makine daha', { n: drifted.length - 20 }));
+  lines.push(`${t('Denetleyen: {who}', { who: senderText(from) })}${from.version ? ` • SamSync ${from.version}` : ''}`);
+  return {
+    text: lines.join('\n'),
+    payload: { kind: 'drift', machines: drifted.map((r) => ({ id: r.nodeId, name: r.name, changed: r.changed, added: r.added, removed: r.removed })), host: from.host, user: from.user, version: from.version },
+  };
+}
+
 export function wantsNotification(s: NotificationSettings | undefined, run: Pick<RunDetail, 'status' | 'dryRun'>): boolean {
   if (!s || run.dryRun) return false;
   if (!s.webhookUrl && !(s.telegramToken && s.telegramChatId)) return false;

@@ -1,7 +1,7 @@
 import net from 'node:net';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AppConfig, NodeConfig, ProbeResult } from '../shared/types';
+import type { AgentInfo, AppConfig, NodeConfig, ProbeResult } from '../shared/types';
 import { nodeRootLabel, smbRoot } from './transport';
 import { ALIVE_FILE, heartbeatFresh, type Heartbeat } from './relay';
 import { mapLimit, withTimeout, errMessage } from './util';
@@ -89,12 +89,33 @@ async function withRelayAlive(r: ProbeResult, root: string, node: NodeConfig): P
     const raw = await withTimeout(fsp.readFile(path.join(root, ...ALIVE_FILE.split('/')), 'utf8'), 4000);
     const h = JSON.parse(raw) as Heartbeat;
     const alive = heartbeatFresh(h);
-    if (!node.relay) return alive ? { ...r, agentAlive: true, detail: t('{detail}; SamSync çalışıyor, paketleri alır', { detail: r.detail }) } : { ...r, agentAlive: false };
-    return { ...r, relayAlive: alive, agentAlive: alive, relaySeenAt: h.at, detail: alive ? t('{detail}; röle çalışıyor', { detail: r.detail }) : t('{detail}; röle yanıt vermiyor (son {ago})', { detail: r.detail, ago: agoText(h.at) }) };
+    const agent = agentInfo(h, alive);
+    if (!node.relay) return alive ? { ...r, agentAlive: true, agent, detail: t('{detail}; SamSync çalışıyor, paketleri alır', { detail: r.detail }) } : { ...r, agentAlive: false, agent };
+    return { ...r, relayAlive: alive, agentAlive: alive, relaySeenAt: h.at, agent, detail: alive ? t('{detail}; röle çalışıyor', { detail: r.detail }) : t('{detail}; röle yanıt vermiyor (son {ago})', { detail: r.detail, ago: agoText(h.at) }) };
   } catch {
     if (!node.relay) return { ...r, agentAlive: false };
     return { ...r, relayAlive: false, agentAlive: false, detail: t('{detail}; rölede SamSync çalışmıyor', { detail: r.detail }) };
   }
+}
+
+/** The heartbeat as the card shows it. */
+export function agentInfo(h: Heartbeat, alive = heartbeatFresh(h)): AgentInfo {
+  return {
+    version: h.version,
+    role: h.role,
+    seenAt: h.at,
+    alive,
+    host: h.host,
+    root: h.root,
+    busy: h.busy,
+    pending: h.pending,
+    lastJob: h.lastJob,
+    lastError: h.lastError,
+    updates: h.updates,
+    forwardUpdates: h.forwardUpdates,
+    asks: h.asks,
+    macs: h.macs,
+  };
 }
 
 function agoText(at: number): string {

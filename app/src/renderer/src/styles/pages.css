@@ -523,6 +523,37 @@
 .log-line.ok .lm {
   color: var(--green);
 }
+/* the drift check under the machine inventory */
+.drift-section {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+.drift-machine {
+  font-size: 12.5px;
+}
+.drift-machine summary {
+  cursor: pointer;
+}
+
+/* the programs that held files open, above the footer of a finished run */
+.holders-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  max-height: 30vh;
+  overflow: auto;
+}
+.holders-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.holders-row > :first-child {
+  width: 150px;
+  flex: none;
+}
 .drawer-foot {
   display: flex;
   gap: 8px;

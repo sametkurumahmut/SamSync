@@ -6,11 +6,11 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentSettings, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { AgentCheck, AgentSettings, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
-import { FsTransport, type Transport } from './transport';
+import { FsTransport, transportForNode, type Transport } from './transport';
 import { buildSendPlan, sendFilter } from './plan';
 import { scanTree } from './scan';
 import { saveManifestSubtree } from './manifest';
@@ -18,6 +18,11 @@ import { probeNode } from './probe';
 import os from 'node:os';
 import { relJoin } from './paths';
 import { HASH_DIR, answerHashRequests, pruneHashRequests } from './agenthash';
+import { ASK_DIR, ASK_KINDS, answerAsks, pruneAsks, type AgentAsk } from './agentask';
+import { agentChecks, localShares } from './shares';
+import { UPDATE_DIR, finishOrder, putUpdate, readOrder, sha512Of, type UpdateOrder, type UpdateOutcome } from './agentupdate';
+import { compareVersions } from '../shared/version';
+import { MANIFEST_FILE } from '../shared/files';
 import { CancelToken, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
 
@@ -59,6 +64,29 @@ export interface Heartbeat {
   hashes?: boolean;
   /** answers block lists and applies packs with block deltas (see delta.ts) */
   blocks?: boolean;
+  /** the machine as it sees itself, for the sender's card */
+  role?: 'relay' | 'agent';
+  host?: string;
+  root?: string;
+  /** jobs being worked on now, and machines waiting in the delivery queue */
+  busy?: number;
+  pending?: number;
+  lastJob?: { at: number; ok: boolean; label?: string };
+  lastError?: { at: number; text: string };
+  /** the questions it answers in _SamSyncRelay/asks (see agentask.ts) */
+  asks?: string[];
+  /** installs a newer SamSync put on its share, and passes one on to its group */
+  updates?: boolean;
+  forwardUpdates?: boolean;
+  /** its network cards, for waking it up */
+  macs?: string[];
+}
+
+/** The MAC addresses of this computer's network cards (lower case, colons). */
+export function macAddresses(): string[] {
+  const out = new Set<string>();
+  for (const list of Object.values(os.networkInterfaces())) for (const i of list ?? []) if (!i.internal && i.family === 'IPv4' && i.mac && i.mac !== '00:00:00:00:00:00') out.add(i.mac.toLowerCase());
+  return [...out];
 }
 
 /** Reads the relay's heartbeat through a transport; null when there is none or it cannot be read. */
@@ -168,6 +196,14 @@ export interface RelayHost {
   /** Runs one of those commands here; true when it exited with 0. */
   runHook?(label: string, cmd: string): Promise<boolean>;
   notify?(title: string, body: string): void;
+  /** Answers a sender's question about this machine (see agentask.ts). */
+  answer?(ask: AgentAsk): Promise<unknown>;
+  /** Whether this machine installs a newer SamSync put on its share (Settings › Agent, and an installed app). */
+  acceptsUpdates?(): boolean;
+  /** No run is going on here (an update waits for that). */
+  idle?(): boolean;
+  /** Starts a SamSync Setup silently and quits; false when this copy cannot be updated so. */
+  installUpdate?(file: string): boolean;
 }
 
 /**
@@ -181,6 +217,10 @@ export class RelayService {
   private busy = new Set<string>();
   private hashBusy = new Set<string>();
   private hashWatcher: fs.FSWatcher | null = null;
+  private askBusy = new Set<string>();
+  private askWatcher: fs.FSWatcher | null = null;
+  private lastError?: { at: number; text: string };
+  private updating = false;
   private lastPrune = 0;
   private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
@@ -217,6 +257,8 @@ export class RelayService {
 
   start(): void {
     this.stop();
+    // before the folders below are made: a missing root is what keeps senders from seeing this machine
+    const rootExisted = fs.existsSync(this.localRoot);
     try {
       fs.mkdirSync(this.jobsDir, { recursive: true });
       fs.mkdirSync(this.resultsDir, { recursive: true });
@@ -230,8 +272,13 @@ export class RelayService {
       fs.mkdirSync(hashDir, { recursive: true });
       this.hashWatcher = fs.watch(hashDir, () => void this.answerHashes());
       this.hashWatcher.on('error', () => undefined);
+      // and the other questions: who holds a file, closing programs, drift checks
+      const askDir = path.join(this.localRoot, ...ASK_DIR.split('/'));
+      fs.mkdirSync(askDir, { recursive: true });
+      this.askWatcher = fs.watch(askDir, () => void this.answerAsks());
+      this.askWatcher.on('error', () => undefined);
     } catch (e) {
-      this.host.ctx().log.warn(t('Röle'), t('Röle klasörü açılamadı: {error}', { error: errMessage(e) }));
+      this.problem(t('Röle klasörü açılamadı: {error}', { error: errMessage(e) }));
     }
     this.timer = setInterval(() => void this.poll(), this.pollMs);
     this.beat = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
@@ -244,6 +291,26 @@ export class RelayService {
     void this.heartbeat();
     void this.poll();
     void this.refreshPending();
+    void this.selfCheck(rootExisted);
+  }
+
+  /** Records what went wrong last: this machine's card and the senders' cards (through the heartbeat) show it. */
+  private problem(text: string): void {
+    this.lastError = { at: Date.now(), text };
+    this.host.ctx().log.warn(this.role === 'relay' ? t('Röle') : t('Ajan'), text);
+    this.stats = { ...this.stats, lastError: this.lastError };
+    this.tell();
+  }
+
+  /** Whether senders can find SamSync here: the first local root exists and is the folder the share leads to. */
+  async selfCheck(rootExists = fs.existsSync(this.localRoot)): Promise<AgentCheck[]> {
+    // senders wrote through the share when SamSync's own files are there (a manifest, or jobs nobody picked up)
+    const sentTo = (dir: string) => fs.existsSync(path.join(dir, MANIFEST_FILE)) || fs.existsSync(path.join(dir, RELAY_FOLDER));
+    const checks = agentChecks(this.node, this.localRoot, rootExists, await localShares(), this.role === 'relay', sentTo);
+    for (const c of checks) this.host.ctx().log.warn(this.role === 'relay' ? t('Röle') : t('Ajan'), c.text);
+    this.stats = { ...this.stats, checks: checks.length ? checks : undefined };
+    this.tell();
+    return checks;
   }
 
   stop(): void {
@@ -257,6 +324,8 @@ export class RelayService {
     this.watcher = null;
     this.hashWatcher?.close();
     this.hashWatcher = null;
+    this.askWatcher?.close();
+    this.askWatcher = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
     fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
     if (this.stats.active) {
@@ -278,13 +347,37 @@ export class RelayService {
   /** Tells senders this machine is here (they read the file through the share). */
   async heartbeat(): Promise<void> {
     const file = path.join(this.localRoot, ALIVE_FILE);
-    const h: Heartbeat = { at: Date.now(), node: this.node.id, version: this.version, hashes: true, blocks: true };
+    const s = this.stats;
+    const updates = this.host.acceptsUpdates?.() ?? false;
+    const h: Heartbeat = {
+      at: Date.now(),
+      node: this.node.id,
+      version: this.version,
+      hashes: true,
+      blocks: true,
+      role: this.role,
+      host: os.hostname(),
+      root: this.localRoot,
+      busy: this.busy.size,
+      pending: s.pending?.length ?? 0,
+      lastJob: s.lastJobAt ? { at: s.lastJobAt, ok: s.lastOk !== false, label: s.lastLabel } : undefined,
+      lastError: this.lastError,
+      asks: [...ASK_KINDS],
+      updates,
+      forwardUpdates: updates && this.role === 'relay',
+      macs: macAddresses(),
+    };
     try {
       await fsp.writeFile(`${file}.tmp`, JSON.stringify(h));
       await fsp.rename(`${file}.tmp`, file);
     } catch {
       /* the share folder may be read-only for a moment */
     }
+  }
+
+  /** Answers the other questions of senders (see agentask.ts). */
+  answerAsks(): Promise<void> {
+    return answerAsks(this.localRoot, (ask) => (this.host.answer ? this.host.answer(ask) : Promise.reject(new Error(t('Bu soru burada yanıtlanmıyor')))), this.askBusy);
   }
 
   /** Answers the hash requests waiting in the relay folder (content comparisons of senders). */
@@ -295,6 +388,8 @@ export class RelayService {
   /** Test hook and timer body: looks for jobs once. */
   async poll(): Promise<void> {
     void this.answerHashes();
+    void this.answerAsks();
+    void this.checkUpdate();
     let names: string[];
     try {
       names = (await fsp.readdir(this.jobsDir)).filter((n) => n.endsWith('.json'));
@@ -311,6 +406,7 @@ export class RelayService {
       this.lastPrune = Date.now();
       void this.prune();
       void pruneHashRequests(this.localRoot);
+      void pruneAsks(this.localRoot);
     }
   }
 
@@ -361,11 +457,12 @@ export class RelayService {
     } catch (e) {
       if (e !== null) {
         log.error(t('Röle'), t('İş çalıştırılamadı: {error}', { error: errMessage(e) }), e);
+        this.lastError = { at: Date.now(), text: t('İş çalıştırılamadı: {error}', { error: errMessage(e) }) };
         result.targets.push(...job.targetIds.map((targetId): RelayTargetResult => ({ targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: errMessage(e) })));
       }
     }
     result.finishedAt = Date.now();
-    this.stats = { ...this.stats, jobs: this.stats.jobs + 1, lastJobAt: result.finishedAt, lastOk: result.targets.every((x) => x.status === 'ok'), lastLabel: job.label };
+    this.stats = { ...this.stats, jobs: this.stats.jobs + 1, lastJobAt: result.finishedAt, lastOk: result.targets.every((x) => x.status === 'ok'), lastLabel: job.label, lastError: this.lastError };
     this.tell();
     try {
       const tmp = path.join(this.resultsDir, `${id}.${newId()}.tmp`);
@@ -375,6 +472,81 @@ export class RelayService {
       await fsp.rm(path.join(this.jobsDir, `${id}.ack`), { force: true });
     } catch (e) {
       log.error(t('Röle'), t('Sonuç yazılamadı: {error}', { error: errMessage(e) }), e);
+      this.lastError = { at: Date.now(), text: t('Sonuç yazılamadı: {error}', { error: errMessage(e) }) };
+    }
+  }
+
+  // ------------------------------------------------------------------ updates sent over the network
+
+  /** An update order in the relay folder (see agentupdate.ts): checked, passed on, installed when idle. */
+  async checkUpdate(): Promise<void> {
+    if (this.updating) return;
+    const order = await readOrder(this.localRoot);
+    if (!order) return;
+    this.updating = true;
+    try {
+      await this.applyUpdate(order);
+    } catch (e) {
+      this.problem(t('Güncelleme uygulanamadı: {error}', { error: errMessage(e) }));
+      await finishOrder(this.localRoot, order, { id: order.id, at: Date.now(), ok: false, version: order.version, error: errMessage(e) });
+    } finally {
+      this.updating = false;
+    }
+  }
+
+  private async applyUpdate(order: UpdateOrder): Promise<void> {
+    const ctx = this.host.ctx();
+    const out: UpdateOutcome = { id: order.id, at: Date.now(), ok: false, version: order.version };
+    const fail = async (error: string) => {
+      this.problem(error);
+      await finishOrder(this.localRoot, order, { ...out, error });
+    };
+    if (!this.host.acceptsUpdates?.()) return fail(t('Bu makine ağdan güncelleme kabul etmiyor (Ayarlar › Ajan)'));
+    const file = path.join(this.localRoot, ...UPDATE_DIR.split('/'), path.basename(order.file));
+    if (!fs.existsSync(file) || (await sha512Of(file)) !== order.sha512) return fail(t('Gelen kurulum dosyası eksik ya da bozuk; güncelleme yapılmadı'));
+    const sender = order.from ? (ctx.config.nodes.find((n) => n.id === order.from)?.name ?? order.from) : '?';
+    // the machines of the group get it from here, over their own network
+    if (order.forward?.length) {
+      out.forwarded = {};
+      for (const id of order.forward) {
+        const node = ctx.config.nodes.find((n) => n.id === id);
+        if (!node) {
+          out.forwarded[id] = t('yapılandırmada yok');
+          continue;
+        }
+        try {
+          const tgt = await transportForNode(ctx, node);
+          try {
+            await putUpdate(tgt, { file, version: order.version, sha512: order.sha512 }, { install: true, from: order.from });
+          } finally {
+            await tgt.close().catch(() => undefined);
+          }
+          out.forwarded[id] = 'ok';
+          ctx.log.info(t('Röle'), t('{name}: SamSync {version} kurulumu iletildi', { name: node.name, version: order.version }));
+        } catch (e) {
+          out.forwarded[id] = errMessage(e);
+          ctx.log.warn(t('Röle'), t('{name}: SamSync {version} kurulumu iletilemedi: {error}', { name: node.name, version: order.version, error: errMessage(e) }));
+        }
+      }
+    }
+    if (!order.install || compareVersions(order.version, this.version ?? '0') <= 0) {
+      await finishOrder(this.localRoot, order, { ...out, ok: true });
+      return;
+    }
+    // nothing may be half done when SamSync quits for the installer: wait for the jobs and runs here to end
+    const until = Date.now() + 3600_000;
+    while (this.busy.size || !(this.host.idle?.() ?? true)) {
+      if (Date.now() > until) return fail(t('Makine bir saat boyunca boşa çıkmadı; SamSync {version} kurulmadı', { version: order.version }));
+      await sleep(5000);
+    }
+    const copy = path.join(os.tmpdir(), `samsync-update-${order.version}-${newId()}.exe`);
+    await fsp.copyFile(file, copy);
+    // the order goes first, so the new version does not take it again
+    await finishOrder(this.localRoot, order, { ...out, ok: true, installing: true });
+    ctx.log.info(t('Ajan'), t('SamSync {version} kuruluyor ({from} gönderdi)', { version: order.version, from: sender }));
+    if (!this.host.installUpdate?.(copy)) {
+      await fsp.rm(copy, { force: true }).catch(() => undefined);
+      this.problem(t('Bu kopya kendini güncelleyemez (taşınabilir ya da geliştirme sürümü)'));
     }
   }
 
@@ -560,6 +732,7 @@ export class RelayService {
         own.failedOps = d.results.filter((r) => !r.ok).map((r) => r.opId);
         const held = d.results.filter((r) => !r.ok && r.inUse).map((r) => r.opId);
         if (held.length) own.inUseOps = held;
+        own.backedUpOps = d.results.filter((r) => r.ok && r.backedUp).map((r) => r.opId);
         own.backupPath = tg?.backupPath;
       }
     } catch (e) {
@@ -567,6 +740,7 @@ export class RelayService {
       own.error = errMessage(e);
       own.opsFailed = job.pack!.ops.length;
       this.host.ctx().log.error(t('Röle'), t('Paket uygulanamadı: {error}', { error: errMessage(e) }), e);
+      this.lastError = { at: Date.now(), text: t('Paket uygulanamadı: {error}', { error: errMessage(e) }) };
     } finally {
       await fsp.rm(packFile, { force: true }).catch(() => undefined);
     }

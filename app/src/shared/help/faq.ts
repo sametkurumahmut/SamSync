@@ -200,6 +200,83 @@ export const FAQ: FaqEntry[] = [
   },
   // ---- send
   {
+    id: 'agent-status',
+    topic: 'relay',
+    q: { tr: 'Makine kartında "ajan durmuş", "eski" ya da bir uyarı işareti ne demek?', en: 'What do "agent stopped", "old" or a warning sign on a machine card mean?' },
+    a: {
+      tr: 'Kart o makinedeki SamSync’in kalp atışını okur. **ajan 2.4.2** orada çalışan sürümdür; bu kopyadan eskiyse sarı ve *eski* yazar, oradan güncellenebilir. **ajan durmuş**: SamSync orada bir süre önce çalışıyordu ama o zamandan beri yanıt vermiyor (kapanmış ya da takılmış). Uyarı işaretinin üstüne gelince oradaki son hata görünür. O makinenin kendisinde "Bu makine" kartı, ilk yerel kök yoksa ya da paylaşım başka bir klasörü gösteriyorsa uyarır; o zaman gönderenler oradaki SamSync’i göremez, **Düzelt** paylaşımın klasörünü ilk yerel kök yapar.',
+      en: 'The card reads the heartbeat of SamSync on that machine. **agent 2.4.2** is the version running there; when it is older than this copy it is amber and says *old*, and it can be updated from here. **agent stopped**: SamSync was running there a while ago but has not answered since (it closed or hung). Hovering the warning sign shows the last error there. On the machine itself, this machine’s card warns when the first local root does not exist or the share leads to another folder; senders then cannot see SamSync there, and **Fix** makes the share’s folder the first local root.',
+    },
+    keywords: ['ajan', 'agent', 'eski', 'old', 'durmuş', 'stopped', 'sürüm', 'version', 'röle kapalı', 'relay off', 'yerel kök', 'local root', 'paylaşım', 'share', 'düzelt', 'fix'],
+    page: 'targets',
+  },
+  {
+    id: 'agent-update',
+    topic: 'relay',
+    q: { tr: 'Öbür makinelerdeki SamSync’i buradan güncelleyebilir miyim?', en: 'Can I update SamSync on the other machines from here?' },
+    a: {
+      tr: 'Evet, o makinede Ayarlar › Ajan › **Ağdan güncellemeyi kabul et** açıksa (varsayılan kapalı). Hedefler sayfasında **Ajanları güncelle (n)** ya da karttaki ok, bu sürümün kurulumunu makinenin paylaşımına bırakır; oradaki SamSync dosyayı denetler, çalışan iş kalmayınca sessizce kurar ve yeniden açılır. İnternet olmayan ağlar için: kurulum bu bilgisayardan gider, gerekirse bir kez indirilir ya da bir SamSync-Setup dosyası seçilir. Bir rölenin grubundaki makineler kurulumu röleden alır. Paylaşıma yazabilen herkes kurulum bırakabileceği için bu seçeneği yalnızca güvendiğiniz ağda açın.',
+      en: 'Yes, when Settings › Agent › **Accept updates over the network** is on there (off by default). **Update agents (n)** on the Targets page, or the arrow on a card, leaves this version’s setup on the machine’s share; SamSync there checks the file, installs it silently once nothing is running and starts again. For networks without internet: the setup goes from this computer, downloaded once if need be, or a SamSync-Setup file can be picked. The machines of a relay’s group get it from the relay. Anyone who can write to the share could leave a setup there, so turn this on only on a network you trust.',
+    },
+    keywords: ['güncelle', 'update', 'kurulum', 'setup', 'install', 'sürüm', 'version', 'internet yok', 'offline', 'ajan', 'agent'],
+    page: 'targets',
+  },
+  {
+    id: 'file-holders',
+    topic: 'trouble',
+    q: { tr: 'Bir dosya "kullanımda" diye yazılamadı; hangi program tutuyor?', en: 'A file could not be written because it is in use; which program holds it?' },
+    a: {
+      tr: 'Çalıştırma penceresi, böyle biten bir gönderimde her makineye sorar ve dosyaları açık tutan programları işlem numaraları ve dosyalarıyla listeler (bu makinede doğrudan; başka makinede orada SamSync çalışıyorsa). **Kapat ve tekrar dene** o programları kapatıp dosyaları yeniden yazar. Başka bir makinede bunun için orada Ayarlar › Ajan › **Gönderenler dosyayı tutan programı kapatabilsin** açık olmalıdır (varsayılan kapalı); sistemin kendi programları ve Explorer hiç kapatılmaz. Kapatmadan önce o programdaki kaydedilmemiş işi düşünün.',
+      en: 'For a send that ended so, the run window asks each machine and lists the programs holding the files with their process ids and files (on this machine directly; on another one when SamSync runs there). **Close and retry** closes those programs and writes the files again. On another machine this needs Settings › Agent › **Let senders close the program holding a file** on there (off by default); the system’s own programs and Explorer are never closed. Mind unsaved work in that program before closing it.',
+    },
+    keywords: ['kullanımda', 'in use', 'kilitli', 'locked', 'program', 'process', 'kapat', 'close', 'dll', 'tutuyor', 'holds'],
+    page: 'history',
+  },
+  {
+    id: 'machine-folder',
+    topic: 'send',
+    q: { tr: 'Bir dosyanın bir makineye farklı gitmesini nasıl sağlarım?', en: 'How do I give one machine a different version of a file?' },
+    a: {
+      tr: 'Ayarlar › Kopyalama › **Makineye özel klasör** alanına bir ad yazın, örneğin `_machines`. Gönderdiğiniz klasörün en üstüne o adda bir klasör koyun; içindeki her alt klasör makinenin kimliği, adı ya da adresiyle (ya da bir grubun adıyla) adlandırılır: `_machines\\PC-1\\app.ini` yalnızca PC-1’e, ortak `app.ini` yerine gider. Grup klasörü grubun bütün makinelerine gider, makinenin kendi klasörü onun üstüne gelir. Klasörün kendisi hiç gönderilmez; inceleme bu dosyaları *bu makineye özel* diye işaretler, ayna kipi onları silmez. Alan boşken (varsayılan) özellik kapalıdır.',
+      en: 'Type a name into Settings › Copy › **Machine folder**, say `_machines`. Put a folder by that name at the top of the folder you send; each folder in it is named after a machine’s id, name or address (or a group’s name): `_machines\\PC-1\\app.ini` goes to PC-1 only, in place of the common `app.ini`. A group’s folder goes to every machine of the group, and a machine’s own folder comes over it. The folder itself is never sent; the review marks those files *for this machine only*, and a mirror does not delete them. With the field empty (the default) this is off.',
+    },
+    keywords: ['makineye özel', 'machine folder', 'tek makine', 'one machine', 'farklı', 'different', 'ayar dosyası', 'config file', 'katman', 'overlay', '_machines', 'grup', 'group'],
+    page: 'settings',
+  },
+  {
+    id: 'drift',
+    topic: 'targets',
+    q: { tr: 'Bir makinede gönderimden sonra dosyalar elle değiştirildiyse nasıl anlarım?', en: 'How can I tell whether files on a machine were changed by hand after a send?' },
+    a: {
+      tr: 'Hedefler › Makine envanteri › **Sapma denetle**. Her makinenin gönderilmiş klasörleri SamSync’in son gönderimde bıraktığı manifestle karşılaştırılır: değişen, eklenen ve silinen dosyalar makine ve klasör başına listelenir. SamSync çalışan makine kendi diskine bakar, ötekiler paylaşım üzerinden gezilir. Yandaki seçim denetimi saatte bir, 6 saatte bir ya da günde bir kendiliğinden yapar (varsayılan kapalı); bulduğu masaüstüne ve ayarlıysa ekip kanalına gider. Düzeltmek için aynı kaynakları yeniden göndermek yeter.',
+      en: 'Targets › Machine inventory › **Check drift**. Each machine’s sent folders are compared with the manifest SamSync left at the last send: the files changed, added and removed are listed per machine and folder. A machine running SamSync looks at its own disk; the others are walked over the share. The selector next to it runs the check by itself every hour, every 6 hours or once a day (off by default); what it finds goes to the desktop and, when set, to the team’s channel. Sending the same sources again puts them right.',
+    },
+    keywords: ['sapma', 'drift', 'elle', 'by hand', 'değişti', 'changed', 'manifest', 'denetim', 'check', 'fark', 'difference'],
+    page: 'targets',
+  },
+  {
+    id: 'wake',
+    topic: 'targets',
+    q: { tr: 'Kapalı bir makineyi buradan açabilir miyim?', en: 'Can I turn on a machine that is off from here?' },
+    a: {
+      tr: 'Ağ kartı Wake-on-LAN destekliyorsa ve bu açıksa (BIOS ve sürücü ayarı), evet: kapalı makinenin kartındaki **Uyandır** ya da grup başlığındaki **Kapalıları uyandır** açma paketini bu bilgisayarın bütün ağlarına gönderir. Düğme, makinenin MAC adresi bilindiğinde görünür: makine açıkken bir kez yoklanınca kendiliğinden öğrenilir (SamSync orada çalışıyorsa kalp atışından, değilse bu bilgisayarın ARP tablosundan) ya da makine düzenleyicisine yazılır. Başka bir alt ağdaki makineye paket yönlendiriciden geçmeyebilir.',
+      en: 'When its network card supports Wake-on-LAN and it is turned on (a BIOS and driver setting), yes: **Wake up** on the card of a machine that is off, or **Wake the ones that are off** on a group’s heading, sends the power-on packet on every network of this computer. The button shows once the machine’s MAC address is known: it is learned by itself when the machine is probed while on (from SamSync’s heartbeat there, or else from this computer’s ARP table), or it can be typed into the machine editor. A machine on another subnet may not get the packet through the router.',
+    },
+    keywords: ['uyandır', 'wake', 'wake-on-lan', 'wol', 'aç', 'power on', 'kapalı', 'off', 'mac'],
+    page: 'targets',
+  },
+  {
+    id: 'rollback',
+    topic: 'backup',
+    q: { tr: 'Gönderim bir makinede yarıda kalırsa o makine eski hâline dönebilir mi?', en: 'Can a machine go back to how it was when a send fails partway on it?' },
+    a: {
+      tr: 'Evet: gönderim seçeneklerinde **Hata olursa makineyi geri al** açıkken bir makinede gönderim yarıda kalırsa (bazı dosyalar yazılamazsa) o makinede yazılanlar geri alınır, değiştirilen ve silinen dosyalar yedekten geri gelir. Bunun için yedek kendiliğinden açılır; geri alma Geçmiş’te ayrı bir çalıştırma olarak görünür. Hiç ulaşılamayan makinede geri alınacak bir şey yoktur; bir rölenin ilettiği makineler buradan geri alınmaz.',
+      en: 'Yes: with **Undo a machine on failure** on in the send options, when the send fails partway on a machine (some files could not be written), what was written there is taken back, and the replaced and deleted files come back from the backup. The backup is turned on for this by itself; the undo shows in History as a run of its own. A machine that was never reached has nothing to undo, and the machines a relay sends on to are not undone from here.',
+    },
+    keywords: ['geri al', 'undo', 'rollback', 'ya hep ya hiç', 'all or nothing', 'yarıda', 'partway', 'hata', 'failure', 'yedek', 'backup'],
+    page: 'send',
+  },
+  {
     id: 'list-options',
     topic: 'send',
     q: { tr: 'Her liste kendi seçenekleriyle gönderebilir mi?', en: 'Can each list send with options of its own?' },

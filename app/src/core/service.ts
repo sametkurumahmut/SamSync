@@ -4,6 +4,9 @@ import path from 'node:path';
 import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
 import type { FileTrace,
+  AgentUpdateResult,
+  HolderReport,
+  DriftReport,
   DiscoveredHost,
   DirListing,
   WebUiSettings,
@@ -55,13 +58,13 @@ import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assist
 import { HashCache } from './hashcache';
 import { PendingSends } from './pending';
 import { probeNode } from './probe';
-import { runMessage, sendNotification, wantsNotification } from './notifications';
+import { driftMessage, runMessage, sendNotification, wantsNotification } from './notifications';
 import { quickIdOf } from './automation';
 import { baseSendOptions } from '../shared/options';
 import { readManifest } from './manifest';
 import { startRun, type ExecGroup, type ExecSettings, type RunHandle } from './executor';
 import { probeNodes } from './probe';
-import { transportForNode, transportForEndpoint, nodeRootLabel, type Transport } from './transport';
+import { FsTransport, transportForNode, transportForEndpoint, nodeRootLabel, type Transport } from './transport';
 import { mapSource, normalizeAbs, pathKey } from './paths';
 import { fsSources } from '../shared/sources';
 import { runLocalCommand } from './command';
@@ -73,7 +76,13 @@ import { findBackups, listBackupSets, browseBackup, restoreGroups, restoreRunGro
 import { findNode } from './context';
 import crypto from 'node:crypto';
 import { CancelToken, errMessage, formatBytes, mapLimit, newId, stamp, withTimeout } from './util';
-import { RelayService } from './relay';
+import { RelayService, heartbeatFresh, readHeartbeat } from './relay';
+import { driftFilter, driftOf, driftTime, type DriftResult } from './drift';
+import { drifted, driftCounts } from '../shared/drift';
+import { arpTable, broadcastAddresses, normalizeMac, subnetBroadcast, wake } from './wol';
+import { installerFromFile, putUpdate, type Installer } from './agentupdate';
+import { askAgent } from './agentask';
+import { HOLDERS_MAX_FILES, closePrograms, holdersUnder } from './holders';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
 import { convertWizardState, findWizardStates, isWizardState } from './wizardImport';
@@ -120,6 +129,11 @@ export interface HostAdapter {
   setChrome?(opts: { theme: 'system' | 'light' | 'dark'; bg: string; fg: string; zoom?: number }): void;
   /** Tray, close-to-tray and launch-at-login follow these settings. */
   applySettings?(s: LocalSettings, automation: AutomationState): void;
+  /** The Windows Setup of this version, for updating other machines (kept, from the update folder or downloaded once). */
+  ownInstaller?(onProgress?: (done: number, total: number) => void): Promise<Installer>;
+  /** This copy can run a Setup silently and restart on the new version (the installed Windows app). */
+  canInstallUpdates?(): boolean;
+  installUpdate?(file: string): boolean;
 }
 
 async function readCapped(stream: NodeJS.ReadableStream, cap = MAX_TEXT_DIFF_BYTES + 1): Promise<Buffer> {
@@ -280,6 +294,8 @@ export class Service implements Api {
     this.syncRelay();
     await this.pending.load();
     this.pending.start();
+    // the drift check on schedule, when one is set (Targets › Machine inventory)
+    setInterval(() => void this.driftTick(), 10 * 60_000).unref();
   }
 
   private async loadConfigFrom(file: string) {
@@ -615,9 +631,75 @@ export class Service implements Api {
   async probe(nodeIds?: string[]) {
     const nodes = this.config.nodes.filter((n) => n.enabled && n.id !== this.identity.node?.id && (!nodeIds || nodeIds.includes(n.id)));
     const results = await probeNodes(this.config, nodes);
-    for (const r of results) this.lastProbes.set(r.nodeId, r);
+    await this.learnMacs(results, nodes);
+    for (const r of results) {
+      const n = nodes.find((x) => x.id === r.nodeId);
+      const macs = [...new Set([n?.mac, ...(this.macs.get(r.nodeId) ?? [])].filter((m): m is string => !!m))];
+      if (macs.length) r.macs = macs;
+      this.lastProbes.set(r.nodeId, r);
+    }
     this.host.emit({ type: 'probe', results });
     return results;
+  }
+
+  // ------------------------------------------------------------ waking machines up
+
+  /** node id -> MAC addresses learned while the machine was on (userData/macs.json). */
+  private macs = new Map<string, string[]>();
+  private macsLoaded = false;
+  private get macsFile() {
+    return path.join(this.host.userDataPath, 'macs.json');
+  }
+
+  /** From the heartbeats of SamSync on the machines, and the ARP table for the others that answered. */
+  private async learnMacs(results: ProbeResult[], nodes: NodeConfig[]): Promise<void> {
+    if (!this.macsLoaded) {
+      this.macsLoaded = true;
+      try {
+        for (const [id, list] of Object.entries((await readJson(this.macsFile)) as Record<string, string[]>)) if (Array.isArray(list)) this.macs.set(id, list);
+      } catch {
+        /* none learned yet */
+      }
+    }
+    let changed = false;
+    const set = (id: string, list: string[]) => {
+      const clean = [...new Set(list.map(normalizeMac).filter((m): m is string => !!m))].sort();
+      if (!clean.length || JSON.stringify(clean) === JSON.stringify(this.macs.get(id) ?? [])) return;
+      this.macs.set(id, clean);
+      changed = true;
+    };
+    for (const r of results) if (r.ok && r.agent?.alive && r.agent.macs?.length) set(r.nodeId, r.agent.macs);
+    // the others that answered: this computer talked to them just now, so its ARP table knows their cards
+    const ask = results.filter((r) => r.ok && !this.macs.has(r.nodeId) && !(r.agent?.alive && r.agent.macs?.length));
+    if (ask.length) {
+      const arp = await arpTable().catch(() => new Map<string, string>());
+      for (const r of ask) {
+        const mac = arp.get(nodes.find((n) => n.id === r.nodeId)?.address.trim() ?? '');
+        if (mac) set(r.nodeId, [mac]);
+      }
+    }
+    if (changed) await writeJsonAtomic(this.macsFile, Object.fromEntries(this.macs)).catch(() => undefined);
+  }
+
+  async wake(nodeIds: string[]): Promise<{ nodeId: string; ok: boolean; error?: string }[]> {
+    const out: { nodeId: string; ok: boolean; error?: string }[] = [];
+    for (const id of nodeIds) {
+      const n = findNode(this.config, id);
+      const macs = [...new Set([n?.mac, ...(this.macs.get(id) ?? [])].filter((m): m is string => !!m))];
+      if (!n || !macs.length) {
+        out.push({ nodeId: id, ok: false, error: t('MAC adresi bilinmiyor: makine açıkken bir kez yoklanınca öğrenilir ya da makineyi düzenleyip girin') });
+        continue;
+      }
+      try {
+        const own = subnetBroadcast(n.address);
+        await wake(macs, [...new Set([...broadcastAddresses(), ...(own ? [own] : [])])]);
+        out.push({ nodeId: id, ok: true });
+        this.log.info(t('Uyandırma'), t('{name}: uyandırma paketi gönderildi ({macs})', { name: n.name, macs: macs.join(', ') }));
+      } catch (e) {
+        out.push({ nodeId: id, ok: false, error: errMessage(e) });
+      }
+    }
+    return out;
   }
 
   async describeSources(paths: string[], count = true, secrets?: Record<string, string>, rels?: Record<string, string>) {
@@ -729,6 +811,212 @@ export class Service implements Api {
     this.keepGroups(handle.id, groups, s);
     this.track(handle, true);
     return handle.id;
+  }
+
+  /**
+   * Puts the Setup of this version on the machines' shares; SamSync there installs it once idle. The machines of a
+   * group whose relay passes updates on get it from the relay, so the slow link carries it once.
+   */
+  async updateAgents(nodeIds: string[], taskId: string, installer?: string): Promise<AgentUpdateResult[]> {
+    const cancel = new CancelToken();
+    this.tasks.set(taskId, cancel);
+    const progress = (message: string, done?: number, total?: number) => this.host.emit({ type: 'task-progress', taskId, message, done, total });
+    try {
+      let inst: Installer;
+      if (installer) inst = await installerFromFile(installer);
+      else if (this.host.ownInstaller) inst = await this.host.ownInstaller((done, total) => progress(t('Kurulum dosyası indiriliyor'), done, total || undefined));
+      else throw new Error(t('Bu kopyanın kurulum dosyası yok; bir SamSync-Setup dosyası seçin'));
+      const ctx = this.ctx();
+      const nodes = nodeIds.map((id) => findNode(this.config, id)).filter((n): n is NodeConfig => !!n && n.id !== ctx.localNodeId);
+      const forwarder = (n: NodeConfig) => {
+        if (n.relay || !n.group) return undefined;
+        return this.config.nodes.find((r) => {
+          const a = this.lastProbes.get(r.id)?.agent;
+          return r.relay && r.enabled && r.id !== n.id && r.group?.toLowerCase() === n.group!.toLowerCase() && a?.alive && a.forwardUpdates;
+        });
+      };
+      const direct: NodeConfig[] = [];
+      const via = new Map<string, NodeConfig[]>();
+      for (const n of nodes) {
+        const r = forwarder(n);
+        if (r) via.set(r.id, [...(via.get(r.id) ?? []), n]);
+        else direct.push(n);
+      }
+      // a relay that is up to date itself still passes the file on
+      const dests = [
+        ...direct.map((n) => ({ node: n, install: true, forward: via.get(n.id) })),
+        ...[...via.keys()].filter((id) => !direct.some((n) => n.id === id)).map((id) => ({ node: findNode(this.config, id)!, install: false, forward: via.get(id) })),
+      ];
+      const size = (await fsp.stat(inst.file)).size;
+      const out: AgentUpdateResult[] = [];
+      for (const [i, d] of dests.entries()) {
+        cancel.throwIfCancelled();
+        const forward = d.forward?.map((n) => n.id);
+        try {
+          const tgt = await transportForNode(ctx, d.node);
+          try {
+            await putUpdate(tgt, inst, { install: d.install, forward, from: ctx.localNodeId }, (bytes) => progress(t('{name}: SamSync {version} gönderiliyor', { name: d.node.name, version: inst.version }), i * size + bytes, dests.length * size));
+          } finally {
+            await tgt.close().catch(() => undefined);
+          }
+          if (d.install) out.push({ nodeId: d.node.id, ok: true });
+          for (const id of forward ?? []) out.push({ nodeId: id, ok: true, via: d.node.id });
+          this.log.info(t('Güncelleme'), t('{name}: SamSync {version} kurulumu bırakıldı{via}', { name: d.node.name, version: inst.version, via: forward?.length ? ` (+${forward.length} ${t('makineye iletilecek')})` : '' }));
+        } catch (e) {
+          if (d.install) out.push({ nodeId: d.node.id, ok: false, error: errMessage(e) });
+          for (const id of forward ?? []) out.push({ nodeId: id, ok: false, error: errMessage(e), via: d.node.id });
+          this.log.warn(t('Güncelleme'), t('{name}: kurulum dosyası gönderilemedi: {error}', { name: d.node.name, error: errMessage(e) }));
+        }
+      }
+      return out;
+    } finally {
+      this.tasks.delete(taskId);
+    }
+  }
+
+  private drift: DriftReport[] | null = null;
+  private driftRunning = false;
+
+  async lastDrift(): Promise<DriftReport[] | null> {
+    return this.drift;
+  }
+
+  async driftCheck(nodeIds: string[] | null, taskId: string): Promise<DriftReport[]> {
+    const cancel = new CancelToken();
+    this.tasks.set(taskId, cancel);
+    try {
+      const ctx = this.ctx();
+      const nodes = this.config.nodes.filter((n) => n.enabled && (!nodeIds || nodeIds.includes(n.id)));
+      const filter = driftFilter(ctx);
+      const time = driftTime(ctx);
+      let done = 0;
+      const reports = await mapLimit(nodes, 4, async (n): Promise<DriftReport> => {
+        const r: DriftReport = { nodeId: n.id, name: n.name, checkedAt: Date.now(), reachable: true, manifest: false, subtrees: [], changed: 0, added: 0, removed: 0 };
+        let tgt: Transport | null = null;
+        try {
+          const self = n.id === ctx.localNodeId;
+          if (!self) {
+            const p = await probeNode(this.config, n, 1500, false);
+            if (!p.ok) {
+              r.reachable = false;
+              r.error = p.detail;
+              return r;
+            }
+          }
+          tgt = await transportForNode(ctx, n);
+          // SamSync there walks its own disk: fast, and nothing comes over the network but the answer
+          const beat = !self && tgt.kind === 'fs' ? await readHeartbeat(tgt).catch(() => null) : null;
+          const byAgent = !!beat && heartbeatFresh(beat) && !!beat.asks?.includes('drift');
+          const res = byAgent ? await askAgent<DriftResult>(tgt, { kind: 'drift' }, { answerMs: 15 * 60_000, cancelled: () => cancel.cancelled }) : await driftOf(tgt, filter, time, this.config.copy.backupFolderName, cancel);
+          r.manifest = res.manifest;
+          r.subtrees = res.subtrees;
+          r.byAgent = byAgent || undefined;
+          for (const s of r.subtrees) {
+            r.changed += s.counts.changed;
+            r.added += s.counts.added;
+            r.removed += s.counts.removed;
+          }
+        } catch (e) {
+          if (cancel.cancelled) throw e;
+          r.error = errMessage(e);
+        } finally {
+          await tgt?.close().catch(() => undefined);
+          done++;
+          this.host.emit({ type: 'task-progress', taskId, message: t('{done} / {total} makine denetlendi', { done, total: nodes.length }), done, total: nodes.length });
+        }
+        return r;
+      });
+      this.drift = reports;
+      this.host.emit({ type: 'drift', reports });
+      const found = reports.filter(drifted);
+      this.log.info(t('Sapma'), t('{n} makine denetlendi; {d} makinede son gönderimden sonra değişiklik var', { n: reports.length, d: found.length }));
+      for (const r of found) this.log.warn(t('Sapma'), `${r.name}: ${driftCounts(r)}`);
+      return reports;
+    } finally {
+      this.tasks.delete(taskId);
+    }
+  }
+
+  /** The scheduled drift check: when it is due, every machine; changes go to the desktop and the team's channel. */
+  private async driftTick(): Promise<void> {
+    const hours = this.settings.driftCheckHours ?? 0;
+    if (!hours || this.driftRunning || Date.now() - (this.settings.driftLastAt ?? 0) < hours * 3600_000) return;
+    this.driftRunning = true;
+    try {
+      this.settings.driftLastAt = Date.now();
+      await this.persistSettings();
+      const reports = await this.driftCheck(null, newId('drift-'));
+      const found = reports.filter(drifted);
+      if (!found.length) return;
+      this.host.notify?.(t('Sapma: {n} makinede değişiklik', { n: found.length }), found.map((r) => `${r.name}: ${driftCounts(r)}`).join('\n'));
+      const ns = this.settings.notifications;
+      if (ns && (ns.webhookUrl || (ns.telegramToken && ns.telegramChatId))) {
+        void sendNotification(ns, driftMessage(reports, { host: os.hostname(), user: whoami(), version: this.host.appVersion })).then((r) => {
+          for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
+        });
+      }
+    } catch (e) {
+      this.log.warn(t('Sapma'), errMessage(e));
+    } finally {
+      this.driftRunning = false;
+    }
+  }
+
+  /** The files of a finished run that a program held open, by machine. */
+  private async inUseOf(runId: string): Promise<{ detail: RunDetail; byKey: Map<string, string[]> }> {
+    const detail = await this.history.get(runId);
+    if (!detail) throw new Error(t('Çalıştırma bulunamadı'));
+    const byKey = new Map<string, string[]>();
+    for (const r of detail.results) if (!r.ok && r.inUse) byKey.set(r.key, [...(byKey.get(r.key) ?? []), r.rel]);
+    return { detail, byKey };
+  }
+
+  /** A transport to a machine of a run (also a plain folder of a watch, kept with the run's operations). */
+  private async runTransport(runId: string, key: string): Promise<Transport> {
+    const node = findNode(this.config, key) ?? this.recentGroups.get(runId)?.groups.find((g) => g.key === key)?.node;
+    if (!node) throw new Error(t('Hedef bulunamadı'));
+    return transportForNode(this.ctx(), node);
+  }
+
+  /** A folder on this computer (not a share): its programs are looked at here, not by SamSync elsewhere. */
+  private static localFolder(tgt: Transport): string | null {
+    return tgt instanceof FsTransport && !/^[\\/]{2}/.test(tgt.root) ? tgt.root : null;
+  }
+
+  async whoHolds(runId: string): Promise<HolderReport[]> {
+    const { detail, byKey } = await this.inUseOf(runId);
+    return mapLimit([...byKey], 4, async ([key, rels]): Promise<HolderReport> => {
+      const report: HolderReport = { key, title: detail.targets.find((x) => x.key === key)?.title ?? key, programs: [], inUse: rels.length, asked: Math.min(rels.length, HOLDERS_MAX_FILES), canClose: false };
+      let tgt: Transport | null = null;
+      try {
+        tgt = await this.runTransport(runId, key);
+        const local = Service.localFolder(tgt);
+        const r = local ? { programs: await holdersUnder(local, rels), canClose: true } : await askAgent<{ programs: HolderReport['programs']; canClose: boolean }>(tgt, { kind: 'holders', rels: rels.slice(0, HOLDERS_MAX_FILES) }, { answerMs: 90_000 });
+        report.programs = r.programs ?? [];
+        report.canClose = !!r.canClose;
+      } catch (e) {
+        report.error = errMessage(e);
+      } finally {
+        await tgt?.close().catch(() => undefined);
+      }
+      return report;
+    });
+  }
+
+  async closeHolders(runId: string, key: string, pids: number[]): Promise<{ closed: number; failed: string[] }> {
+    const { byKey } = await this.inUseOf(runId);
+    const rels = (byKey.get(key) ?? []).slice(0, HOLDERS_MAX_FILES);
+    if (!rels.length) return { closed: 0, failed: [] };
+    const tgt = await this.runTransport(runId, key);
+    try {
+      const local = Service.localFolder(tgt);
+      // only the programs that hold one of these files now are closed, whatever ids came with the request
+      const r = local ? await closePrograms((await holdersUnder(local, rels)).filter((h) => pids.includes(h.pid))) : await askAgent<Awaited<ReturnType<typeof closePrograms>>>(tgt, { kind: 'close', rels, pids }, { answerMs: 60_000 });
+      this.log.info(t('Kullanımdakiler'), t('{key}: {n} program kapatıldı{failed}', { key, n: r.closed.length, failed: r.failed.length ? ` • ${r.failed.map((f) => `${f.name}: ${f.error}`).join(', ')}` : '' }));
+      return { closed: r.closed.length, failed: r.failed.map((f) => `${f.name} (${f.pid}): ${f.error}`) };
+    } finally {
+      await tgt.close().catch(() => undefined);
+    }
   }
 
   private execSettings(label: string, origin: SendRequest['origin'], o: Partial<SendRequest['options']>, extra: Partial<ExecSettings> = {}): ExecSettings {
@@ -846,7 +1134,8 @@ export class Service implements Api {
         rootLabel: tp.root,
         open: () => transportForNode(ctx, node),
         node,
-        backup: tp.backup,
+        // all or nothing needs the old files to put back
+        backup: tp.backup || !!req.options.rollbackOnFailure,
         ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
         relay: behind || takesPack ? { targets: behind ?? [], job: relayJob(tp.targetId) } : undefined,
         manifest: this.planScans.get(plan.id)?.get(tp.targetId),
@@ -866,8 +1155,33 @@ export class Service implements Api {
     });
     const handle = startRun(ctx, groups, s);
     this.keepGroups(handle.id, groups, s);
-    this.track(handle, overrides.notify ?? opts.notify !== false, (d) => this.relayFallback(plan, d, overrides), overrides.channel !== false);
+    this.track(
+      handle,
+      overrides.notify ?? opts.notify !== false,
+      async (d) => {
+        await this.rollbackFailed(d, opts);
+        await this.relayFallback(plan, d, overrides);
+      },
+      overrides.channel !== false,
+    );
     return handle;
+  }
+
+  /**
+   * All or nothing (a send option): a machine where the send went only partly is put back as it was before it, from
+   * the backup the send took there. A machine that was never reached has nothing to put back.
+   */
+  private async rollbackFailed(d: RunDetail, o: Partial<SendOptions>): Promise<void> {
+    if (!o.rollbackOnFailure || d.dryRun) return;
+    const failed = d.targets.filter((x) => (x.status === 'partial' || x.status === 'failed') && !x.relayUnanswered);
+    if (!failed.length) return;
+    const ctx = this.ctx();
+    const groups = await restoreRunGroups(ctx, { ...d, targets: failed });
+    if (!groups.length) return;
+    this.log.warn(t('Geri alma'), t('{label}: hata olan {names} gönderim öncesine döndürülüyor', { label: d.label, names: groups.map((g) => g.title).join(', ') }));
+    const s = this.execSettings(t('Geri alındı (hata): {label}', { label: d.label }), 'restore', { backup: false, notify: true }, { sources: d.sources, targetIds: groups.map((g) => g.key) });
+    const handle = startRun(ctx, groups, s);
+    this.track(handle, true);
   }
 
   /** A relay that never picked the job up: send to the machines behind it from here, as a run of its own. */
@@ -911,6 +1225,25 @@ export class Service implements Api {
           return r.ok;
         },
         notify: (title, body) => this.host.notify?.(title, body),
+        acceptsUpdates: () => this.settings.agent?.acceptUpdates === true && (this.host.canInstallUpdates?.() ?? false),
+        idle: () => this.runsActive.size === 0,
+        installUpdate: (file) => this.host.installUpdate?.(file) ?? false,
+        answer: async (ask) => {
+          if (ask.kind === 'holders') return { programs: await holdersUnder(root, ask.rels), canClose: this.settings.agent?.allowClose === true };
+          if (ask.kind === 'close') {
+            if (this.settings.agent?.allowClose !== true) throw new Error(t('Bu makine programlarının uzaktan kapatılmasına izin vermiyor (Ayarlar › Ajan)'));
+            // only the programs that hold one of the sender's files now
+            const held = (await holdersUnder(root, ask.rels)).filter((h) => ask.pids.includes(h.pid));
+            const r = await closePrograms(held);
+            this.log.info(t('Ajan'), t('Gönderenin isteğiyle kapatılan programlar: {list}', { list: held.filter((h) => r.closed.includes(h.pid)).map((h) => h.name).join(', ') || '-' }));
+            return r;
+          }
+          if (ask.kind === 'drift') {
+            const ctx = this.ctx();
+            return driftOf(new FsTransport(root), driftFilter(ctx), driftTime(ctx), this.config.copy.backupFolderName);
+          }
+          throw new Error(t('Bu soru burada yanıtlanmıyor'));
+        },
         runPlan: (plan, label, report) => {
           try {
             // what the relay does for a sender is reported by the sender's run, once, with every machine in it

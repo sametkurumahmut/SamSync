@@ -36,6 +36,8 @@ export const REMOTE_DENIED: ReadonlySet<string> = new Set<ApiMethod>([
 /** What a viewer may call: everything that only reads (plans and comparisons write nothing until a run starts). */
 export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'bootstrap',
+  'lastDrift',
+  'whoHolds',
   'probe',
   'describeSources',
   'mapPath',

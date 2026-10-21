@@ -38,6 +38,8 @@ export interface NodeConfig {
    * writes to it only, and SamSync running there sends the files on over the group's own network.
    */
   relay?: boolean;
+  /** The network card's MAC address, for waking the machine up; learned by itself while the machine is on. */
+  mac?: string;
 }
 
 export type CompareMethod = 'timeSize' | 'content' | 'size';
@@ -75,6 +77,12 @@ export interface CopySettings {
   excludeDirs: string[];
   /** Sources outside every local root: their own folder stands for the target root (default), or the full path is kept. */
   outsideRoots?: OutsideRoots;
+  /**
+   * A folder by this name at the top of a sent folder holds files for single machines: its sub folder named after a
+   * machine (id, name, address) or a group is laid over the rest for those machines only, and is never sent as it is.
+   * Empty: off.
+   */
+  machineFolder?: string;
 }
 
 /** One target's exceptions to the send options, like the per machine columns of the old wizard. */
@@ -102,6 +110,8 @@ export interface SendOptions {
   perTarget?: Record<string, TargetOptions>;
   /** Walk every target folder over the network instead of trusting the manifest SamSync left there. */
   fullScan?: boolean;
+  /** All or nothing: a machine where the send failed partway is put back as it was before it (from the backup, which this turns on). */
+  rollbackOnFailure?: boolean;
 }
 
 export interface Profile {
@@ -230,6 +240,9 @@ export interface LocalSettings {
   sendWhenOnline?: boolean;
   /** At the end of a run, the files that were in use on the target are tried once more. */
   retryInUseAtEnd?: boolean;
+  /** Every this many hours the machines are checked for files changed after the last send (0 or none: only by hand). */
+  driftCheckHours?: number;
+  driftLastAt?: number;
   updateAutoCheck: boolean;
   updateAutoDownload: boolean;
   /** Folder watches that send changes automatically (this machine only). */
@@ -534,6 +547,106 @@ export interface AgentSettings {
   afterApply?: string;
   /** A desktop notification here when a pack was applied. */
   notifyOnApply: boolean;
+  /** Installs a newer SamSync that another SamSync puts on this machine's share (off by default: anyone who can write there could). */
+  acceptUpdates?: boolean;
+  /** Senders may close the programs that hold files open here, from the run window (off by default). */
+  allowClose?: boolean;
+}
+
+/** What SamSync on a machine says about itself in the heartbeat on its share (read by the probe). */
+export interface AgentInfo {
+  version?: string;
+  role?: 'relay' | 'agent';
+  seenAt: number;
+  /** The heartbeat is fresh: SamSync runs there now. */
+  alive: boolean;
+  host?: string;
+  /** The folder there that the share points to. */
+  root?: string;
+  /** Jobs it works on now, and machines waiting in its delivery queue. */
+  busy?: number;
+  pending?: number;
+  lastJob?: { at: number; ok: boolean; label?: string };
+  /** The last thing that went wrong there. */
+  lastError?: { at: number; text: string };
+  /** It installs a newer SamSync sent over the network, and passes one on to its group (a relay). */
+  updates?: boolean;
+  forwardUpdates?: boolean;
+  /** What it answers besides hashes: who holds a file, closing programs, drift checks. */
+  asks?: string[];
+  /** Its network cards, for waking it up. */
+  macs?: string[];
+}
+
+/** One sent folder of a machine against its manifest: what changed there after the last send (paths from the root). */
+export interface DriftSubtree {
+  rel: string;
+  label?: string;
+  writtenAt: number;
+  changed: string[];
+  added: string[];
+  removed: string[];
+  /** The whole numbers; the lists above stop at a few hundred. */
+  counts: { changed: number; added: number; removed: number };
+}
+
+/** A drift check of one machine (Targets › Machine inventory). */
+export interface DriftReport {
+  nodeId: string;
+  name: string;
+  checkedAt: number;
+  reachable: boolean;
+  /** A manifest was there; without one nothing is known about what was sent. */
+  manifest: boolean;
+  /** SamSync on the machine looked at its own disk (otherwise the folders were walked over the share). */
+  byAgent?: boolean;
+  error?: string;
+  subtrees: DriftSubtree[];
+  changed: number;
+  added: number;
+  removed: number;
+}
+
+/** A program that holds a file open on a machine (Windows Restart Manager). */
+export interface FileHolder {
+  pid: number;
+  /** The program's file name (app.exe), or its own name when the process could not be looked at. */
+  name: string;
+  app?: string;
+  path?: string;
+  /** Not one of the system's own programs, which are never closed from here. */
+  closable?: boolean;
+}
+
+/** Who holds the files a run could not replace, on one machine of the run. */
+export interface HolderReport {
+  key: string;
+  title: string;
+  /** One line per program, with the files it holds. */
+  programs: (FileHolder & { rels: string[] })[];
+  /** Files in use in the run, and how many of them were asked about. */
+  inUse: number;
+  asked: number;
+  /** The programs can be closed from here: this machine, or SamSync there allows it (Settings › Agent). */
+  canClose: boolean;
+  error?: string;
+}
+
+/** How putting an update on one machine went (Targets › Update agents). */
+export interface AgentUpdateResult {
+  nodeId: string;
+  ok: boolean;
+  error?: string;
+  /** The relay that passes it on to this machine over its group's network. */
+  via?: string;
+}
+
+/** Something wrong with how this machine receives sends (shown on this machine's card). */
+export interface AgentCheck {
+  level: 'warn' | 'error';
+  text: string;
+  /** A first local root that fixes it: the folder the machine's share points to. */
+  fixRoot?: string;
 }
 
 /** A run named as a release point: everything sent to its machines after it can be undone back to it. */
@@ -569,6 +682,10 @@ export interface ProbeResult {
   relaySeenAt?: number;
   /** SamSync runs on the machine and receives packs (a fresh heartbeat on its share). */
   agentAlive?: boolean;
+  /** The heartbeat itself, also when it is old (SamSync stopped there without saying so). */
+  agent?: AgentInfo;
+  /** The MAC addresses known for the machine (set by hand, or learned while it was on): it can be woken up. */
+  macs?: string[];
 }
 
 /** A machine the network scan found: what answered, its name when it has one, and the node it already is. */
@@ -609,6 +726,9 @@ export interface RelayState {
   lastLabel?: string;
   /** Machines that were off when a job came: their jobs wait here until they answer. */
   pending?: RelayPending[];
+  /** Problems found with this machine's setup (its first local root, its share). */
+  checks?: AgentCheck[];
+  lastError?: { at: number; text: string };
 }
 
 /** One machine in a relay's delivery queue. */
@@ -907,7 +1027,8 @@ export type AppEvent =
   | { type: 'relay'; state: RelayState }
   | { type: 'pending-sends'; items: PendingSend[] }
   | { type: 'update'; state: UpdateState }
-  | { type: 'automation'; state: AutomationState };
+  | { type: 'automation'; state: AutomationState }
+  | { type: 'drift'; reports: DriftReport[] };
 
 // ---------------------------------------------------------------- git
 

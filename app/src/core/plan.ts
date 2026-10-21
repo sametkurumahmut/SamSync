@@ -25,19 +25,22 @@ import { heartbeatFresh, readHeartbeat } from './relay';
 import { AgentHasher } from './agenthash';
 import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
+import { machineLabel } from '../shared/machine';
 
 /** member: where a pack holds the file. abs: a file merged in from another folder sent to the same place. */
-type PackedEntry = Entry & { member?: PackEntry; abs?: string; ref?: boolean };
+/** overlay: the machine or group folder this entry came from (Settings › Copy › machine folder). */
+type PackedEntry = Entry & { member?: PackEntry; abs?: string; ref?: boolean; overlay?: string };
 
 type Unit =
   | { kind: 'file'; sourceIndex: number; rel: string; abs: string; size: number; mtimeMs: number; blob?: string }
   /** skip: parts below rel that another source of the send takes over on the targets (left alone here). */
-  | { kind: 'dir'; sourceIndex: number; rel: string; abs: string; entries: Map<string, PackedEntry>; skip?: string[] }
+  /** overlays: machine or group name (lower case) -> what the machine folder holds for it, laid over the entries. */
+  | { kind: 'dir'; sourceIndex: number; rel: string; abs: string; entries: Map<string, PackedEntry>; skip?: string[]; overlays?: Map<string, Map<string, PackedEntry>> }
   | { kind: 'git'; sourceIndex: number; rel: string; repo: string; rev: string; path: string; blob: string; size: number; mtimeMs: number }
   | { kind: 'delete'; sourceIndex: number; rel: string; abs: string }
   /** A file or a folder carried in a pack file (.samsync-pack); members are read straight out of it. */
   | { kind: 'packfile'; sourceIndex: number; rel: string; file: string; size: number; mtimeMs: number; member: PackIndexEntry }
-  | { kind: 'packdir'; sourceIndex: number; rel: string; file: string; entries: Map<string, PackedEntry>; skip?: string[] };
+  | { kind: 'packdir'; sourceIndex: number; rel: string; file: string; entries: Map<string, PackedEntry>; skip?: string[]; overlays?: Map<string, Map<string, PackedEntry>> };
 
 const packRef = (file: string, m: PackEntry) => ({ kind: 'pack' as const, file, offset: m.offset, length: m.length, method: m.method });
 
@@ -194,7 +197,43 @@ export async function describeSources(ctx: CoreContext, paths: string[], count =
   });
 }
 
-async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilter, cancel: CancelToken, progress: (p: PlanProgress) => void) {
+/**
+ * Takes the machine folder out of a sent folder: what it holds for each machine or group goes to unit.overlays,
+ * rebased to the folder's own root, and is laid over the rest for those machines only (withOverlays).
+ */
+function splitOverlays(u: Extract<Unit, { kind: 'dir' | 'packdir' }>, folder: string): void {
+  const top = folder.toLowerCase();
+  const overlays = new Map<string, Map<string, PackedEntry>>();
+  for (const [key, e] of u.entries) {
+    const parts = e.rel.split('/');
+    if (parts[0].toLowerCase() !== top) continue;
+    u.entries.delete(key);
+    // the folder itself and the machine folders in it are not entries of their own
+    if (parts.length < 3) continue;
+    const rel = parts.slice(2).join('/');
+    const m = overlays.get(parts[1].toLowerCase()) ?? new Map<string, PackedEntry>();
+    m.set(relKey(rel, true), { ...e, rel, overlay: parts[1], abs: u.kind === 'dir' ? (e.abs ?? path.join(u.abs, ...parts)) : e.abs });
+    overlays.set(parts[1].toLowerCase(), m);
+  }
+  if (overlays.size) u.overlays = overlays;
+}
+
+/** The units as one machine gets them: its group's folder over the common files, then its own over both. */
+function withOverlays(units: Unit[], node: NodeConfig): Unit[] {
+  if (!units.some((u) => (u.kind === 'dir' || u.kind === 'packdir') && u.overlays)) return units;
+  const names = [...new Set([node.group, machineLabel(node.name, node.address).title, node.address, node.name, node.id].filter((x): x is string => !!x).map((x) => x.toLowerCase()))];
+  return units.map((u) => {
+    if ((u.kind !== 'dir' && u.kind !== 'packdir') || !u.overlays) return u;
+    const picked = names.map((n) => u.overlays!.get(n)).filter((m): m is Map<string, PackedEntry> => !!m);
+    if (!picked.length) return u;
+    const entries = new Map(u.entries);
+    for (const m of picked) for (const [k, e] of m) entries.set(k, e);
+    return { ...u, entries };
+  });
+}
+
+/** `overlays` false keeps the machine folder in the folders as it is (a pack carries it to wherever it is applied). */
+async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilter, cancel: CancelToken, progress: (p: PlanProgress) => void, overlays = true) {
   const units: Unit[] = [];
   const warnings: string[] = [];
   const sources: SourceInfo[] = [];
@@ -306,7 +345,10 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
     }
   }
 
-  return { units: layerUnits(units, warnings), warnings, sources };
+  const layered = layerUnits(units, warnings);
+  const folder = overlays ? ctx.config.copy.machineFolder : '';
+  if (folder) for (const u of layered) if (u.kind === 'dir' || u.kind === 'packdir') splitOverlays(u, folder);
+  return { units: layered, warnings, sources };
 }
 
 /** Where a unit's content comes from: a path on disk, or the pack it is read out of. */
@@ -429,6 +471,8 @@ async function planTarget(
 ): Promise<TargetPlan> {
   // this target's own mode and backup, when the send gives it exceptions
   const opt = targetOptions(req.options, node.id);
+  // the files of the machine folder meant for this machine (or its group) are laid over the rest
+  units = withOverlays(units, node);
   // this machine itself is written on its own disk, in its first local root, not over its own share
   const isSelf = !!ctx.localNodeId && node.id === ctx.localNodeId && node.transport !== 'sftp' && !!ctx.localRoots[0];
   const base: TargetPlan = {
@@ -653,7 +697,7 @@ async function planTarget(
         st.done++;
         return;
       }
-      const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex };
+      const common = { kind: 'copy' as const, rel, isDir: false, src: srcOf(e), size: e.size, srcMtime: e.mtimeMs, sourceIndex: u.sourceIndex, ...(e.overlay ? { note: t('Bu makineye özel ({name})', { name: e.overlay }) } : {}) };
       try {
         if (!d) return push(b, { ...common, category: 'new', selected: true });
         if (d.isDir) return push(b, { ...common, category: 'changed', selected: true, dstMtime: d.mtimeMs, replaceType: true, note: t('Hedefte aynı adda klasör var.') });
@@ -881,7 +925,7 @@ export async function writeSendPack(ctx: CoreContext, req: SendRequest, file: st
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
   const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
-  const { units, warnings } = await expandUnits(ctx, req, filter, cancel, progress);
+  const { units, warnings } = await expandUnits(ctx, req, filter, cancel, progress, false);
   const files: PackSource[] = [];
   const dirs: string[] = [];
   const subtrees: PackSubtree[] = [];

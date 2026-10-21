@@ -321,6 +321,18 @@ export function SettingsPage() {
                 placeholder="_SamSyncYedek"
               />
             </Field>
+            <Field
+              label={t('Makineye özel klasör')}
+              help={t('Gönderilen klasörün en üstünde bu adda bir klasör varsa içindeki her alt klasör (makine kimliği, adı, adresi ya da grup adı) yalnızca o makinelere, ortak dosyaların üstüne gider; klasörün kendisi gönderilmez. Boş = kapalı.')}
+              style={{ marginTop: 12 }}
+            >
+              <input
+                className="input mono"
+                value={copy.machineFolder ?? ''}
+                onChange={(e) => setCopy({ ...copy, machineFolder: e.target.value.replace(/[\\/:*?"<>|]/g, '') })}
+                placeholder="_machines"
+              />
+            </Field>
             <div style={{ marginTop: 6 }}>
               <ToggleRow title={t('Yazdıktan sonra doğrula')} desc={t('İçerik özetini karşılaştırır (daha yavaş)')} on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
               <ToggleRow title={t('1 saatlik yaz saati farkını yok say')} desc={t('Saat dilimi kaymış dosyaları aynı sayar')} on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />

@@ -36,7 +36,7 @@ interface Side {
   base: string;
 }
 
-/** A sender ("Me") and a relay ("T") in one process, sharing one configuration; the IGs are plain folders. */
+/** A sender ("Me") and a relay ("T") in one process, sharing one configuration; the machines behind it are plain folders. */
 async function setup(opts: { relayRunning: boolean; ackSeconds?: number; agentOn?: boolean }) {
   const base = await tmpDir();
   const src = path.join(base, 'me', 'Data');

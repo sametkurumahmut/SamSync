@@ -379,6 +379,9 @@ const d: Dict = {
   'İzleyici parolasıyla girildi: her şey görünür, hiçbir şey değiştirilemez': 'Signed in with the viewer password: everything shows, nothing can be changed',
   'salt okunur': 'read-only',
   'Hedef diskinde boş alan: {size}': 'Free space on the target disk: {size}',
+  '{n} değişmiş': '{n} changed',
+  '{n} eklenmiş': '{n} added',
+  '{n} silinmiş': '{n} removed',
 };
 
 export default d;

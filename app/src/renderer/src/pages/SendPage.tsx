@@ -481,7 +481,8 @@ export function SendPage() {
               )}
             </span>
             <span className="badge outline">{modeLabel && t(modeLabel)}</span>
-            {options.backup && <span className="badge blue">{t('yedekli')}</span>}
+            {(options.backup || options.rollbackOnFailure) && <span className="badge blue">{t('yedekli')}</span>}
+            {options.rollbackOnFailure && <span className="badge blue">{t('ya hep ya hiç')}</span>}
             {options.dryRun && <span className="badge amber">{t('deneme')}</span>}
             {Object.keys(ownSettings).length > 0 && (
               <span className="badge violet" data-tip={t('Bu hedeflerin kipi ya da yedeği genel ayardan farklı')}>
@@ -672,6 +673,7 @@ export function OptionsCard({ git }: { git?: boolean }) {
         </div>
         <div className="options-toggles">
           <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan ve silinen dosyaların eski hâli hedefte saklanır')} on={options.backup} onChange={(v) => set({ backup: v })} />
+          <ToggleRow icon={<Undo2 size={16} className="faint" />} title={t('Hata olursa makineyi geri al')} desc={t('Bir makinede gönderim yarıda kalırsa o makine gönderim öncesi hâline döner; yedek bunun için açılır')} on={!!options.rollbackOnFailure} onChange={(v) => set({ rollbackOnFailure: v || undefined })} />
           <ToggleRow icon={<ShieldCheck size={16} className="faint" />} title={t('Doğrula')} desc={t('Yazdıktan sonra içerik özetini karşılaştırır')} on={options.verify} onChange={(v) => set({ verify: v })} />
           <ToggleRow icon={<ScanSearch size={16} className="faint" />} title={t('Hedefi baştan tara')} desc={t('SamSync’in hedefte bıraktığı manifeste güvenmez, klasörleri ağ üzerinden gezer (yavaş ama kesin)')} on={!!options.fullScan} onChange={(v) => set({ fullScan: v || undefined })} />
           {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinenleri hedefte de sil')} desc={t('Git’te silinen ya da taşınan dosyalar hedeften kaldırılır')} on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}

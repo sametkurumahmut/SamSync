@@ -1,4 +1,7 @@
 import type { FileTrace,
+  DriftReport,
+  HolderReport,
+  AgentUpdateResult,
   AppConfig,
   BackupLookup,
   AssistantReply,
@@ -112,6 +115,21 @@ export interface Api {
   pendingSends(): Promise<PendingSend[]>;
   /** The files a program held open in a finished send, written again to the same machines; the new run's id. */
   retryInUse(runId: string): Promise<string>;
+  /**
+   * Puts the Setup of this version on the machines (SamSync there installs it when idle); the machines behind a relay
+   * that passes updates on get it from the relay. `installer`: a Setup the user picked, when this copy has none.
+   */
+  updateAgents(nodeIds: string[], taskId: string, installer?: string): Promise<AgentUpdateResult[]>;
+  /** The programs holding the files a finished run could not replace, asked on each machine (through SamSync there). */
+  whoHolds(runId: string): Promise<HolderReport[]>;
+  /** Closes those programs on one machine of the run (only ones that still hold one of its files). */
+  closeHolders(runId: string, key: string, pids: number[]): Promise<{ closed: number; failed: string[] }>;
+  /** Compares the machines (null: every enabled one) with the manifests of their last sends: what changed there since. */
+  driftCheck(nodeIds: string[] | null, taskId: string): Promise<DriftReport[]>;
+  /** The last drift check since the app started (by hand or on schedule). */
+  lastDrift(): Promise<DriftReport[] | null>;
+  /** Sends Wake-on-LAN packets to machines that are off (their MAC addresses are known). */
+  wake(nodeIds: string[]): Promise<{ nodeId: string; ok: boolean; error?: string }[]>;
   cancelPendingSend(id: string): Promise<boolean>;
   /** A folder of this computer (null: its drives), for a browser's file picker in server mode. */
   listDir(path: string | null): Promise<DirListing>;
@@ -310,6 +328,12 @@ export const API_METHODS = {
   relayState: true,
   pendingSends: true,
   retryInUse: true,
+  updateAgents: true,
+  whoHolds: true,
+  closeHolders: true,
+  driftCheck: true,
+  lastDrift: true,
+  wake: true,
   cancelPendingSend: true,
   discoverHosts: true,
   listDir: true,
