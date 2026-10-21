@@ -987,6 +987,24 @@
 .target-card.local {
   border-color: rgb(var(--accent-rgb) / 40%);
 }
+/* components/PathLink.tsx: a path that opens in the file manager on a click */
+.path-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.path-link.clickable {
+  cursor: pointer;
+}
+.path-link.clickable:hover {
+  color: var(--accent);
+}
+.path-link.clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
 .target-root {
   display: flex;
   align-items: center;

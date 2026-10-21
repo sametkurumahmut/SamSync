@@ -27,10 +27,13 @@ const run = (over: Partial<RunDetail> = {}): RunDetail => ({
 
 describe('run notifications', () => {
   it('writes one line of the result and the failed machines', () => {
-    const m = runMessage(run(), { host: 'LAPTOP', version: '2.0.4' });
+    const m = runMessage(run(), { host: 'LAPTOP', user: 'LAPTOP\\ayse', version: '2.0.4' });
     expect(m.text.split('\n')[0]).toMatch(/^△ Sürüm 3\.4 — 1\/2 .* 10 .* 10 .* 2 sa 5 dk$/);
     expect(m.text).toContain('• PC3: erişilemedi');
-    expect(m.text).toContain('LAPTOP, SamSync 2.0.4');
+    // who sent it, as whoami writes it: a local account already names the computer
+    expect(m.text.split('\n').pop()).toMatch(/^(Gönderen|Sent by): LAPTOP\\ayse • SamSync 2\.0\.4$/);
+    expect(m.payload.user).toBe('LAPTOP\\ayse');
+    expect(runMessage(run(), { host: 'PC7', user: 'CORP\\ayse' }).text.split('\n').pop()).toMatch(/CORP\\ayse, PC7$/);
     expect(m.payload.status).toBe('partial');
     expect((m.payload.targets as { id: string }[]).map((x) => x.id)).toEqual(['PC1', 'PC3']);
   });

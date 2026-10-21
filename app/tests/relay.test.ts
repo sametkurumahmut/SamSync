@@ -127,6 +127,33 @@ describe('relay end to end', () => {
     }
   }, 30000);
 
+  it('only the sender tells the team channel, once, when the whole send is done', async () => {
+    const http = await import('node:http');
+    const posts: string[] = [];
+    const srv = http.createServer((q, r) => {
+      posts.push(q.url ?? '');
+      q.resume();
+      q.on('end', () => r.end('ok'));
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+    const port = (srv.address() as { port: number }).port;
+    const s = await setup({ relayRunning: true });
+    try {
+      await s.me.saveSettings({ notifications: { webhookUrl: `http://127.0.0.1:${port}/sender`, onSuccess: true, onFailure: true } });
+      await s.relay!.saveSettings({ notifications: { webhookUrl: `http://127.0.0.1:${port}/relay`, onSuccess: true, onFailure: true } });
+      await write(path.join(s.src, 'n.txt'), 'N');
+      const d = await s.me.runPlan(await s.me.planSend(req(s.src), 'n1'), 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      await until(() => posts.includes('/sender'));
+      await sleep(800);
+      // the relay applied a pack and passed the files on, but that is part of the sender's send
+      expect(posts).toEqual(['/sender']);
+    } finally {
+      s.stop();
+      srv.close();
+    }
+  }, 30000);
+
   it('a machine marked as relay takes its own changes as a pack even when nothing is behind it', async () => {
     const s = await setup({ relayRunning: true });
     try {

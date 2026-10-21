@@ -136,6 +136,16 @@ async function readCapped(stream: NodeJS.ReadableStream, cap = MAX_TEXT_DIFF_BYT
   return Buffer.concat(chunks);
 }
 
+/** The account this SamSync runs as, the way whoami writes it: DOMAIN\user on Windows, the user name elsewhere. */
+function whoami(): string | undefined {
+  try {
+    const user = os.userInfo().username;
+    return process.platform === 'win32' ? `${process.env.USERDOMAIN || os.hostname()}\\${user}` : user;
+  } catch {
+    return undefined;
+  }
+}
+
 export class Service implements Api {
   private settingsFile: string;
   private secretsFile: string;
@@ -749,15 +759,16 @@ export class Service implements Api {
     };
   }
 
-  private track(handle: RunHandle, notify: boolean, after?: (d: Awaited<RunHandle['done']>) => Promise<void>) {
+  /** `channel` false: the run is part of someone else's send (a relay or an agent working for the sender), whose own run reports it. */
+  private track(handle: RunHandle, notify: boolean, after?: (d: Awaited<RunHandle['done']>) => Promise<void>, channel = true) {
     this.runsActive.set(handle.id, handle);
     handle.done
       .then(async (detail) => {
         await this.history.save(detail).catch((e) => this.log.error(t('Geçmiş'), t('Kaydedilemedi'), e));
         void this.hashCache.flush();
         // the team's channel, when one is set: never waits for, never fails the run
-        if (wantsNotification(this.settings.notifications, detail)) {
-          void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), version: this.host.appVersion })).then((r) => {
+        if (channel && wantsNotification(this.settings.notifications, detail)) {
+          void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), user: whoami(), version: this.host.appVersion })).then((r) => {
             for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
           });
         }
@@ -780,7 +791,7 @@ export class Service implements Api {
   }
 
   /** Runs a plan; 'default' runs every operation the planner selected. Throws when there is nothing to do. */
-  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[] } = {}): RunHandle {
+  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean } = {}): RunHandle {
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
     const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
@@ -855,7 +866,7 @@ export class Service implements Api {
     });
     const handle = startRun(ctx, groups, s);
     this.keepGroups(handle.id, groups, s);
-    this.track(handle, overrides.notify ?? opts.notify !== false, (d) => this.relayFallback(plan, d, overrides));
+    this.track(handle, overrides.notify ?? opts.notify !== false, (d) => this.relayFallback(plan, d, overrides), overrides.channel !== false);
     return handle;
   }
 
@@ -900,9 +911,10 @@ export class Service implements Api {
           return r.ok;
         },
         notify: (title, body) => this.host.notify?.(title, body),
-        runPlan: (plan, label) => {
+        runPlan: (plan, label, report) => {
           try {
-            return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true });
+            // what the relay does for a sender is reported by the sender's run, once, with every machine in it
+            return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true, channel: report === true });
           } catch {
             return null; // nothing to do on any machine
           }
@@ -910,7 +922,8 @@ export class Service implements Api {
         runGroups: (groups, label, o) => {
           const s = this.execSettings(label, 'send', o.options, { backup: o.backup, verify: o.verify, parallelGroups: 1, targetIds: groups.map((g) => g.key) });
           const handle = startRun(this.ctx(), groups, s);
-          this.track(handle, false);
+          // a pack applied for a sender: the sender's run reports it
+          this.track(handle, false, undefined, false);
           return handle;
         },
       },

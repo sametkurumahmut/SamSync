@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, SlidersHorizontal, X } from 'lucide-react';
 import { useApp } from '../store/app';
 import { cls } from '../lib/format';
 import { t } from '@shared/i18n';
@@ -9,6 +9,7 @@ export function WorkspaceTabs() {
   const workspaces = useApp((s) => s.workspaces);
   const active = useApp((s) => s.activeWorkspace);
   const activeCount = useApp((s) => s.sendPaths.length);
+  const activeOwn = useApp((s) => s.ownOptions);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const st = useApp.getState;
   const label = (name: string, i: number) => name || t('Liste {n}', { n: i + 1 });
@@ -58,6 +59,11 @@ export function WorkspaceTabs() {
             ) : (
               <span className="ellipsis" style={{ maxWidth: 220 }}>
                 {label(w.name, i)}
+              </span>
+            )}
+            {(on ? activeOwn : !!w.options) && (
+              <span className="faint" title={t('Bu listenin kendi seçenekleri var')} style={{ display: 'grid', placeItems: 'center' }}>
+                <SlidersHorizontal size={12} />
               </span>
             )}
             <span className="badge">{count}</span>

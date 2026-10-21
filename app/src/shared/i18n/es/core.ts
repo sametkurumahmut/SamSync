@@ -414,6 +414,7 @@ const d: Dict = {
   '✓ Paket uygulandı: {label}': '✓ Paquete aplicado: {label}',
   '✕ Paket uygulanamadı: {label}': '✕ Paquete no aplicado: {label}',
   'paket: {n}': 'paquetes: {n}',
+  'Gönderen: {who}': 'Enviado por: {who}',
 };
 
 export default d;

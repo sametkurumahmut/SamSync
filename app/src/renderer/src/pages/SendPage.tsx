@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock } from 'lucide-react';
+import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock, RotateCcw, Undo2 } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
@@ -622,18 +622,41 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
 export function OptionsCard({ git }: { git?: boolean }) {
   const options = useApp((s) => s.options);
   const set = useApp((s) => s.setOptions);
+  const own = useApp((s) => s.ownOptions);
+  const setOwn = useApp((s) => s.setOwnOptions);
+  const reset = useApp((s) => s.resetOptions);
   const postCommand = useApp((s) => s.boot!.config.copy.postCommand);
   const preCommand = useApp((s) => s.boot!.config.copy.preCommand);
   const [filters, setFilters] = useState(false);
   return (
     <div className="card options-card">
-      <div className="card-head">
+      <div className="card-head" style={{ flexWrap: 'wrap', rowGap: 6 }}>
         <div className="icon-tile">
           <ShieldCheck size={15} />
         </div>
-        <h2>{t('Seçenekler')}</h2>
+        <h2 className="grow">{t('Seçenekler')}</h2>
+        {!git && (
+          <div className="row" style={{ gap: 4 }}>
+            <Segmented
+              size="sm"
+              value={own ? 'list' : 'general'}
+              onChange={(v) => setOwn(v === 'list')}
+              options={[
+                { value: 'general', label: t('Genel'), tip: t('Bu liste genel seçenekleri kullanır; burada yapılan değişiklik bütün listelere geçer') },
+                { value: 'list', label: t('Bu listeye özel'), tip: t('Bu liste kendi seçeneklerini tutar; genel seçenekler değişmez') },
+              ]}
+            />
+            {own && <Button size="sm" variant="ghost" iconOnly icon={<Undo2 size={13} />} tip={t('Genel seçeneklere göre sıfırla')} onClick={() => reset('general')} />}
+            <Button size="sm" variant="ghost" iconOnly icon={<RotateCcw size={13} />} tip={t('Varsayılanlara sıfırla (Ayarlar › Kopyalama’daki değerler)')} onClick={() => reset('defaults')} />
+          </div>
+        )}
       </div>
       <div className="card-body options-body">
+        {!git && (
+          <div className="hint" style={{ marginTop: -4, marginBottom: 4 }}>
+            {own ? t('Bu listenin kendi seçenekleri: değişiklikler yalnızca bu listede kalır; liste kaydedilince onunla saklanır.') : t('Genel seçenekler: kendi seçenekleri olmayan bütün listeler bunları kullanır.')}
+          </div>
+        )}
         <div className="options-row">
           <Field label={t('Kip')}>
             <Segmented value={options.mode} onChange={(v) => set({ mode: v })} options={modeOptions()} />

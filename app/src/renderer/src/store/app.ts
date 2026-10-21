@@ -99,6 +99,8 @@ export interface Workspace {
   /** Sources kept in the list but left out of the send. */
   off?: string[];
   targets: string[];
+  /** The list's own send options; without them the list uses the general ones. Kept for inactive tabs (the active tab's are in options). */
+  options?: SendOptions;
 }
 
 export interface LiveRun {
@@ -179,11 +181,19 @@ interface State {
   workspaces: Workspace[];
   activeWorkspace: string;
   /** force: a new tab even when the open one is empty. */
-  newWorkspace(opts?: { name?: string; paths?: string[]; rels?: Record<string, string>; targets?: string[]; force?: boolean }): Promise<void>;
+  newWorkspace(opts?: { name?: string; paths?: string[]; rels?: Record<string, string>; targets?: string[]; force?: boolean; options?: Partial<SendOptions> }): Promise<void>;
   switchWorkspace(id: string): Promise<void>;
   closeWorkspace(id: string): Promise<void>;
   renameWorkspace(id: string, name: string): void;
+  /** The options the Send page uses now: the active list's own ones, or the general ones. */
   options: SendOptions;
+  /** The general options: every list without options of its own uses them (kept as lastOptions). */
+  generalOptions: SendOptions;
+  /** The active list has options of its own. */
+  ownOptions: boolean;
+  setOwnOptions(on: boolean): void;
+  /** Back to the general options (the list keeps options of its own) or to the defaults from Settings. */
+  resetOptions(to: 'general' | 'defaults'): void;
 
   planning: { taskId: string; message: string; done?: number; total?: number; targets?: PlanTargetProgress[] } | null;
   /** The downloaded update is offered for installing (the title-bar pill or Settings opened the dialog). */
@@ -343,6 +353,8 @@ export const useApp = create<State>((set, get) => ({
   workspaces: [{ id: 'w1', name: '', paths: [], targets: [] }],
   activeWorkspace: 'w1',
   options: DEFAULT_OPTIONS,
+  generalOptions: DEFAULT_OPTIONS,
+  ownOptions: false,
   planning: null,
   updatePrompt: false,
   review: null,
@@ -373,7 +385,9 @@ export const useApp = create<State>((set, get) => ({
       const tabs = readStored<{ active: string; list: Workspace[] } | null>('samsync.workspaces', null);
       const active = tabs?.list.find((w) => w.id === tabs.active) ?? tabs?.list[0];
       const targets = active?.targets ?? s.lastTargets;
-      set({ boot, options, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
+      // a list that came back with options of its own starts with them
+      const own = active?.options ? { ...options, ...active.options, dryRun: false } : null;
+      set({ boot, options: own ?? options, generalOptions: options, ownOptions: !!own, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
       void api.relayState().then((relayState) => set({ relayState })).catch(() => undefined);
       void api.pendingSends().then((pendingSends) => set({ pendingSends })).catch(() => undefined);
       get().applyTheme();
@@ -561,14 +575,16 @@ export const useApp = create<State>((set, get) => ({
     const cur = st.workspaces.find((w) => w.id === st.activeWorkspace);
     // an empty tab is used as it is instead of piling up empty ones
     if (cur && !st.sendPaths.length && !opts.force) {
-      set({ workspaces: st.workspaces.map((w) => (w.id === cur.id ? { ...w, name: opts.name ?? w.name } : w)), targets: opts.targets ?? st.targets });
+      set({ workspaces: st.workspaces.map((w) => (w.id === cur.id ? { ...w, name: opts.name ?? w.name } : w)), targets: opts.targets ?? st.targets, ...(opts.options ? { options: { ...st.generalOptions, ...opts.options, dryRun: false }, ownOptions: true } : {}) });
       if (opts.paths?.length) await get().addSendPaths(opts.paths, opts.rels);
       return;
     }
     const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets } : w));
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets, options: ownOf(st) } : w));
     const targets = opts.targets ?? st.targets;
-    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], targets });
+    // a new list uses the general options unless it brings its own (a quick send, a profile from the command line)
+    const own = opts.options ? { ...st.generalOptions, ...opts.options, dryRun: false } : null;
+    set({ workspaces: [...kept, { id, name: opts.name ?? '', paths: [], targets }], activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], targets, options: own ?? st.generalOptions, ownOptions: !!own });
     if (opts.paths?.length) await get().addSendPaths(opts.paths, opts.rels);
   },
   async switchWorkspace(id) {
@@ -576,14 +592,14 @@ export const useApp = create<State>((set, get) => ({
     if (id === st.activeWorkspace) return;
     const next = st.workspaces.find((w) => w.id === id);
     if (!next) return;
-    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets } : w));
-    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: next.off ?? [], sendInfos: [], targets: next.targets });
+    const kept = st.workspaces.map((w) => (w.id === st.activeWorkspace ? { ...w, paths: st.sendPaths, rels: relsFor(st.sendPaths, st.sendRels), off: st.sendOff.length ? st.sendOff : undefined, targets: st.targets, options: ownOf(st) } : w));
+    set({ workspaces: kept, activeWorkspace: id, sendPaths: [], sendRels: {}, sendOff: next.off ?? [], sendInfos: [], targets: next.targets, options: next.options ? { ...st.generalOptions, ...next.options, dryRun: false } : st.generalOptions, ownOptions: !!next.options });
     await get().addSendPaths(next.paths, next.rels);
   },
   async closeWorkspace(id) {
     const st = get();
     if (st.workspaces.length === 1) {
-      set({ sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [], rels: undefined, off: undefined })) });
+      set({ sendPaths: [], sendRels: {}, sendOff: [], sendInfos: [], options: st.generalOptions, ownOptions: false, workspaces: st.workspaces.map((w) => ({ ...w, name: '', paths: [], rels: undefined, off: undefined, options: undefined })) });
       return;
     }
     const i = st.workspaces.findIndex((w) => w.id === id);
@@ -596,9 +612,27 @@ export const useApp = create<State>((set, get) => ({
   setTargets(ids) {
     set({ targets: ids });
   },
+  setOwnOptions(on) {
+    const st = get();
+    if (on === st.ownOptions) return;
+    // on: the list starts from the general options as they are; off: it uses the general ones again
+    set(on ? { ownOptions: true } : { ownOptions: false, options: { ...st.generalOptions, dryRun: st.options.dryRun } });
+  },
+  resetOptions(to) {
+    const st = get();
+    if (to === 'general') return set({ options: { ...st.generalOptions, dryRun: false } });
+    if (!st.boot) return;
+    const d: SendOptions = { ...baseOptions(st.boot), dryRun: false };
+    if (st.ownOptions) return set({ options: d });
+    set({ options: d, generalOptions: d });
+    const { dryRun: _d, ...rest } = d;
+    void st.saveSettings({ lastOptions: rest });
+  },
   setOptions(patch) {
     const options = { ...get().options, ...patch };
-    set({ options });
+    // a list with options of its own keeps the change to itself (saved with the tabs); otherwise it is the general one
+    if (get().ownOptions) return set({ options });
+    set({ options, generalOptions: options });
     if (optionsSaveTimer) clearTimeout(optionsSaveTimer);
     optionsSaveTimer = setTimeout(() => {
       const { dryRun: _d, ...rest } = get().options;
@@ -761,8 +795,8 @@ function mergeInfos(cur: SourceInfo[], fresh: SourceInfo[], order: string[]): So
 if (import.meta.env.DEV) (window as unknown as { __samsync?: typeof useApp }).__samsync = useApp;
 
 useApp.subscribe((s, prev) => {
-  if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.sendOff === prev.sendOff && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace)) return;
-  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, rels: relsFor(s.sendPaths, s.sendRels), off: s.sendOff.length ? s.sendOff : undefined, targets: s.targets } : w));
+  if (!s.boot || (s.sendPaths === prev.sendPaths && s.sendRels === prev.sendRels && s.sendOff === prev.sendOff && s.targets === prev.targets && s.workspaces === prev.workspaces && s.activeWorkspace === prev.activeWorkspace && s.options === prev.options && s.ownOptions === prev.ownOptions)) return;
+  const list = s.workspaces.map((w) => (w.id === s.activeWorkspace ? { ...w, paths: s.sendPaths, rels: relsFor(s.sendPaths, s.sendRels), off: s.sendOff.length ? s.sendOff : undefined, targets: s.targets, options: ownOf(s) } : w));
   writeStored('samsync.workspaces', { active: s.activeWorkspace, list });
 });
 
@@ -918,6 +952,11 @@ function tabName(paths: string[]): string {
 /** Launches that arrive before the bootstrap; handled right after it. */
 const pendingOpen: OpenRequest[] = [];
 
+/** The active list's own options as a tab keeps them (no dry run), or undefined when it uses the general ones. */
+function ownOf(s: { ownOptions: boolean; options: SendOptions }): SendOptions | undefined {
+  return s.ownOptions ? { ...s.options, dryRun: false } : undefined;
+}
+
 /** Send options before the user changes anything: config defaults plus the defaults from Settings. */
 function baseOptions(boot: Bootstrap): SendOptions {
   return baseSendOptions(boot.config.copy, boot.settings.sendDefaults);
@@ -992,8 +1031,8 @@ async function handleOpen(r: OpenRequest) {
   if (r.send) return sendNow(r.paths, to, r.rels);
   st.setPage('send');
   // a launch with --to is its own send in its own tab
-  await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, rels: r.rels, targets: to.targets });
-  if (to.options) st.setOptions(to.options);
+  // its options (a quick send's, a profile's) stay with its own list; the general ones do not change
+  await st.newWorkspace({ name: tabName(r.paths), paths: r.paths, rels: r.rels, targets: to.targets, options: to.options });
   await st.startPlan({ sources: fsSources(r.paths, r.rels), origin: 'send', targetIds: to.targets, label: to.label });
 }
 

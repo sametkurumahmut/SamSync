@@ -35,6 +35,7 @@ import { useApp, DEFAULT_OPTIONS } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Checkbox, Empty, Field, Modal, PageSkeleton, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { TargetPicker, TargetSummary } from '../components/TargetPicker';
+import { PathLink } from '../components/PathLink';
 import { ago, baseName, cls, num } from '../lib/format';
 import { t, tk, locale } from '@shared/i18n';
 import { tx } from '../lib/i18n';
@@ -177,9 +178,7 @@ export function AutomationPage() {
                   </div>
                   <div className="auto-paths">
                     {w.paths.slice(0, 4).map((p) => (
-                      <div key={p} className="row mono ellipsis" style={{ fontSize: 11.5, gap: 6 }} title={p}>
-                        <Folder size={12} className="faint" /> <span className="ellipsis">{p}</span>
-                      </div>
+                      <PathLink key={p} path={p} icon={<Folder size={12} className="faint" />} style={{ fontSize: 11.5 }} />
                     ))}
                     {w.paths.length > 4 && <div className="faint" style={{ fontSize: 11.5 }}>{t('… ve {n} yol daha', { n: w.paths.length - 4 })}</div>}
                   </div>
@@ -198,9 +197,7 @@ export function AutomationPage() {
                       <>
                         {w.targetIds.length > 0 && <TargetSummary value={w.targetIds} />}
                         {(w.folders ?? []).map((d) => (
-                          <span key={d} className="mono ellipsis" style={{ fontSize: 11.5 }} title={d}>
-                            {d}
-                          </span>
+                          <PathLink key={d} path={d} open={() => api.openPath(d)} style={{ fontSize: 11.5 }} />
                         ))}
                       </>
                     )}
@@ -294,7 +291,13 @@ export function AutomationPage() {
                     </div>
                     <div className="faint" style={{ fontSize: 12 }}>
                       {describeSchedule(sched)}
-                      {quick ? ` • ${t('{n} kaynak → {targets} hedef', { n: quick.paths.length, targets: quick.targetIds.length })}` : ''}
+                      {quick ? (
+                        <span title={[...quick.paths, '→', ...quick.targetIds.map((id) => boot.config.nodes.find((n) => n.id === id)?.name ?? id)].join('\n')}>
+                          {` • ${t('{n} kaynak → {targets} hedef', { n: quick.paths.length, targets: quick.targetIds.length })}`}
+                        </span>
+                      ) : (
+                        ''
+                      )}
                       {sched?.machineId ? ` • ${t('{machine} makinesinde', { machine: sched.machineId })}` : ''}
                     </div>
                   </div>

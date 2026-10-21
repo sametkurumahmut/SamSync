@@ -159,7 +159,8 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
 export interface RelayHost {
   ctx(): CoreContext;
   /** Runs a plan with the planner's selection; null when there is nothing to do. */
-  runPlan(plan: SendPlan, label: string): RunHandle | null;
+  /** `report`: tell the team's channel when it ends (a delivery from the queue, which no sender is waiting for). */
+  runPlan(plan: SendPlan, label: string, report?: boolean): RunHandle | null;
   /** Runs ready-made groups (the pack applied to this machine's own disk), tracked like any run. */
   runGroups(groups: ExecGroup[], label: string, opts: { options: SendOptions; backup: boolean; verify: boolean }): RunHandle;
   /** This machine's settings as a receiver: commands around the apply, the notification. */
@@ -495,7 +496,7 @@ export class RelayService {
             const plan = await buildSendPlan(ctx, req);
             const tp = plan.targets.find((x) => x.targetId === p.targetId);
             if (tp && !tp.reachable) throw new Error(tp.error ?? t('erişilemedi'));
-            const h = this.host.runPlan(plan, req.label!);
+            const h = this.host.runPlan(plan, req.label!, true);
             const d = h ? await h.done : null;
             if (d && (d.status === 'failed' || d.status === 'cancelled')) throw new Error(d.targets[0]?.error ?? d.status);
             p.jobs.shift();

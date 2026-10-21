@@ -567,6 +567,16 @@ const d: Dict = {
   '{n} özet orada': '{n} con hash allí',
   'Çalıştırma sonunda kullanımdaki dosyaları bir kez daha dene': 'Volver a intentar los archivos en uso al final de una ejecución',
   'Çalışıyor: {dir} izleniyor': 'En marcha: vigilando {dir}',
+  'Bu liste genel seçenekleri kullanır; burada yapılan değişiklik bütün listelere geçer': 'Esta lista usa las opciones generales; un cambio aquí se aplica a todas las listas',
+  'Bu liste kendi seçeneklerini tutar; genel seçenekler değişmez': 'Esta lista guarda sus propias opciones; las opciones generales no cambian',
+  'Bu listenin kendi seçenekleri var': 'Esta lista tiene sus propias opciones',
+  'Bu listenin kendi seçenekleri: değişiklikler yalnızca bu listede kalır; liste kaydedilince onunla saklanır.': 'Opciones propias de esta lista: los cambios se quedan en esta lista y se guardan con ella cuando se guarda la lista.',
+  'Bu listeye özel': 'Solo esta lista',
+  'Genel seçenekler: kendi seçenekleri olmayan bütün listeler bunları kullanır.': 'Opciones generales: todas las listas sin opciones propias las usan.',
+  'Genel seçeneklere göre sıfırla': 'Restablecer a las opciones generales',
+  'Grup: {group}': 'Grupo: {group}',
+  'Tıklayınca açılır; sağ tık: yolu kopyala': 'Clic para abrir; clic derecho para copiar la ruta',
+  'Varsayılanlara sıfırla (Ayarlar › Kopyalama’daki değerler)': 'Restablecer a los valores predeterminados (los de Ajustes › Copia)',
 };
 
 export default d;

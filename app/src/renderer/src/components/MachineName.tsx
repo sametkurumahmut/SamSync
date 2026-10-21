@@ -16,6 +16,7 @@ export function MachineName({
   sub,
   className,
   hideAddress,
+  tip,
 }: {
   node?: Pick<NodeConfig, 'name' | 'address'>;
   /** A name alone (a run's target title), split heuristically. */
@@ -30,12 +31,14 @@ export function MachineName({
   className?: string;
   /** Leave the address out of the second line (it stays in the tooltip). */
   hideAddress?: boolean;
+  /** The tooltip instead of the name and address (a card adds the id and the group). */
+  tip?: string;
 }) {
   const label = machineLabel(node?.name ?? name ?? '', node?.address ?? address);
   const l = hideAddress ? { ...label, sub: undefined } : label;
   const full = node ? `${node.name}${node.address && !node.name.includes(node.address) ? ` (${node.address})` : ''}` : name;
   return (
-    <span className={cls('mname', layout, size, className)} title={full}>
+    <span className={cls('mname', layout, size, className)} title={tip ?? full}>
       <span className="mname-title">
         <span className="ellipsis">{l.title}</span>
         {extra}

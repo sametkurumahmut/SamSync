@@ -10,6 +10,7 @@ import { tx } from '../lib/i18n';
 import { ConfigEditor } from '../components/ConfigEditor';
 import { Inventory } from '../components/Inventory';
 import { MachineName } from '../components/MachineName';
+import { PathLink } from '../components/PathLink';
 import { DiscoverDialog, nodeFromHost } from '../components/DiscoverDialog';
 import { LatencySpark } from '../components/charts';
 import { machineLabel } from '@shared/machine';
@@ -197,9 +198,7 @@ export function TargetsPage() {
                   </div>
                   <div className="col" style={{ gap: 4 }}>
                     {id.node.localRoots.map((r) => (
-                      <div key={r} className="row mono selectable" style={{ fontSize: 12 }}>
-                        <HardDrive size={13} className="faint" /> {r}
-                      </div>
+                      <PathLink key={r} path={r} open={() => api.openPath(r)} icon={<HardDrive size={13} className="faint" />} style={{ fontSize: 12 }} />
                     ))}
                     {!id.node.localRoots.length && <span className="faint">{t('Yerel kök tanımlı değil: her şey tam yoluyla gönderilir.')}</span>}
                   </div>
@@ -266,13 +265,21 @@ export function TargetsPage() {
                     <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local')}>
                       <div className="row" style={{ gap: 10 }}>
                         <span className={cls('dot', isLocal ? 'ok' : p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} />
-                        <MachineName className="grow" node={n} size="lg" sub={machineLabel(n.name, n.address).title !== n.id ? <span className="mono">{n.id}</span> : undefined} />
+                        <MachineName
+                          className="grow"
+                          node={n}
+                          size="lg"
+                          sub={machineLabel(n.name, n.address).title !== n.id ? <span className="mono">{n.id}</span> : undefined}
+                          tip={[n.name, [n.address, n.id].filter(Boolean).join(' • '), n.group ? t('Grup: {group}', { group: n.group }) : ''].filter(Boolean).join('\n')}
+                        />
                         {isLocal ? <span className="badge blue">{t('bu makine')}</span> : <Switch on={n.enabled} onChange={(v) => void toggleEnabled(n, v)} disabled={!boot.configWritable} label={t('{name} hedef olarak kullanılsın', { name: n.name })} />}
                       </div>
-                      <div className="target-root mono selectable" title={rootPreview(n, boot.platform)}>
-                        {n.transport === 'sftp' ? <KeyRound size={12} /> : n.transport === 'path' ? <HardDrive size={12} /> : <Network size={12} />}
-                        <span className="ellipsis">{rootPreview(n, boot.platform)}</span>
-                      </div>
+                      <PathLink
+                        className="target-root"
+                        path={rootPreview(n, boot.platform)}
+                        open={n.transport === 'sftp' ? null : () => api.openTarget(n.id)}
+                        icon={n.transport === 'sftp' ? <KeyRound size={12} /> : n.transport === 'path' ? <HardDrive size={12} /> : <Network size={12} />}
+                      />
                       {!isLocal && lastSend.get(n.id) && (() => {
                         const l = lastSend.get(n.id)!;
                         const pace = l.bytes > 0 && l.ms >= 500 ? t('{speed}/sn', { speed: bytes((l.bytes / l.ms) * 1000) }) : null;

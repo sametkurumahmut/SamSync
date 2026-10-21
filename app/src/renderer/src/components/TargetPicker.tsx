@@ -319,8 +319,9 @@ export function TargetSummary({ value }: { value: string[] }) {
   const nodes = useTargetNodes();
   const names = nodes.filter((n) => value.includes(n.id)).map((n) => n.name);
   if (!value.length) return <span className="faint">{t('Hedef seçilmedi')}</span>;
+  // every name on hover, one per line: the line itself shows only the first three
   return (
-    <span className="ellipsis">
+    <span className="ellipsis" title={names.join('\n')}>
       {tx('{n} hedef: {names}', { n: <b>{value.length}</b>, names: <span className="muted">{names.slice(0, 3).join(', ')}{names.length > 3 ? ` +${names.length - 3}` : ''}</span> }, { count: value.length })}
     </span>
   );

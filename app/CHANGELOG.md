@@ -1,5 +1,12 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Listeye özel seçenekler:** Gönder sayfasındaki seçenekler kartında **Genel / Bu listeye özel**. Özel seçilince seçenekler o sekmede kalıyor (sekmede küçük bir simge), liste hızlı gönderim olarak kaydedilince onunla saklanıyor; genel seçenekler değişmiyor. **Genel seçeneklere göre sıfırla** ve **Varsayılanlara sıfırla** düğmeleri. Komut satırından açılan hızlı gönderim ya da profil artık genel seçenekleri değiştirmiyor, kendi sekmesinde kendi seçenekleriyle açılıyor.
+- **Yollar ve ipuçları:** makine kartında adın üstüne gelince ad, adres, kimlik ve grup görünüyor (kırpılan kimlik de); yola tıklayınca Explorer'da açılıyor, sağ tıkta "Explorer'da göster" ve "Yolu kopyala". Otomasyon kartlarındaki yollar da aynı; hedef satırının üstüne gelince bütün makineler alt alta.
+- **Bildirimler tek sefer:** röle ya da ajan bir gönderim için yaptığı işi (paketi uygulama, gruba dağıtma) artık ekip kanalına ayrıca bildirmiyor; bütün gönderim bitince gönderen taraf her makineyle birlikte bir kez bildiriyor. Rölenin kuyruktan sonradan yaptığı teslimi yine röle bildiriyor.
+- **Gönderen:** Telegram ve web kancası bildiriminde gönderenin hesabı `whoami` biçiminde yazıyor (`ALAN\kullanıcı`, yerel hesap değilse makine adıyla); web kancasının JSON'unda `user` alanı.
+
 ## 2.4.1 — 2026-10-21
 
 - **Karşılaştır sayfası da hedefteki özetleri kullanıyor:** içeriğe göre karşılaştırmada Karşılaştır sayfası, `--check-only`, makine ↔ makine karşılaştırması ve senkron işleri de SamSync çalışan makineden dosyaların özetini istiyor; dosyalar ağ üzerinden okunmuyor. Makine ↔ makine karşılaştırmasında yalnızca bir tarafta SamSync çalışıyorsa yalnızca öbür taraf okunuyor. Kaç dosyanın orada özetlendiği sekmede ve sayaçların yanında görünüyor.

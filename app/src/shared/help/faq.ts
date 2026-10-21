@@ -200,6 +200,17 @@ export const FAQ: FaqEntry[] = [
   },
   // ---- send
   {
+    id: 'list-options',
+    topic: 'send',
+    q: { tr: 'Her liste kendi seçenekleriyle gönderebilir mi?', en: 'Can each list send with options of its own?' },
+    a: {
+      tr: 'Evet. Gönder sayfasındaki seçenekler kartında **Bu listeye özel** seçin: kip, yedek, karşılaştırma gibi seçenekler o sekmede kalır, liste hızlı gönderim olarak kaydedilince onunla saklanır; genel seçenekler değişmez. **Genel** seçili listeler genel seçenekleri kullanır. Kartın yanındaki düğmeler listeyi genel seçeneklere ya da Ayarlar › Kopyalama’daki varsayılanlara döndürür.',
+      en: 'Yes. In the options card of the Send page choose **This list only**: mode, backup, comparison and the rest then stay with that tab and are saved with the list when it is saved as a quick send; the general options do not change. Lists set to **General** use the general options. The buttons next to the switch bring the list back to the general options or to the defaults in Settings › Copy.',
+    },
+    keywords: ['liste', 'list', 'sekme', 'tab', 'seçenek', 'options', 'özel', 'own', 'sıfırla', 'reset'],
+    page: 'send',
+  },
+  {
     id: 'overlapping-sources',
     topic: 'send',
     q: { tr: 'İki kaynak hedefte aynı yere ya da iç içe giderse ne olur?', en: 'What happens when two sources go to the same place, or one inside the other, on the targets?' },

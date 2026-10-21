@@ -14,20 +14,27 @@ export interface RunMessage {
 const STATUS_MARK: Record<RunDetail['status'], string> = { ok: '✓', partial: '△', failed: '✕', cancelled: '–', running: '…' };
 
 /** The message for a finished run: one line of the result, then the machines that failed with why. */
-export function runMessage(run: RunDetail, from: { host: string; version?: string }): RunMessage {
+/** Who sent it, as whoami writes it (DOMAIN\user); the computer is named too when the account is not a local one. */
+export function senderText(from: { host: string; user?: string }): string {
+  if (!from.user) return from.host;
+  return from.user.toLowerCase().startsWith(`${from.host.toLowerCase()}\\`) ? from.user : `${from.user}, ${from.host}`;
+}
+
+export function runMessage(run: RunDetail, from: { host: string; version?: string; user?: string }): RunMessage {
   const ms = (run.finishedAt ?? Date.now()) - run.startedAt;
   const mins = Math.round(ms / 60000);
   const took = ms < 90_000 ? t('{n} sn', { n: Math.round(ms / 1000) }) : mins < 120 ? t('{n} dk', { n: mins }) : t('{h} sa {m} dk', { h: Math.floor(mins / 60), m: mins % 60 });
   const okTargets = run.targets.filter((x) => x.status === 'ok').length;
   const head = `${STATUS_MARK[run.status]} ${run.label} — ${t('{ok}/{n} makine', { ok: okTargets, n: run.targets.length })}, ${t('{n} işlem', { n: run.opsOk })}${run.opsFailed ? `, ${t('{n} hatalı', { n: run.opsFailed })}` : ''}, ${formatBytes(run.bytes)}, ${took}`;
   const failed = run.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => `• ${x.title}: ${x.error ?? t('{n} hata', { n: x.failed })}`);
-  const text = [head, ...failed, `(${from.host}${from.version ? `, SamSync ${from.version}` : ''})`].join('\n');
+  const text = [head, ...failed, `${t('Gönderen: {who}', { who: senderText(from) })}${from.version ? ` • SamSync ${from.version}` : ''}`].join('\n');
   const payload = {
     event: 'run-done',
     status: run.status,
     label: run.label,
     origin: run.origin,
     from: from.host,
+    user: from.user,
     version: from.version,
     startedAt: new Date(run.startedAt).toISOString(),
     finishedAt: new Date(run.finishedAt ?? Date.now()).toISOString(),
