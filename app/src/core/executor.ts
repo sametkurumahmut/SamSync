@@ -4,7 +4,9 @@ import { Transform, type Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
-import { RelayError, submitRelayJob, submitRelayPack, waitRelayResult } from './relay';
+import { RelayError, heartbeatFresh, readHeartbeat, submitRelayJob, submitRelayPack, waitRelayResult } from './relay';
+import { AgentHasher } from './agenthash';
+import { DELTA_BLOCK, DELTA_MIN, changedBlocks, patchedStream, type BlockList, type DeltaInfo } from './delta';
 import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
 import type { PackOp, RelayJob } from '../shared/relay';
 import { blobStream } from './git';
@@ -70,6 +72,8 @@ export interface ExecSettings {
   postCommandTimeoutSeconds: number;
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
   bandwidthMBps?: number;
+  /** A file a program holds open is tried once more after everything else for that target. */
+  retryInUseAtEnd?: boolean;
   /** Relay: how long it may take to pick a job up, and to finish it. */
   relayAckMs?: number;
   relayDoneMs?: number;
@@ -96,6 +100,8 @@ export interface RunHandle {
 const TMP_SUFFIX = '.samsync-tmp';
 /** Files at least this big are checked for being in use on the target before they are carried over. */
 const IN_USE_CHECK_MIN = 1024 * 1024;
+/** A file held open is tried again at the end of the run no sooner than this after it was first found in use. */
+const IN_USE_RETRY_WAIT_MS = 5000;
 /**
  * Files at least this big are written under a fixed temporary name, so a copy that broke off (cancel, a dropped
  * link, the app closed) continues from where it stopped the next time instead of starting over.
@@ -200,6 +206,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       targetIds: s.targetIds,
       options: s.options,
       paused: paused || undefined,
+      inUseFailed: results.filter((r) => !r.ok && r.inUse).length || undefined,
     };
   };
 
@@ -307,8 +314,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const groupParams = { root: g.rootLabel, n: g.ops.length };
     log('info', backup ? t('→ {root} ({n} işlem, yedekli)', groupParams) : t('→ {root} ({n} işlem)', groupParams), g.key);
 
-    const record = (op: ExecOp, ok: boolean, error?: string, backedUp?: boolean) => {
-      results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp });
+    const record = (op: ExecOp, ok: boolean, error?: string, backedUp?: boolean, inUse?: boolean) => {
+      results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error, backedUp, inUse: inUse || undefined });
       st.done++;
       if (!ok) {
         st.failed++;
@@ -384,6 +391,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       if (src.kind === 'fs') return fs.createReadStream(src.abs, { highWaterMark: limiter ? 256 * 1024 : 1024 * 1024 });
       if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
       if (src.kind === 'pack') return openPackEntry(src.file, src);
+      if (src.kind === 'patch') return patchedStream(openPackEntry(src.file, src), src.base, src.size, src);
       const et = await endpoint(src.key);
       return et.readStream(src.rel);
     };
@@ -486,7 +494,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return keepOld(op.rel); // otherwise the rename replaces it
     };
 
-    const runOp = async (op: ExecOp) => {
+    // files a program held open, tried once more at the end when asked for: the program may have let go by then
+    const held: ExecOp[] = [];
+    let heldAt = 0;
+    const runOp = async (op: ExecOp, _index?: number, last = false) => {
       await holdWhilePaused();
       if (gc.cancelled) return;
       if (s.dryRun) {
@@ -495,6 +506,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         return;
       }
       let lastErr: unknown;
+      let inUse = false;
       for (let attempt = 0; attempt <= s.retryCount; attempt++) {
         await holdWhilePaused();
         if (gc.cancelled) return;
@@ -518,6 +530,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
               record(op, true, undefined, false);
               return;
             }
+            if (s.retryInUseAtEnd && !last) {
+              if (!held.length) heldAt = Date.now();
+              held.push(op);
+              log('warn', t('{path}: kullanımda; sonda bir kez daha denenecek', { path: op.rel }), g.key);
+              return;
+            }
+            inUse = true;
             break;
           }
           if (attempt < s.retryCount && !gc.cancelled) {
@@ -526,7 +545,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           }
         }
       }
-      record(op, false, errMessage(lastErr));
+      record(op, false, errMessage(lastErr), undefined, inUse);
     };
 
     try {
@@ -559,6 +578,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       await mapLimit(copies, s.parallelFiles, runOp);
       await mapLimit(delFiles, s.parallelFiles, runOp);
       for (const d of delDirs) await runOp(d);
+      if (held.length && !gc.cancelled) {
+        await sleep(Math.max(0, heldAt + IN_USE_RETRY_WAIT_MS - Date.now()));
+        log('info', t('{n} kullanımdaki dosya bir kez daha deneniyor', { n: held.length }), g.key);
+        for (const op of held.splice(0)) await runOp(op, 0, true);
+      }
 
       if (gc.cancelled) {
         st.status = 'cancelled';
@@ -647,6 +671,20 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   async function runPacked(g: ExecGroup, st: RunTargetState, tgt: Transport) {
     const job = g.relay!.job;
     const copies = g.ops.filter((o) => o.kind === 'copy' && o.src && o.src.kind !== 'endpoint');
+    // big files already there go as the blocks that differ, when SamSync on the target applies block deltas
+    const deltas = new Map<string, { list: BlockList; out: { info?: DeltaInfo; size: number; sent: number } }>();
+    const big = copies.filter((o) => o.dstExists && !o.replaceType && o.size >= DELTA_MIN && o.src!.kind === 'fs');
+    if (big.length) {
+      const beat = await readHeartbeat(tgt).catch(() => null);
+      if (beat?.blocks && heartbeatFresh(beat)) {
+        log('info', t('{n} büyük dosyanın blok listesi hedeften isteniyor', { n: big.length }), g.key);
+        const lists = await new AgentHasher(tgt, () => groupCancel.get(g.key)!.cancelled).blocks(big.map((o) => ({ rel: o.rel, size: o.size })), DELTA_BLOCK);
+        for (const o of big) {
+          const list = lists?.[o.rel];
+          if (list) deltas.set(o.rel, { list, out: { size: 0, sent: 0 } });
+        }
+      }
+    }
     const entries: PackEntry[] = [];
     const sources: PackSource[] = copies.map((op) => ({
       rel: op.rel,
@@ -654,6 +692,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       mtimeMs: op.mtimeMs ?? Date.now(),
       open: () => {
         const src = op.src!;
+        const d = deltas.get(op.rel);
+        if (d && src.kind === 'fs') return changedBlocks(fs.createReadStream(src.abs, { highWaterMark: DELTA_BLOCK }), d.list, DELTA_BLOCK, d.out);
         if (src.kind === 'fs') return fs.createReadStream(src.abs, { highWaterMark: 1024 * 1024 });
         if (src.kind === 'git') return blobStream(src.repo, src.rev, src.path);
         throw new Error(t('Kaynak uç bulunamadı: {key}', { key: (src as { key?: string }).key ?? '' }));
@@ -682,12 +722,16 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     }
     const total = entries.reduce((a, e) => a + e.size, 0);
     if (total > 0) log('info', t('Paket: {size} → {packed} (%{pct})', { size: formatBytes(total), packed: formatBytes(packed), pct: Math.round((100 * packed) / total) }), g.key);
+    if (deltas.size) {
+      const ds = [...deltas.values()];
+      log('info', t('Blok farkı: {n} dosyanın {size} boyutundan yalnızca değişen {sent} gönderildi', { n: ds.length, size: formatBytes(ds.reduce((a, d) => a + d.out.size, 0)), sent: formatBytes(ds.reduce((a, d) => a + d.out.sent, 0)) }), g.key);
+    }
     // the job tells the relay what to do with the pack on its own disk
     const byRel = new Map(entries.map((e) => [e.rel, e]));
     const ops: PackOp[] = g.ops.map((op) => {
       if (op.kind === 'copy') {
         const e = byRel.get(op.rel)!;
-        return { kind: 'copy', id: op.id, rel: op.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, replaceType: op.replaceType, dstExists: op.dstExists };
+        return { kind: 'copy', id: op.id, rel: op.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, replaceType: op.replaceType, dstExists: op.dstExists, delta: deltas.get(op.rel)?.out.info };
       }
       if (op.kind === 'mkdir') return { kind: 'mkdir', id: op.id, rel: op.rel, replaceType: op.replaceType, dstExists: op.dstExists };
       return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir };
@@ -718,9 +762,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         st.status = own.status === 'cancelled' || own.status === 'deferred' ? 'failed' : own.status;
         st.error = own.error;
         const failedIds = new Set(own.failedOps ?? []);
+        const heldIds = new Set(own.inUseOps ?? []);
         for (const op of g.ops) {
           const ok = own.status === 'ok' || !failedIds.has(op.id);
-          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı') });
+          results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok, error: ok ? undefined : own.error ?? t('Röle uygulayamadı'), inUse: (!ok && heldIds.has(op.id)) || undefined });
         }
         st.failed = own.opsFailed;
         if (own.backupPath) st.backupPath = own.backupPath;

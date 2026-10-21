@@ -7,6 +7,8 @@
 //   --check-only  print whether each target holds the same items, no window (exit code 0 = all the same, else 1)
 //   --sync <job>  compare and run a sync job (id or name) with its default actions, no window (exit code 0 = all done)
 //   --quick <name>  run a saved send (Send page → Hızlı gönderimler) by its name or id
+//   --pack <folder>  write the items as one pack file into the folder, no window (prints the file; exit code 0 = written)
+//   --since <pack|machine>  with --pack: only what changed since that earlier pack file, or what that machine lacks
 //   --hidden  started at login: stay in the tray when that is enabled
 //   --remove-integrations  take the Explorer menu and the Notepad++ entries out, then quit (used by the uninstaller)
 import fs from 'node:fs';
@@ -17,7 +19,11 @@ export interface Launch extends OpenRequest {
   hidden: boolean;
   removeIntegrations: boolean;
   /** --plan-only / --check-only / --sync: answer on the console and quit, without a window. */
-  headless?: 'plan' | 'check' | 'sync';
+  headless?: 'plan' | 'check' | 'sync' | 'pack';
+  /** --pack: the folder the pack file goes into. */
+  packDir?: string;
+  /** --since: an earlier pack file, or a machine (id or name), the pack is made against. */
+  since?: string;
   /** --sync: the job's id or name. */
   syncJob?: string;
   /** --quick: the name (or id) of a saved send to run. */
@@ -45,6 +51,14 @@ export function parseLaunch(args: string[], appPath?: string, cwd?: string): Lau
       out.syncJob = (a === '--sync' ? args[++i] ?? '' : a.slice(7)).trim();
     } else if (a === '--quick' || a.startsWith('--quick=')) {
       out.quick = (a === '--quick' ? args[++i] ?? '' : a.slice(8)).trim();
+    } else if (a === '--pack' || a.startsWith('--pack=')) {
+      out.headless = 'pack';
+      const dir = (a === '--pack' ? args[++i] ?? '' : a.slice(7)).trim();
+      out.packDir = dir ? (cwd ? path.resolve(cwd, dir) : path.resolve(dir)) : '';
+    } else if (a === '--since' || a.startsWith('--since=')) {
+      const ref = (a === '--since' ? args[++i] ?? '' : a.slice(8)).trim();
+      // a pack file by its path; anything else is a machine
+      out.since = /\.samsync-pack$/i.test(ref) ? (cwd ? path.resolve(cwd, ref) : path.resolve(ref)) : ref;
     } else if (a && !a.startsWith('-')) {
       try {
         const p = cwd ? path.resolve(cwd, a) : path.resolve(a);

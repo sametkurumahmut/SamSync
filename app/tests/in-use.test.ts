@@ -7,6 +7,7 @@ import { buildSendPlan } from '../src/core/plan';
 import { startRun } from '../src/core/executor';
 import { transportForNode } from '../src/core/transport';
 import { tmpDir, write, pathNode, makeCtx, defaultOptions, sleep, daysAgo } from './helpers';
+import { Service } from '../src/core/service';
 
 const win = process.platform === 'win32';
 
@@ -50,6 +51,9 @@ describe('a file in use on the target', () => {
       expect(held?.ok).toBe(false);
       expect(held?.error).toContain('held.exe');
       expect(held?.error).toMatch(/kullanımda|in use/);
+      // marked, so the run panel offers "retry the files in use"
+      expect(held?.inUse).toBe(true);
+      expect(d.inUseFailed).toBe(1);
       expect(d.results.find((r) => r.rel === 'free.txt')?.ok).toBe(true);
       // no retry waits (2 × 1 s) and nothing left behind
       expect(Date.now() - started).toBeLessThan(1800);
@@ -115,4 +119,97 @@ describe('a file in use on the target', () => {
       await fsp.rm(base, { recursive: true, force: true }).catch(() => undefined);
     }
   });
+
+  it.skipIf(!win)('is tried once more at the end of the run when asked for, and goes once the program has let go', async () => {
+    const base = await tmpDir();
+    const src = path.join(base, 'src');
+    const tgt = path.join(base, 't');
+    await fsp.mkdir(tgt, { recursive: true });
+    await fsp.copyFile(process.execPath, path.join(tgt, 'held.exe'));
+    await write(path.join(src, 'held.exe'), 'x'.repeat(2 * 1024 * 1024));
+    await write(path.join(src, 'free.txt'), 'hello');
+    // the program lets go of its file after two seconds
+    const child = spawn(path.join(tgt, 'held.exe'), ['-e', 'setTimeout(() => {}, 2000)'], { stdio: 'ignore' });
+    await sleep(600);
+    try {
+      const ctx = makeCtx({ nodes: [pathNode('T', tgt)], copy: { retryCount: 0, waitSeconds: 0 } as never }, [src], path.join(base, 'ud'));
+      const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: defaultOptions, origin: 'send' });
+      const tp = plan.targets[0];
+      const ops = tp.ops.filter((o) => o.selected).map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, dstExists: o.dstMtime != null }));
+      const h = startRun(ctx, [{ key: 'T', title: 'T', rootLabel: tp.root, open: () => transportForNode(ctx, ctx.config.nodes[0]), ops }], {
+        label: 'in use, retried',
+        origin: 'send',
+        dryRun: false,
+        backup: false,
+        backupKeep: 0,
+        backupFolderName: '_y',
+        verify: false,
+        retryCount: 0,
+        waitSeconds: 0,
+        parallelGroups: 1,
+        parallelFiles: 4,
+        postCommandTimeoutSeconds: 5,
+        retryInUseAtEnd: true,
+        sources: [],
+        targetIds: [],
+      });
+      const d = await h.done;
+      expect(d.status).toBe('ok');
+      expect(d.results.filter((r) => r.rel === 'held.exe').map((r) => r.ok)).toEqual([true]);
+      expect(fs.statSync(path.join(tgt, 'held.exe')).size).toBe(2 * 1024 * 1024);
+      expect(d.log.some((l) => /sonda bir kez daha denenecek|tried once more at the end/.test(l.message))).toBe(true);
+      expect(d.inUseFailed).toBeUndefined();
+    } finally {
+      child.kill();
+      await sleep(300);
+      await fsp.rm(base, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }, 20000);
+
+  it.skipIf(!win)('"retry the files in use" writes only those again, to the same machine, without a review', async () => {
+    const base = await tmpDir();
+    const src = path.join(base, 'src');
+    const tgt = path.join(base, 't');
+    // the source folder lands under its own name on the target
+    await fsp.mkdir(path.join(tgt, 'src'), { recursive: true });
+    await fsp.copyFile(process.execPath, path.join(tgt, 'src', 'held.exe'));
+    await write(path.join(src, 'held.exe'), 'y'.repeat(2 * 1024 * 1024));
+    await write(path.join(src, 'free.txt'), 'hello');
+    const cfgFile = path.join(base, 'config.json');
+    await fsp.writeFile(cfgFile, JSON.stringify({ schema: 2, nodes: [{ ...pathNode('Me', src), localRoots: [base] }, pathNode('T', tgt)], copy: { retryCount: 0, waitSeconds: 0 } }));
+    const ud = path.join(base, 'ud');
+    await fsp.mkdir(ud, { recursive: true });
+    await fsp.writeFile(path.join(ud, 'settings.json'), JSON.stringify({ configPath: cfgFile, localNodeId: 'Me', agent: { receivePacks: false, notifyOnApply: false } }));
+    const svc = new Service({ isElectron: false, appVersion: 'test', userDataPath: ud, initialPaths: [], emit: () => undefined });
+    await svc.init();
+    const child = spawn(path.join(tgt, 'src', 'held.exe'), ['-e', 'setTimeout(() => {}, 4000)'], { stdio: 'ignore' });
+    await sleep(600);
+    try {
+      const plan = await svc.planSend({ sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: { ...defaultOptions, backup: false }, origin: 'send', label: 'deneme' }, 'iu');
+      expect(plan.targets[0].reachable).toBe(true);
+      const first = await svc.runPlan(plan, 'default', { notify: false }).done;
+      expect(first.status).toBe('partial');
+      expect(first.inUseFailed).toBe(1);
+      // the program is closed: only held.exe goes again
+      await new Promise<void>((r) => (child.exitCode != null ? r() : child.once('exit', () => r())));
+      await sleep(300);
+      const id = await svc.retryInUse(first.id);
+      let again = await svc.run(id);
+      for (let i = 0; i < 100 && !again; i++) {
+        await sleep(100);
+        again = await svc.run(id);
+      }
+      expect(again!.status).toBe('ok');
+      expect(again!.results.map((r) => r.rel)).toEqual(['src/held.exe']);
+      expect(again!.label).toMatch(/deneme/);
+      expect(fs.statSync(path.join(tgt, 'src', 'held.exe')).size).toBe(2 * 1024 * 1024);
+      await expect(svc.retryInUse(id)).rejects.toThrow();
+    } finally {
+      child.kill();
+      svc.automation?.stop();
+      svc.pending.stop();
+      await sleep(300);
+      await fsp.rm(base, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }, 20000);
 });

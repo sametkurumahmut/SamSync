@@ -37,7 +37,7 @@ interface Side {
 }
 
 /** A sender ("Me") and a relay ("T") in one process, sharing one configuration; the IGs are plain folders. */
-async function setup(opts: { relayRunning: boolean; ackSeconds?: number }) {
+async function setup(opts: { relayRunning: boolean; ackSeconds?: number; agentOn?: boolean }) {
   const base = await tmpDir();
   const src = path.join(base, 'me', 'Data');
   const server = path.join(base, 'server');
@@ -47,7 +47,7 @@ async function setup(opts: { relayRunning: boolean; ackSeconds?: number }) {
   const nodes: NodeConfig[] = [
     { ...pathNode('Me', path.join(base, 'me')), localRoots: [path.join(base, 'me')] },
     { ...pathNode('T', server, { group: 'G', relay: true }), localRoots: [server] },
-    pathNode('PC1', pc1, { group: 'G' }),
+    { ...pathNode('PC1', pc1, { group: 'G' }), localRoots: opts.agentOn ? [pc1] : [] },
     pathNode('PC2', pc2, { group: 'G' }),
   ];
   const cfgFile = path.join(base, 'config.json');
@@ -62,13 +62,16 @@ async function setup(opts: { relayRunning: boolean; ackSeconds?: number }) {
   };
   const me = await side('Me');
   const relay = opts.relayRunning ? await side('T') : null;
+  const agent = opts.agentOn ? await side('PC1') : null;
   const stop = () => {
+    agent?.svc.automation?.stop();
+    agent?.svc.relay?.stop();
     me.svc.automation?.stop();
     relay?.svc.automation?.stop();
     relay?.svc.relay?.stop();
     me.svc.relay?.stop();
   };
-  return { base, src, server, pc1, pc2, me: me.svc, relay: relay?.svc ?? null, stop };
+  return { base, src, server, pc1, pc2, me: me.svc, relay: relay?.svc ?? null, agent: agent?.svc ?? null, stop };
 }
 
 const req = (src: string, extra: Partial<SendRequest> = {}): SendRequest => ({ sources: [{ kind: 'fs', path: src }], targetIds: ['T', 'PC1', 'PC2'], options: { ...defaultOptions, propagateDeletes: false }, origin: 'send', label: 'deneme', ...extra });
@@ -117,7 +120,8 @@ describe('relay end to end', () => {
       expect(manifest.subtrees['Data'].entries.length).toBe(3);
       const again = await s.me.planSend(req(s.src), 't1b');
       expect(again.targets.find((tp) => tp.targetId === 'T')!.fromManifest).toBeTruthy();
-      expect(await s.me.relayState()).toMatchObject({ active: false, jobs: 0 });
+      // the sender runs SamSync too, so it takes packs itself: an agent, not a relay
+      expect(await s.me.relayState()).toMatchObject({ active: true, role: 'agent', jobs: 0 });
     } finally {
       s.stop();
     }
@@ -198,6 +202,124 @@ describe('relay end to end', () => {
       s.stop();
     }
   });
+});
+
+describe('agent on a machine without a group', () => {
+  it('a machine running SamSync takes the send as one pack and applies it with its own commands', async () => {
+    const s = await setup({ relayRunning: false, agentOn: true });
+    const send = async (label: string) => (await s.me.runPlan(await s.me.planSend(req(s.src, { targetIds: ['PC1'] }), label), 'default', { notify: false }).done);
+    try {
+      await write(path.join(s.src, 'a.txt'), 'A');
+      await write(path.join(s.src, 'sub', 'b.txt'), 'B');
+      const plan = await s.me.planSend(req(s.src, { targetIds: ['PC1'] }), 'ag1');
+      expect(plan.targets[0]).toMatchObject({ targetId: 'PC1', agent: true });
+      expect(plan.targets[0].via).toBeUndefined();
+      const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      expect(read(path.join(s.pc1, 'Data', 'sub', 'b.txt'))).toBe('B');
+      expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
+      expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'jobs'))).toEqual([]);
+      expect(await s.agent!.relayState()).toMatchObject({ active: true, role: 'agent', jobs: 1, lastOk: true });
+      // after the apply its own command runs (start the program again)
+      const marker = path.join(s.base, 'after.txt');
+      await s.agent!.saveSettings({ agent: { receivePacks: true, notifyOnApply: false, afterApply: `echo ok> "${marker}"` } });
+      await write(path.join(s.src, 'a.txt'), 'A2');
+      expect((await send('ag2')).status).toBe('ok');
+      expect(read(path.join(s.pc1, 'Data', 'a.txt'))).toBe('A2');
+      expect(fs.existsSync(marker)).toBe(true);
+      // a command before the apply that fails leaves the files as they were
+      await s.agent!.saveSettings({ agent: { receivePacks: true, notifyOnApply: false, beforeApply: 'exit 1' } });
+      await write(path.join(s.src, 'a.txt'), 'A333');
+      const d3 = await send('ag3');
+      expect(d3.status).toBe('failed');
+      expect(d3.targets[0].error).toMatch(/Uygulama öncesi|before applying/);
+      expect(read(path.join(s.pc1, 'Data', 'a.txt'))).toBe('A2');
+      // turned off: the heartbeat goes at once and the sender writes over the share again
+      await s.agent!.saveSettings({ agent: { receivePacks: false, notifyOnApply: false } });
+      expect((await s.agent!.relayState()).active).toBe(false);
+      // and its folder is gone again
+      expect(fs.existsSync(path.join(s.pc1, '_SamSyncRelay'))).toBe(false);
+      const plan4 = await s.me.planSend(req(s.src, { targetIds: ['PC1'] }), 'ag4');
+      expect(plan4.targets[0].agent).toBeUndefined();
+      expect((await s.me.runPlan(plan4, 'default', { notify: false }).done).status).toBe('ok');
+      expect(read(path.join(s.pc1, 'Data', 'a.txt'))).toBe('A333');
+    } finally {
+      s.stop();
+    }
+  }, 40000);
+});
+
+describe('content comparison through the agent', () => {
+  it('SamSync on the target hashes its own disk; nothing is read back over the network', async () => {
+    const s = await setup({ relayRunning: false, agentOn: true });
+    try {
+      // same size on both sides: only the contents can tell
+      await write(path.join(s.src, 'same.txt'), 'AAAA');
+      await write(path.join(s.src, 'diff.txt'), 'BBBB');
+      await write(path.join(s.src, 'deep', 'one.txt'), 'CCCC');
+      await write(path.join(s.pc1, 'Data', 'same.txt'), 'AAAA');
+      await write(path.join(s.pc1, 'Data', 'diff.txt'), 'bbbb');
+      await write(path.join(s.pc1, 'Data', 'deep', 'one.txt'), 'CCCC');
+      const r = req(s.src, { targetIds: ['PC1'], options: { ...defaultOptions, propagateDeletes: false, compare: 'content' } });
+      const plan = await s.me.planSend(r, 'h1');
+      const tp = plan.targets[0];
+      expect(tp.agentHashed).toBe(3);
+      expect(tp.ops.filter((o) => o.selected).map((o) => o.rel)).toEqual(['Data/diff.txt']);
+      expect(tp.counts.same).toBe(2);
+      // the questions and answers are gone again
+      expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'hashes'))).toEqual([]);
+    } finally {
+      s.stop();
+    }
+  }, 30000);
+
+  it('reads over the network when SamSync there does not answer', async () => {
+    const s = await setup({ relayRunning: false });
+    try {
+      // a heartbeat that says hashes are answered, from a SamSync that has just died
+      await write(path.join(s.pc1, '_SamSyncRelay', 'alive.json'), JSON.stringify({ at: Date.now(), node: 'PC1', hashes: true }));
+      await write(path.join(s.src, 'x.txt'), 'XXXX');
+      await write(path.join(s.pc1, 'Data', 'x.txt'), 'xxxx');
+      const r = req(s.src, { targetIds: ['PC1'], options: { ...defaultOptions, propagateDeletes: false, compare: 'content' } });
+      const plan = await s.me.planSend(r, 'h2');
+      const tp = plan.targets[0];
+      expect(tp.agentHashed).toBeUndefined();
+      expect(tp.ops.filter((o) => o.selected).map((o) => o.rel)).toEqual(['Data/x.txt']);
+      expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'hashes'))).toEqual([]);
+    } finally {
+      s.stop();
+    }
+  }, 30000);
+});
+
+describe('block delta through the agent', () => {
+  it('a big file already on the target goes as the blocks that differ', async () => {
+    const s = await setup({ relayRunning: false, agentOn: true });
+    try {
+      const MB = 1024 * 1024;
+      const old = Buffer.alloc(9 * MB + 123);
+      for (let i = 0; i < old.length; i += 4096) old.writeUInt32LE((i * 2654435761) >>> 0, i);
+      const next = Buffer.from(old);
+      next[4 * MB + 10] ^= 0xff;
+      await fsp.mkdir(path.join(s.pc1, 'Data'), { recursive: true });
+      await fsp.writeFile(path.join(s.pc1, 'Data', 'big.bin'), old);
+      fs.utimesSync(path.join(s.pc1, 'Data', 'big.bin'), new Date(Date.now() - 86400_000), new Date(Date.now() - 86400_000));
+      await fsp.mkdir(s.src, { recursive: true });
+      await fsp.writeFile(path.join(s.src, 'big.bin'), next);
+      const plan = await s.me.planSend(req(s.src, { targetIds: ['PC1'] }), 'd1');
+      expect(plan.targets[0].agent).toBe(true);
+      const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      expect(fs.readFileSync(path.join(s.pc1, 'Data', 'big.bin')).equals(next)).toBe(true);
+      expect(d.log.some((l) => /^Blok farkı: |^Block delta: /.test(l.message))).toBe(true);
+      // one block of nine went into the pack
+      const packLine = d.log.find((l) => /^Paket: |^Pack: /.test(l.message))!.message;
+      expect(packLine).toMatch(/→ (\d+(\.\d+)? KB|1(\.\d+)? MB)/);
+      expect(d.log.find((l) => /^Blok farkı: |^Block delta: /.test(l.message))!.message).toMatch(/1\.0 MB/);
+    } finally {
+      s.stop();
+    }
+  }, 40000);
 });
 
 describe('relay delivery queue', () => {

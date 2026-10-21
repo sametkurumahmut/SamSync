@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock } from 'lucide-react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag } from 'lucide-react';
 import type { NodeConfig, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
@@ -30,6 +30,7 @@ export function TargetsPage() {
   const probes = useApp((s) => s.probes);
   const latency = useApp((s) => s.latency);
   const relayState = useApp((s) => s.relayState);
+  const pendingSends = useApp((s) => s.pendingSends);
   // a few MB written and read back on request: the pace of the link, as a number
   const [speed, setSpeed] = useState<Record<string, SpeedTestResult | 'running' | undefined>>({});
   const testSpeed = async (n: NodeConfig) => {
@@ -57,15 +58,17 @@ export function TargetsPage() {
     };
   }, [doneCount]);
   const lastSend = useMemo(() => {
-    const out = new Map<string, { at: number; ms: number; bytes: number; status: string; via?: string }>();
+    const out = new Map<string, { at: number; ms: number; bytes: number; status: string; via?: string; runId: string }>();
     for (const r of history) {
       for (const tg of r.targets) {
         if (out.has(tg.key) || !tg.startedAt || !tg.finishedAt || tg.status === 'queued') continue;
-        out.set(tg.key, { at: tg.finishedAt, ms: tg.finishedAt - tg.startedAt, bytes: tg.bytesDone, status: tg.status, via: tg.via });
+        out.set(tg.key, { at: tg.finishedAt, ms: tg.finishedAt - tg.startedAt, bytes: tg.bytesDone, status: tg.status, via: tg.via, runId: r.id });
       }
     }
     return out;
   }, [history]);
+  // a send marked as a release point shows its name on the machine's last-send line
+  const releaseTags = useApp((s) => s.boot?.settings.releaseTags);
   const probing = useApp((s) => s.probing);
   const probe = useApp((s) => s.probe);
   const saveConfig = useApp((s) => s.saveConfig);
@@ -147,8 +150,8 @@ export function TargetsPage() {
                     <div className="row" style={{ gap: 6, marginTop: 10, fontSize: 12.5 }} data-tip={relayState.dir}>
                       <Share2 size={13} color="var(--accent)" />
                       <span>
-                        {t('Bu makine {group} grubunun rölesi', { group: relayState.group ?? '-' })} •{' '}
-                        {relayState.jobs ? t('{n} iş alındı, son {ago}{ok}', { n: relayState.jobs, ago: ago(relayState.lastJobAt), ok: relayState.lastOk === false ? ` (${t('hatalı')})` : '' }) : t('henüz iş gelmedi')}
+                        {relayState.role === 'agent' ? t('Bu makine gelen paketleri kendisi uygular') : t('Bu makine {group} grubunun rölesi', { group: relayState.group ?? '-' })} •{' '}
+                        {relayState.jobs ? t('{n} iş alındı, son {ago}{ok}', { n: relayState.jobs, ago: ago(relayState.lastJobAt), ok: relayState.lastOk === false ? ` (${t('hatalı')})` : '' }) : relayState.role === 'agent' ? t('henüz paket gelmedi') : t('henüz iş gelmedi')}
                       </span>
                     </div>
                   )}
@@ -166,6 +169,25 @@ export function TargetsPage() {
                             {t('{n} iş', { n: p.jobs })} • {t('{ago} beri', { ago: ago(p.since) })}
                             {p.lastTry ? ` • ${t('son deneme {ago}', { ago: ago(p.lastTry) })}` : ''}
                           </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {pendingSends.length > 0 && (
+                    <div className="col" style={{ gap: 4, marginTop: 8, fontSize: 12.5 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        <Clock size={13} color="var(--amber)" />
+                        <b>{t('Açılınca gönderilecek')}</b>
+                        <span className="faint">{t('makine açılınca kaynakların o anki hali gider')}</span>
+                      </div>
+                      {pendingSends.map((p) => (
+                        <div key={p.id} className="row faint" style={{ gap: 6, paddingLeft: 19 }} data-tip={p.lastError}>
+                          <span style={{ color: 'var(--text)' }}>{machineLabel(p.targetName).title}</span>
+                          <span className="truncate">
+                            {p.label || t('Gönderim')} • {t('{ago} beri', { ago: ago(p.createdAt) })}
+                            {p.lastTry ? ` • ${t('son deneme {ago}', { ago: ago(p.lastTry) })}` : ''}
+                          </span>
+                          <Button size="sm" variant="ghost" iconOnly icon={<X size={12} />} tip={t('Bekleyen gönderimi iptal et')} onClick={() => void api.cancelPendingSend(p.id)} />
                         </div>
                       ))}
                     </div>
@@ -254,6 +276,7 @@ export function TargetsPage() {
                       {!isLocal && lastSend.get(n.id) && (() => {
                         const l = lastSend.get(n.id)!;
                         const pace = l.bytes > 0 && l.ms >= 500 ? t('{speed}/sn', { speed: bytes((l.bytes / l.ms) * 1000) }) : null;
+                        const release = releaseTags?.find((x) => x.runId === l.runId)?.name;
                         return (
                           <div className="row faint" style={{ fontSize: 11.5, gap: 5 }} data-tip={t('Bu makineye son gönderim')}>
                             <Gauge size={12} color={l.status === 'ok' ? 'var(--green)' : l.status === 'cancelled' ? undefined : 'var(--red)'} />
@@ -262,6 +285,11 @@ export function TargetsPage() {
                               {duration(l.ms)} • {ago(l.at)}
                               {l.via ? ` • ${t('{relay} üzerinden', { relay: l.via })}` : ''}
                             </span>
+                            {release && (
+                              <span className="badge accent nowrap" data-tip={t('Bu gönderim bir sürüm noktası olarak işaretli')}>
+                                <Tag size={10} /> {release}
+                              </span>
+                            )}
                           </div>
                         );
                       })()}
@@ -277,6 +305,11 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
+                        {!isLocal && !n.relay && p?.agentAlive && (
+                          <span className="badge green" data-tip={t('SamSync orada çalışıyor: gönderimler sıkıştırılmış paket olarak gider, makine kendisi uygular')}>
+                            {t('ajan')}
+                          </span>
+                        )}
                         {!isLocal && p?.ok && p.freeBytes != null && (
                           <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
                             <HardDrive size={12} /> {t('{size} boş', { size: bytes(p.freeBytes) })}

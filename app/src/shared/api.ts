@@ -21,6 +21,7 @@ import type { FileTrace,
   SpeedTestResult,
   DiscoveredHost,
   RelayState,
+  PendingSend,
   RunDetail,
   RunSummary,
   SendPlan,
@@ -107,11 +108,16 @@ export interface Api {
   speedTest(nodeId: string): Promise<SpeedTestResult>;
   /** What the relay service on this machine is doing. */
   relayState(): Promise<RelayState>;
+  /** Sends waiting on this computer for machines that were off, and dropping one of them. */
+  pendingSends(): Promise<PendingSend[]>;
+  /** The files a program held open in a finished send, written again to the same machines; the new run's id. */
+  retryInUse(runId: string): Promise<string>;
+  cancelPendingSend(id: string): Promise<boolean>;
   /** A folder of this computer (null: its drives), for a browser's file picker in server mode. */
   listDir(path: string | null): Promise<DirListing>;
   /** Server mode: its state, and switching it on or off, the port, network access and the password (from the desktop only). */
   webUiState(): Promise<WebUiState>;
-  webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState>;
+  webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; https?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState>;
   /** Scans this computer's subnets for machines that answer on file sharing or SSH; cancellable through cancelTask. */
   discoverHosts(taskId: string): Promise<DiscoveredHost[]>;
   /** Every enabled machine's manifest, read now: which release each one holds under each sent folder. */
@@ -302,6 +308,9 @@ export const API_METHODS = {
   automationPause: true,
   speedTest: true,
   relayState: true,
+  pendingSends: true,
+  retryInUse: true,
+  cancelPendingSend: true,
   discoverHosts: true,
   listDir: true,
   webUiState: true,

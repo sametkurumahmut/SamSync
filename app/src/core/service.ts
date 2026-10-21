@@ -24,6 +24,7 @@ import type { FileTrace,
   SendPlan,
   SendOptions,
   SendRequest,
+  PendingSend,
   RunDetail,
   ProbeResult,
   QuickSend,
@@ -52,6 +53,8 @@ import { packFileName } from './packfile';
 import { readChangelogSection } from './changelog';
 import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assistantSystem } from './assistant';
 import { HashCache } from './hashcache';
+import { PendingSends } from './pending';
+import { probeNode } from './probe';
 import { runMessage, sendNotification, wantsNotification } from './notifications';
 import { quickIdOf } from './automation';
 import { baseSendOptions } from '../shared/options';
@@ -61,6 +64,7 @@ import { probeNodes } from './probe';
 import { transportForNode, transportForEndpoint, nodeRootLabel, type Transport } from './transport';
 import { mapSource, normalizeAbs, pathKey } from './paths';
 import { fsSources } from '../shared/sources';
+import { runLocalCommand } from './command';
 import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } from './sync';
@@ -166,6 +170,48 @@ export class Service implements Api {
     this.history = new History(host.userDataPath);
     this.hashCache = new HashCache(path.join(host.userDataPath, 'hashcache.json'));
     void this.hashCache.load();
+    this.pending = new PendingSends(path.join(host.userDataPath, 'pending-sends.json'), {
+      reachable: async (id) => {
+        const n = findNode(this.config, id);
+        return !!n && n.enabled !== false && (await probeNode(this.config, n, 3000, false)).ok;
+      },
+      send: (item) => this.sendPending(item),
+      changed: (items) => this.host.emit({ type: 'pending-sends', items }),
+      expired: (item) => this.log.warn(t('Bekleyen gönderim'), t('{name} 7 gün içinde açılmadı; bekleyen gönderim düştü: {label}', { name: item.targetName, label: item.label || '-' })),
+    });
+  }
+
+  /** Sends waiting for machines that were off (Settings › Send when the machine is back). */
+  readonly pending: PendingSends;
+
+  async pendingSends(): Promise<PendingSend[]> {
+    return this.pending.list();
+  }
+
+  async cancelPendingSend(id: string): Promise<boolean> {
+    return this.pending.remove(id);
+  }
+
+  /** A machine that was off answers again: its waiting send is planned now (the sources as they are) and run. */
+  private async sendPending(item: PendingSend): Promise<{ done: true } | { done: false; error: string }> {
+    if (!findNode(this.config, item.targetId)) return { done: true }; // the machine is no longer in the configuration
+    const req: SendRequest = { ...item.request, label: t('Açılınca: {label}', { label: item.label || t('Gönderim') }) };
+    const scans: PlanScans = new Map();
+    const plan = await buildSendPlan(this.ctx(), req, { scans });
+    const tp = plan.targets[0];
+    if (!tp?.reachable) return { done: false, error: tp?.error || t('Hedefe erişilemiyor') };
+    this.plans.set(plan.id, plan);
+    this.planScans.set(plan.id, scans);
+    let h: RunHandle;
+    try {
+      h = this.runPlan(plan, 'default', { notify: true });
+    } catch {
+      this.log.info(t('Bekleyen gönderim'), t('{name} açıldı; gönderilecek fark kalmamış: {label}', { name: item.targetName, label: item.label || '-' }));
+      return { done: true }; // nothing differs any more
+    }
+    this.log.info(t('Bekleyen gönderim'), t('{name} açıldı; bekleyen gönderim gidiyor: {label}', { name: item.targetName, label: item.label || '-' }));
+    const d = await h.done;
+    return d.status === 'failed' ? { done: false, error: d.targets[0]?.error || t('Gönderim başarısız') } : { done: true };
   }
 
   async init(): Promise<void> {
@@ -222,6 +268,8 @@ export class Service implements Api {
     });
     this.automation.start();
     this.syncRelay();
+    await this.pending.load();
+    this.pending.start();
   }
 
   private async loadConfigFrom(file: string) {
@@ -386,6 +434,7 @@ export class Service implements Api {
       this.syncRelay();
     }
     if ('updateAutoCheck' in patch || 'updateAutoDownload' in patch) this.host.updater?.configure(this.config.update, this.settings);
+    if ('agent' in patch) this.syncRelay();
     if ('automationPaused' in patch || 'automation' in patch) this.automation?.setPaused();
     if ('language' in patch) setLang(this.uiLang());
     if (this.automation) this.host.applySettings?.(this.settings, this.automation.snapshot());
@@ -427,12 +476,13 @@ export class Service implements Api {
     return { available: false, enabled: !!w?.enabled, running: false, port: w?.port ?? 8780, lan: w?.lan ?? true, hasPassword: !!w?.passwordHash, urls: [], clients: 0, sessions: 0 };
   }
 
-  async webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState> {
+  async webUiConfigure(patch: { enabled?: boolean; port?: number; lan?: boolean; https?: boolean; password?: string | null; viewerPassword?: string | null }): Promise<WebUiState> {
     const cur: WebUiSettings = this.settings.webUi ?? { enabled: false, port: 8780, lan: true };
     const next: WebUiSettings = {
       enabled: patch.enabled ?? cur.enabled,
       port: Math.max(1024, Math.min(65535, Math.round(patch.port ?? cur.port) || 8780)),
       lan: patch.lan ?? cur.lan,
+      https: patch.https ?? cur.https,
       passwordHash: patch.password === undefined ? cur.passwordHash : patch.password ? hashPassword(patch.password) : undefined,
       viewerHash: patch.viewerPassword === undefined ? cur.viewerHash : patch.viewerPassword ? hashPassword(patch.viewerPassword) : undefined,
     };
@@ -442,7 +492,7 @@ export class Service implements Api {
     if (next.enabled && !next.passwordHash) throw new Error(t('Önce bir parola belirleyin'));
     this.settings = { ...this.settings, webUi: next };
     await this.persistSettings();
-    this.log.info(t('Web arayüzü'), next.enabled ? t('Açık: kapı {port}, {where}', { port: next.port, where: next.lan ? t('ağdan erişilebilir') : t('yalnızca bu bilgisayar') }) : t('Kapalı'));
+    this.log.info(t('Web arayüzü'), next.enabled ? t('Açık: kapı {port}, {where}', { port: next.port, where: (next.lan ? t('ağdan erişilebilir') : t('yalnızca bu bilgisayar')) + (next.https ? ', HTTPS' : '') }) : t('Kapalı'));
     return this.host.webUi ? this.host.webUi.apply(next) : this.webUiState();
   }
 
@@ -638,6 +688,39 @@ export class Service implements Api {
     }
   }
 
+  /** The operations of the last sends, for "retry the files in use" without planning again (memory only). */
+  private recentGroups = new Map<string, { groups: ExecGroup[]; settings: ExecSettings }>();
+
+  private keepGroups(id: string, groups: ExecGroup[], settings: ExecSettings): void {
+    this.recentGroups.set(id, { groups, settings });
+    while (this.recentGroups.size > 10) this.recentGroups.delete(this.recentGroups.keys().next().value!);
+  }
+
+  /** The files a program held open in a finished send, written again now to the same machines, without a review. */
+  async retryInUse(runId: string): Promise<string> {
+    const kept = this.recentGroups.get(runId);
+    const detail = kept ? await this.history.get(runId) : null;
+    if (!kept || !detail) throw new Error(t('Bu çalıştırmanın işlemleri artık bellekte değil; “Yeniden dene” ile yeniden planlayın.'));
+    const ids = new Map<string, Set<string>>();
+    for (const r of detail.results) if (!r.ok && r.inUse) ids.set(r.key, (ids.get(r.key) ?? new Set<string>()).add(r.opId));
+    const groups: ExecGroup[] = kept.groups
+      .filter((g) => ids.has(g.key))
+      .map((g) => ({
+        ...g,
+        ops: g.ops.filter((o) => ids.get(g.key)!.has(o.id)),
+        // the manifest left after the first run stays; a machine running SamSync gets a new pack with these only
+        manifest: undefined,
+        relay: g.relay ? { targets: [], job: { ...g.relay.job, id: newId('relay-'), targetIds: [], pack: undefined } } : undefined,
+      }))
+      .filter((g) => g.ops.length);
+    if (!groups.length) throw new Error(t('Bu çalıştırmada kullanımda kalan dosya yok.'));
+    const s: ExecSettings = { ...kept.settings, label: t('Kullanımdakiler: {label}', { label: kept.settings.label }), targetIds: groups.map((g) => g.key), retryInUseAtEnd: false };
+    const handle = startRun(this.ctx(), groups, s);
+    this.keepGroups(handle.id, groups, s);
+    this.track(handle, true);
+    return handle.id;
+  }
+
   private execSettings(label: string, origin: SendRequest['origin'], o: Partial<SendRequest['options']>, extra: Partial<ExecSettings> = {}): ExecSettings {
     const c = this.config.copy;
     return {
@@ -658,6 +741,7 @@ export class Service implements Api {
       postCommand: o.runPostCommand ? c.postCommand : undefined,
       postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
       bandwidthMBps: c.bandwidthMBps,
+      retryInUseAtEnd: this.settings.retryInUseAtEnd === true,
       sources: [],
       targetIds: [],
       options: o,
@@ -696,7 +780,7 @@ export class Service implements Api {
   }
 
   /** Runs a plan; 'default' runs every operation the planner selected. Throws when there is nothing to do. */
-  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; nodes?: NodeConfig[] } = {}): RunHandle {
+  runPlan(plan: SendPlan, selected: Record<string, string[]> | 'default', overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[] } = {}): RunHandle {
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
     const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
@@ -726,9 +810,12 @@ export class Service implements Api {
     for (const tp of plan.targets) {
       if (tp.via) continue;
       if (!tp.reachable) {
+        // kept for later when asked for: the machine gets the send once it answers again
+        const queued = !!overrides.queueUnreachable && this.settings.sendWhenOnline === true && !tp.failed && !(overrides.dryRun ?? req.options.dryRun) && (req.origin === 'send' || req.origin === 'git');
+        if (queued) this.pending.add(req, tp.targetId, tp.targetName);
         // a machine that was off counts as failed, so "select the failed ones" and "resend to failed" include it
         if (overrides.unreachableFails) {
-          const why = tp.error || t('Hedefe erişilemiyor');
+          const why = (tp.error || t('Hedefe erişilemiyor')) + (queued ? ` • ${t('açılınca gönderilecek')}` : '');
           groups.push({ key: tp.targetId, title: tp.targetName, rootLabel: tp.root, open: () => Promise.reject(new Error(why)), node: nodeOf(tp.targetId), ops: [] });
         }
         continue;
@@ -739,8 +826,9 @@ export class Service implements Api {
       // a relay with nothing to copy itself still hands the job on: the machines behind it may be behind
       if (!ops.length && !behind) continue;
       const node = nodeOf(tp.targetId)!;
-      // a machine running SamSync takes its changes as a pack, whether or not others are behind it
-      const takesPack = !!node.relay && node.transport !== 'sftp' && !req.direct && !tp.relayDown && node.id !== ctx.localNodeId;
+      // a machine running SamSync (its heartbeat was fresh when the plan was made) takes its changes as a pack,
+      // whether or not others are behind it
+      const takesPack = !!tp.agent && node.transport !== 'sftp' && !req.direct && node.id !== ctx.localNodeId;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,
@@ -766,6 +854,7 @@ export class Service implements Api {
       targetIds: plan.targets.map((tp) => tp.targetId),
     });
     const handle = startRun(ctx, groups, s);
+    this.keepGroups(handle.id, groups, s);
     this.track(handle, overrides.notify ?? opts.notify !== false, (d) => this.relayFallback(plan, d, overrides));
     return handle;
   }
@@ -786,18 +875,31 @@ export class Service implements Api {
     }
   }
 
-  /** Starts or stops the relay service as this machine's node says. */
+  /**
+   * Starts or stops the relay service: as the relay of its group when this machine's node says so, otherwise as the
+   * agent that applies the packs sent to this machine (Settings › Agent, on by default).
+   */
   private syncRelay(): void {
     const node = this.identity.node;
-    const root = node?.relay ? node.localRoots[0] : undefined;
-    if (this.relay && (this.relay.node.id !== node?.id || this.relay.localRoot !== root)) {
+    const role: 'relay' | 'agent' | null = node?.relay ? 'relay' : (this.settings.agent?.receivePacks ?? true) ? 'agent' : null;
+    const root = role ? node?.localRoots[0] : undefined;
+    if (this.relay && (this.relay.node.id !== node?.id || this.relay.localRoot !== root || this.relay.role !== role)) {
       this.relay.stop();
+      // an agent turned off takes its folder away again; a relay keeps its queue
+      if (this.relay.role === 'agent') this.relay.removeIfIdle();
       this.relay = null;
     }
-    if (!root || this.relay) return;
+    if (!root || !role || this.relay) return;
     this.relay = new RelayService(
       {
         ctx: () => this.ctx(),
+        agent: () => this.settings.agent,
+        runHook: async (label, cmd) => {
+          const r = await runLocalCommand(cmd, this.config.copy.postCommandTimeoutSeconds);
+          this.log[r.ok ? 'info' : 'error'](t('Ajan'), r.error ? t('{label} çalıştırılamadı: {error}', { label, error: r.error }) : r.timedOut ? t('{label} {s} sn içinde bitmedi, durduruldu', { label, s: this.config.copy.postCommandTimeoutSeconds }) : r.output ? t('{label} bitti (kod {code}): {output}', { label, code: String(r.code), output: r.output }) : t('{label} bitti (kod {code})', { label, code: String(r.code) }));
+          return r.ok;
+        },
+        notify: (title, body) => this.host.notify?.(title, body),
         runPlan: (plan, label) => {
           try {
             return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true });
@@ -816,6 +918,7 @@ export class Service implements Api {
       node!,
       2000,
       this.host.appVersion,
+      role,
     );
     this.relay.start();
   }
@@ -824,7 +927,7 @@ export class Service implements Api {
   async executePlan(planId: string, selected: Record<string, string[]>, overrides: { dryRun?: boolean; remember?: boolean } = {}): Promise<string> {
     const plan = this.plans.get(planId);
     if (!plan) throw new Error(t('Plan bulunamadı ya da eskidi; yeniden inceleyin.'));
-    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true });
+    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true, queueUnreachable: true });
     if (overrides.remember !== false) {
       // remember what the user picked, not just the targets that happened to need changes
       this.settings.lastTargets = plan.targets.map((tp) => tp.targetId);

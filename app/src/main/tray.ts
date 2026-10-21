@@ -42,7 +42,8 @@ export class TrayManager {
     const summary = t('{watches} izleme • {schedules} zamanlanmış iş', { watches, schedules });
     const quick = this.actions.quickSends();
     const relay = this.actions.relayState();
-    const relayText = relay.active ? ` • ${t('röle: {n} iş', { n: relay.jobs })}` : '';
+    // a relay always says so; an agent (every machine running SamSync) only once packs have come
+    const relayText = !relay.active ? '' : relay.role === 'agent' ? (relay.jobs ? ` • ${t('paket: {n}', { n: relay.jobs })}` : '') : ` • ${t('röle: {n} iş', { n: relay.jobs })}`;
     const key = `${getLang()}|${state.paused}|${busy}|${summary}|${quick.map((q) => q.id + q.name).join(',')}|${relayText}`;
     if (key === this.lastKey) return;
     this.lastKey = key;

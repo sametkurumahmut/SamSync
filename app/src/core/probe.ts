@@ -85,14 +85,15 @@ async function freeSpaceOf(root: string): Promise<number | undefined> {
 
 /** For a machine marked as relay: reads the heartbeat SamSync there writes, so the window can say whether it runs. */
 async function withRelayAlive(r: ProbeResult, root: string, node: NodeConfig): Promise<ProbeResult> {
-  if (!node.relay) return r;
   try {
     const raw = await withTimeout(fsp.readFile(path.join(root, ...ALIVE_FILE.split('/')), 'utf8'), 4000);
     const h = JSON.parse(raw) as Heartbeat;
     const alive = heartbeatFresh(h);
-    return { ...r, relayAlive: alive, relaySeenAt: h.at, detail: alive ? t('{detail}; röle çalışıyor', { detail: r.detail }) : t('{detail}; röle yanıt vermiyor (son {ago})', { detail: r.detail, ago: agoText(h.at) }) };
+    if (!node.relay) return alive ? { ...r, agentAlive: true, detail: t('{detail}; SamSync çalışıyor, paketleri alır', { detail: r.detail }) } : { ...r, agentAlive: false };
+    return { ...r, relayAlive: alive, agentAlive: alive, relaySeenAt: h.at, detail: alive ? t('{detail}; röle çalışıyor', { detail: r.detail }) : t('{detail}; röle yanıt vermiyor (son {ago})', { detail: r.detail, ago: agoText(h.at) }) };
   } catch {
-    return { ...r, relayAlive: false, detail: t('{detail}; rölede SamSync çalışmıyor', { detail: r.detail }) };
+    if (!node.relay) return { ...r, agentAlive: false };
+    return { ...r, relayAlive: false, agentAlive: false, detail: t('{detail}; rölede SamSync çalışmıyor', { detail: r.detail }) };
   }
 }
 

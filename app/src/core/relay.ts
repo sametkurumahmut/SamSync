@@ -3,9 +3,10 @@
 // named in it and writes _SamSyncRelay/results/<id>.json; the sender waits for that and shows the outcome.
 // Both sides see the same files: the sender through the share, the relay through its local root.
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { AgentSettings, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
@@ -16,6 +17,7 @@ import { saveManifestSubtree } from './manifest';
 import { probeNode } from './probe';
 import os from 'node:os';
 import { relJoin } from './paths';
+import { HASH_DIR, answerHashRequests, pruneHashRequests } from './agenthash';
 import { CancelToken, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
 
@@ -53,6 +55,10 @@ export interface Heartbeat {
   at: number;
   node: string;
   version?: string;
+  /** answers hash requests for content comparisons (see agenthash.ts) */
+  hashes?: boolean;
+  /** answers block lists and applies packs with block deltas (see delta.ts) */
+  blocks?: boolean;
 }
 
 /** Reads the relay's heartbeat through a transport; null when there is none or it cannot be read. */
@@ -156,6 +162,11 @@ export interface RelayHost {
   runPlan(plan: SendPlan, label: string): RunHandle | null;
   /** Runs ready-made groups (the pack applied to this machine's own disk), tracked like any run. */
   runGroups(groups: ExecGroup[], label: string, opts: { options: SendOptions; backup: boolean; verify: boolean }): RunHandle;
+  /** This machine's settings as a receiver: commands around the apply, the notification. */
+  agent?(): AgentSettings | undefined;
+  /** Runs one of those commands here; true when it exited with 0. */
+  runHook?(label: string, cmd: string): Promise<boolean>;
+  notify?(title: string, body: string): void;
 }
 
 /**
@@ -167,6 +178,8 @@ export class RelayService {
   private beat: NodeJS.Timeout | null = null;
   private watcher: fs.FSWatcher | null = null;
   private busy = new Set<string>();
+  private hashBusy = new Set<string>();
+  private hashWatcher: fs.FSWatcher | null = null;
   private lastPrune = 0;
   private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
@@ -193,6 +206,8 @@ export class RelayService {
     readonly node: NodeConfig,
     private pollMs = 2000,
     private version?: string,
+    /** relay: passes jobs on to the group; agent: only applies what is sent to this machine. */
+    readonly role: 'relay' | 'agent' = 'relay',
   ) {
     this.jobsDir = path.join(localRoot, RELAY_FOLDER, 'jobs');
     this.resultsDir = path.join(localRoot, RELAY_FOLDER, 'results');
@@ -205,8 +220,15 @@ export class RelayService {
       fs.mkdirSync(this.jobsDir, { recursive: true });
       fs.mkdirSync(this.resultsDir, { recursive: true });
       fs.mkdirSync(this.pendingDir, { recursive: true });
+      // every machine running SamSync has this folder in its first local root: hidden, as the app's own
+      if (process.platform === 'win32') execFile('attrib', ['+h', path.join(this.localRoot, RELAY_FOLDER)], { windowsHide: true }, () => undefined);
       this.watcher = fs.watch(this.jobsDir, () => void this.poll());
       this.watcher.on('error', () => undefined);
+      // senders comparing contents ask for hashes here; answered from this disk at once
+      const hashDir = path.join(this.localRoot, ...HASH_DIR.split('/'));
+      fs.mkdirSync(hashDir, { recursive: true });
+      this.hashWatcher = fs.watch(hashDir, () => void this.answerHashes());
+      this.hashWatcher.on('error', () => undefined);
     } catch (e) {
       this.host.ctx().log.warn(t('Röle'), t('Röle klasörü açılamadı: {error}', { error: errMessage(e) }));
     }
@@ -214,8 +236,9 @@ export class RelayService {
     this.beat = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
     // the queue: every minute a look at whether it is time to try the machines that were off
     this.tickTimer = setInterval(() => void this.tick(), 60_000);
-    this.host.ctx().log.info(t('Röle'), t('Bu makine {group} grubuna röle: {dir} izleniyor', { group: this.node.group ?? '-', dir: this.jobsDir }));
-    this.stats = { ...this.stats, active: true, group: this.node.group, dir: this.jobsDir };
+    if (this.role === 'relay') this.host.ctx().log.info(t('Röle'), t('Bu makine {group} grubuna röle: {dir} izleniyor', { group: this.node.group ?? '-', dir: this.jobsDir }));
+    else this.host.ctx().log.info(t('Ajan'), t('Bu makine gelen paketleri uygular: {dir} izleniyor', { dir: this.jobsDir }));
+    this.stats = { ...this.stats, active: true, role: this.role, group: this.node.group, dir: this.jobsDir };
     this.tell();
     void this.heartbeat();
     void this.poll();
@@ -231,6 +254,8 @@ export class RelayService {
     this.tickTimer = null;
     this.watcher?.close();
     this.watcher = null;
+    this.hashWatcher?.close();
+    this.hashWatcher = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
     fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
     if (this.stats.active) {
@@ -239,10 +264,20 @@ export class RelayService {
     }
   }
 
+  /** An agent turned off leaves nothing behind: the folder goes when no job waits in it (results and hashes go with it). */
+  removeIfIdle(): void {
+    try {
+      const waiting = fs.readdirSync(this.jobsDir).length > 0 || fs.readdirSync(this.pendingDir).length > 0;
+      if (!waiting) fs.rmSync(path.join(this.localRoot, RELAY_FOLDER), { recursive: true, force: true });
+    } catch {
+      /* gone already, or in use for a moment */
+    }
+  }
+
   /** Tells senders this machine is here (they read the file through the share). */
   async heartbeat(): Promise<void> {
     const file = path.join(this.localRoot, ALIVE_FILE);
-    const h: Heartbeat = { at: Date.now(), node: this.node.id, version: this.version };
+    const h: Heartbeat = { at: Date.now(), node: this.node.id, version: this.version, hashes: true, blocks: true };
     try {
       await fsp.writeFile(`${file}.tmp`, JSON.stringify(h));
       await fsp.rename(`${file}.tmp`, file);
@@ -251,8 +286,14 @@ export class RelayService {
     }
   }
 
+  /** Answers the hash requests waiting in the relay folder (content comparisons of senders). */
+  answerHashes(): Promise<void> {
+    return answerHashRequests(this.localRoot, this.host.ctx().hashCache, this.hashBusy);
+  }
+
   /** Test hook and timer body: looks for jobs once. */
   async poll(): Promise<void> {
+    void this.answerHashes();
     let names: string[];
     try {
       names = (await fsp.readdir(this.jobsDir)).filter((n) => n.endsWith('.json'));
@@ -268,6 +309,7 @@ export class RelayService {
     if (Date.now() - this.lastPrune > 3600_000) {
       this.lastPrune = Date.now();
       void this.prune();
+      void pruneHashRequests(this.localRoot);
     }
   }
 
@@ -479,10 +521,25 @@ export class RelayService {
   private async applyPack(id: string, job: RelayJob): Promise<RelayTargetResult> {
     const packFile = path.join(this.jobsDir, `${id}.pack`);
     const own: RelayTargetResult = { targetId: this.node.id, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
+    const agent = this.host.agent?.();
+    const log = this.host.ctx().log;
+    // this machine's own command first (stop the program that holds the files); when it fails, nothing is applied
+    if (agent?.beforeApply && this.host.runHook && job.pack!.ops.length) {
+      const ok = await this.host.runHook(t('Uygulama öncesi komut'), agent.beforeApply);
+      if (!ok) {
+        own.status = 'failed';
+        own.error = t('Uygulama öncesi komut başarısız; paket uygulanmadı');
+        own.opsFailed = job.pack!.ops.length;
+        own.failedOps = job.pack!.ops.map((o) => o.id);
+        await fsp.rm(packFile, { force: true }).catch(() => undefined);
+        log.error(t('Ajan'), own.error);
+        return own;
+      }
+    }
     try {
       const ops: ExecOp[] = job.pack!.ops.map((o) =>
         o.kind === 'copy'
-          ? { id: o.id, kind: 'copy', rel: o.rel, isDir: false, size: o.size, mtimeMs: o.mtimeMs, src: { kind: 'pack', file: packFile, offset: o.offset, length: o.length, method: o.method }, replaceType: o.replaceType, dstExists: o.dstExists }
+          ? { id: o.id, kind: 'copy', rel: o.rel, isDir: false, size: o.size, mtimeMs: o.mtimeMs, src: o.delta ? { kind: 'patch', file: packFile, offset: o.offset, length: o.length, method: o.method, base: path.join(this.localRoot, ...o.rel.split('/')), size: o.size, ...o.delta } : { kind: 'pack', file: packFile, offset: o.offset, length: o.length, method: o.method }, replaceType: o.replaceType, dstExists: o.dstExists }
           : o.kind === 'mkdir'
             ? { id: o.id, kind: 'mkdir', rel: o.rel, isDir: true, size: 0, replaceType: o.replaceType, dstExists: o.dstExists }
             : { id: o.id, kind: 'delete', rel: o.rel, isDir: o.isDir, size: 0 },
@@ -500,6 +557,8 @@ export class RelayService {
         own.bytes = d.bytes;
         own.error = tg?.error;
         own.failedOps = d.results.filter((r) => !r.ok).map((r) => r.opId);
+        const held = d.results.filter((r) => !r.ok && r.inUse).map((r) => r.opId);
+        if (held.length) own.inUseOps = held;
         own.backupPath = tg?.backupPath;
       }
     } catch (e) {
@@ -509,6 +568,13 @@ export class RelayService {
       this.host.ctx().log.error(t('Röle'), t('Paket uygulanamadı: {error}', { error: errMessage(e) }), e);
     } finally {
       await fsp.rm(packFile, { force: true }).catch(() => undefined);
+    }
+    // the program comes back whatever happened, and the machine says what arrived
+    if (agent?.afterApply && this.host.runHook && job.pack!.ops.length) await this.host.runHook(t('Uygulama sonrası komut'), agent.afterApply);
+    if (agent?.notifyOnApply !== false && job.pack!.ops.length) {
+      const sender = job.from ? (this.host.ctx().config.nodes.find((n) => n.id === job.from)?.name ?? job.from) : undefined;
+      const who = sender ? t('{from} gönderdi', { from: sender }) : t('paket');
+      this.host.notify?.(own.status === 'ok' ? t('✓ Paket uygulandı: {label}', { label: job.label }) : t('✕ Paket uygulanamadı: {label}', { label: job.label }), `${who} • ${t('{ok} başarılı, {failed} hatalı', { ok: own.opsOk, failed: own.opsFailed })}`);
     }
     return own;
   }

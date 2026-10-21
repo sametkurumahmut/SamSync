@@ -354,6 +354,21 @@ export function RunPanel() {
               {t('Geçmişte aç')}
             </Button>
           )}
+          {run.done && (s.inUseFailed ?? 0) > 0 && (
+            <Button
+              icon={<RotateCcw size={14} />}
+              tip={t('Hedefte bir programın açık tuttuğu {n} dosyayı aynı makinelere yeniden yazar, inceleme olmadan. Önce programı kapatın.', { n: s.inUseFailed! })}
+              onClick={async () => {
+                try {
+                  useApp.getState().watchRun(await api.retryInUse(s.id));
+                } catch (e) {
+                  toast('error', t('Kullanımdakileri tekrar dene'), (e as Error).message);
+                }
+              }}
+            >
+              {t('Kullanımdakileri tekrar dene')}
+            </Button>
+          )}
           {canRetry && (
             <Button variant="primary" icon={<RotateCcw size={14} />} tip={s.status === 'cancelled' ? t('Aynı kaynakları aynı makinelere yeniden planlar; zaten gitmiş olanlar atlanır') : t('Aynı kaynakları yalnızca hatalı biten makinelere yeniden planlar')} onClick={() => void retry()}>
               {t('Yeniden dene')}

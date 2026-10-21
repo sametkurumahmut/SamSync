@@ -155,9 +155,9 @@ export function OverviewPage() {
             <div className="ov-tile-value">{inv ? (inv.behind || inv.missing ? inv.behind + inv.missing : '✓') : '…'}</div>
             <div className="ov-tile-sub">{inv ? (inv.folders ? (inv.behind || inv.missing ? t('{b} geride, {m} eksik', { b: inv.behind, m: inv.missing }) : t('{n} klasör, hepsi aynı', { n: inv.folders })) : t('manifest yok')) : t('okunuyor…')}</div>
           </button>
-          {(relayState?.active || updateHot) && (
+          {((relayState?.active && (relayState.role !== 'agent' || !!relayState.jobs)) || updateHot) && (
             <button className={cls('ov-tile', updateHot && 'hot')} onClick={() => setPage(updateHot ? 'settings' : 'targets')}>
-              <div className="ov-tile-head">{updateHot ? <Download size={14} /> : <Share2 size={14} />} {updateHot ? t('Güncelleme') : t('Röle')}</div>
+              <div className="ov-tile-head">{updateHot ? <Download size={14} /> : <Share2 size={14} />} {updateHot ? t('Güncelleme') : relayState?.role === 'agent' ? t('Ajan') : t('Röle')}</div>
               <div className="ov-tile-value" style={{ fontSize: 18 }}>
                 {updateHot ? `v${update!.version ?? ''}` : t('açık')}
               </div>

@@ -122,6 +122,82 @@ export const FAQ: FaqEntry[] = [
     keywords: ['izleyici', 'viewer', 'salt okunur', 'read-only', 'web', 'parola', 'password'],
     page: 'settings',
   },
+  {
+    id: 'agent',
+    topic: 'relay',
+    q: { tr: 'Makine kartındaki "ajan" ne demek?', en: 'What does "agent" on a machine card mean?' },
+    a: {
+      tr: 'O makinede SamSync çalışıyor ve gönderilenleri kendisi alıyor. Gönderim sıkıştırılmış tek paket olarak gider, makine kendi diskine uygular; içerik karşılaştırmasında dosyaların özetini kendisi hesaplar, büyük dosyalarda yalnızca değişen blokları alır. O makinede Ayarlar › **Ajan** ile kapatılabilir ve uygulamadan önce/sonra çalışacak komutlar girilebilir (dosyaları tutan programı durdurup yeniden başlatmak için).',
+      en: 'SamSync runs on that machine and takes what is sent to it itself. The send goes as one compressed pack that the machine applies to its own disk; in a content comparison it hashes its files itself, and big files arrive as the blocks that changed. On that machine, Settings › **Agent** turns it off and takes commands to run before and after applying (to stop and restart the program that holds the files).',
+    },
+    keywords: ['ajan', 'agent', 'paket', 'pack', 'kalp atışı', 'heartbeat', '_SamSyncRelay'],
+    page: 'targets',
+  },
+  {
+    id: 'agent-hashes',
+    topic: 'compare',
+    q: { tr: 'İçerik karşılaştırması neden bazı makinelerde çok daha hızlı?', en: 'Why is a content comparison much faster on some machines?' },
+    a: {
+      tr: 'Ajan olan makinelerde hedef dosyalar ağ üzerinden okunmaz: SamSync o makineye dosyaların listesini bırakır, oradaki SamSync dosyaları kendi diskinden okuyup SHA-256 özetlerini yazar, burada kendi kopyalarınızın özetleriyle karşılaştırılır. İncelemedeki "N özet orada" rozeti kaç dosyanın böyle karşılaştırıldığını söyler. Boyutu ya da tarihi değişmiş dosyalar ve yanıt vermeyen makineler eskisi gibi ağ üzerinden okunur.',
+      en: 'On machines with an agent the target files are not read over the network: SamSync leaves the machine a list of the files, SamSync there reads them from its own disk and writes their SHA-256 hashes, and they are compared here with the hashes of your copies. The "N hashed there" badge in the review says how many files went this way. Files whose size or time changed, and machines that do not answer, are read over the network as before.',
+    },
+    keywords: ['özet', 'hash', 'içerik', 'content', 'yavaş', 'slow', 'ajan', 'agent'],
+    page: 'compare',
+  },
+  {
+    id: 'block-delta',
+    topic: 'pack',
+    q: { tr: 'Büyük bir dosyanın küçük bir kısmı değişince hepsi mi gider?', en: 'When a small part of a big file changes, does all of it go?' },
+    a: {
+      tr: 'Ajan olan bir makineye hayır: 8 MB ve üstü, orada zaten bulunan bir dosyanın yalnızca değişen 1 MB\'lık blokları pakete girer; makine dosyayı bunlardan ve kendi bloklarından kurar, bütün dosyanın SHA-256 özetini denetlemeden yerine yazmaz. Günlükte "Blok farkı: … yalnızca değişen … gönderildi" satırı çıkar. Ajan olmayan makinelere dosya bütün olarak gider.',
+      en: 'Not to a machine with an agent: for a file of 8 MB or more that is already there, only the changed 1 MB blocks go into the pack; the machine builds the file from those and its own blocks and replaces nothing before the whole file\'s SHA-256 matches. The log shows a "Block delta: … only the changed … was sent" line. Machines without an agent get the whole file.',
+    },
+    keywords: ['blok', 'block', 'delta', 'fark', 'büyük dosya', 'big file'],
+    page: 'send',
+  },
+  {
+    id: 'send-when-back',
+    topic: 'send',
+    q: { tr: 'Kapalı bir makineye sonra kendiliğinden gönderilebilir mi?', en: 'Can a send reach a machine that is off later, by itself?' },
+    a: {
+      tr: 'Ayarlar › Genel › **Erişilemeyen makineye açılınca gönder** (varsayılan kapalı). Açıkken erişilemeyen makineye yapılan gönderim bu bilgisayarda bekler; makine dakikada bir yoklanır, yanıt verince kaynakların o anki hali gönderilir. Bekleyenler Hedefler sayfasında listelenir ve oradan düşürülebilir; 7 gün içinde açılmayan makinenin gönderimi düşer. SamSync açık kalmalıdır.',
+      en: 'Settings › General › **Send to an unreachable machine once it is back** (off by default). When it is on, a send to a machine that cannot be reached waits on this computer; the machine is looked for every minute and, once it answers, the sources are sent as they are then. What waits is listed on the Targets page and can be dropped there; a machine that stays away for 7 days is given up on. SamSync has to stay running.',
+    },
+    keywords: ['kapalı', 'off', 'erişilemeyen', 'unreachable', 'bekleyen', 'waiting', 'sonra', 'later'],
+    page: 'targets',
+  },
+  {
+    id: 'web-https',
+    topic: 'settings',
+    q: { tr: 'Web arayüzü şifreli bağlantıyla açılabilir mi?', en: 'Can the web interface use an encrypted connection?' },
+    a: {
+      tr: 'Ayarlar › Web arayüzü › **HTTPS**. Bilgisayar kendi sertifikasını üretir; tarayıcı ilk girişte uyarır. Bölümde gösterilen SHA-256 parmak izi tarayıcının sertifika ayrıntısındakiyle aynıysa uyarıyı kabul edin; bir kez kabul etmek yeter. Adresler artık https:// ile başlar.',
+      en: 'Settings › Web interface › **HTTPS**. The computer makes its own certificate; the browser warns on the first visit. If the SHA-256 fingerprint shown in the section matches the one in the browser\'s certificate details, accept the warning; once is enough. The addresses then start with https://.',
+    },
+    keywords: ['https', 'tls', 'şifreli', 'encrypted', 'sertifika', 'certificate', 'web'],
+    page: 'settings',
+  },
+  {
+    id: 'retry-in-use',
+    topic: 'trouble',
+    q: { tr: 'Kullanımdaki dosyalar için her şeyi yeniden mi göndermeliyim?', en: 'Do I have to send everything again for the files that were in use?' },
+    a: {
+      tr: 'Hayır. Çalıştırma panelinde **Kullanımdakileri tekrar dene**, programı kapattıktan sonra yalnızca o dosyaları inceleme olmadan aynı makinelere yazar. Ayarlar › Genel › *Çalıştırma sonunda kullanımdaki dosyaları bir kez daha dene* açıkken (varsayılan kapalı) SamSync bunu her makinenin sonunda kendisi bir kez dener.',
+      en: 'No. In the run panel, **Retry the files in use** writes only those files to the same machines again, without a review, once the program is closed. With Settings › General › *Try the files in use once more at the end of a run* on (off by default), SamSync tries them once more itself at the end of each machine.',
+    },
+    keywords: ['kullanımda', 'in use', 'tekrar', 'retry', 'kilitli', 'locked'],
+    page: 'history',
+  },
+  {
+    id: 'cli-pack',
+    topic: 'pack',
+    q: { tr: 'Paketi komut satırından yazabilir miyim?', en: 'Can I write a pack from the command line?' },
+    a: {
+      tr: '`SamSync.exe --pack "D:\\Paketler" "C:\\Release\\Data"` öğeleri pencere açmadan tek paket dosyası olarak yazar ve dosyanın yolunu basar. `--since <önceki paket>` ya da `--since <makine>` ile yalnızca o paketten beri değişenler ya da o makinede olduğu gibi durmayanlar pakete girer. Çıkış kodu 0 yazıldığını söyler.',
+      en: '`SamSync.exe --pack "D:\\Packs" "C:\\Release\\Data"` writes the items as one pack file without a window and prints the file\'s path. With `--since <earlier pack>` or `--since <machine>` only what changed since that pack, or what that machine does not hold as it is, goes in. Exit code 0 means it was written.',
+    },
+    keywords: ['komut satırı', 'command line', 'cli', '--pack', '--since', 'paket', 'pack'],
+  },
   // ---- send
   {
     id: 'overlapping-sources',

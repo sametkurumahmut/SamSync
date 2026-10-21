@@ -36,6 +36,9 @@ export const DEFAULT_SETTINGS: LocalSettings = {
   confirmBeforeRun: true,
   closeRunPanelOnSuccess: false,
   finishSound: 'always',
+  agent: { receivePacks: true, notifyOnApply: true },
+  sendWhenOnline: false,
+  retryInUseAtEnd: false,
   updateAutoCheck: true,
   updateAutoDownload: true,
   watches: [],
@@ -194,12 +197,28 @@ export async function loadConfig(file: string): Promise<AppConfig> {
   return normalizeConfig(await readJson(file));
 }
 
-/** Writes JSON atomically (temp file + rename) so a crash never leaves a half written config. */
+const writing = new Map<string, Promise<void>>();
+
+/**
+ * Writes JSON atomically (temp file + rename) so a crash never leaves a half written config. Writes to the same
+ * file wait for each other: two at once would share the temp file and the second rename would find it gone.
+ */
 export async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', 'utf8');
-  await fs.rename(tmp, file);
+  const text = JSON.stringify(data, null, 2) + '\n';
+  const next = (writing.get(file) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      await fs.writeFile(tmp, text, 'utf8');
+      await fs.rename(tmp, file);
+    });
+  writing.set(file, next);
+  try {
+    await next;
+  } finally {
+    if (writing.get(file) === next) writing.delete(file);
+  }
 }
 
 /** Serialises the config. Empty optional fields are left out so hand edited files stay tidy. */

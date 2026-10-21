@@ -22,6 +22,7 @@ import { targetOptions } from '../shared/options';
 import { RELAY_FOLDER, relayRouting } from '../shared/relay';
 import { OWN_FILE_PATTERNS } from '../shared/files';
 import { heartbeatFresh, readHeartbeat } from './relay';
+import { AgentHasher } from './agenthash';
 import { myLock, otherLock } from './lock';
 import { manifestEntries } from './manifest';
 
@@ -465,7 +466,12 @@ async function planTarget(
   // asked now and read at the end: on a slow network it overlaps with the comparison below
   const freeSpace = tgt.freeSpace().catch(() => undefined);
   // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
-  const heartbeat = node.relay && node.transport !== 'sftp' && !req.direct ? readHeartbeat(tgt).then((h) => heartbeatFresh(h)) : Promise.resolve(true);
+  // SamSync running on the machine (relay or not) takes the changes as a pack; its heartbeat on the share says so
+  const askBeat = node.transport !== 'sftp' && !req.direct && !isSelf;
+  const beat = askBeat ? readHeartbeat(tgt).catch(() => null) : Promise.resolve(null);
+  const heartbeat = askBeat ? beat.then((h) => heartbeatFresh(h)) : Promise.resolve(!!node.relay && !req.direct);
+  // content comparison: SamSync there hashes its own disk instead of every file coming back over the network
+  const hasher = opt.compare === 'content' && askBeat && tgt.kind === 'fs' ? beat.then((h) => (heartbeatFresh(h) && h!.hashes ? new AgentHasher(tgt, () => cancel.cancelled) : null)) : Promise.resolve(null);
   // someone else writing here right now shows in the review
   const lock = otherLock(tgt, myLock(req.label ?? '', ctx.appVersion)).catch(() => null);
   let fromManifest: number | undefined;
@@ -479,6 +485,17 @@ async function planTarget(
     if (v === 'needsContent') {
       // hashes remembered from an earlier comparison or copy spare the read over the network
       const cache = ctx.hashCache;
+      const remote = (cache?.get(tgt.root, rel, dst.size, dst.mtimeMs) ? null : await (await hasher)?.hash(rel, dst.size, dst.mtimeMs)) ?? null;
+      if (remote) {
+        cache?.set(tgt.root, rel, dst.size, dst.mtimeMs, remote);
+        const known = cache?.get('src', srcId, src.size, src.mtimeMs);
+        const h = known ?? (await hashStream((await readSrc()) as any));
+        if (!known) {
+          st.read = (st.read ?? 0) + src.size;
+          cache?.set('src', srcId, src.size, src.mtimeMs, h);
+        }
+        return h === remote ? 'same' : 'changed';
+      }
       if (!cache) {
         const same = await streamsEqual((await readSrc()) as any, await tgt.readStream(rel));
         st.read = (st.read ?? 0) + src.size + dst.size;
@@ -525,7 +542,7 @@ async function planTarget(
       await dirUnit(u);
     });
   } catch (e) {
-    await Promise.all([freeSpace, heartbeat, lock]);
+    await Promise.all([freeSpace, heartbeat, lock, hasher]);
     await tgt.close();
     st.phase = 'failed';
     if (cancel.cancelled) throw e;
@@ -610,6 +627,19 @@ async function planTarget(
         else if (!d.isDir) push(b, { kind: 'mkdir', rel, isDir: true, category: 'changed', size: 0, selected: true, sourceIndex: u.sourceIndex, replaceType: true, note: t('Hedefte aynı adda dosya var.') });
       } else files.push([key, e]);
     }
+    // one question to SamSync on the target for all the files of this folder whose contents must be compared
+    const remote = await hasher;
+    if (remote) {
+      const ask: { rel: string; size: number; mtimeMs: number }[] = [];
+      for (const [key, e] of files) {
+        const d = dstEntries.get(key);
+        if (!e.ref && d && !d.isDir && compareMeta(e, d, opt.compare, time) === 'needsContent') {
+          const rel = relJoin(u.rel, e.rel);
+          if (!ctx.hashCache?.get(tgt.root, rel, d.size, d.mtimeMs)) ask.push({ rel, size: d.size, mtimeMs: d.mtimeMs });
+        }
+      }
+      remote.prefetch(ask);
+    }
     await mapLimit(files, 8, async ([key, e]) => {
       cancel.throwIfCancelled();
       const rel = relJoin(u.rel, e.rel);
@@ -675,10 +705,24 @@ async function planTarget(
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
   const freeBytes = await freeSpace;
   const alive = await heartbeat;
+  const agentHashed = (await hasher)?.answered || undefined;
   const other = await lock;
   await tgt.close();
   if (other) warn(t('{name}: {user} ({host}) {ago} önce yazmaya başladı ({label}); aynı anda gönderirseniz dosyalar karışabilir.', { name: node.name, user: other.user, host: other.host, ago: agoMinutes(other.startedAt), label: other.label }));
-  return { ...base, ops: b.ops, counts: b.counts, bytes, freeBytes, relayDown: alive ? undefined : true, lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined, fromManifest, inUse, missingFromPack: missingFromPack.length ? missingFromPack : undefined };
+  return {
+    ...base,
+    ops: b.ops,
+    counts: b.counts,
+    bytes,
+    freeBytes,
+    relayDown: node.relay && !alive ? true : undefined,
+    agent: askBeat && alive ? true : undefined,
+    agentHashed,
+    lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined,
+    fromManifest,
+    inUse,
+    missingFromPack: missingFromPack.length ? missingFromPack : undefined,
+  };
 }
 
 function agoMinutes(at: number): string {

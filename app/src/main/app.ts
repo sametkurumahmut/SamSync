@@ -8,6 +8,7 @@ import { Service, type HostAdapter } from '../core/service';
 import type { AppEvent, LocalSettings, OpenRequest, QuickSend, WebUiSettings, WebUiState } from '../shared/types';
 import { isApiMethod, type ApiMethod, type PickOptions } from '../shared/api';
 import { WebServer } from '../core/webserver';
+import { webCertificate } from '../core/selfcert';
 import { getLang, t } from '../shared/i18n';
 import { Updater } from './updater';
 import { TrayManager } from './tray';
@@ -89,7 +90,7 @@ async function runHeadlessLaunch(l: ReturnType<typeof parseLaunch>): Promise<num
         },
         trash: (p) => shell.trashItem(p),
       },
-      { mode: l.headless!, paths: l.paths, missing: l.missing, targets: l.targets ?? [], job: l.syncJob },
+      { mode: l.headless!, paths: l.paths, missing: l.missing, targets: l.targets ?? [], job: l.syncJob, packDir: l.packDir, since: l.since },
       { out: (line) => process.stdout.write(line + '\n'), err: (line) => process.stderr.write(line + '\n') },
     );
   } catch (e) {
@@ -184,6 +185,7 @@ if (launch.removeIntegrations) {
   let web: WebServer | null = null;
   let webKey = '';
   let webError: string | undefined;
+  let webFingerprint: string | undefined;
   const webState = (): WebUiState => {
     const s = service.settings.webUi;
     const st = web?.state();
@@ -192,11 +194,12 @@ if (launch.removeIntegrations) {
       .flat()
       .filter((a): a is os.NetworkInterfaceInfo => !!a && a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.'))
       .map((a) => a.address);
-    const urls = st?.running ? (s?.lan ? ips.map((ip) => `http://${ip}:${port}`) : [`http://127.0.0.1:${port}`]) : [];
-    return { available: true, enabled: !!s?.enabled, running: !!st?.running, port, lan: s?.lan ?? true, hasPassword: !!s?.passwordHash, hasViewer: !!s?.viewerHash, urls, clients: st?.clients ?? 0, sessions: st?.sessions ?? 0, error: webError };
+    const scheme = s?.https ? 'https' : 'http';
+    const urls = st?.running ? (s?.lan ? ips.map((ip) => `${scheme}://${ip}:${port}`) : [`${scheme}://127.0.0.1:${port}`]) : [];
+    return { available: true, enabled: !!s?.enabled, running: !!st?.running, port, lan: s?.lan ?? true, https: !!s?.https, fingerprint: s?.https && st?.running ? webFingerprint : undefined, hasPassword: !!s?.passwordHash, hasViewer: !!s?.viewerHash, urls, clients: st?.clients ?? 0, sessions: st?.sessions ?? 0, error: webError };
   };
   const applyWebUi = async (s: WebUiSettings | undefined): Promise<WebUiState> => {
-    const want = s?.enabled && s.passwordHash ? JSON.stringify([s.port, s.lan, s.passwordHash, s.viewerHash ?? '']) : '';
+    const want = s?.enabled && s.passwordHash ? JSON.stringify([s.port, s.lan, s.passwordHash, s.viewerHash ?? '', !!s.https]) : '';
     if (want === webKey) return webState();
     const old = web;
     web = null;
@@ -204,7 +207,21 @@ if (launch.removeIntegrations) {
     webError = undefined;
     await old?.stop();
     if (s && want) {
+      // HTTPS: this computer's own certificate, made once and kept in the user data folder
+      let tls: { cert: string; key: string } | undefined;
+      if (s.https) {
+        try {
+          const c = await webCertificate(app.getPath('userData'));
+          tls = { cert: c.cert, key: c.key };
+          webFingerprint = c.fingerprint;
+        } catch (e) {
+          webError = t('Sertifika hazırlanamadı: {error}', { error: (e as Error).message });
+          service.log.warn(t('Web arayüzü'), webError);
+          return webState();
+        }
+      }
       const srv = new WebServer({
+        tls,
         port: s.port,
         host: s.lan ? '0.0.0.0' : '127.0.0.1',
         passwordHash: s.passwordHash!,

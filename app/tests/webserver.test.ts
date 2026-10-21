@@ -138,3 +138,29 @@ describe('server mode', () => {
     expect(r.headers.get('set-cookie')).toBeNull();
   });
 });
+
+describe('server mode over HTTPS', () => {
+  it('serves the login over TLS with its own certificate and marks the session cookie secure', async () => {
+    const { makeSelfSignedCert } = await import('../src/core/selfcert');
+    const https = await import('node:https');
+    const tls = makeSelfSignedCert(['localhost'], ['127.0.0.1']);
+    const p = await freePort();
+    const server = new WebServer({ port: p, host: '127.0.0.1', passwordHash: hashPassword('doğru-parola'), staticDir: '.', call: async () => null, tls });
+    servers.push(server);
+    await server.start();
+    const post = (body: string) =>
+      new Promise<{ status: number; cookie: string; location: string }>((resolve, reject) => {
+        const r = https.request({ host: '127.0.0.1', port: p, path: '/login', method: 'POST', ca: tls.cert, headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': Buffer.byteLength(body) } }, (res) => {
+          res.resume();
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, cookie: String(res.headers['set-cookie'] ?? ''), location: String(res.headers.location ?? '') }));
+        });
+        r.on('error', reject);
+        r.end(body);
+      });
+    const ok = await post(new URLSearchParams({ password: 'doğru-parola' }).toString());
+    expect(ok.location).toBe('/');
+    expect(ok.cookie).toMatch(/HttpOnly; SameSite=Strict; Secure/);
+    // plain HTTP to the same port is not answered as a page
+    await expect(fetch(`http://127.0.0.1:${p}/login`)).rejects.toThrow();
+  });
+});

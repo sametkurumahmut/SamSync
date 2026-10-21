@@ -11,7 +11,9 @@ import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
 import { ConfigEditor } from '../components/ConfigEditor';
 import { WebUiSection } from '../components/WebUiSettings';
+import { AgentSection } from '../components/AgentSettings';
 import { tx } from '../lib/i18n';
+import { Masonry } from '../components/Masonry';
 
 const LANG_NAMES = { tr: 'Türkçe', en: 'English', de: 'Deutsch', es: 'Español' } as const; // i18n-ignore: each language by its own name
 
@@ -155,7 +157,7 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="page-body">
-        <div className="settings-grid">
+        <Masonry className="settings-grid">
           <Section id="look" icon={<Palette size={15} />} title={t('Görünüm')}>
             <Field label={t('Dil')}>
               <Segmented
@@ -215,6 +217,18 @@ export function SettingsPage() {
             </Field>
             <div className="divider" />
             <ToggleRow title={t('Başarılı gönderimden sonra paneli kapat')} on={s.closeRunPanelOnSuccess} onChange={(v) => void saveSettings({ closeRunPanelOnSuccess: v })} />
+            <ToggleRow
+              title={t('Erişilemeyen makineye açılınca gönder')}
+              desc={t('Kapalı bir makineye yapılan gönderim bu bilgisayarda bekler; makine açılınca kaynakların o anki hali gönderilir. SamSync açık olmalı; 7 gün içinde açılmayan makinenin gönderimi düşer.')}
+              on={s.sendWhenOnline === true}
+              onChange={(v) => void saveSettings({ sendWhenOnline: v })}
+            />
+            <ToggleRow
+              title={t('Çalıştırma sonunda kullanımdaki dosyaları bir kez daha dene')}
+              desc={t('Hedefte bir programın açık tuttuğu dosyalar, diğerleri bittikten sonra bir kez daha yazılmaya çalışılır. Kapalıyken de hata çıkınca “Kullanımdakileri tekrar dene” ile elle denenebilir.')}
+              on={s.retryInUseAtEnd === true}
+              onChange={(v) => void saveSettings({ retryInUseAtEnd: v })}
+            />
             <Field label={t('Bitince ses')} help={t('Gönderim bitince kısa bir ses: başarılıysa yükselen iki nota, hata varsa alçak bir uyarı. Deneme çalıştırmaları ve iptaller sessizdir.')} style={{ marginTop: 10 }}>
               <div className="row" style={{ gap: 8 }}>
                 <select className="select" style={{ width: 220 }} aria-label={t('Bitince ses')} value={s.finishSound ?? 'always'} onChange={(e) => void saveSettings({ finishSound: e.target.value as LocalSettings['finishSound'] })}>
@@ -539,6 +553,7 @@ export function SettingsPage() {
 
           <NotificationsSection />
 
+          <AgentSection Section={Section} />
           <WebUiSection Section={Section} />
 
           <AssistantSection />
@@ -591,7 +606,7 @@ export function SettingsPage() {
               </Button>
             </div>
           </Section>
-        </div>
+        </Masonry>
         {update?.phase === 'error' && null}
       </div>
     </div>

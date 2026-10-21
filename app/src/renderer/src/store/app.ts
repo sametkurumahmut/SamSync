@@ -9,6 +9,7 @@ import type {
   ProbeResult,
   QuickSend,
   RelayState,
+  PendingSend,
   RunLogLine,
   RunSummary,
   RunTargetState,
@@ -138,6 +139,8 @@ interface State {
   openRunId?: string;
   /** What the relay service on this machine is doing, when this machine is a relay. */
   relayState?: RelayState;
+  /** Sends waiting on this computer for machines that were off. */
+  pendingSends: PendingSend[];
   probing: boolean;
   update: UpdateState | null;
   automation: AutomationState | null;
@@ -308,6 +311,7 @@ export const useApp = create<State>((set, get) => ({
     set({ notices: [] });
   },
   probing: false,
+  pendingSends: [],
   update: null,
   automation: null,
   toasts: [],
@@ -371,6 +375,7 @@ export const useApp = create<State>((set, get) => ({
       const targets = active?.targets ?? s.lastTargets;
       set({ boot, options, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
       void api.relayState().then((relayState) => set({ relayState })).catch(() => undefined);
+      void api.pendingSends().then((pendingSends) => set({ pendingSends })).catch(() => undefined);
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
@@ -777,6 +782,9 @@ function handleEvent(e: AppEvent) {
   switch (e.type) {
     case 'relay':
       useApp.setState({ relayState: e.state });
+      break;
+    case 'pending-sends':
+      useApp.setState({ pendingSends: e.items });
       break;
     case 'run-start':
       useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, paused: e.run.paused, samples: [{ t: Date.now(), b: 0 }] } } }));

@@ -13,8 +13,17 @@ export interface RelaySource {
 }
 
 /** One operation the relay applies to its own disk from the pack. */
+/** A file sent as the blocks that differ (see core/delta.ts); only to SamSync that says it applies these. */
+export interface PackDelta {
+  blockSize: number;
+  blocks: number[];
+  baseSize: number;
+  baseMtimeMs: number;
+  hash: string;
+}
+
 export type PackOp =
-  | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'store'; replaceType?: boolean; dstExists?: boolean }
+  | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'store'; replaceType?: boolean; dstExists?: boolean; delta?: PackDelta }
   | { kind: 'mkdir'; id: string; rel: string; replaceType?: boolean; dstExists?: boolean }
   | { kind: 'delete'; id: string; rel: string; isDir: boolean };
 
@@ -53,6 +62,8 @@ export interface RelayTargetResult {
   /** For the relay's own apply of a pack: the ids of the operations that failed, and where the old files went. */
   failedOps?: string[];
   backupPath?: string;
+  /** Of those, the ones a program held open on the machine. */
+  inUseOps?: string[];
 }
 
 export interface RelayResult {

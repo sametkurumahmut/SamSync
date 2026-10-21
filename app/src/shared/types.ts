@@ -224,6 +224,12 @@ export interface LocalSettings {
   finishSound?: 'never' | 'errors' | 'always';
   /** Named runs in the history (a release that went out); the machines can be brought back to one. */
   releaseTags?: ReleaseTag[];
+  /** This machine as a receiver of packs (what other SamSync instances send it), with its own commands around the apply. */
+  agent?: AgentSettings;
+  /** A send to a machine that is off waits on this computer and goes once the machine answers (dropped after a week). */
+  sendWhenOnline?: boolean;
+  /** At the end of a run, the files that were in use on the target are tried once more. */
+  retryInUseAtEnd?: boolean;
   updateAutoCheck: boolean;
   updateAutoDownload: boolean;
   /** Folder watches that send changes automatically (this machine only). */
@@ -261,6 +267,8 @@ export interface WebUiSettings {
   /** A second password for a viewer: a browser signed in with it sees everything but can change nothing. */
   viewerHash?: string;
   hasViewer?: boolean;
+  /** HTTPS with a certificate this computer makes for itself (browsers warn once). */
+  https?: boolean;
 }
 
 export interface WebUiState {
@@ -273,6 +281,9 @@ export interface WebUiState {
   hasPassword: boolean;
   /** A viewer password is set (a sign-in that only looks). */
   hasViewer?: boolean;
+  /** HTTPS with this computer's own certificate, and its SHA-256 fingerprint for checking the browser's warning. */
+  https?: boolean;
+  fingerprint?: string;
   /** Where browsers reach it. */
   urls: string[];
   clients: number;
@@ -513,6 +524,18 @@ export interface Bootstrap {
   readOnly?: boolean;
 }
 
+/** What this machine does with the packs other SamSync instances send it (Settings › Agent). */
+export interface AgentSettings {
+  /** Receive sends as one compressed pack and apply it here (default on); off: the sender writes file by file over the share. */
+  receivePacks: boolean;
+  /** Runs here before a pack is applied (stop the program that holds the files); a non-zero exit leaves the pack unapplied. */
+  beforeApply?: string;
+  /** Runs here after the pack was applied, whatever the result (start the program again). */
+  afterApply?: string;
+  /** A desktop notification here when a pack was applied. */
+  notifyOnApply: boolean;
+}
+
 /** A run named as a release point: everything sent to its machines after it can be undone back to it. */
 export interface ReleaseTag {
   runId: string;
@@ -544,6 +567,8 @@ export interface ProbeResult {
   /** For a machine marked as relay: whether SamSync there wrote its heartbeat lately, and when. */
   relayAlive?: boolean;
   relaySeenAt?: number;
+  /** SamSync runs on the machine and receives packs (a fresh heartbeat on its share). */
+  agentAlive?: boolean;
 }
 
 /** A machine the network scan found: what answered, its name when it has one, and the node it already is. */
@@ -573,6 +598,8 @@ export interface SpeedTestResult {
 export interface RelayState {
   /** SamSync here is the relay of its group. */
   active: boolean;
+  /** relay: passes jobs on to its group; agent: only applies the packs sent to this machine. */
+  role?: 'relay' | 'agent';
   group?: string;
   dir?: string;
   /** Jobs taken since the app started, and the last one. */
@@ -665,6 +692,19 @@ export interface SourceInfo {
   locked?: 'password' | 'wrong';
 }
 
+/** A send waiting on this computer for a machine that was off (see core/pending.ts). */
+export interface PendingSend {
+  id: string;
+  targetId: string;
+  targetName: string;
+  label: string;
+  request: SendRequest;
+  createdAt: number;
+  attempts: number;
+  lastTry?: number;
+  lastError?: string;
+}
+
 export interface SendRequest {
   sources: SourceSpec[];
   targetIds: string[];
@@ -696,7 +736,9 @@ export type SrcRef =
   | { kind: 'git'; repo: string; rev: string; path: string; blob?: string }
   | { kind: 'endpoint'; key: string; rel: string }
   /** A member of a pack file a sender left on this machine (the relay side). */
-  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' };
+  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' }
+  /** A pack member holding only the blocks that differ; the others come from `base`, the file already there. */
+  | { kind: 'patch'; file: string; offset: number; length: number; method: 'gzip' | 'store'; base: string; size: number; blockSize: number; blocks: number[]; baseSize: number; baseMtimeMs: number; hash: string };
 
 export interface PlanOp {
   id: string;
@@ -748,6 +790,10 @@ export interface TargetPlan {
   missingFromPack?: string[];
   /** The target's folders came from its manifest (written then) after a check, not from a walk over the network. */
   fromManifest?: number;
+  /** SamSync runs there with a fresh heartbeat: the changes go as one pack that the machine applies itself. */
+  agent?: boolean;
+  /** Files whose content SamSync on the target hashed on its own disk for the comparison (not read over the network). */
+  agentHashed?: number;
 }
 
 /** What writing a pack file produced. */
@@ -807,6 +853,8 @@ export interface RunOpResult {
   ok: boolean;
   error?: string;
   backedUp?: boolean;
+  /** Failed because a program on the target held the file open. */
+  inUse?: boolean;
 }
 
 export interface RunLogLine {
@@ -836,6 +884,8 @@ export interface RunSummary {
   options?: Partial<SendOptions>;
   /** The run is held (Pause in the run panel); its targets keep their state until it is resumed. */
   paused?: boolean;
+  /** Operations that failed because a program on the target held the file ("retry the files in use"). */
+  inUseFailed?: number;
 }
 
 export interface RunDetail extends RunSummary {
@@ -855,6 +905,7 @@ export type AppEvent =
   | { type: 'config-changed'; config: AppConfig }
   | { type: 'probe'; results: ProbeResult[] }
   | { type: 'relay'; state: RelayState }
+  | { type: 'pending-sends'; items: PendingSend[] }
   | { type: 'update'; state: UpdateState }
   | { type: 'automation'; state: AutomationState };
 

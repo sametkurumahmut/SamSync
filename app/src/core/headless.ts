@@ -3,6 +3,8 @@
 //   --check-only  is every item the same on every target? One row per target; exit code 0 = all the same
 // The table goes to stdout and everything else (machine, warnings, summary, errors) to stderr, so the table can be
 // piped on. Column names and state values are ASCII and the same as the old tool's, for scripts that read them.
+//   --pack <dir>  writes the items as one pack file into <dir> (with --since <pack file|machine>: only what changed
+//                 since that pack, or what that machine lacks); the file's path goes to stdout, exit code 0 = written.
 //   --sync <job>  compares a sync job and runs its default actions as a schedule does (conflicts stay as they
 //                 are); the summary (job, a row per side, conflicts, errors) goes to stdout, the error details to
 //                 stderr; exit code 0 = everything done. The columns are ASCII like the other tables.
@@ -15,17 +17,18 @@ import { expandTargetIds } from './context';
 import { DEFAULT_SETTINGS, loadConfig, readJson } from './config';
 import { detectIdentity } from './identity';
 import { createLogger, type Logger } from './logger';
-import { buildSendPlan } from './plan';
+import { buildSendPlan, writeSendPack } from './plan';
+import { isPackFile, packFileName } from './packfile';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun } from './sync';
 import { startRun } from './executor';
 import { History, pruneReports } from './history';
 import { joinRoot, mapSource, normalizeAbs, relIsWithin } from './paths';
 import { nodeRootLabel } from './transport';
-import { errMessage } from './util';
+import { errMessage, formatBytes } from './util';
 import { baseSendOptions, targetOptions } from '../shared/options';
 import { resolveLang, setLang, systemLang, t } from '../shared/i18n';
 
-export type HeadlessMode = 'plan' | 'check' | 'sync';
+export type HeadlessMode = 'plan' | 'check' | 'sync' | 'pack';
 
 export interface HeadlessRequest {
   mode: HeadlessMode;
@@ -37,6 +40,9 @@ export interface HeadlessRequest {
   targets: string[];
   /** --sync: the job's id or name. */
   job?: string;
+  /** --pack: the folder the pack goes into, and --since: an earlier pack file or a machine. */
+  packDir?: string;
+  since?: string;
 }
 
 export interface HeadlessIO {
@@ -229,6 +235,7 @@ export async function runHeadless(
     return 1;
   };
   if (req.mode === 'sync') return runHeadlessSync(ctx, req.job ?? '', io);
+  if (req.mode === 'pack') return runHeadlessPack(ctx, settings, req, io);
   for (const m of req.missing) io.err(t('Kaynak bulunamadı: {path}', { path: m }));
   if (req.missing.length) return fail(t('{n} kaynak bulunamadı; hiçbir şey denetlenmedi.', { n: req.missing.length }));
   if (!req.paths.length) return fail(t('Kaynak verilmedi. Örnek: SamSync.exe --check-only --to all "C:\\Release\\Data"'));
@@ -276,6 +283,47 @@ export async function runHeadless(
   return allSame ? 0 : 1;
 }
 
+/** --pack: the items as one pack file in the folder given, a full one or one against an earlier pack or a machine. */
+export async function runHeadlessPack(ctx: CoreContext, settings: Pick<LocalSettings, 'sendDefaults'>, req: HeadlessRequest, io: HeadlessIO): Promise<number> {
+  const fail = (msg: string) => {
+    io.err(msg);
+    ctx.log.error(t('Komut satırı'), msg);
+    return 1;
+  };
+  for (const m of req.missing) io.err(t('Kaynak bulunamadı: {path}', { path: m }));
+  if (req.missing.length) return fail(t('{n} kaynak bulunamadı; paket yazılmadı.', { n: req.missing.length }));
+  if (!req.packDir) return fail(t('Paket klasörü verilmedi. Örnek: SamSync.exe --pack "D:\\Paketler" "C:\\Release\\Data"'));
+  if (!req.paths.length) return fail(t('Kaynak verilmedi. Örnek: SamSync.exe --pack "D:\\Paketler" "C:\\Release\\Data"'));
+  let since: { pack?: string; targetId?: string } | undefined;
+  if (req.since) {
+    if (isPackFile(req.since)) {
+      if (!fs.existsSync(req.since)) return fail(t('Önceki paket bulunamadı: {path}', { path: req.since }));
+      since = { pack: req.since };
+    } else {
+      const k = req.since.toLowerCase();
+      const node = ctx.config.nodes.find((n) => n.id.toLowerCase() === k || n.name.toLowerCase() === k);
+      if (!node) return fail(t('--since: makine bulunamadı: {ref}', { ref: req.since }));
+      since = { targetId: node.id };
+    }
+  }
+  const paths = req.paths.map((p) => normalizeAbs(p));
+  const options: SendOptions = { ...baseSendOptions(ctx.config.copy, settings.sendDefaults), dryRun: false, notify: false };
+  const label = path.basename(paths[0]) || 'SamSync';
+  const file = path.join(req.packDir, packFileName(label));
+  try {
+    await fsp.mkdir(req.packDir, { recursive: true });
+    const r = await writeSendPack(ctx, { sources: paths.map((p) => ({ kind: 'fs', path: p })), targetIds: [], options, origin: 'send', label }, file, { since });
+    for (const w of r.warnings) io.err(`! ${w}`);
+    io.out(r.file);
+    const summary = t('Paket yazıldı: {file} ({files} dosya, {size} → {packed})', { file: r.file, files: r.files, size: formatBytes(r.size), packed: formatBytes(r.packed) });
+    io.err(r.skipped ? `${summary} • ${t('{n} dosya önceki halinden beri aynı, pakete girmedi', { n: r.skipped })}` : summary);
+    ctx.log.info(t('Komut satırı'), summary);
+    return 0;
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+}
+
 export interface HeadlessHost {
   userDataPath: string;
   appVersion: string;
@@ -300,7 +348,7 @@ export async function headlessFromDisk(host: HeadlessHost, req: HeadlessRequest,
   const logEnv = env.SAMSYNC_LOG;
   const log: Logger = createLogger(logEnv ? path.dirname(logEnv) : path.join(host.userDataPath, 'log'));
   const configPath = env.SAMSYNC_CONFIG || settings.configPath || path.join(host.userDataPath, 'config.json');
-  io.err(`SamSync ${host.appVersion} --${req.mode === 'plan' ? 'plan-only' : req.mode === 'check' ? 'check-only' : 'sync'} • ${configPath}`);
+  io.err(`SamSync ${host.appVersion} --${req.mode === 'plan' ? 'plan-only' : req.mode === 'check' ? 'check-only' : req.mode} • ${configPath}`);
   let config: AppConfig;
   try {
     if (!fs.existsSync(configPath)) throw new Error(t('Yapılandırma dosyası yok: {path}', { path: configPath }));

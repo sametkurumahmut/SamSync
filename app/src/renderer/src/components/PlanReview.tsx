@@ -443,6 +443,16 @@ function TargetOps({
             )}
             <span className="faint">{t('{n} değişiklik', { n: num(plan.ops.length) })}</span>
             {plan.counts.same > 0 && <span className="badge">{t('{n} aynı', { n: num(plan.counts.same) })}</span>}
+            {plan.agent && (
+              <span className="badge green" data-tip={t('SamSync orada çalışıyor: gönderimler sıkıştırılmış paket olarak gider, makine kendisi uygular')}>
+                {t('ajan')}
+              </span>
+            )}
+            {!!plan.agentHashed && (
+              <span className="badge blue" data-tip={t('{n} dosyanın içerik özeti hedef makinede, kendi diskinde hesaplandı; bu dosyalar ağ üzerinden okunmadı', { n: num(plan.agentHashed) })}>
+                {t('{n} özet orada', { n: num(plan.agentHashed) })}
+              </span>
+            )}
             {plan.fromManifest && (
               <>
                 <span className="badge blue" data-tip={t('Hedefin klasörleri ağ üzerinden gezilmedi: SamSync’in {ago} bıraktığı manifestten alındı, bir örnekle doğrulandı. Karşılaştır sayfası her zaman doğrudan bakar.', { ago: ago(plan.fromManifest) })}>

@@ -1,5 +1,19 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Ajan, her makinede:** SamSync çalışan her makine kendisine gönderileni sıkıştırılmış tek paket olarak alıp kendisi uyguluyor; eskiden bu yalnızca rölelerde vardı. Ayarlar › Ajan (varsayılan açık): uygulamadan önce komut (dosyaları tutan programı durdurmak için; başarısız olursa hiçbir şeye dokunulmaz), uyguladıktan sonra komut, varış bildirimi. Makine kartı ve incelemede **ajan** rozeti. Klasör (`_SamSyncRelay`) ilk yerel kökte durur, Windows'ta gizlidir, hiçbir gönderime girmez, ajan kapatılınca silinir.
+- **Hedefte içerik karşılaştırması:** içeriğe göre karşılaştırmada ajan olan makinenin dosyaları ağ üzerinden geri okunmuyor; o makine dosyaların SHA-256 özetini kendi diskinde hesaplayıp yazıyor, burada kendi kopyalarınızın özetiyle karşılaştırılıyor. İncelemede "N özet orada" rozeti. Yanıt vermeyen makine eskisi gibi ağdan okunur.
+- **Blok farkı:** ajanın diskinde zaten bulunan 8 MB ve üstü dosyalarda yalnızca değişen 1 MB'lık bloklar gidiyor; makine dosyayı kurup bütün dosyanın özetini denetlemeden yerine yazmıyor.
+- **Erişilemeyen makineye açılınca gönder:** Ayarlar › Genel (varsayılan kapalı). Kapalı makineye yapılan gönderim bu bilgisayarda bekliyor, makine açılınca kaynakların o anki hali gidiyor; 7 gün içinde açılmazsa düşüyor. Bekleyenler Hedefler sayfasında.
+- **Web arayüzü için HTTPS:** Ayarlar › Web arayüzü (varsayılan kapalı). Bilgisayar kendi sertifikasını üretiyor; doğrulama için parmak izi gösteriliyor, oturum çerezi yalnızca şifreli bağlantıda gidiyor.
+- **Komut satırından paket:** `--pack <klasör>` pencere açmadan paket yazıyor; `--since <paket|makine>` artımlı paket.
+- **Kullanımdaki dosyalar:** Ayarlar › Genel › *Çalıştırma sonunda kullanımdaki dosyaları bir kez daha dene* (varsayılan kapalı). Böyle hatalarla biten çalıştırmanın panelinde **Kullanımdakileri tekrar dene**: yalnızca o dosyalar, inceleme olmadan, aynı makinelere.
+- **Makine kartı:** son gönderim bir sürüm noktasıysa son gönderim satırında adı görünüyor.
+- **Ayarlar düzeni:** kartlar birbirine yakın biten sütunlara diziliyor, kısa kartlar üstte; satır satır hizalamanın bıraktığı boşluklar ve aşırı uzun sayfa gitti.
+- **Geçmiş, dar pencere:** çalıştırmanın düğmeleri başlığın altına iniyor, liste çalıştırmanın üstünde duruyor ve sayfa kayıyor.
+- **Düzeltme:** aynı ayar dosyasına aynı anda iki yazma (örneğin bir gönderimin hatırlanan hedefleri ve bir ayar değişikliği) ikincisinin "dosya bulunamadı" hatasıyla düşmesine yol açabiliyordu; yazmalar artık sırayla yapılıyor.
+
 ## 2.3.0 — 2026-10-20
 
 - **Hızlı karşılaştırma:** ağ paylaşımındaki klasörler artık işletim sisteminin klasör sorgusuyla listeleniyor; bir klasörün bütün dosyaları boyut ve tarihle tek seferde geliyor, dört klasör aynı anda soruluyor. Eskiden her dosya için ayrı bir sorgu gidiyordu ve on binlerce dosyalık bir karşılaştırma Wi-Fi'da dakikalar sürüyordu. Dışlanan klasörler yine atlanıyor; yerel klasörler düz gezintiyle kalıyor.

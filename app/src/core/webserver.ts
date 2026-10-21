@@ -9,6 +9,7 @@
 // files, window control, installing an update, changing this server) are refused for browsers. Plain HTTP: meant
 // for a trusted network, or behind a reverse proxy that adds TLS.
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -64,6 +65,7 @@ export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'updateState',
   'automationState',
   'relayState',
+  'pendingSends',
   'inventory',
   'findInHistory',
   'rootLabel',
@@ -113,6 +115,8 @@ export interface WebServerOptions {
   /** Texts of the login page, in the app's language. */
   texts?: () => { title: string; password: string; signIn: string; wrong: string; locked: string; readOnly?: string };
   log?: (level: 'info' | 'warn', message: string) => void;
+  /** HTTPS with this certificate and key (PEM); plain HTTP without. */
+  tls?: { cert: string; key: string };
 }
 
 export interface WebServerState {
@@ -168,7 +172,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 export class WebServer {
-  private server: http.Server | null = null;
+  private server: http.Server | https.Server | null = null;
   private clients = new Set<http.ServerResponse>();
   private sessions = new Map<string, { until: number; role: 'admin' | 'viewer' }>();
   private fails = new Map<string, { n: number; until: number }>();
@@ -184,7 +188,8 @@ export class WebServer {
   start(): Promise<void> {
     if (!/^scrypt\$/.test(this.o.passwordHash)) return Promise.reject(new Error('password required'));
     return new Promise((resolve, reject) => {
-      const s = http.createServer((req, res) => void this.handle(req, res).catch((e) => this.fail(res, 500, e instanceof Error ? e.message : String(e))));
+      const handler = (req: http.IncomingMessage, res: http.ServerResponse) => void this.handle(req, res).catch((e) => this.fail(res, 500, e instanceof Error ? e.message : String(e)));
+      const s = this.o.tls ? https.createServer({ cert: this.o.tls.cert, key: this.o.tls.key }, handler) : http.createServer(handler);
       s.once('error', (e) => {
         this.lastError = e.message;
         reject(e);
@@ -192,7 +197,7 @@ export class WebServer {
       s.listen(this.o.port, this.o.host, () => {
         this.server = s;
         this.lastError = undefined;
-        this.o.log?.('info', `web UI on http://${this.o.host}:${this.o.port}`);
+        this.o.log?.('info', `web UI on ${this.o.tls ? 'https' : 'http'}://${this.o.host}:${this.o.port}`);
         resolve();
       });
     });
@@ -263,7 +268,7 @@ export class WebServer {
     if (url.pathname === '/logout') {
       const token = cookies(req)[COOKIE];
       if (token) this.sessions.delete(token);
-      return this.redirect(res, '/login', `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+      return this.redirect(res, '/login', `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict${this.o.tls ? '; Secure' : ''}; Max-Age=0`);
     }
 
     const session = this.session(req);
@@ -331,7 +336,7 @@ export class WebServer {
     const token = crypto.randomBytes(32).toString('base64url');
     this.sessions.set(token, { until: Date.now() + SESSION_MS, role });
     this.o.log?.('info', role === 'viewer' ? `web UI: viewer signed in from ${ip}` : `web UI: signed in from ${ip}`);
-    return this.redirect(res, '/', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}`);
+    return this.redirect(res, '/', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${this.o.tls ? '; Secure' : ''}; Max-Age=${SESSION_MS / 1000}`);
   }
 
   private loginPage(res: http.ServerResponse, error: string | null): void {

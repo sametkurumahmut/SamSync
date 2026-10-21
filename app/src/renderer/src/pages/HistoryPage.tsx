@@ -120,7 +120,7 @@ export function HistoryPage() {
           </Button>
         )}
       </div>
-      <div className="page-body fill">
+      <div className="page-body fill history-body">
         {runs && <HistoryStats runs={runs} day={day} onDay={setDay} />}
         <div className="history-layout">
           <div className="card history-list">
@@ -246,11 +246,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
 
   return (
     <div className="card history-detail">
-      <div className="card-head" style={{ alignItems: 'flex-start', paddingTop: 14, paddingBottom: 14 }}>
+      <div className="card-head history-head" style={{ alignItems: 'flex-start', paddingTop: 14, paddingBottom: 14 }}>
         <div className="icon-tile lg">
           <StatusIcon status={summary.status} size={19} />
         </div>
-        <div className="grow" style={{ minWidth: 0 }}>
+        <div className="grow history-head-title">
           <div className="row" style={{ gap: 8 }}>
             <h2 className="ellipsis" style={{ fontSize: 15 }}>
               {summary.label}
@@ -268,50 +268,53 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
             {dateTime(summary.startedAt)} • {duration((summary.finishedAt ?? summary.startedAt) - summary.startedAt)} • {bytes(summary.bytes)}
           </div>
         </div>
-        {(summary.origin === 'send' || summary.origin === 'git') && summary.sources.length > 0 && (
-          <>
-            {failedTargets.length > 0 && (
-              <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => void resend(true)}>
-                {t('Hatalılara yeniden gönder')}
+        {/* in a narrow window the buttons go under the title and wrap, instead of squeezing it */}
+        <div className="history-actions">
+          {(summary.origin === 'send' || summary.origin === 'git') && summary.sources.length > 0 && (
+            <>
+              {failedTargets.length > 0 && (
+                <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => void resend(true)}>
+                  {t('Hatalılara yeniden gönder')}
+                </Button>
+              )}
+              <Button size="sm" icon={<Send size={13} />} onClick={() => void resend(false)}>
+                {t('Yeniden gönder')}
               </Button>
-            )}
-            <Button size="sm" icon={<Send size={13} />} onClick={() => void resend(false)}>
-              {t('Yeniden gönder')}
+            </>
+          )}
+          {canUndo && (
+            <Button size="sm" icon={<Undo2 size={13} />} tip={t('Bu gönderimi yedeklerinden geri al')} onClick={() => void undo()}>
+              {t('Geri al')}
             </Button>
-          </>
-        )}
-        {canUndo && (
-          <Button size="sm" icon={<Undo2 size={13} />} tip={t('Bu gönderimi yedeklerinden geri al')} onClick={() => void undo()}>
-            {t('Geri al')}
+          )}
+          {(summary.origin === 'send' || summary.origin === 'git') && !summary.dryRun && summary.opsOk > 0 && (
+            <ReleasePointActions summary={summary} />
+          )}
+          <Button
+            size="sm"
+            icon={<FileSpreadsheet size={13} />}
+            onClick={async () => {
+              const f = await api.exportRunCsv(summary.id);
+              if (f) {
+                await api.openPath(f).catch(() => undefined);
+                toast('ok', t('CSV rapor oluşturuldu'), f);
+              }
+            }}
+          >
+            CSV
           </Button>
-        )}
-        {(summary.origin === 'send' || summary.origin === 'git') && !summary.dryRun && summary.opsOk > 0 && (
-          <ReleasePointActions summary={summary} />
-        )}
-        <Button
-          size="sm"
-          icon={<FileSpreadsheet size={13} />}
-          onClick={async () => {
-            const f = await api.exportRunCsv(summary.id);
-            if (f) {
-              await api.openPath(f).catch(() => undefined);
-              toast('ok', t('CSV rapor oluşturuldu'), f);
-            }
-          }}
-        >
-          CSV
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          iconOnly
-          icon={<Trash2 size={14} />}
-          tip={t('Kaydı sil')}
-          onClick={async () => {
-            await api.deleteRun(summary.id);
-            onDeleted();
-          }}
-        />
+          <Button
+            size="sm"
+            variant="ghost"
+            iconOnly
+            icon={<Trash2 size={14} />}
+            tip={t('Kaydı sil')}
+            onClick={async () => {
+              await api.deleteRun(summary.id);
+              onDeleted();
+            }}
+          />
+        </div>
       </div>
       <div className="stat-grid" style={{ padding: 14 }}>
         <div className="stat">

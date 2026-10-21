@@ -311,6 +311,43 @@ describe('--plan-only and --check-only', () => {
       setLang('tr');
     }
   });
+
+  it('--pack writes the items as one pack; --since leaves out what an earlier pack or a machine already has', async () => {
+    const out = path.join(path.dirname(t1), 'packs');
+    const l = parseLaunch(['--pack', out, '--since', 'T1', __filename]);
+    expect(l).toMatchObject({ headless: 'pack', packDir: path.resolve(out), since: 'T1', paths: [path.resolve(__filename)] });
+    expect(parseLaunch(['--pack=x', '--since=old.samsync-pack']).since).toBe(path.resolve('old.samsync-pack'));
+    await write(path.join(src, 'Data', 'a.txt'), 'a', daysAgo(2));
+    await write(path.join(src, 'Data', 'b.txt'), 'b', daysAgo(2));
+    const local = { ...me, localRoots: [src] };
+    const ctx = makeCtx({ nodes: [local, pathNode('T1', t1)] }, [src], data);
+    ctx.localNodeId = 'Me';
+    const full = io();
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [], packDir: out }, full.io)).toBe(0);
+    const first = full.out[0];
+    expect(first.endsWith('.samsync-pack')).toBe(true);
+    expect(fs.existsSync(first)).toBe(true);
+    expect(full.err.join('\n')).toMatch(/2 dosya|2 files/);
+    // one file changes: a pack against the first one holds only that
+    await write(path.join(src, 'Data', 'b.txt'), 'b2', daysAgo(1));
+    await fsp.rename(first, path.join(out, 'first.samsync-pack'));
+    const inc = io();
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [], packDir: out, since: path.join(out, 'first.samsync-pack') }, inc.io)).toBe(0);
+    expect(inc.err.join('\n')).toMatch(/1 dosya,|1 files?,/);
+    // the machine T1 holds a.txt as it is: a pack against it leaves that out
+    await write(path.join(t1, 'Data', 'a.txt'), 'a', daysAgo(2));
+    const { scanTree } = await import('../src/core/scan');
+    const { saveManifestSubtree } = await import('../src/core/manifest');
+    const t1fs = new FsTransport(t1);
+    await saveManifestSubtree(t1fs, 'Data', (await scanTree(t1fs, 'Data', { caseInsensitive: true })).entries, { host: 'h' }, 'önceki');
+    const m = io();
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [], packDir: out, since: 'T1' }, m.io)).toBe(0);
+    expect(m.err.join('\n')).toMatch(/1 dosya,|1 files?,/);
+    // errors: no folder, an unknown machine, a pack that is not there
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [] }, io().io)).toBe(1);
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [], packDir: out, since: 'Yok' }, io().io)).toBe(1);
+    expect(await runHeadless(ctx, identity(local), { lastTargets: [] }, { mode: 'pack', paths: [path.join(src, 'Data')], missing: [], targets: [], packDir: out, since: path.join(out, 'none.samsync-pack') }, io().io)).toBe(1);
+  });
 });
 
 describe('importing the old wizard state', () => {
