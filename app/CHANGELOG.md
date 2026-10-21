@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.2 — 2026-10-21
 
 - **Listeye özel seçenekler:** Gönder sayfasındaki seçenekler kartında **Genel / Bu listeye özel**. Özel seçilince seçenekler o sekmede kalıyor (sekmede küçük bir simge), liste hızlı gönderim olarak kaydedilince onunla saklanıyor; genel seçenekler değişmiyor. **Genel seçeneklere göre sıfırla** ve **Varsayılanlara sıfırla** düğmeleri. Komut satırından açılan hızlı gönderim ya da profil artık genel seçenekleri değiştirmiyor, kendi sekmesinde kendi seçenekleriyle açılıyor.
 - **Yollar ve ipuçları:** makine kartında adın üstüne gelince ad, adres, kimlik ve grup görünüyor (kırpılan kimlik de); yola tıklayınca Explorer'da açılıyor, sağ tıkta "Explorer'da göster" ve "Yolu kopyala". Otomasyon kartlarındaki yollar da aynı; hedef satırının üstüne gelince bütün makineler alt alta.
