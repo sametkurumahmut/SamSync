@@ -200,6 +200,83 @@ export const FAQ: FaqEntry[] = [
   },
   // ---- send
   {
+    id: 'busy',
+    topic: 'targets',
+    q: { tr: 'Makine kartındaki sarı nokta ve "meşgul" ne demek?', en: 'What do the amber dot and "busy" on a machine card mean?' },
+    a: {
+      tr: 'O makinedeki SamSync hedef klasörün içinden çalışan bir program buldu (ya da Ayarlar › Ajan › *Meşgul sayılacak başka programlar* listesindeki biri açık): değiştirilecek dosyalar kullanımda olabilir. Rozetin üstüne gelince programlar görünür, tıklayınca hedef klasörde açık tuttukları dosyalar listelenir (Windows). O makinede *Meşgulken gönderimi beklet* açıksa gönderim program kapanana kadar sizin bilgisayarınızda bekler, sonra kendiliğinden gider. Denetim dakikada bir yapılır ve *Hedef klasörü kullanan programları bildir* ile kapatılabilir.',
+      en: 'SamSync on that machine found a program running from inside the target folder (or one in Settings › Agent › *Other programs that make it busy* is open): files to be replaced may be in use. Hover the badge for the programs; a click lists the files they hold open in the target folder (Windows). With *Hold sends while busy* on there, the send waits on your computer until the program closes, then goes by itself. The check runs once a minute and *Report the programs using the target folder* turns it off.',
+    },
+    keywords: ['meşgul', 'busy', 'sarı', 'amber', 'kilitli', 'locked', 'kullanımda', 'in use', 'program', 'açık dosya', 'open file'],
+    page: 'targets',
+  },
+  {
+    id: 'send-later',
+    topic: 'send',
+    q: { tr: 'Bir gönderimi gece, kimse çalışmazken yapabilir miyim?', en: 'Can I make a send at night, when nobody is working?' },
+    a: {
+      tr: 'Evet: incelemede **Sonra gönder…** ile tarih ve saati seçin; istenirse kapalı makineler beş dakika önce uyandırılır. O saatte kaynaklar yeniden karşılaştırılır ve bütün farklar gönderilir. Bekleyen gönderimler Otomasyon sayfasında görünür ve iptal edilebilir. O saatte bu bilgisayar açık ve SamSync çalışıyor olmalı; kaçırılan saat SamSync açılınca çalışır. “Gönderimden sonra: yeniden başlat” ile birlikte de kullanılabilir.',
+      en: 'Yes: pick the date and time with **Send later…** in the review; the machines that are off can be woken five minutes before. At that time the sources are compared again and every difference is sent. The waiting sends show on the Automation page and can be cancelled. This computer has to be on with SamSync running then; a time missed runs when SamSync starts. It goes with “After the send: restart” too.',
+    },
+    keywords: ['sonra', 'later', 'gece', 'night', 'zamanla', 'schedule', 'saat', 'time', 'mesai dışı', 'off hours'],
+    page: 'send',
+  },
+  {
+    id: 'send-queue',
+    topic: 'send',
+    q: { tr: 'Aynı makinelere iki gönderim aynı anda başlarsa ne olur?', en: 'What happens when two sends to the same machines start at once?' },
+    a: {
+      tr: 'Varsayılan olarak ikisi birlikte yazar; inceleme başka birinin yazdığını uyarır. Ayarlar › Kopyalama › **Aynı makinelere giden gönderimler sırayla gitsin** açıkken ikincisi birincisi bitene kadar bekler (çalıştırma penceresinde "Sırada" yazar), sonra kendiliğinden başlar.',
+      en: 'By default both write at once; the review warns that someone else is writing. With Settings › Copy › **Sends to the same machines go one after the other** on, the second waits until the first ends (the run window says “Queued”), then starts by itself.',
+    },
+    keywords: ['sıra', 'queue', 'aynı anda', 'at once', 'çakışma', 'conflict', 'iki gönderim', 'two sends', 'bekle', 'wait'],
+    page: 'settings',
+  },
+  {
+    id: 'tags',
+    topic: 'targets',
+    q: { tr: 'Farklı gruplardaki makineleri birlikte nasıl seçerim?', en: 'How do I pick machines from different groups together?' },
+    a: {
+      tr: 'Makinelere **etiket** verin (makineyi düzenleyin › Etiketler; örneğin `projeksiyon`). Bir makinenin birden çok etiketi olabilir ve grubundan bağımsızdır. Hedef seçicinin *Seç* menüsünde etikete göre toplu seçim var; profillerde ve komut satırında `tag:projeksiyon` o etiketli bütün makineleri seçer.',
+      en: 'Give the machines **tags** (edit the machine › Tags; for example `projector`). A machine can have several, apart from its group. The *Select* menu of the target picker picks every machine with a tag; in profiles and on the command line `tag:projector` picks them all.',
+    },
+    keywords: ['etiket', 'tag', 'grup', 'group', 'birlikte seç', 'select together', 'tag:'],
+    page: 'targets',
+  },
+  {
+    id: 'remote-power',
+    topic: 'targets',
+    q: { tr: 'Bir makineyi buradan yeniden başlatabilir ya da kapatabilir miyim?', en: 'Can I restart or shut a machine down from here?' },
+    a: {
+      tr: 'O makinede Ayarlar › Ajan › **Gönderenler bu makineyi yeniden başlatabilsin ve kapatabilsin** açıksa (varsayılan kapalı) evet: kartındaki menüden bir dakika içinde yeniden başlatılır ya da kapatılır, bekleyen işlem aynı menüden iptal edilir. Gönderim seçeneklerindeki **Gönderimden sonra** gönderimi alan makineleri aynı şekilde yeniden başlatır ya da kapatır. Makine ekranında bir dakikalık uyarı çıkar.',
+      en: 'When Settings › Agent › **Let senders restart and shut this machine down** is on there (off by default), yes: the menu on its card restarts it or shuts it down within a minute, and the same menu cancels that. The send option **After the send** restarts or shuts down the machines that got the send the same way. The machine shows a one-minute warning on its screen.',
+    },
+    keywords: ['yeniden başlat', 'restart', 'reboot', 'kapat', 'shutdown', 'uzaktan', 'remote', 'güç', 'power'],
+    page: 'targets',
+  },
+  {
+    id: 'distribute',
+    topic: 'relay',
+    q: { tr: 'Doğru sürüm bir makinede var; ötekilere oradan gönderebilir miyim?', en: 'One machine holds the right release; can I send it to the others from there?' },
+    a: {
+      tr: 'Evet: o makinede SamSync çalışıyorsa kartındaki **Buradan dağıt**ı kullanın. Makinenin manifestindeki klasörlerden ve hedeflerden seçin, kipi belirleyin; dosyalar o makineden, onun ağı üzerinden gider, bu bilgisayarın (örneğin Wi-Fi) bağlantısından hiçbir şey geçmez. Çalıştırma penceresi her makinenin sonucunu gösterir.',
+      en: 'Yes: when SamSync runs on that machine, use **Distribute from here** on its card. Pick from the folders in its manifest and the targets, and the mode; the files go from that machine, over its own network, and nothing crosses this computer’s link (Wi‑Fi, say). The run window shows the result of each machine.',
+    },
+    keywords: ['dağıt', 'distribute', 'buradan', 'from here', 'makineden makineye', 'machine to machine', 'kaynak makine', 'source machine'],
+    page: 'targets',
+  },
+  {
+    id: 'machine-history',
+    topic: 'targets',
+    q: { tr: 'Bir makineye neler gönderildi, hepsini bir arada görebilir miyim?', en: 'Can I see everything sent to one machine in one place?' },
+    a: {
+      tr: 'Makine kartındaki **geçmiş** düğmesi o makineye ulaşan bütün çalıştırmaları en yeniden başlayarak gün gün listeler: sonucu, sürüm noktası, sağlık denetimi, hangi röle üzerinden geldiği. Bir satıra tıklayınca çalıştırma Geçmiş sayfasında açılır.',
+      en: 'The **history** button on the machine’s card lists every run that reached it, newest first, day by day: its result, release point, health check and the relay it came through. A row opens the run on the History page.',
+    },
+    keywords: ['makine geçmişi', 'machine history', 'zaman çizelgesi', 'timeline', 'gönderilenler', 'sent'],
+    page: 'targets',
+  },
+  {
     id: 'staged-send',
     topic: 'send',
     q: { tr: 'Önce bir iki makineye gönderip sorun yoksa ötekilere geçebilir miyim?', en: 'Can I send to one or two machines first and go on to the others only when they are fine?' },

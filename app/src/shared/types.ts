@@ -40,6 +40,8 @@ export interface NodeConfig {
   relay?: boolean;
   /** The network card's MAC address, for waking the machine up; learned by itself while the machine is on. */
   mac?: string;
+  /** Labels across groups ("projector", "audio"): `tag:projector` picks every machine that has it. */
+  tags?: string[];
 }
 
 export type CompareMethod = 'timeSize' | 'content' | 'size';
@@ -67,6 +69,8 @@ export interface CopySettings {
   relayQueueDays?: number;
   /** A group whose relay does not run SamSync gets another machine of it that does as its relay for that send. */
   relayTakeover?: boolean;
+  /** A send to machines another run is writing to waits until that run ends (otherwise both write at once). */
+  queueSends?: boolean;
   /** A manifest SamSync left on a target stands in for a walk over the network for this many days (0 = always walk). */
   manifestMaxDays?: number;
   /** Runs on this machine before the first file goes to a target (stop the program that holds the files, say); a failing one skips the target. */
@@ -120,6 +124,8 @@ export interface SendOptions {
   rollbackOnFailure?: boolean;
   /** Stage and switch: the new files are written next to their places first and all go in at once, or none does. */
   stageSwitch?: boolean;
+  /** The machines that got the send are restarted or shut down after it (those whose SamSync allows it). */
+  powerAfter?: 'restart' | 'shutdown';
 }
 
 export interface Profile {
@@ -563,6 +569,24 @@ export interface AgentSettings {
   afterApplyFails?: boolean;
   /** Watches the folders sent here: a file changed by hand shows on the senders' cards at once (live drift). */
   watchDrift?: boolean;
+  /** Tells senders which programs keep the target folder busy (on unless false): those started from inside it, and these. */
+  reportBusy?: boolean;
+  busyPrograms?: string[];
+  /** While such a program runs, senders do not write here: the send waits on the sender until it closes. */
+  holdWhileBusy?: boolean;
+  /** Senders may restart or shut this machine down (from its card, or after a send); off by default. */
+  allowPower?: boolean;
+}
+
+/** A program that keeps a machine's target folder busy: started from inside it, or named in Settings › Agent. */
+export interface BusyProgram {
+  name: string;
+  pid: number;
+}
+
+/** What the programs keeping a machine busy hold open below its target folder (program files and libraries). */
+export interface BusyFiles {
+  programs: (BusyProgram & { path?: string; files: string[] })[];
 }
 
 /** Live drift on a machine: what changed in its sent folders since the last send, as SamSync there last counted it. */
@@ -600,6 +624,11 @@ export interface AgentInfo {
   macs?: string[];
   /** Live drift, when the machine watches its sent folders. */
   drift?: DriftSummary;
+  /** Programs keeping its target folder busy, and whether senders wait while they run. */
+  busyBy?: BusyProgram[];
+  holdWhileBusy?: boolean;
+  /** It may be restarted or shut down from here. */
+  power?: boolean;
 }
 
 /** One sent folder of a machine against its manifest: what changed there after the last send (paths from the root). */
@@ -754,6 +783,8 @@ export interface RelayState {
   checks?: AgentCheck[];
   /** Live drift of this machine's sent folders (when it watches them). */
   drift?: DriftSummary;
+  /** Programs keeping this machine's target folder busy. */
+  busyBy?: BusyProgram[];
   lastError?: { at: number; text: string };
 }
 
@@ -946,6 +977,9 @@ export interface TargetPlan {
   agent?: boolean;
   /** Files whose content SamSync on the target hashed on its own disk for the comparison (not read over the network). */
   agentHashed?: number;
+  /** Programs keeping the target folder busy there; `held`: the machine asks senders to wait until they close. */
+  busyBy?: string[];
+  held?: boolean;
 }
 
 /** What writing a pack file produced. */
@@ -1017,6 +1051,38 @@ export interface RunTargetState {
   deferred?: boolean;
   /** The command after the copy (here) or after applying (on the machine): how it ended. */
   check?: TargetCheck;
+}
+
+/** One run on a machine's timeline (Targets › a machine's history). */
+export interface TimelineEntry {
+  runId: string;
+  label: string;
+  origin: RunSummary['origin'];
+  at: number;
+  finishedAt?: number;
+  status: RunTargetState['status'];
+  done: number;
+  failed: number;
+  bytes: number;
+  via?: string;
+  deferred?: boolean;
+  error?: string;
+  check?: TargetCheck;
+  /** The run is a release point by this name. */
+  release?: string;
+  dryRun?: boolean;
+}
+
+/** A send set for a time of its own ("Send later"): planned again and run then; the machines off woken before. */
+export interface ScheduledSend {
+  id: string;
+  at: number;
+  label?: string;
+  request: SendRequest;
+  /** Wake the machines that are off a few minutes before, and whether that was done. */
+  wake: boolean;
+  woke?: boolean;
+  createdAt: number;
 }
 
 /** A send in two stages: the first machines got it, the rest wait for them to go through (and for a go, unless automatic). */
@@ -1129,7 +1195,8 @@ export type AppEvent =
   | { type: 'update'; state: UpdateState }
   | { type: 'automation'; state: AutomationState }
   | { type: 'drift'; reports: DriftReport[] }
-  | { type: 'staged'; state: StagedSend };
+  | { type: 'staged'; state: StagedSend }
+  | { type: 'scheduled-sends'; items: ScheduledSend[] };
 
 // ---------------------------------------------------------------- git
 

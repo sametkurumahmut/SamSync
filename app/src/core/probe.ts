@@ -116,6 +116,9 @@ export function agentInfo(h: Heartbeat, alive = heartbeatFresh(h)): AgentInfo {
     asks: h.asks,
     macs: h.macs,
     drift: h.drift,
+    busyBy: h.busyBy,
+    holdWhileBusy: h.holdWhileBusy,
+    power: h.power,
   };
 }
 

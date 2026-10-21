@@ -103,6 +103,9 @@ export function normalizeConfig(raw: unknown): AppConfig {
     if (group) node.group = group;
     const names = asStringArray(n.localNames);
     if (names.length) node.localNames = names;
+    // tags go into command lines as tag:<name>: the characters of an id, spaces made into dashes
+    const tags = [...new Set(asStringArray(n.tags).map((x) => x.trim().replace(/\s+/g, '-')).filter((x) => ID_RE.test(x)))];
+    if (tags.length) node.tags = tags;
     if (n.path) node.path = String(n.path).trim();
     if (n.color) node.color = String(n.color);
     if (n.notes) node.notes = String(n.notes);
@@ -142,6 +145,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     relayQueueMinutes: clampInt(c.relayQueueMinutes, 5, 0, 24 * 60),
     relayQueueDays: clampInt(c.relayQueueDays, 7, 1, 90),
     relayTakeover: c.relayTakeover === true || undefined,
+    queueSends: c.queueSends === true || undefined,
     manifestMaxDays: clampInt(c.manifestMaxDays, 7, 0, 365),
     preCommand: c.preCommand ? String(c.preCommand) : '',
     postCommand: c.postCommand ? String(c.postCommand) : '',
@@ -241,6 +245,7 @@ export function serializeConfig(cfg: AppConfig): AppConfig {
     if (n.path) o.path = n.path;
     if (n.relay) o.relay = true;
     if (n.mac) o.mac = n.mac;
+    if (n.tags?.length) o.tags = n.tags;
     if (n.sftp) {
       const { hasPassword: _h, ...rest } = n.sftp;
       o.sftp = rest;

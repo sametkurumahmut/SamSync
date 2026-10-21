@@ -77,6 +77,8 @@ export interface ExecSettings {
   postCommandTimeoutSeconds: number;
   /** Per target transfer limit in MB/s; 0 or undefined = unlimited. */
   bandwidthMBps?: number;
+  /** The run waits for this before the first machine is started (another run writing to the same machines). */
+  waitFor?: Promise<void>;
   /** A file a program holds open is tried once more after everything else for that target. */
   retryInUseAtEnd?: boolean;
   /** Relay: how long it may take to pick a job up, and to finish it. */
@@ -247,6 +249,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         ? t('{label} başladı: {targets} hedef, {ops} işlem (deneme çalıştırması, hiçbir şey yazılmayacak)', startParams)
         : t('{label} başladı: {targets} hedef, {ops} işlem', startParams),
     );
+    if (s.waitFor) {
+      log('info', t('Sırada: aynı makinelere giden önceki gönderim bitince başlayacak'));
+      await Promise.race([s.waitFor, new Promise<void>((r) => cancel.onCancel(r))]);
+      if (!cancel.cancelled) log('info', t('Sıra geldi; başlıyor'));
+    }
     await mapLimit(groups, Math.max(1, s.parallelGroups), (g) => runGroup(g, states.find((x) => x.key === g.key && !x.via)!));
     emitProgress.flush();
     emitLog.flush();
@@ -864,7 +871,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         st.failed = own.opsFailed;
         if (own.backupPath) st.backupPath = own.backupPath;
         if (own.check) st.check = own.check;
-        log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
+        // a machine that only passes its own files on (distributing from it) had nothing to apply
+        if (g.ops.length || own.status !== 'ok') log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
       }
       st.done = g.ops.length;
       st.bytesDone = st.bytesTotal;

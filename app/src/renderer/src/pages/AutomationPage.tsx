@@ -91,6 +91,7 @@ export function AutomationPage() {
   const setPage = useApp((s) => s.setPage);
   const toast = useApp((s) => s.toast);
   const [editing, setEditing] = useState<WatchConfig | 'new' | null>(null);
+  const later = useApp((s) => s.scheduledSends);
 
   if (!automation) return <PageSkeleton cards={0} rows={4} />;
 
@@ -252,6 +253,39 @@ export function AutomationPage() {
               );
             })}
           </div>
+        )}
+
+        {later.length > 0 && (
+          <>
+            <div className="auto-section-head" style={{ marginTop: 26 }}>
+              <div className="icon-tile accent">
+                <Clock size={15} />
+              </div>
+              <div className="grow">
+                <h2>{t('Zamanlanmış gönderimler')}</h2>
+                <div className="faint" style={{ fontSize: 12.5 }}>
+                  {t('İncelemede “Sonra gönder” ile kurulanlar: o saatte kaynakların o anki hâli gider.')}
+                </div>
+              </div>
+            </div>
+            <div className="card">
+              {later.map((x) => (
+                <div key={x.id} className="list-row" style={{ height: 'auto', minHeight: 52, padding: '8px 14px', gap: 14 }}>
+                  <div className="icon-tile accent">
+                    <Clock size={15} />
+                  </div>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <b className="ellipsis">{x.label || t('Gönderim')}</b>
+                    <div className="faint" style={{ fontSize: 12 }}>
+                      {new Date(x.at).toLocaleString(locale())} • {untilText(x.at)} • {t('{n} kaynak → {targets} hedef', { n: x.request.sources.length, targets: x.request.targetIds.length })}
+                      {x.wake ? ` • ${t('önce uyandırır')}` : ''}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={13} />} tip={t('Zamanlanmış gönderimi iptal et')} onClick={() => void api.cancelScheduledSend(x.id)} />
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <div className="auto-section-head" style={{ marginTop: 26 }}>

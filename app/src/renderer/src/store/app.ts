@@ -11,6 +11,7 @@ import type {
   RelayState,
   PendingSend,
   StagedSend,
+  ScheduledSend,
   RunLogLine,
   RunSummary,
   RunTargetState,
@@ -148,6 +149,8 @@ interface State {
   pendingSends: PendingSend[];
   /** Staged sends by the run id of their first stage. */
   staged: Record<string, StagedSend>;
+  /** Sends set for a time of their own (Send later). */
+  scheduledSends: ScheduledSend[];
   probing: boolean;
   update: UpdateState | null;
   automation: AutomationState | null;
@@ -329,6 +332,7 @@ export const useApp = create<State>((set, get) => ({
   probing: false,
   pendingSends: [],
   staged: {},
+  scheduledSends: [],
   update: null,
   automation: null,
   toasts: [],
@@ -397,6 +401,7 @@ export const useApp = create<State>((set, get) => ({
       set({ boot, options: own ?? options, generalOptions: options, ownOptions: !!own, targets: targets.filter((id) => known.has(id)), ...(tabs && active ? { workspaces: tabs.list, activeWorkspace: active.id } : {}) });
       void api.relayState().then((relayState) => set({ relayState })).catch(() => undefined);
       void api.pendingSends().then((pendingSends) => set({ pendingSends })).catch(() => undefined);
+      void api.scheduledSends().then((scheduledSends) => set({ scheduledSends })).catch(() => undefined);
       get().applyTheme();
       // the web preview passes SAMSYNC_PATHS here; Electron sends its launches as 'open' events
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
@@ -830,6 +835,9 @@ function handleEvent(e: AppEvent) {
       break;
     case 'pending-sends':
       useApp.setState({ pendingSends: e.items });
+      break;
+    case 'scheduled-sends':
+      useApp.setState({ scheduledSends: e.items });
       break;
     case 'staged':
       useApp.setState((s) => ({ staged: { ...s.staged, [e.state.runId]: e.state } }));

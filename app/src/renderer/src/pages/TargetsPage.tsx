@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power } from 'lucide-react';
+import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon } from 'lucide-react';
 import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
 import { compareVersions } from '@shared/version';
 import { driftCounts } from '@shared/drift';
 import { AgentChecks } from '../components/AgentSettings';
-import { Button, Empty, Field, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { BusyBadge, busyOf, dotClass } from '../components/BusyBadge';
+import { DistributeDialog } from '../components/DistributeDialog';
+import { MachineTimeline } from '../components/MachineTimeline';
+import { Button, Empty, Field, MenuButton, Modal, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, bytes, cls, duration } from '../lib/format';
 import { t } from '@shared/i18n';
 import { tx } from '../lib/i18n';
@@ -84,7 +87,7 @@ export function TargetsPage() {
   const id = boot.identity;
 
   const ql = q.trim().toLowerCase();
-  const nodes = cfg.nodes.filter((n) => !ql || `${n.name} ${n.id} ${n.group ?? ''} ${n.address}`.toLowerCase().includes(ql));
+  const nodes = cfg.nodes.filter((n) => !ql || `${n.name} ${n.id} ${n.group ?? ''} ${n.address} ${(n.tags ?? []).map((x) => '#' + x).join(' ')}`.toLowerCase().includes(ql));
   const groups = new Map<string, NodeConfig[]>();
   for (const n of nodes) {
     const g = n.group ?? '';
@@ -120,7 +123,16 @@ export function TargetsPage() {
       setWaking([]);
     }
   };
+  // restart or shut down a machine whose SamSync allows it, a minute from now (or cancel that)
+  const powerNode = async (n: NodeConfig, action: 'restart' | 'shutdown' | 'cancel') => {
+    if (action !== 'cancel' && !confirm(action === 'restart' ? t('{name} bir dakika içinde yeniden başlatılsın mı? Ekranda uyarı çıkar.', { name: n.name }) : t('{name} bir dakika içinde kapatılsın mı? Ekranda uyarı çıkar.', { name: n.name }))) return;
+    const [r] = await api.power([n.id], action);
+    if (r?.ok) toast('ok', action === 'cancel' ? t('İptal edildi') : action === 'restart' ? t('{name} yeniden başlıyor', { name: n.name }) : t('{name} kapanıyor', { name: n.name }));
+    else toast('error', t('Yapılamadı'), r?.error);
+  };
   const [updating, setUpdating] = useState<string[]>([]);
+  const [distributing, setDistributing] = useState<NodeConfig | null>(null);
+  const [timeline, setTimeline] = useState<NodeConfig | null>(null);
   const updateAgents = async (ids: string[]) => {
     if (!confirm(t('{n} makineye SamSync {version} kurulumu bırakılsın mı? Makineler ellerindeki iş bitince kurar ve yeniden açılır.', { n: ids.length, version: boot.appVersion }))) return;
     const nameOf = (nid: string) => cfg.nodes.find((n) => n.id === nid)?.name ?? nid;
@@ -216,6 +228,12 @@ export function TargetsPage() {
                     </div>
                   )}
                   {relayState?.active && <AgentChecks />}
+                  {relayState?.active && (relayState.busyBy?.length ?? 0) > 0 && (
+                    <div className="row" style={{ gap: 6, marginTop: 6, fontSize: 12 }}>
+                      <span className="dot busy" />
+                      <span>{t('Hedef klasörü kullanan programlar: {programs}', { programs: [...new Set(relayState.busyBy!.map((x) => x.name))].join(', ') })}</span>
+                    </div>
+                  )}
                   {relayState?.active && relayState.drift && relayState.drift.changed + relayState.drift.added + relayState.drift.removed > 0 && (
                     <div className="row" style={{ gap: 6, marginTop: 6, fontSize: 12 }} data-tip={relayState.drift.sample.join('\n')}>
                       <AlertTriangle size={12} color="var(--amber)" />
@@ -341,7 +359,7 @@ export function TargetsPage() {
                   return (
                     <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local')}>
                       <div className="row" style={{ gap: 10 }}>
-                        <span className={cls('dot', isLocal ? 'ok' : p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} />
+                        <span className={cls('dot', isLocal ? 'ok' : dotClass(p, probing))} />
                         <MachineName
                           className="grow"
                           node={n}
@@ -389,6 +407,7 @@ export function TargetsPage() {
                               {t('yoklanmadı')}
                             </span>
                           ))}
+                        {!isLocal && <BusyBadge nodeId={n.id} name={n.name} programs={busyOf(p)} held={p?.agent?.holdWhileBusy} />}
                         {!isLocal && <AgentBadges node={n} p={p} own={boot.appVersion} updating={updating.includes(n.id)} onUpdate={() => void updateAgents([n.id])} />}
                         {!isLocal && p?.ok && p.freeBytes != null && (
                           <span className="row faint nowrap" style={{ fontSize: 11.5, gap: 4, color: p.freeBytes < 2 * 1024 ** 3 ? 'var(--red)' : undefined }} data-tip={t('Hedef diskinde boş alan')}>
@@ -406,6 +425,25 @@ export function TargetsPage() {
                           </span>
                         )}
                         <span className="spacer" />
+                        {!isLocal && <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip={t('Bu makinenin geçmişi: ona giden gönderimler, sürüm noktaları, denetimler')} onClick={() => setTimeline(n)} />}
+                        {!isLocal && p?.ok && p.agent?.alive && (
+                          <Button size="sm" variant="ghost" iconOnly icon={<Waypoints size={13} />} tip={t('Buradan dağıt: bu makinedeki klasörleri öbür makinelere onun ağı üzerinden gönderir')} disabled={boot.readOnly} onClick={() => setDistributing(n)} />
+                        )}
+                        {!isLocal && p?.ok && p.agent?.alive && p.agent.power && (
+                          <MenuButton
+                            align="end"
+                            width={240}
+                            buttonProps={{ size: 'sm', variant: 'ghost', iconOnly: true, tip: t('Yeniden başlat ya da kapat') }}
+                            items={[
+                              { label: t('Yeniden başlat (1 dk sonra)'), icon: <RotateCw size={15} />, onClick: () => void powerNode(n, 'restart') },
+                              { label: t('Kapat (1 dk sonra)'), icon: <PowerOff size={15} />, onClick: () => void powerNode(n, 'shutdown') },
+                              { sep: true },
+                              { label: t('Bekleyeni iptal et'), icon: <Ban size={15} />, onClick: () => void powerNode(n, 'cancel') },
+                            ]}
+                          >
+                            <RotateCw size={13} />
+                          </MenuButton>
+                        )}
                         {wakeable(n) && (
                           <Button size="sm" variant="ghost" iconOnly icon={<Power size={13} />} loading={waking.includes(n.id)} tip={t('Uyandır: ağ üzerinden açma paketi gönderir ({mac})', { mac: p!.macs!.join(', ') })} onClick={() => void wakeNodes([n.id])} />
                         )}
@@ -420,6 +458,11 @@ export function TargetsPage() {
                             {p?.relayAlive === false ? t('röle kapalı') : p?.relayAlive ? t('röle açık') : t('röle')}
                           </span>
                         )}
+                        {(n.tags ?? []).map((tag) => (
+                          <span key={tag} className="badge outline" data-tip={t('Etiket: tag:{tag} bu etiketli bütün makineleri seçer', { tag })}>
+                            #{tag}
+                          </span>
+                        ))}
                         <span className="badge">{t('{n} kök', { n: n.localRoots.length })}</span>
                         <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => setEditing(n)} disabled={!boot.configWritable} />
                       </div>
@@ -431,6 +474,8 @@ export function TargetsPage() {
           ))
         )}
       </div>
+      {distributing && <DistributeDialog source={distributing} onClose={() => setDistributing(null)} />}
+      {timeline && <MachineTimeline node={timeline} onClose={() => setTimeline(null)} />}
       {editing && <NodeEditor node={editing === 'new' || 'prefill' in editing ? null : editing} prefill={editing !== 'new' && 'prefill' in editing ? editing.prefill : undefined} onClose={() => setEditing(null)} />}
       {discover && (
         <DiscoverDialog
@@ -689,6 +734,9 @@ function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefi
         </Field>
         <Field label={t('Notlar')}>
           <input className="input" value={n.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} />
+        </Field>
+        <Field label={t('Etiketler')} help={t('Gruplardan bağımsız; hedef seçicide ve komut satırında tag:<ad> ile seçilir')}>
+          <TagInput value={n.tags ?? []} onChange={(v) => set({ tags: v.length ? v.map((x) => x.trim().replace(/\s+/g, '-')).filter((x) => ID_RE.test(x)) : undefined })} placeholder="projeksiyon" />
         </Field>
         <Field
           label={t('MAC adresi (uyandırmak için)')}

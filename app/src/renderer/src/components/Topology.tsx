@@ -7,6 +7,7 @@ import type { NodeConfig } from '@shared/types';
 import { useApp } from '../store/app';
 import { cls } from '../lib/format';
 import { MachineName } from './MachineName';
+import { dotClass } from './BusyBadge';
 import { t } from '@shared/i18n';
 
 /** Machine cards stretch between these to fill their group box, so the address line is never cut short. */
@@ -222,7 +223,7 @@ export function Topology({ compact }: { compact?: boolean }) {
               onPointerDown={onDown(n)}
               title={pr ? pr.detail : t('Henüz yoklanmadı')}
             >
-              <span className={cls('dot', pr ? (pr.ok ? 'ok' : 'bad') : 'pending')} />
+              <span className={cls('dot', pr ? dotClass(pr) : 'pending')} />
               <MachineName
                 className="grow"
                 node={n}

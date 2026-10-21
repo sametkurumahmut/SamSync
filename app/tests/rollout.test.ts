@@ -113,7 +113,8 @@ describe('staged send', () => {
       expect(run.targets.map((x) => x.key)).toEqual(['PC1']);
       expect(read(path.join(w.dir.PC1, 'Data', 'a.txt'))).toBe('bir');
       expect(read(path.join(w.dir.PC2, 'Data', 'a.txt'))).toBeNull();
-      expect(await w.me.stagedSend(run.id)).toMatchObject({ status: 'waiting', firstOk: true, rest: [{ key: 'PC2' }] });
+      // the stage is decided right after the run is in the history
+      expect(await until(() => w.me.stagedSend(run.id))).toMatchObject({ status: 'waiting', firstOk: true, rest: [{ key: 'PC2' }] });
       const next = await w.me.continueStaged(run.id);
       await finished(w, next);
       expect(read(path.join(w.dir.PC2, 'Data', 'a.txt'))).toBe('bir');
@@ -124,7 +125,7 @@ describe('staged send', () => {
       await write(path.join(w.src, 'a.txt'), 'iki!');
       const auto = await send(w, req(w, ['PC1', 'PC2']), { first: ['PC1'], auto: true });
       await until(() => read(path.join(w.dir.PC2, 'Data', 'a.txt')) === 'iki!');
-      expect((await w.me.stagedSend(auto.run.id))!.status).toBe('continued');
+      expect((await until(() => w.me.stagedSend(auto.run.id))).status).toBe('continued');
     } finally {
       w.stop();
     }
@@ -133,8 +134,7 @@ describe('staged send', () => {
     try {
       await write(path.join(f.src, 'a.txt'), 'x');
       const { run } = await send(f, req(f, ['PC1', 'PC2'], { runPostCommand: true }), { first: ['PC1'], auto: true });
-      await sleep(300);
-      expect(await f.me.stagedSend(run.id)).toMatchObject({ status: 'stopped', firstOk: false });
+      expect(await until(() => f.me.stagedSend(run.id))).toMatchObject({ status: 'stopped', firstOk: false });
       expect(read(path.join(f.dir.PC2, 'Data', 'a.txt'))).toBeNull();
     } finally {
       f.stop();

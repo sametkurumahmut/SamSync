@@ -37,6 +37,10 @@ export const REMOTE_DENIED: ReadonlySet<string> = new Set<ApiMethod>([
 export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'bootstrap',
   'lastDrift',
+  'machineTimeline',
+  'machineFolders',
+  'scheduledSends',
+  'busyFiles',
   'releaseDiff',
   'stagedSend',
   'whoHolds',

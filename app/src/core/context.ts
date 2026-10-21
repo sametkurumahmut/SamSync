@@ -45,6 +45,9 @@ export function expandTargetIds(cfg: AppConfig, ids: string[], localNodeId?: str
     else if (id.toLowerCase().startsWith('group:')) {
       const g = id.slice(6).toLowerCase();
       cfg.nodes.filter((n) => n.group?.toLowerCase() === g).forEach(add);
+    } else if (id.toLowerCase().startsWith('tag:')) {
+      const tag = id.slice(4).toLowerCase();
+      cfg.nodes.filter((n) => n.tags?.some((x) => x.toLowerCase() === tag)).forEach(add);
     } else if (id.toLowerCase().startsWith('profile:')) {
       const p = cfg.profiles.find((x) => x.name.toLowerCase() === id.slice(8).toLowerCase() || x.id === id.slice(8));
       p?.targetIds.forEach((t) => add(findNode(cfg, t)));

@@ -1014,6 +1014,11 @@ a {
   background: var(--amber);
   animation: pulse 1.2s ease-in-out infinite;
 }
+/* reachable, but a program keeps its target folder busy */
+.dot.busy {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-bg);
+}
 @keyframes pulse {
   50% {
     opacity: 0.35;

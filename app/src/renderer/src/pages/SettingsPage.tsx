@@ -344,6 +344,12 @@ export function SettingsPage() {
               <ToggleRow title={t('Yazdıktan sonra doğrula')} desc={t('İçerik özetini karşılaştırır (daha yavaş)')} on={copy.verify} onChange={(v) => setCopy({ ...copy, verify: v })} />
               <ToggleRow title={t('1 saatlik yaz saati farkını yok say')} desc={t('Saat dilimi kaymış dosyaları aynı sayar')} on={copy.ignoreDstShift} onChange={(v) => setCopy({ ...copy, ignoreDstShift: v })} />
               <ToggleRow
+                title={t('Aynı makinelere giden gönderimler sırayla gitsin')}
+                desc={t('Bir gönderim sürerken aynı makinelere başlayan ikincisi, birincisi bitene kadar bekler. Kapalıyken ikisi birlikte yazar (inceleme yine uyarır).')}
+                on={copy.queueSends === true}
+                onChange={(v) => setCopy({ ...copy, queueSends: v || undefined })}
+              />
+              <ToggleRow
                 title={t('Röle kapalıysa gruptan başka bir makine röle olsun')}
                 desc={t('Rölesinde SamSync çalışmayan bir gruba gönderirken, grupta SamSync çalışan ilk makine o gönderim için röle olur; dosyalar yavaş bağlantıdan bir kez geçer. Kapalıyken grubun makinelerine doğrudan yazılır.')}
                 on={copy.relayTakeover === true}

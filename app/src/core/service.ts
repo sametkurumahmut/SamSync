@@ -8,7 +8,9 @@ import type { FileTrace,
   HolderReport,
   DriftReport,
   ReleaseDiff,
+  BusyFiles,
   StagedSend,
+  ScheduledSend,
   DiscoveredHost,
   DirListing,
   WebUiSettings,
@@ -23,6 +25,9 @@ import type { FileTrace,
   CompareResult,
   DiffResult,
   InventoryRow,
+  InventoryEntry,
+  SendMode,
+  TimelineEntry,
   LocalIdentity,
   LocalSettings,
   PackWriteResult,
@@ -83,6 +88,10 @@ import { driftFilter, driftOf, driftTime, type DriftResult } from './drift';
 import { drifted, driftCounts } from '../shared/drift';
 import { arpTable, broadcastAddresses, normalizeMac, subnetBroadcast, wake } from './wol';
 import { releaseDiff, writeReleaseDiff } from './releasediff';
+import { busyFiles, busyPrograms, listProcesses } from './processes';
+import { ScheduledSends } from './scheduled';
+import { powerAction } from './power';
+import { expandTargetIds } from './context';
 import { installerFromFile, putUpdate, type Installer } from './agentupdate';
 import { askAgent } from './agentask';
 import { HOLDERS_MAX_FILES, closePrograms, holdersUnder } from './holders';
@@ -200,16 +209,93 @@ export class Service implements Api {
     this.pending = new PendingSends(path.join(host.userDataPath, 'pending-sends.json'), {
       reachable: async (id) => {
         const n = findNode(this.config, id);
-        return !!n && n.enabled !== false && (await probeNode(this.config, n, 3000, false)).ok;
+        // a machine that asked senders to wait while a program keeps it busy is not ready yet either
+        return !!n && n.enabled !== false && (await probeNode(this.config, n, 3000, false)).ok && !(await this.heldBusy(n));
       },
       send: (item) => this.sendPending(item),
       changed: (items) => this.host.emit({ type: 'pending-sends', items }),
       expired: (item) => this.log.warn(t('Bekleyen gönderim'), t('{name} 7 gün içinde açılmadı; bekleyen gönderim düştü: {label}', { name: item.targetName, label: item.label || '-' })),
     });
+    this.later = new ScheduledSends(path.join(host.userDataPath, 'scheduled-sends.json'), {
+      run: (item) => this.runLater(item),
+      wake: (item) => this.wakeLater(item),
+      changed: (items) => this.host.emit({ type: 'scheduled-sends', items }),
+    });
+  }
+
+  /** SamSync on the machine says a program keeps its target folder busy and asks senders to wait. */
+  private async heldBusy(n: NodeConfig): Promise<boolean> {
+    if (n.transport === 'sftp' || n.id === this.identity.node?.id) return false;
+    let tgt: Transport | null = null;
+    try {
+      tgt = await transportForNode(this.ctx(), n);
+      const h = await readHeartbeat(tgt);
+      return !!h && heartbeatFresh(h) && !!h.holdWhileBusy && !!h.busyBy?.length;
+    } catch {
+      return false;
+    } finally {
+      await tgt?.close().catch(() => undefined);
+    }
+  }
+
+  async busyFiles(nodeId: string): Promise<BusyFiles> {
+    const n = findNode(this.config, nodeId);
+    if (!n) throw new Error(t('Hedef bulunamadı'));
+    const tgt = await transportForNode(this.ctx(), n);
+    try {
+      return await askAgent<BusyFiles>(tgt, { kind: 'busy' }, { answerMs: 60_000 });
+    } finally {
+      await tgt.close().catch(() => undefined);
+    }
   }
 
   /** Sends waiting for machines that were off (Settings › Send when the machine is back). */
   readonly pending: PendingSends;
+
+  /** Sends set for a time of their own (Send later in the review). */
+  readonly later: ScheduledSends;
+
+  async scheduleSend(planId: string, at: number, wake: boolean): Promise<ScheduledSend> {
+    const plan = this.plans.get(planId);
+    if (!plan) throw new Error(t('Plan bulunamadı ya da eskidi; yeniden inceleyin.'));
+    if (at < Date.now() + 10_000) throw new Error(t('Gelecekte bir zaman seçin.'));
+    const item = await this.later.add(plan.request, at, wake);
+    this.log.info(t('Sonra gönder'), t('{label}: {at} için kuruldu', { label: plan.request.label || t('Gönderim'), at: new Date(at).toLocaleString() }));
+    return item;
+  }
+
+  async scheduledSends(): Promise<ScheduledSend[]> {
+    return this.later.list();
+  }
+
+  async cancelScheduledSend(id: string): Promise<boolean> {
+    return this.later.remove(id);
+  }
+
+  /** Its time came: planned now, with the sources as they are, and run like a reviewed send. */
+  private async runLater(item: ScheduledSend): Promise<void> {
+    const req: SendRequest = { ...item.request, label: t('Zamanlanmış: {label}', { label: item.label || t('Gönderim') }) };
+    const scans: PlanScans = new Map();
+    const plan = await buildSendPlan(this.ctx(), req, { scans });
+    this.plans.set(plan.id, plan);
+    this.planScans.set(plan.id, scans);
+    try {
+      this.runPlan(plan, 'default', { notify: true, unreachableFails: true, queueUnreachable: true });
+      this.log.info(t('Sonra gönder'), t('{label} başladı', { label: req.label! }));
+    } catch {
+      this.log.info(t('Sonra gönder'), t('{label}: gönderilecek fark yok', { label: req.label! }));
+    }
+  }
+
+  /** A few minutes before: the machines of the send that are off and whose MAC address is known are woken. */
+  private async wakeLater(item: ScheduledSend): Promise<void> {
+    const nodes = expandTargetIds(this.config, item.request.targetIds, this.identity.node?.id);
+    const ids = nodes.filter((n) => n.mac || this.macs.get(n.id)?.length).map((n) => n.id);
+    if (!ids.length) return;
+    const probes = await probeNodes(this.config, nodes.filter((n) => ids.includes(n.id)), 1500, false);
+    const off = probes.filter((p) => !p.ok).map((p) => p.nodeId);
+    if (off.length) await this.wake(off);
+  }
 
   async pendingSends(): Promise<PendingSend[]> {
     return this.pending.list();
@@ -297,6 +383,8 @@ export class Service implements Api {
     this.syncRelay();
     await this.pending.load();
     this.pending.start();
+    await this.later.load();
+    this.later.start();
     // the drift check on schedule, when one is set (Targets › Machine inventory)
     setInterval(() => void this.driftTick(), 10 * 60_000).unref();
   }
@@ -687,6 +775,79 @@ export class Service implements Api {
     if (changed) await writeJsonAtomic(this.macsFile, Object.fromEntries(this.macs)).catch(() => undefined);
   }
 
+  async machineTimeline(nodeId: string): Promise<TimelineEntry[]> {
+    const tags = new Map((this.settings.releaseTags ?? []).map((x) => [x.runId, x.name]));
+    const out: TimelineEntry[] = [];
+    for (const r of await this.history.list()) {
+      const tg = r.targets.find((x) => x.key === nodeId);
+      if (!tg) continue;
+      out.push({ runId: r.id, label: r.label, origin: r.origin, at: r.startedAt, finishedAt: tg.finishedAt ?? r.finishedAt, status: tg.status, done: tg.done, failed: tg.failed, bytes: tg.bytesDone, via: tg.via, deferred: tg.deferred, error: tg.error, check: tg.check, release: tags.get(r.id), dryRun: r.dryRun || undefined });
+    }
+    return out.sort((a, b) => b.at - a.at).slice(0, 300);
+  }
+
+  async machineFolders(nodeId: string): Promise<InventoryEntry[]> {
+    const n = findNode(this.config, nodeId);
+    if (!n) throw new Error(t('Hedef bulunamadı'));
+    const tgt = await transportForNode(this.ctx(), n);
+    try {
+      const m = await withTimeout(readManifest(tgt), 8000);
+      return Object.entries(m?.subtrees ?? {})
+        .map(([rel, sub]) => {
+          const files = (sub.entries ?? []).filter((e) => e[1] !== 1);
+          return { rel, label: sub.label, writtenAt: sub.writtenAt, by: sub.by, files: files.length, dirs: (sub.entries ?? []).length - files.length, size: files.reduce((a, e) => a + e[2], 0) };
+        })
+        .sort((a, b) => a.rel.localeCompare(b.rel));
+    } finally {
+      await tgt.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Distributing from a machine: SamSync there gets a relay job with no files of ours, only its own folders to send on,
+   * and sends them from its disk to the machines named, over its own network. The run shows each machine, as a relay's.
+   */
+  async distributeFrom(sourceId: string, rels: string[], targetIds: string[], mode: SendMode): Promise<string> {
+    const src = findNode(this.config, sourceId);
+    if (!src) throw new Error(t('Hedef bulunamadı'));
+    const targets = targetIds.map((id) => findNode(this.config, id)).filter((n): n is NodeConfig => !!n && n.enabled && n.id !== sourceId && n.id !== this.identity.node?.id);
+    if (!rels.length || !targets.length) throw new Error(t('Bir klasör ve en az bir hedef seçin.'));
+    const ctx = this.ctx();
+    const tgt = await transportForNode(ctx, src);
+    try {
+      if (!heartbeatFresh(await readHeartbeat(tgt))) throw new Error(t('{name} makinesinde SamSync çalışmıyor; dağıtım oradaki SamSync ile yapılır.', { name: src.name }));
+    } finally {
+      await tgt.close().catch(() => undefined);
+    }
+    const options: SendOptions = { ...baseSendOptions(this.config.copy, this.settings.sendDefaults), mode, dryRun: false, notify: false };
+    const label = t('{name} makinesinden: {folders}', { name: src.name, folders: rels.map((r) => r || '/').join(', ') });
+    const job: RelayJob = { id: newId('relay-'), createdAt: Date.now(), label, from: ctx.localNodeId, sources: rels.map((rel) => ({ rel, kind: 'fs' as const })), targetIds: targets.map((n) => n.id), options };
+    const group: ExecGroup = { key: src.id, title: src.name, rootLabel: nodeRootLabel(this.config, src), open: () => transportForNode(ctx, src), node: src, ops: [], relay: { targets, job } };
+    const s = this.execSettings(label, 'send', options, { sources: rels, targetIds: [src.id, ...job.targetIds] });
+    const handle = this.startQueued(ctx, [group], s);
+    this.track(handle, true);
+    this.log.info(t('Dağıt'), t('{label} → {targets}', { label, targets: targets.map((n) => n.name).join(', ') }));
+    return handle.id;
+  }
+
+  async power(nodeIds: string[], action: 'restart' | 'shutdown' | 'cancel'): Promise<{ nodeId: string; ok: boolean; error?: string }[]> {
+    return mapLimit(nodeIds, 6, async (id) => {
+      const n = findNode(this.config, id);
+      if (!n) return { nodeId: id, ok: false, error: t('Hedef bulunamadı') };
+      let tgt: Transport | null = null;
+      try {
+        tgt = await transportForNode(this.ctx(), n);
+        await askAgent(tgt, { kind: 'power', action, delaySec: 60, from: this.identity.node?.id }, { answerMs: 30_000 });
+        this.log.info(t('Uzaktan'), action === 'cancel' ? t('{name}: bekleyen yeniden başlatma iptal edildi', { name: n.name }) : action === 'restart' ? t('{name}: bir dakika içinde yeniden başlayacak', { name: n.name }) : t('{name}: bir dakika içinde kapanacak', { name: n.name }));
+        return { nodeId: id, ok: true };
+      } catch (e) {
+        return { nodeId: id, ok: false, error: errMessage(e) };
+      } finally {
+        await tgt?.close().catch(() => undefined);
+      }
+    });
+  }
+
   async wake(nodeIds: string[]): Promise<{ nodeId: string; ok: boolean; error?: string }[]> {
     const out: { nodeId: string; ok: boolean; error?: string }[] = [];
     for (const id of nodeIds) {
@@ -794,6 +955,18 @@ export class Service implements Api {
     while (this.recentGroups.size > 10) this.recentGroups.delete(this.recentGroups.keys().next().value!);
   }
 
+  /** The runs writing to machines now, by their machines: with Settings › Copy › queue on, a new one waits for them. */
+  private runKeys = new Map<string, { keys: Set<string>; done: Promise<unknown> }>();
+
+  private startQueued(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings): RunHandle {
+    const keys = new Set(groups.flatMap((g) => [g.key, ...(g.relay?.targets.map((n) => n.id) ?? [])]));
+    const before = this.config.copy.queueSends ? [...this.runKeys.values()].filter((r) => [...r.keys].some((k) => keys.has(k))).map((r) => r.done.catch(() => undefined)) : [];
+    const handle = startRun(ctx, groups, before.length ? { ...s, waitFor: Promise.all(before).then(() => undefined) } : s);
+    this.runKeys.set(handle.id, { keys, done: handle.done });
+    handle.done.finally(() => this.runKeys.delete(handle.id)).catch(() => undefined);
+    return handle;
+  }
+
   /** The files a program held open in a finished send, written again now to the same machines, without a review. */
   async retryInUse(runId: string): Promise<string> {
     const kept = this.recentGroups.get(runId);
@@ -813,7 +986,7 @@ export class Service implements Api {
       .filter((g) => g.ops.length);
     if (!groups.length) throw new Error(t('Bu çalıştırmada kullanımda kalan dosya yok.'));
     const s: ExecSettings = { ...kept.settings, label: t('Kullanımdakiler: {label}', { label: kept.settings.label }), targetIds: groups.map((g) => g.key), retryInUseAtEnd: false };
-    const handle = startRun(this.ctx(), groups, s);
+    const handle = this.startQueued(this.ctx(), groups, s);
     this.keepGroups(handle.id, groups, s);
     this.track(handle, true);
     return handle.id;
@@ -1121,6 +1294,15 @@ export class Service implements Api {
     });
     for (const tp of plan.targets) {
       if (tp.via) continue;
+      // a machine that asked to be left alone while a program keeps it busy: the send waits here until it closes
+      if (tp.reachable && tp.held && !(overrides.dryRun ?? req.options.dryRun) && (req.origin === 'send' || req.origin === 'git')) {
+        this.pending.add(req, tp.targetId, tp.targetName);
+        if (overrides.unreachableFails) {
+          const why = t('Meşgul: {programs} çalışıyor; kapanınca gönderilecek', { programs: (tp.busyBy ?? []).join(', ') });
+          groups.push({ key: tp.targetId, title: tp.targetName, rootLabel: tp.root, open: () => Promise.reject(new Error(why)), node: nodeOf(tp.targetId), ops: [] });
+        }
+        continue;
+      }
       if (!tp.reachable) {
         // kept for later when asked for: the machine gets the send once it answers again
         const queued = !!overrides.queueUnreachable && this.settings.sendWhenOnline === true && !tp.failed && !(overrides.dryRun ?? req.options.dryRun) && (req.origin === 'send' || req.origin === 'git');
@@ -1179,11 +1361,12 @@ export class Service implements Api {
       s1 = { ...s, label: t('{label} (1. aşama)', { label }), targetIds: keysOf(groups) };
       s2 = { ...s, label: t('{label} (2. aşama)', { label }), targetIds: keysOf(later) };
     }
-    const handle = startRun(ctx, groups, s1);
+    const handle = this.startQueued(ctx, groups, s1);
     this.keepGroups(handle.id, groups, s1);
     const after = async (d: RunDetail) => {
       await this.rollbackFailed(d, opts);
       await this.relayFallback(plan, d, overrides);
+      await this.powerAfter(d, opts);
     };
     this.track(
       handle,
@@ -1228,7 +1411,7 @@ export class Service implements Api {
   async continueStaged(runId: string): Promise<string> {
     const st = this.staged.get(runId);
     if (!st || st.state.status === 'continued' || st.state.status === 'dropped') throw new Error(t('Bu gönderimin bekleyen aşaması yok.'));
-    const handle = startRun(this.ctx(), st.groups, st.settings);
+    const handle = this.startQueued(this.ctx(), st.groups, st.settings);
     this.keepGroups(handle.id, st.groups, st.settings);
     this.track(handle, st.notify, st.after, st.channel);
     st.state = { ...st.state, status: 'continued', nextRunId: handle.id };
@@ -1245,6 +1428,14 @@ export class Service implements Api {
     this.host.emit({ type: 'staged', state: st.state });
   }
 
+  /** A send option: the machines that got it (and allow it) restart or shut down a minute after. */
+  private async powerAfter(d: RunDetail, o: Partial<SendOptions>): Promise<void> {
+    if (!o.powerAfter || d.dryRun) return;
+    const ok = d.targets.filter((x) => x.status === 'ok' && findNode(this.config, x.key) && x.key !== this.identity.node?.id).map((x) => x.key);
+    if (!ok.length) return;
+    for (const r of await this.power(ok, o.powerAfter)) if (!r.ok) this.log.warn(t('Uzaktan'), `${findNode(this.config, r.nodeId)?.name ?? r.nodeId}: ${r.error}`);
+  }
+
   /**
    * All or nothing (a send option): a machine where the send went only partly is put back as it was before it, from
    * the backup the send took there. A machine that was never reached has nothing to put back.
@@ -1258,7 +1449,7 @@ export class Service implements Api {
     if (!groups.length) return;
     this.log.warn(t('Geri alma'), t('{label}: hata olan {names} gönderim öncesine döndürülüyor', { label: d.label, names: groups.map((g) => g.title).join(', ') }));
     const s = this.execSettings(t('Geri alındı (hata): {label}', { label: d.label }), 'restore', { backup: false, notify: true }, { sources: d.sources, targetIds: groups.map((g) => g.key) });
-    const handle = startRun(ctx, groups, s);
+    const handle = this.startQueued(ctx, groups, s);
     this.track(handle, true);
   }
 
@@ -1315,6 +1506,18 @@ export class Service implements Api {
             const r = await closePrograms(held);
             this.log.info(t('Ajan'), t('Gönderenin isteğiyle kapatılan programlar: {list}', { list: held.filter((h) => r.closed.includes(h.pid)).map((h) => h.name).join(', ') || '-' }));
             return r;
+          }
+          if (ask.kind === 'power') {
+            if (this.settings.agent?.allowPower !== true) throw new Error(t('Bu makine uzaktan yeniden başlatılmaya ya da kapatılmaya izin vermiyor (Ayarlar › Ajan)'));
+            const who = ask.from ? (this.config.nodes.find((n) => n.id === ask.from)?.name ?? ask.from) : '?';
+            await powerAction(ask.action, ask.delaySec ?? 60, ask.action === 'restart' ? t('SamSync: {from} yeniden başlatıyor', { from: who }) : t('SamSync: {from} kapatıyor', { from: who }));
+            this.log.warn(t('Ajan'), ask.action === 'cancel' ? t('Bekleyen yeniden başlatma ya da kapatma iptal edildi ({from})', { from: who }) : ask.action === 'restart' ? t('{from} isteğiyle bir dakika içinde yeniden başlatılıyor', { from: who }) : t('{from} isteğiyle bir dakika içinde kapatılıyor', { from: who }));
+            return { ok: true };
+          }
+          if (ask.kind === 'busy') {
+            const procs = busyPrograms(await listProcesses(), root, this.settings.agent?.busyPrograms);
+            const files = await busyFiles(procs.map((p) => p.pid), root).catch(() => ({}) as Record<number, string[]>);
+            return { programs: procs.map((p) => ({ name: p.name, pid: p.pid, path: p.path, files: files[p.pid] ?? [] })) } satisfies BusyFiles;
           }
           if (ask.kind === 'drift') {
             const ctx = this.ctx();
@@ -1687,7 +1890,7 @@ export class Service implements Api {
     const groups = await restoreRunGroups(ctx, run);
     if (!groups.length) throw new Error(t('Geri alınacak bir şey bulunamadı (yedekler silinmiş olabilir).'));
     const s = this.execSettings(t('Geri alma: {label}', { label: run.label }), 'restore', { backup: backupCurrent, notify: true }, { sources: run.sources, targetIds: groups.map((g) => g.key) });
-    const handle = startRun(ctx, groups, s);
+    const handle = this.startQueued(ctx, groups, s);
     this.track(handle, true);
     return handle.id;
   }
@@ -1764,7 +1967,7 @@ export class Service implements Api {
     const groups = await restoreGroups(ctx, rel, picks);
     if (!groups.length) throw new Error(t('Geri alınacak yedek bulunamadı.'));
     const s = this.execSettings(t('Geri alma: {path}', { path: rel }), 'restore', { backup: backupCurrent, notify: true }, { sources: [rel], targetIds: groups.map((g) => g.key) });
-    const handle = startRun(ctx, groups, s);
+    const handle = this.startQueued(ctx, groups, s);
     this.track(handle, true);
     return handle.id;
   }

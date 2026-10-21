@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
 import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
 import { useApp } from '../store/app';
-import { Button, Checkbox, Modal, SearchInput, Progress, Switch } from './ui';
+import { Button, Checkbox, Field, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
 import { MOD } from './Shortcuts';
 import { api } from '../lib/api';
@@ -11,8 +11,9 @@ import { ago, bytes, cls, duration, num, shortDateTime, splitPath } from '../lib
 import { allFolders, buildOpTree, defaultExpanded, flattenTree, type TreeNode, type TreeRow } from '../lib/optree';
 import { readStored, writeStored } from '../lib/persist';
 import { tx } from '../lib/i18n';
-import { t, tk } from '@shared/i18n';
+import { locale, t, tk } from '@shared/i18n';
 import { MODE_OPTIONS } from '../pages/SendPage';
+import { BusyBadge } from './BusyBadge';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
@@ -20,6 +21,61 @@ export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targ
  * A staged send: the machines picked here get it first, the others once these went through (and their health
  * check said yes); then by themselves, or after a go in the run window. Off unless switched on for this send.
  */
+/** "Send later": the reviewed send at a time of its own, planned again then; the machines that are off can be woken before. */
+function LaterModal({ planId, onClose, onDone }: { planId: string; onClose: () => void; onDone: () => void }) {
+  const toast = useApp((s) => s.toast);
+  // tonight at 22:00, or in an hour when that has passed
+  const initial = (() => {
+    const d = new Date();
+    d.setHours(22, 0, 0, 0);
+    if (d.getTime() < Date.now() + 10 * 60_000) d.setTime(Date.now() + 3600_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+  const [when, setWhen] = useState(initial);
+  const [wake, setWake] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const at = new Date(when).getTime();
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.scheduleSend(planId, at, wake);
+      toast('ok', t('Gönderim zamanlandı'), new Date(at).toLocaleString(locale()));
+      onDone();
+    } catch (e) {
+      toast('error', t('Zamanlanamadı'), (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t('Sonra gönder')}
+      icon={<CalendarClock size={16} />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('Vazgeç')}</Button>
+          <Button variant="primary" loading={busy} disabled={!Number.isFinite(at) || at < Date.now()} onClick={() => void save()}>
+            {t('Zamanla')}
+          </Button>
+        </>
+      }
+    >
+      <Field label={t('Ne zaman')} help={t('Bu bilgisayar o saatte açık ve SamSync çalışıyor olmalı; kaçırılan saat SamSync açılınca çalışır.')}>
+        <input className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+      </Field>
+      <label className="check-label" style={{ marginTop: 10 }} onClick={() => setWake(!wake)}>
+        <Switch on={wake} onChange={(v) => setWake(v)} />
+        {t('Kapalı makineleri 5 dakika önce uyandır')}
+      </label>
+      <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
+        {t('O saatte kaynaklar yeniden karşılaştırılır ve bütün farklar gönderilir; burada kaldırdığınız satırlar dikkate alınmaz.')}
+      </p>
+    </Modal>
+  );
+}
+
 function StagesCard({ targets, selected }: { targets: TargetPlan[]; selected: Record<string, Set<string>> }) {
   const stages = useApp((s) => s.review?.stages);
   const setStages = useApp((s) => s.setReviewStages);
@@ -177,6 +233,7 @@ export function PlanReview() {
   const [active, setActive] = useState<string | null>(null);
   const [dry, setDry] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [later, setLater] = useState(false);
 
   const plan = review?.plan;
   const selected = review?.selected ?? {};
@@ -280,6 +337,15 @@ export function PlanReview() {
             <FlaskConical size={14} /> {t('Deneme (yazma)')}
           </label>
           <Button onClick={close}>{t('Vazgeç')}</Button>
+          {!dryRun && (
+            <Button icon={<CalendarClock size={14} />} disabled={!totals.ops} tip={t('Bu gönderimi seçtiğiniz bir saatte yapar')} onClick={() => setLater(true)}>
+              {t('Sonra gönder…')}
+            </Button>
+          )}
+          {later && <LaterModal planId={plan.id} onClose={() => setLater(false)} onDone={() => {
+                setLater(false);
+                close();
+              }} />}
           <Button
             variant="primary"
             size="lg"
@@ -327,10 +393,11 @@ export function PlanReview() {
               return (
                 <button key={tp.targetId} className={cls('plan-target', current?.targetId === tp.targetId && 'active', !tp.reachable && 'down')} onClick={() => setActive(tp.targetId)}>
                   <div className="row">
-                    <span className={cls('dot', tp.reachable ? 'ok' : 'bad')} />
+                    <span className={cls('dot', !tp.reachable ? 'bad' : tp.busyBy?.length ? 'busy' : 'ok')} />
                     <span className="ellipsis grow" style={{ fontWeight: 580 }}>
                       {tp.targetName}
                     </span>
+                    {tp.reachable && !!tp.busyBy?.length && <BusyBadge nodeId={tp.targetId} name={tp.targetName} programs={tp.busyBy} held={tp.held} small />}
                     {tp.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
                   </div>
                   {(tp.mode !== plan.request.options.mode || tp.backup !== plan.request.options.backup) && (

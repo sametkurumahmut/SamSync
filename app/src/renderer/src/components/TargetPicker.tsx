@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check, FolderOpen, Copy, MousePointerClick } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, ListChecks, Bookmark, Trash2, Wifi, WifiOff, CheckCheck, RotateCcw, SlidersHorizontal, Check, FolderOpen, Copy, MousePointerClick, Hash } from 'lucide-react';
 import type { NodeConfig, Profile, TargetOptions } from '@shared/types';
 import { overrideFor, pickOverrides, setOverride } from '@shared/options';
 import { MODE_OPTIONS } from '../pages/SendPage';
@@ -8,6 +8,7 @@ import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type Me
 import { api } from '../lib/api';
 import { bytes, cls } from '../lib/format';
 import { MachineName } from './MachineName';
+import { BusyBadge, busyOf, dotClass } from './BusyBadge';
 import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from './ContextMenu';
 
 /** Where a send lands on a machine, in full (the row shows it cut short): this machine's own root, its share, folder or SFTP root. */
@@ -96,7 +97,9 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
 
   const sel = new Set(value);
   const ql = q.trim().toLowerCase();
-  const visible = ql ? nodes.filter((n) => `${n.name} ${n.id} ${n.group ?? ''} ${n.address}`.toLowerCase().includes(ql)) : nodes;
+  const visible = ql ? nodes.filter((n) => `${n.name} ${n.id} ${n.group ?? ''} ${n.address} ${(n.tags ?? []).map((x) => '#' + x).join(' ')}`.toLowerCase().includes(ql)) : nodes;
+  // the tags of the machines, each with the machines that carry it
+  const tags = [...new Set(nodes.flatMap((n) => n.tags ?? []))].sort((a, b) => a.localeCompare(b));
   const groups = groupNodes(visible);
   const visibleIds = visible.map((n) => n.id);
 
@@ -125,6 +128,16 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
     { label: t('Son çalıştırmada hatalıları seç'), icon: <RefreshCw size={15} />, onClick: () => void lastFailed() },
     ...(overrides
       ? [{ label: t('Hedefe özel ayarları temizle'), icon: <SlidersHorizontal size={15} />, disabled: !Object.keys(perTarget ?? {}).length, onClick: () => useApp.getState().setOptions({ perTarget: {} }) }]
+      : []),
+    ...(tags.length
+      ? [
+          { sep: true as const },
+          { section: t('Etiketler') },
+          ...tags.map((tag) => {
+            const ids = nodes.filter((n) => n.tags?.includes(tag)).map((n) => n.id);
+            return { label: `#${tag}`, icon: <Hash size={15} />, hint: `${ids.length}`, onClick: () => setMany(ids, true) };
+          }),
+        ]
       : []),
     { sep: true },
     { section: t('Profiller') },
@@ -195,11 +208,11 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                   return (
                     <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))} onContextMenu={(e) => nodeMenu(e, n)}>
                       <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} label={n.name} />
-                      <span className={cls('dot', p ? (p.ok ? 'ok' : 'bad') : probing ? 'pending' : '')} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
+                      <span className={cls('dot', dotClass(p, probing))} data-tip={p ? p.detail : t('Henüz yoklanmadı')} />
                       <MachineName
                         className="grow"
                         node={n.transport === 'sftp' ? { name: n.name, address: n.sftp?.host || n.address } : n}
-                        extra={n.id === localId && <span className="badge accent">{t('bu makine')}</span>}
+                        extra={n.id === localId ? <span className="badge accent">{t('bu makine')}</span> : <BusyBadge nodeId={n.id} name={n.name} programs={busyOf(p)} held={p?.agent?.holdWhileBusy} small />}
                         sub={
                           <span className="mono ellipsis" title={targetRoot(n, localId)}>
                             {n.id === localId && n.transport !== 'sftp' && n.localRoots[0] ? n.localRoots[0] : n.transport === 'sftp' ? `sftp ${n.sftp?.root ?? ''}` : n.transport === 'path' ? n.path : n.networkRoot}

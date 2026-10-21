@@ -670,6 +670,13 @@ export function OptionsCard({ git }: { git?: boolean }) {
           <Field label={t('Eşzamanlı hedef')}>
             <input className="input" type="number" min={1} max={32} aria-label={t('Eşzamanlı hedef')} value={options.parallelTargets} onChange={(e) => set({ parallelTargets: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })} style={{ width: 80 }} />
           </Field>
+          <Field label={t('Gönderimden sonra')}>
+            <select className="select" aria-label={t('Gönderimden sonra')} value={options.powerAfter ?? ''} onChange={(e) => set({ powerAfter: (e.target.value || undefined) as typeof options.powerAfter })} style={{ width: 'auto' }}>
+              <option value="">{t('Bir şey yapma')}</option>
+              <option value="restart">{t('Makineleri yeniden başlat')}</option>
+              <option value="shutdown">{t('Makineleri kapat')}</option>
+            </select>
+          </Field>
         </div>
         <div className="options-toggles">
           <ToggleRow icon={<HistoryIcon size={16} className="faint" />} title={t('Yedek al')} desc={t('Üzerine yazılan ve silinen dosyaların eski hâli hedefte saklanır')} on={options.backup} onChange={(v) => set({ backup: v })} />

@@ -13,9 +13,9 @@ import { t } from '../shared/i18n';
 
 export const ASK_DIR = relJoin(RELAY_FOLDER, 'asks');
 /** The questions this version answers (named in its heartbeat). */
-export const ASK_KINDS = ['holders', 'close', 'drift'] as const;
+export const ASK_KINDS = ['holders', 'close', 'drift', 'busy', 'power'] as const;
 
-export type AgentAsk = { kind: 'holders'; rels: string[] } | { kind: 'close'; rels: string[]; pids: number[] } | { kind: 'drift'; subtrees?: string[] };
+export type AgentAsk = { kind: 'holders'; rels: string[] } | { kind: 'close'; rels: string[]; pids: number[] } | { kind: 'drift'; subtrees?: string[] } | { kind: 'busy' } | { kind: 'power'; action: 'restart' | 'shutdown' | 'cancel'; delaySec?: number; from?: string };
 interface AskFile {
   id: string;
   at: number;

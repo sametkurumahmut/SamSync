@@ -875,6 +875,11 @@ async function planTarget(
   const bytes = b.ops.filter((o) => o.selected && o.kind === 'copy').reduce((s, o) => s + o.size, 0);
   const freeBytes = await freeSpace;
   const alive = await heartbeat;
+  // programs keeping the target folder busy there: said in the review; the machine may ask to be left alone meanwhile
+  const hb = askBeat ? await beat : null;
+  const busyBy = hb && heartbeatFresh(hb) && hb.busyBy?.length ? [...new Set(hb.busyBy.map((p) => p.name))] : undefined;
+  const holdForBusy = !!busyBy && !!hb?.holdWhileBusy && b.ops.some((o) => o.selected);
+  if (busyBy) warn(holdForBusy ? t('{name}: {programs} hedef klasörü kullanıyor; bu makineye program kapanınca gönderilecek', { name: node.name, programs: busyBy.join(', ') }) : t('{name}: {programs} hedef klasörü kullanıyor; değiştirilecek dosyalar kullanımda olabilir', { name: node.name, programs: busyBy.join(', ') }));
   const agentHashed = (await hasher)?.answered || undefined;
   const other = await lock;
   await tgt.close();
@@ -888,6 +893,8 @@ async function planTarget(
     relayDown: node.relay && !alive ? true : undefined,
     agent: askBeat && alive ? true : undefined,
     agentHashed,
+    busyBy,
+    held: holdForBusy || undefined,
     lock: other ? { host: other.host, user: other.user, label: other.label, startedAt: other.startedAt } : undefined,
     fromManifest,
     inUse,

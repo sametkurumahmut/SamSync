@@ -1,5 +1,15 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Meşgul makineler:** SamSync çalışan makine dakikada bir hedef klasörün içinden çalışan programlara (ve Ayarlar › Ajan'daki listede olanlara) bakıyor. Varsa makinenin noktası sarı, yanında **meşgul** rozeti: kartta, hedef seçicide, ağ görünümünde ve incelemede. Üstüne gelince programlar, tıklayınca hedef klasörde açık tuttukları dosyalar listeleniyor. İsteyen makine *Meşgulken gönderimi beklet* ile gönderimi program kapanana kadar bekletebiliyor (varsayılan kapalı).
+- **Sonra gönder:** incelemede **Sonra gönder…** ile gönderim bir tarih ve saate kuruluyor; istenirse kapalı makineler beş dakika önce uyandırılıyor. O saatte kaynaklar yeniden karşılaştırılıyor. Bekleyenler Otomasyon sayfasında, iptal edilebiliyor.
+- **Gönderim sırası:** Ayarlar › Kopyalama › *Aynı makinelere giden gönderimler sırayla gitsin* (varsayılan kapalı): başka bir gönderimin yazdığı makinelere giden gönderim onun bitmesini bekliyor.
+- **Etiketler:** makinelere gruptan bağımsız birden çok etiket verilebiliyor; hedef seçicinin *Seç* menüsünde etikete göre seçim, profillerde ve komut satırında `tag:<ad>`.
+- **Uzaktan yeniden başlat ve kapat:** izin veren makinenin (Ayarlar › Ajan, varsayılan kapalı) kartındaki menüden ya da *Gönderimden sonra* seçeneğiyle; makinede bir dakikalık uyarı çıkıyor, iptal edilebiliyor.
+- **Buradan dağıt:** SamSync çalışan bir makinenin kartından, o makinedeki klasörler öbür makinelere onun ağı üzerinden gönderiliyor; bu bilgisayarın bağlantısından bir şey geçmiyor.
+- **Makine geçmişi:** karttaki geçmiş düğmesi o makineye ulaşan bütün çalıştırmaları sonuç, sürüm noktası ve denetimiyle gün gün listeliyor; satır Geçmiş'te açılıyor.
+
 ## 2.4.4 — 2026-10-21
 
 - **Aşamalı gönderim:** incelemede **Aşamalı gönder** ile önce seçilen makinelere gidiyor; onlar sorunsuz biterse (varsa sağlık denetimi de evet derse) ötekiler kendiliğinden ya da çalıştırma penceresindeki **Kalanlara gönder** onayıyla gidiyor. İlk makinelerden biri hatalıysa gönderim duruyor; **Yine de kalanlara gönder** ya da **Vazgeç**. Her aşama Geçmiş'te ayrı bir çalıştırma.

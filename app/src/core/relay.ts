@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCheck, AgentSettings, DriftSummary, RelayStash, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
+import type { AgentCheck, AgentSettings, BusyProgram, DriftSummary, RelayStash, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
 import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
@@ -22,6 +22,7 @@ import { ASK_DIR, ASK_KINDS, answerAsks, pruneAsks, type AgentAsk } from './agen
 import { agentChecks, localShares } from './shares';
 import { UPDATE_DIR, finishOrder, putUpdate, readOrder, sha512Of, type UpdateOrder, type UpdateOutcome } from './agentupdate';
 import { compareVersions } from '../shared/version';
+import { busyPrograms, listProcesses } from './processes';
 import { LOCK_FILE, MANIFEST_FILE } from '../shared/files';
 import { CancelToken, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
@@ -84,6 +85,11 @@ export interface Heartbeat {
   macs?: string[];
   /** live drift of its sent folders, when it watches them */
   drift?: DriftSummary;
+  /** programs keeping its target folder busy, and whether senders are to wait while they run */
+  busyBy?: BusyProgram[];
+  holdWhileBusy?: boolean;
+  /** it may be restarted or shut down by senders */
+  power?: boolean;
 }
 
 /** The MAC addresses of this computer's network cards (lower case, colons). */
@@ -228,6 +234,8 @@ export class RelayService {
   private driftWatcher: fs.FSWatcher | null = null;
   private driftTimer: NodeJS.Timeout | null = null;
   private drift?: DriftSummary;
+  private busyBy: BusyProgram[] = [];
+  private busyTimer: NodeJS.Timeout | null = null;
   private lastPrune = 0;
   private stats: RelayState = { active: false, jobs: 0 };
   readonly jobsDir: string;
@@ -300,6 +308,27 @@ export class RelayService {
     void this.refreshPending();
     void this.selfCheck(rootExisted);
     this.refreshDriftWatch();
+    // the programs keeping the target folder busy: one process list a minute
+    this.busyTimer = setInterval(() => void this.checkBusy(), 60_000);
+    void this.checkBusy();
+  }
+
+  /** Looks for the programs that keep the target folder busy; senders see them through the heartbeat. */
+  async checkBusy(): Promise<BusyProgram[]> {
+    const agent = this.host.agent?.();
+    let found: BusyProgram[] = [];
+    if (agent?.reportBusy !== false) {
+      const procs = await listProcesses().catch(() => null);
+      if (!procs) return this.busyBy;
+      found = busyPrograms(procs, this.localRoot, agent?.busyPrograms).map((p) => ({ name: p.name, pid: p.pid }));
+    }
+    if (JSON.stringify(found) !== JSON.stringify(this.busyBy)) {
+      this.busyBy = found;
+      this.stats = { ...this.stats, busyBy: found.length ? found : undefined };
+      this.tell();
+      void this.heartbeat();
+    }
+    return found;
   }
 
   // ------------------------------------------------------------------ live drift
@@ -397,6 +426,8 @@ export class RelayService {
     this.driftWatcher = null;
     if (this.driftTimer) clearTimeout(this.driftTimer);
     this.driftTimer = null;
+    if (this.busyTimer) clearInterval(this.busyTimer);
+    this.busyTimer = null;
     // a stopped relay says so at once, so senders do not wait for a stale heartbeat to age
     fs.rmSync(path.join(this.localRoot, ALIVE_FILE), { force: true });
     if (this.stats.active) {
@@ -438,6 +469,9 @@ export class RelayService {
       forwardUpdates: updates && this.role === 'relay',
       macs: macAddresses(),
       drift: this.drift,
+      busyBy: this.busyBy.length ? this.busyBy : undefined,
+      holdWhileBusy: this.host.agent?.()?.holdWhileBusy === true || undefined,
+      power: this.host.agent?.()?.allowPower === true || undefined,
     };
     try {
       await fsp.writeFile(`${file}.tmp`, JSON.stringify(h));

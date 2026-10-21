@@ -1,4 +1,9 @@
 import type { FileTrace,
+  TimelineEntry,
+  InventoryEntry,
+  SendMode,
+  ScheduledSend,
+  BusyFiles,
   ReleaseDiff,
   StagedSend,
   DriftReport,
@@ -130,6 +135,16 @@ export interface Api {
   driftCheck(nodeIds: string[] | null, taskId: string): Promise<DriftReport[]>;
   /** The last drift check since the app started (by hand or on schedule). */
   lastDrift(): Promise<DriftReport[] | null>;
+  /** What the programs keeping a machine busy hold open below its target folder (asked of SamSync there). */
+  busyFiles(nodeId: string): Promise<BusyFiles>;
+  /** Everything that happened to one machine, newest first: its runs with their results, release points and checks. */
+  machineTimeline(nodeId: string): Promise<TimelineEntry[]>;
+  /** The folders a machine holds as its manifest says (what can be passed on from it). */
+  machineFolders(nodeId: string): Promise<InventoryEntry[]>;
+  /** SamSync on that machine sends these folders of its own disk to the others, over its own network; the run's id. */
+  distributeFrom(sourceId: string, rels: string[], targetIds: string[], mode: SendMode): Promise<string>;
+  /** Restarts or shuts machines down in a minute, or cancels that (their SamSync must allow it). */
+  power(nodeIds: string[], action: 'restart' | 'shutdown' | 'cancel'): Promise<{ nodeId: string; ok: boolean; error?: string }[]>;
   /** Sends Wake-on-LAN packets to machines that are off (their MAC addresses are known). */
   wake(nodeIds: string[]): Promise<{ nodeId: string; ok: boolean; error?: string }[]>;
   cancelPendingSend(id: string): Promise<boolean>;
@@ -156,6 +171,10 @@ export interface Api {
   executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean } }): Promise<string>;
   /** A staged send whose first stage was this run, and going on with it (the second stage's run id) or dropping it. */
   stagedSend(runId: string): Promise<StagedSend | null>;
+  /** The reviewed send at a time of its own (planned again then, with the sources as they are); `wake` wakes the machines off before. */
+  scheduleSend(planId: string, at: number, wake: boolean): Promise<ScheduledSend>;
+  scheduledSends(): Promise<ScheduledSend[]>;
+  cancelScheduledSend(id: string): Promise<boolean>;
   continueStaged(runId: string): Promise<string>;
   dropStaged(runId: string): Promise<void>;
   cancelRun(runId: string): Promise<void>;
@@ -276,6 +295,9 @@ export const API_METHODS = {
   cancelTask: true,
   executePlan: true,
   stagedSend: true,
+  scheduleSend: true,
+  scheduledSends: true,
+  cancelScheduledSend: true,
   continueStaged: true,
   dropStaged: true,
   cancelRun: true,
@@ -349,6 +371,11 @@ export const API_METHODS = {
   driftCheck: true,
   lastDrift: true,
   wake: true,
+  machineFolders: true,
+  machineTimeline: true,
+  distributeFrom: true,
+  power: true,
+  busyFiles: true,
   cancelPendingSend: true,
   discoverHosts: true,
   listDir: true,

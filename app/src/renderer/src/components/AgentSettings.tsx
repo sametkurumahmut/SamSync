@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { AlertTriangle, Radio, Terminal, Wrench } from 'lucide-react';
 import type { AgentSettings } from '@shared/types';
 import { useApp } from '../store/app';
-import { Button, Field, ToggleRow } from './ui';
+import { Button, Field, TagInput, ToggleRow } from './ui';
 import { t } from '@shared/i18n';
 
 const DEFAULTS: AgentSettings = { receivePacks: true, notifyOnApply: true };
@@ -86,6 +86,31 @@ export function AgentSection({ Section }: { Section: (p: { id: string; icon: Rea
             desc={t('Başka bir SamSync bu makinenin paylaşımına daha yeni bir kurulum bırakınca burada iş bitince sessizce kurulur ve SamSync yeniden açılır. Paylaşıma yazabilen herkes kurulum bırakabilir; yalnızca güvendiğiniz ağda açın.')}
             on={a.acceptUpdates === true}
             onChange={(v) => setA({ ...a, acceptUpdates: v || undefined })}
+          />
+          <ToggleRow
+            title={t('Hedef klasörü kullanan programları bildir')}
+            desc={t('Hedef klasörün içinden çalışan programlar dakikada bir denetlenir; gönderenler bu makineyi “meşgul” görür ve hangi dosyaların açık olduğuna bakabilir.')}
+            on={a.reportBusy !== false}
+            onChange={(v) => setA({ ...a, reportBusy: v ? undefined : false })}
+          />
+          {a.reportBusy !== false && (
+            <>
+              <Field label={t('Meşgul sayılacak başka programlar')} help={t('Hedef klasörün dışından çalışsa da bunlardan biri açıkken makine meşgul sayılır')} style={{ marginTop: 6 }}>
+                <TagInput value={a.busyPrograms ?? []} onChange={(v) => setA({ ...a, busyPrograms: v.length ? v : undefined })} placeholder="app.exe" />
+              </Field>
+              <ToggleRow
+                title={t('Meşgulken gönderimi beklet')}
+                desc={t('Böyle bir program çalışırken gönderenler buraya yazmaz; gönderim onların bilgisayarında bekler ve program kapanınca gider.')}
+                on={a.holdWhileBusy === true}
+                onChange={(v) => setA({ ...a, holdWhileBusy: v || undefined })}
+              />
+            </>
+          )}
+          <ToggleRow
+            title={t('Gönderenler bu makineyi yeniden başlatabilsin ve kapatabilsin')}
+            desc={t('Makine kartından ya da gönderimden sonra; ekranda bir dakikalık uyarı çıkar ve iptal edilebilir.')}
+            on={a.allowPower === true}
+            onChange={(v) => setA({ ...a, allowPower: v || undefined })}
           />
           <ToggleRow
             title={t('Gönderilen klasörleri izle (anlık sapma)')}
