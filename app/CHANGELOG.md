@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.5 — 2026-10-22
 
 - **Meşgul makineler:** SamSync çalışan makine dakikada bir hedef klasörün içinden çalışan programlara (ve Ayarlar › Ajan'daki listede olanlara) bakıyor. Varsa makinenin noktası sarı, yanında **meşgul** rozeti: kartta, hedef seçicide, ağ görünümünde ve incelemede. Üstüne gelince programlar, tıklayınca hedef klasörde açık tuttukları dosyalar listeleniyor. İsteyen makine *Meşgulken gönderimi beklet* ile gönderimi program kapanana kadar bekletebiliyor (varsayılan kapalı).
 - **Sonra gönder:** incelemede **Sonra gönder…** ile gönderim bir tarih ve saate kuruluyor; istenirse kapalı makineler beş dakika önce uyandırılıyor. O saatte kaynaklar yeniden karşılaştırılıyor. Bekleyenler Otomasyon sayfasında, iptal edilebiliyor.
