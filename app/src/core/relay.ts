@@ -24,7 +24,7 @@ import { UPDATE_DIR, finishOrder, putUpdate, readOrder, sha512Of, type UpdateOrd
 import { compareVersions } from '../shared/version';
 import { busyPrograms, listProcesses } from './processes';
 import { LOCK_FILE, MANIFEST_FILE } from '../shared/files';
-import { CancelToken, errMessage, newId, sleep } from './util';
+import { CancelToken, CancelledError, errMessage, newId, sleep } from './util';
 import { t } from '../shared/i18n';
 
 const JOBS = relJoin(RELAY_FOLDER, 'jobs');
@@ -151,6 +151,19 @@ export interface RelayWait {
   /** How long the whole fan-out may take. */
   doneMs: number;
   onAck?: () => void;
+  /** After a cancel, how long to wait for the relay to say what it had done by then (default 30 s). */
+  cancelGraceMs?: number;
+  /** The relay was told of the cancel; its answer is awaited. */
+  onCancelSent?: () => void;
+}
+
+/** A sender's word on a job the relay runs, as a file next to it: "pause" holds it while present, "cancel" stops it. */
+export type RelaySignal = 'pause' | 'cancel';
+
+export async function signalRelayJob(tgt: Transport, id: string, kind: RelaySignal, on = true): Promise<void> {
+  const rel = relJoin(JOBS, `${id}.${kind}`);
+  if (on) await writeJson(tgt, rel, { at: Date.now() });
+  else await tgt.remove(rel, false).catch(() => undefined);
 }
 
 /** Puts the job on the relay's share. */
@@ -160,21 +173,40 @@ export async function submitRelayJob(tgt: Transport, job: RelayJob): Promise<voi
 }
 
 /** Streams the pack of a job onto the relay's share; returns the bytes written. */
-export async function submitRelayPack(tgt: Transport, id: string, data: NodeJS.ReadableStream, onProgress?: (n: number) => void): Promise<number> {
+export async function submitRelayPack(tgt: Transport, id: string, data: NodeJS.ReadableStream, onProgress?: (n: number) => void, signal?: AbortSignal): Promise<number> {
   await tgt.mkdirp(JOBS);
   const rel = relJoin(JOBS, `${id}.pack`);
   const tmp = `${rel}.tmp`;
-  const n = await tgt.writeStream(tmp, data as import('node:stream').Readable, { onProgress });
-  await tgt.rename(tmp, rel);
-  return n;
+  try {
+    const n = await tgt.writeStream(tmp, data as import('node:stream').Readable, { onProgress, signal });
+    await tgt.rename(tmp, rel);
+    return n;
+  } catch (e) {
+    // a cancelled or broken upload leaves nothing behind
+    await tgt.remove(tmp, false).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Waits for the relay's result; a RelayError says whether the relay never answered or ran out of time. */
 export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait): Promise<RelayResult> {
   const started = Date.now();
   let acked = false;
+  let stopBy = 0;
   while (true) {
-    w.cancel.throwIfCancelled();
+    if (w.cancel.cancelled && !stopBy) {
+      stopBy = Date.now() + (w.cancelGraceMs ?? 30_000);
+      // the file stays: a relay that takes the job just now still sees it and stops
+      await signalRelayJob(tgt, id, 'cancel').catch(() => undefined);
+      if (!acked && !(await tgt.stat(relJoin(JOBS, `${id}.ack`)).catch(() => null))) {
+        // nobody took it yet: take it back, nothing was done there
+        await tgt.remove(relJoin(JOBS, `${id}.json`), false).catch(() => undefined);
+        await tgt.remove(relJoin(JOBS, `${id}.pack`), false).catch(() => undefined);
+        throw new CancelledError();
+      }
+      w.onCancelSent?.();
+    }
+    if (stopBy && Date.now() > stopBy) throw new CancelledError();
     const result = await readJson<RelayResult>(tgt, relJoin(RESULTS, `${id}.json`));
     if (result?.id === id) return result;
     if (!acked && (await tgt.stat(relJoin(JOBS, `${id}.ack`)))) {
@@ -182,6 +214,10 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
       w.onAck?.();
     }
     const waited = Date.now() - started;
+    if (stopBy) {
+      await sleep(500);
+      continue;
+    }
     if (!acked && waited > w.ackMs) {
       // nobody took it: take it back so a relay started later does not send stale files
       await tgt.remove(relJoin(JOBS, `${id}.json`), false).catch(() => undefined);
@@ -220,6 +256,14 @@ export interface RelayHost {
  * Runs on the relay machine: watches the jobs folder below its local share root and sends each job on.
  * Started by the service when this machine's node is marked as a relay.
  */
+/** What the sender said about a job this relay runs, and the runs it started for it. */
+interface JobControl {
+  label: string;
+  cancelled: boolean;
+  paused: boolean;
+  handles: Set<RunHandle>;
+}
+
 export class RelayService {
   private timer: NodeJS.Timeout | null = null;
   private beat: NodeJS.Timeout | null = null;
@@ -516,6 +560,33 @@ export class RelayService {
     }
   }
 
+  /** A job running here: the sender pauses or cancels it with a file next to it (see signalRelayJob). */
+  private async watchJob(id: string, ctl: JobControl): Promise<void> {
+    const has = (k: RelaySignal) => fsp.access(path.join(this.jobsDir, `${id}.${k}`)).then(
+      () => true,
+      () => false,
+    );
+    if (!ctl.cancelled && (await has('cancel'))) {
+      ctl.cancelled = true;
+      this.host.ctx().log.warn(t('Röle'), t('Gönderen işi iptal etti: {label}', { label: ctl.label }));
+      for (const h of ctl.handles) h.cancel.cancel();
+      return;
+    }
+    const paused = await has('pause');
+    if (paused !== ctl.paused && !ctl.cancelled) {
+      ctl.paused = paused;
+      for (const h of ctl.handles) h.pause(paused);
+    }
+  }
+
+  /** A run started for a job follows the sender's pause and cancel. */
+  private track(ctl: JobControl, h: RunHandle): void {
+    ctl.handles.add(h);
+    if (ctl.cancelled) h.cancel.cancel();
+    else if (ctl.paused) h.pause(true);
+    void h.done.finally(() => ctl.handles.delete(h));
+  }
+
   private async take(id: string): Promise<void> {
     const file = path.join(this.jobsDir, `${id}.json`);
     let job: RelayJob;
@@ -535,23 +606,43 @@ export class RelayService {
     }
     log.info(t('Röle'), t('{from} gönderdi: {n} öğe → {targets}', { from: job.from ?? '?', n: job.sources.length, targets: job.targetIds.join(', ') || '-' }));
     const result: RelayResult = { id, finishedAt: 0, targets: [] };
+    const ctl: JobControl = { label: job.label, cancelled: false, paused: false, handles: new Set() };
+    await this.watchJob(id, ctl);
+    const watch = setInterval(() => void this.watchJob(id, ctl), 1000);
+    const cancelled = (targetId: string): RelayTargetResult => ({ targetId, status: 'cancelled', opsOk: 0, opsFailed: 0, bytes: 0, error: t('Gönderen iptal etti') });
     // first the pack: the sender's changes for this machine, applied to its own disk
     let ownOk = true;
     if (job.pack) {
-      const own = await this.applyPack(id, job);
+      let own: RelayTargetResult;
+      if (ctl.cancelled) {
+        // cancelled before anything happened here: the commands around the apply do not run either
+        own = { ...cancelled(this.node.id), opsFailed: job.pack.ops.length, failedOps: job.pack.ops.map((o) => o.id) };
+        await fsp.rm(path.join(this.jobsDir, `${id}.pack`), { force: true }).catch(() => undefined);
+      } else own = await this.applyPack(id, job, ctl);
       result.targets.push(own);
       ownOk = own.status !== 'failed' && own.status !== 'cancelled';
     }
     try {
-      if (!ownOk && job.targetIds.length) throw new Error(t('Paket bu makineye uygulanamadı; dağıtım yapılmadı'));
       if (!job.targetIds.length) throw null;
+      if (ctl.cancelled) {
+        result.targets.push(...job.targetIds.map(cancelled));
+        throw null;
+      }
+      if (!ownOk) throw new Error(t('Paket bu makineye uygulanamadı; dağıtım yapılmadı'));
       const sources: SourceSpec[] = job.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
       const req: SendRequest = { sources, targetIds: job.targetIds, options: { ...job.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle: {label}', { label: job.label }), direct: true };
       const plan = await buildSendPlan(ctx, req, job.stash ? { stash: { ...job.stash, dir: this.stashDir(id) } } : {});
-      const handle = this.host.runPlan(plan, req.label!);
+      // cancelled while the machines were compared: nothing goes out
+      const handle = ctl.cancelled ? null : this.host.runPlan(plan, req.label!);
+      if (handle) this.track(ctl, handle);
       const detail: RunDetail | null = handle ? await handle.done : null;
       for (const tp of plan.targets) {
         const got = detail?.targets.find((x) => x.key === tp.targetId);
+        // a cancelled job queues nothing for the machines that were off
+        if (ctl.cancelled && !got) {
+          result.targets.push(cancelled(tp.targetId));
+          continue;
+        }
         const r: RelayTargetResult = !tp.reachable
           ? await this.deferOrFail(job, tp.targetId, tp.error)
           : got
@@ -567,6 +658,7 @@ export class RelayService {
         result.targets.push(...job.targetIds.map((targetId): RelayTargetResult => ({ targetId, status: 'failed', opsOk: 0, opsFailed: 0, bytes: 0, error: errMessage(e) })));
       }
     }
+    clearInterval(watch);
     result.finishedAt = Date.now();
     // the stash goes once nobody waits for it (a machine that was off gets it later from the queue)
     if (job.stash && !result.targets.some((x) => x.status === 'deferred')) await fsp.rm(this.stashDir(id), { recursive: true, force: true }).catch(() => undefined);
@@ -579,7 +671,7 @@ export class RelayService {
       await fsp.writeFile(tmp, JSON.stringify(result, null, 1));
       await fsp.rename(tmp, path.join(this.resultsDir, `${id}.json`));
       await fsp.rm(file, { force: true });
-      await fsp.rm(path.join(this.jobsDir, `${id}.ack`), { force: true });
+      for (const k of ['ack', 'cancel', 'pause']) await fsp.rm(path.join(this.jobsDir, `${id}.${k}`), { force: true });
     } catch (e) {
       log.error(t('Röle'), t('Sonuç yazılamadı: {error}', { error: errMessage(e) }), e);
       this.lastError = { at: Date.now(), text: t('Sonuç yazılamadı: {error}', { error: errMessage(e) }) };
@@ -806,7 +898,7 @@ export class RelayService {
   }
 
   /** Applies the pack that came with a job to this machine's own disk, through the ordinary run machinery. */
-  private async applyPack(id: string, job: RelayJob): Promise<RelayTargetResult> {
+  private async applyPack(id: string, job: RelayJob, ctl?: JobControl): Promise<RelayTargetResult> {
     const packFile = path.join(this.jobsDir, `${id}.pack`);
     const own: RelayTargetResult = { targetId: this.node.id, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
     const agent = this.host.agent?.();
@@ -835,6 +927,7 @@ export class RelayService {
       if (ops.length) {
         const group: ExecGroup = { key: this.node.id, title: this.node.name, rootLabel: this.localRoot, open: async () => new FsTransport(this.localRoot), node: this.node, ops, backup: job.pack!.backup };
         const h = this.host.runGroups([group], t('Paket: {label}', { label: job.label }), { options: job.options, backup: job.pack!.backup, verify: job.pack!.verify });
+        if (ctl) this.track(ctl, h);
         const d = await h.done;
         const tg = d.targets[0];
         // the manifest of this machine, from its own disk: the sender's next plan starts from it
@@ -900,6 +993,16 @@ export class RelayService {
       }
     } catch {
       /* nothing to prune */
+    }
+    // a sender's pause or cancel that came after its job was done here
+    try {
+      for (const n of await fsp.readdir(this.jobsDir)) {
+        if (!n.endsWith('.cancel') && !n.endsWith('.pause')) continue;
+        const st = await fsp.stat(path.join(this.jobsDir, n)).catch(() => null);
+        if (st && st.mtimeMs < Date.now() - 3600_000) await fsp.rm(path.join(this.jobsDir, n), { force: true });
+      }
+    } catch {
+      /* no jobs folder */
     }
     // stashes no queued job needs any more
     try {

@@ -773,6 +773,7 @@ const d: Dict = {
   'Özeti şimdi gönder': 'Zusammenfassung jetzt senden',
   'Birden çok makineyi seçip birlikte uyandırın, yeniden başlatın, etiketleyin…': 'Wählen Sie mehrere Rechner aus, um sie gemeinsam aufzuwecken, neu zu starten, mit Tags zu versehen…',
   'Meşgul bilgisi yok: bu makinede SamSync çalışmıyor': 'Keine Belegt-Information: Auf diesem Rechner läuft SamSync nicht',
+  'İptal ediliyor…': 'Wird abgebrochen…',
 };
 
 export default d;

@@ -773,6 +773,7 @@ const d: Dict = {
   'Özeti şimdi gönder': 'Send the summary now',
   'Birden çok makineyi seçip birlikte uyandırın, yeniden başlatın, etiketleyin…': 'Pick several machines and wake, restart, tag them together…',
   'Meşgul bilgisi yok: bu makinede SamSync çalışmıyor': 'No busy information: SamSync is not running on this machine',
+  'İptal ediliyor…': 'Cancelling…',
 };
 
 export default d;

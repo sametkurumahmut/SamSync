@@ -522,6 +522,10 @@ const d: Dict = {
   'Hatalı biten makineler: {list}': 'Equipos que terminaron con error: {list}',
   'Şu an erişilemeyen: {list}': 'Sin conexión ahora: {list}',
   'Sapma: {n} makinede son gönderimden sonra değişiklik': 'Desviación: cambios en {n} equipos desde el último envío',
+  'İptal istendi; süren işler durduruluyor': 'Cancelación solicitada; se detiene el trabajo en curso',
+  'İptal makineye bildirildi; orada yapılanlar bekleniyor': 'Se avisó al equipo de la cancelación; se espera lo que hizo allí',
+  'Gönderen işi iptal etti: {label}': 'El remitente canceló el trabajo: {label}',
+  'Gönderen iptal etti': 'Cancelado por el remitente',
 };
 
 export default d;

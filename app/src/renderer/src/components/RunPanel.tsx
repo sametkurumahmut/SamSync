@@ -275,6 +275,8 @@ export function RunPanel() {
   const run = activeId ? runs[activeId] : undefined;
   const now = useNow(!!run && !run.done && open);
   const [logFilter, setLogFilter] = useState<'all' | 'errors'>('all');
+  /** The run a cancel was asked for: the button says so until the run ends (a relay may take a few seconds to stop). */
+  const [cancelAsked, setCancelAsked] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -448,11 +450,19 @@ export function RunPanel() {
         <div className="drawer-foot">
           {!run.done ? (
             <>
-              <Button icon={run.paused ? <Play size={13} /> : <Pause size={13} />} tip={run.paused ? undefined : t('Dosyalar arasında bekler; süren kopya da durur')} onClick={() => void api.pauseRun(s.id, !run.paused)}>
+              <Button icon={run.paused ? <Play size={13} /> : <Pause size={13} />} disabled={cancelAsked === s.id} tip={run.paused ? undefined : t('Dosyalar arasında bekler; süren kopya da durur')} onClick={() => void api.pauseRun(s.id, !run.paused)}>
                 {run.paused ? t('Sürdür') : t('Duraklat')}
               </Button>
-              <Button variant="danger" icon={<Square size={13} />} onClick={() => void api.cancelRun(s.id)}>
-                {t('İptal et')}
+              <Button
+                variant="danger"
+                icon={cancelAsked === s.id ? <Loader2 size={13} className="spin" /> : <Square size={13} />}
+                disabled={cancelAsked === s.id}
+                onClick={() => {
+                  setCancelAsked(s.id);
+                  void api.cancelRun(s.id);
+                }}
+              >
+                {cancelAsked === s.id ? t('İptal ediliyor…') : t('İptal et')}
               </Button>
             </>
           ) : (

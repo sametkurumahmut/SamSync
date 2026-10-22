@@ -522,6 +522,10 @@ const d: Dict = {
   'Hatalı biten makineler: {list}': 'Fehlgeschlagene Rechner: {list}',
   'Şu an erişilemeyen: {list}': 'Derzeit nicht erreichbar: {list}',
   'Sapma: {n} makinede son gönderimden sonra değişiklik': 'Abweichung: Änderungen auf {n} Rechnern seit der letzten Übertragung',
+  'İptal istendi; süren işler durduruluyor': 'Abbruch angefordert; laufende Vorgänge werden gestoppt',
+  'İptal makineye bildirildi; orada yapılanlar bekleniyor': 'Der Abbruch wurde dem Rechner gemeldet; es wird auf seine Rückmeldung gewartet',
+  'Gönderen işi iptal etti: {label}': 'Der Absender hat den Auftrag abgebrochen: {label}',
+  'Gönderen iptal etti': 'Vom Absender abgebrochen',
 };
 
 export default d;
