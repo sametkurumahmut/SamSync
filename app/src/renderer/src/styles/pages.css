@@ -733,16 +733,39 @@
   flex-direction: column;
   overflow: hidden;
 }
+/* the empty list fits the height it gets: a short window drops the picture first, then the hint, never the buttons */
+.sources-card.no-sources {
+  container: sources / size;
+}
 .send-drop {
   flex: 1;
+  min-height: 0;
   margin: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: 6px;
   text-align: center;
   padding: 24px;
+  overflow: auto;
+}
+@container sources (max-height: 340px) {
+  .send-drop {
+    margin: 10px;
+    padding: 10px 16px;
+  }
+  .send-drop .empty-icon {
+    display: none;
+  }
+  .send-drop h3 {
+    margin-top: 0;
+  }
+}
+@container sources (max-height: 250px) {
+  .send-drop > p {
+    display: none;
+  }
 }
 .send-drop h3 {
   margin: 8px 0 0;

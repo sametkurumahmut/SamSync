@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Düzeltme:** kısa pencerede (web arayüzünde de) Gönder sayfasındaki boş Kaynaklar kartı **Dosya seç** ve **Klasör seç** düğmelerini ve yol kutusunu kesiyordu. Kart artık sığdığı yüksekliğe göre sıkışıyor: önce büyük simge, sonra açıklama satırı kalkıyor, düğmeler hep görünüyor.
+
 ## 2.4.8 — 2026-10-22
 
 - **Bildirimde hedefler:** gönderim bitince ekip kanalına (Telegram, web kancası) giden iletide makinelerin nereye gittiği yazıyor. Grubun tamamına gittiyse grup adı ve sayısı (`Lab-A (4)`), bir kısmına gittiyse grup adı ve o makineler (`Lab-B: PC-1, PC-2`), grubu olmayan makineler tek tek. Web kancasının JSON'unda her makinenin grubu da var.

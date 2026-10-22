@@ -219,7 +219,7 @@ export function SendPage() {
         <QuickSendsBar canSave={onCount > 0 && targets.length > 0} />
         <div className="send-grid" style={{ flex: 1, minHeight: 0 }}>
           <div className="col" style={{ gap: 14, minHeight: 0 }}>
-            <div className="card sources-card">
+            <div className={cls('card sources-card', infos.length === 0 && paths.length === 0 && 'no-sources')}>
               <div className="card-head">
                 <div className="icon-tile">
                   <UploadCloud size={15} />
