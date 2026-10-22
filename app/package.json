@@ -1,7 +1,7 @@
 {
   "name": "samsync",
   "productName": "SamSync",
-  "version": "2.4.7",
+  "version": "2.4.8",
   "description": "Dosyaları ve Git değişikliklerini birden çok makineye aynı göreli yolla gönderen, karşılaştıran ve eşitleyen masaüstü uygulaması.",
   "author": "Samet Kurumahmut",
   "license": "GPL-3.0-only",
