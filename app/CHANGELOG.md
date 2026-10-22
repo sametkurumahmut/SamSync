@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.7 — 2026-10-22
 
 - **Meşgul bilgisi olmayan makineler:** SamSync çalışmayan makinede kimse meşgul olup olmadığını bildirmiyor; noktası yeşil kalsa da kartta, hedef seçicide ve ağ görünümünde noktanın üstüne gelince *Meşgul bilgisi yok: bu makinede SamSync çalışmıyor* yazıyor. Ağa ek yük getirmiyor.
 - **Düzeltme:** SamSync çalışan makineye (röle ya da ajan) gönderimde **Duraklat** ve **İptal et** paket yazılırken bir şey yapmıyordu; yavaş bağlantıda zamanın çoğu bu adımda geçtiği için düğmeler çalışmıyor gibi görünüyordu. Artık iptal yüklemeyi hemen durduruyor (hedefte yarım paket kalmıyor), duraklat yüklemeyi bekletiyor. İş makineye geçtiyse ikisi de oradaki SamSync'e iletiliyor: röle grubuna dağıtımı durduruyor ve o ana kadar ne yaptığını bildiriyor (bunun için o makinede de bu sürüm olmalı). İptale basınca düğme *İptal ediliyor…* olarak kalıyor ve günlüğe bir satır düşüyor.
