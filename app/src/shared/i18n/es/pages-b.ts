@@ -775,6 +775,7 @@ const d: Dict = {
   'Haftalık özet gönderilemedi': 'No se pudo enviar el resumen semanal',
   'Özeti şimdi gönder': 'Enviar el resumen ahora',
   'Birden çok makineyi seçip birlikte uyandırın, yeniden başlatın, etiketleyin…': 'Elija varios equipos para reactivarlos, reiniciarlos o etiquetarlos juntos…',
+  'Meşgul bilgisi yok: bu makinede SamSync çalışmıyor': 'Sin información de ocupado: SamSync no se está ejecutando en este equipo',
 };
 
 export default d;

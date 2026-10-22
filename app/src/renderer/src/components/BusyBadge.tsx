@@ -13,6 +13,11 @@ export function busyOf(p: ProbeResult | undefined): BusyProgram[] {
   return p?.ok && p.agent?.alive && p.agent.busyBy?.length ? p.agent.busyBy : [];
 }
 
+/** What a green dot cannot say: with no SamSync answering on the machine, nobody reports whether it is busy. */
+export function busyUnknown(p: ProbeResult | undefined): string | undefined {
+  return p?.ok && !p.agent?.alive ? t('Meşgul bilgisi yok: bu makinede SamSync çalışmıyor') : undefined;
+}
+
 /** The status dot: green, amber while busy, red when unreachable, pulsing while not probed yet. */
 export function dotClass(p: ProbeResult | undefined, probing = false): string {
   if (!p) return probing ? 'pending' : '';

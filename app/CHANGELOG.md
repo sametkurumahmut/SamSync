@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Meşgul bilgisi olmayan makineler:** SamSync çalışmayan makinede kimse meşgul olup olmadığını bildirmiyor; noktası yeşil kalsa da kartta, hedef seçicide ve ağ görünümünde noktanın üstüne gelince *Meşgul bilgisi yok: bu makinede SamSync çalışmıyor* yazıyor. Ağa ek yük getirmiyor.
+
 ## 2.4.6 — 2026-10-22
 
 - **Hatalı makineleri yeniden dene:** Ayarlar › Kopyalama › *Hatalı makineleri yeniden dene (dk)* (varsayılan 0 = kapalı) ve *En çok yeniden deneme* (varsayılan 3). Gönderimin hatalı ya da kısmen bittiği makinelere o kadar dakika sonra kendiliğinden yeniden gönderiliyor; her deneme Otomasyon sayfasında "(yeniden deneme 1/3)" adıyla bekliyor ve iptal edilebiliyor.

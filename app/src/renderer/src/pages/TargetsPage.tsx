@@ -6,7 +6,7 @@ import { api, newTaskId } from '../lib/api';
 import { compareVersions } from '@shared/version';
 import { driftCounts } from '@shared/drift';
 import { AgentChecks } from '../components/AgentSettings';
-import { BusyBadge, busyOf, dotClass } from '../components/BusyBadge';
+import { BusyBadge, busyOf, busyUnknown, dotClass } from '../components/BusyBadge';
 import { DistributeDialog } from '../components/DistributeDialog';
 import { MachineTimeline } from '../components/MachineTimeline';
 import { BulkBar } from '../components/BulkBar';
@@ -391,7 +391,7 @@ export function TargetsPage() {
                     <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local', picking && picked.has(n.id) && 'picked')}>
                       <div className="row" style={{ gap: 10 }}>
                         {picking && !isLocal && <Checkbox checked={picked.has(n.id)} onChange={(v) => pick([n.id], v)} label={n.name} />}
-                        <span className={cls('dot', isLocal ? 'ok' : dotClass(p, probing))} />
+                        <span className={cls('dot', isLocal ? 'ok' : dotClass(p, probing))} data-tip={isLocal ? undefined : busyUnknown(p)} />
                         <MachineName
                           className="grow"
                           node={n}

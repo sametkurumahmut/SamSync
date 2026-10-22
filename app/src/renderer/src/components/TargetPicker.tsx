@@ -9,7 +9,7 @@ import { Button, Checkbox, Empty, MenuButton, Modal, SearchInput, Field, type Me
 import { api } from '../lib/api';
 import { ago, bytes, cls } from '../lib/format';
 import { MachineName } from './MachineName';
-import { BusyBadge, busyOf, dotClass } from './BusyBadge';
+import { BusyBadge, busyOf, busyUnknown, dotClass } from './BusyBadge';
 import { ContextMenu, showInFileManagerLabel, type ContextMenuState } from './ContextMenu';
 
 /** Where a send lands on a machine, in full (the row shows it cut short): this machine's own root, its share, folder or SFTP root. */
@@ -209,7 +209,7 @@ export function TargetPicker({ value, onChange, maxHeight, overrides, includeLoc
                   return (
                     <div key={n.id} className={cls('tp-node', sel.has(n.id) && 'on')} onClick={() => setMany([n.id], !sel.has(n.id))} onContextMenu={(e) => nodeMenu(e, n)}>
                       <Checkbox checked={sel.has(n.id)} onChange={(v) => setMany([n.id], v)} label={n.name} />
-                      <span className={cls('dot', dotClass(p, probing))} data-tip={p ? [p.detail, !p.ok && p.lastSeenAt ? t('son görülme {ago}', { ago: ago(p.lastSeenAt) }) : ''].filter(Boolean).join('\n') : t('Henüz yoklanmadı')} />
+                      <span className={cls('dot', dotClass(p, probing))} data-tip={p ? [p.detail, !p.ok && p.lastSeenAt ? t('son görülme {ago}', { ago: ago(p.lastSeenAt) }) : '', n.id === localId ? '' : busyUnknown(p)].filter(Boolean).join('\n') : t('Henüz yoklanmadı')} />
                       <MachineName
                         className="grow"
                         node={n.transport === 'sftp' ? { name: n.name, address: n.sftp?.host || n.address } : n}

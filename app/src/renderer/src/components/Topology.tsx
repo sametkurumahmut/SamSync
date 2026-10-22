@@ -7,7 +7,7 @@ import type { NodeConfig } from '@shared/types';
 import { useApp } from '../store/app';
 import { cls } from '../lib/format';
 import { MachineName } from './MachineName';
-import { dotClass } from './BusyBadge';
+import { busyUnknown, dotClass } from './BusyBadge';
 import { t } from '@shared/i18n';
 
 /** Machine cards stretch between these to fill their group box, so the address line is never cut short. */
@@ -221,7 +221,7 @@ export function Topology({ compact }: { compact?: boolean }) {
               className={cls('topo-node', selected.has(n.id) && 'selected', !n.enabled && 'disabled', isDrag && 'ghost', n.relay && 'relay')}
               style={{ left: x, top: y, width: lay.nodeW, height: NODE_H }}
               onPointerDown={onDown(n)}
-              title={pr ? pr.detail : t('Henüz yoklanmadı')}
+              title={pr ? [pr.detail, n.id === localId ? '' : busyUnknown(pr)].filter(Boolean).join('\n') : t('Henüz yoklanmadı')}
             >
               <span className={cls('dot', pr ? dotClass(pr) : 'pending')} />
               <MachineName
