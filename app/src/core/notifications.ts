@@ -1,9 +1,10 @@
 // Telling the team: when a run ends, a message to a webhook (any HTTP endpoint, a Teams/Slack flow) and/or
 // to a Telegram chat through a bot, as set in this machine's settings. Nothing here blocks the run.
-import type { DriftReport, NotificationSettings, RunDetail } from '../shared/types';
+import type { DriftReport, NodeConfig, NotificationSettings, RunDetail } from '../shared/types';
 import { formatBytes } from './util';
 import { t } from '../shared/i18n';
 import { driftCounts } from '../shared/drift';
+import { machineTitle } from '../shared/machine';
 
 export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
@@ -21,14 +22,42 @@ export function senderText(from: { host: string; user?: string }): string {
   return from.user.toLowerCase().startsWith(`${from.host.toLowerCase()}\\`) ? from.user : `${from.user}, ${from.host}`;
 }
 
-export function runMessage(run: RunDetail, from: { host: string; version?: string; user?: string }): RunMessage {
+/** At most this many machine names per group (or of no group) in a message; the rest is a count. */
+const NAMES_SHOWN = 20;
+
+/**
+ * The machines of a run by group: a group that got it on every machine as its name and count, part of a group as
+ * its name and those machines, a machine of no group by its own name. `nodes`: the configuration without the sender.
+ */
+export function targetsText(targets: { key: string; title: string }[], nodes: Pick<NodeConfig, 'id' | 'group' | 'enabled'>[]): string {
+  const groupOf = new Map(nodes.map((n) => [n.id, n.group]));
+  const groups = new Map<string, string[]>();
+  const loose: string[] = [];
+  for (const x of targets) {
+    const g = groupOf.get(x.key);
+    const name = machineTitle(x.title);
+    if (g) groups.set(g, [...(groups.get(g) ?? []), name]);
+    else loose.push(name);
+  }
+  const names = (list: string[]) => (list.length > NAMES_SHOWN ? `${list.slice(0, NAMES_SHOWN).join(', ')} ${t('… ve {n} makine daha', { n: list.length - NAMES_SHOWN })}` : list.join(', '));
+  const parts = [...groups].map(([g, list]) => {
+    const all = nodes.filter((n) => n.group === g && n.enabled).length;
+    return list.length >= all ? `${g} (${list.length})` : `${g}: ${names(list)}`;
+  });
+  if (loose.length) parts.push(names(loose));
+  return parts.join('; ');
+}
+
+export function runMessage(run: RunDetail, from: { host: string; version?: string; user?: string }, nodes: Pick<NodeConfig, 'id' | 'group' | 'enabled'>[] = []): RunMessage {
   const ms = (run.finishedAt ?? Date.now()) - run.startedAt;
   const mins = Math.round(ms / 60000);
   const took = ms < 90_000 ? t('{n} sn', { n: Math.round(ms / 1000) }) : mins < 120 ? t('{n} dk', { n: mins }) : t('{h} sa {m} dk', { h: Math.floor(mins / 60), m: mins % 60 });
   const okTargets = run.targets.filter((x) => x.status === 'ok').length;
   const head = `${STATUS_MARK[run.status]} ${run.label} — ${t('{ok}/{n} makine', { ok: okTargets, n: run.targets.length })}, ${t('{n} işlem', { n: run.opsOk })}${run.opsFailed ? `, ${t('{n} hatalı', { n: run.opsFailed })}` : ''}, ${formatBytes(run.bytes)}, ${took}`;
   const failed = run.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => `• ${x.title}: ${x.error ?? t('{n} hata', { n: x.failed })}`);
-  const text = [head, ...failed, `${t('Gönderen: {who}', { who: senderText(from) })}${from.version ? ` • SamSync ${from.version}` : ''}`].join('\n');
+  const where = run.targets.length ? [`→ ${t('Hedefler: {list}', { list: targetsText(run.targets, nodes) })}`] : [];
+  const text = [head, ...where, ...failed, `${t('Gönderen: {who}', { who: senderText(from) })}${from.version ? ` • SamSync ${from.version}` : ''}`].join('\n');
+  const groupOf = new Map(nodes.map((n) => [n.id, n.group]));
   const payload = {
     event: 'run-done',
     status: run.status,
@@ -44,7 +73,7 @@ export function runMessage(run: RunDetail, from: { host: string; version?: strin
     opsFailed: run.opsFailed,
     bytes: run.bytes,
     sources: run.sources,
-    targets: run.targets.map((x) => ({ id: x.key, name: x.title, status: x.status, done: x.done, failed: x.failed, bytes: x.bytesDone, error: x.error, via: x.via })),
+    targets: run.targets.map((x) => ({ id: x.key, name: x.title, group: groupOf.get(x.key), status: x.status, done: x.done, failed: x.failed, bytes: x.bytesDone, error: x.error, via: x.via })),
     text,
   };
   return { text, payload };

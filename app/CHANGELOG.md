@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## 2.4.8 — 2026-10-22
+
+- **Bildirimde hedefler:** gönderim bitince ekip kanalına (Telegram, web kancası) giden iletide makinelerin nereye gittiği yazıyor. Grubun tamamına gittiyse grup adı ve sayısı (`Lab-A (4)`), bir kısmına gittiyse grup adı ve o makineler (`Lab-B: PC-1, PC-2`), grubu olmayan makineler tek tek. Web kancasının JSON'unda her makinenin grubu da var.
+
 ## 2.4.7 — 2026-10-22
 
 - **Meşgul bilgisi olmayan makineler:** SamSync çalışmayan makinede kimse meşgul olup olmadığını bildirmiyor; noktası yeşil kalsa da kartta, hedef seçicide ve ağ görünümünde noktanın üstüne gelince *Meşgul bilgisi yok: bu makinede SamSync çalışmıyor* yazıyor. Ağa ek yük getirmiyor.

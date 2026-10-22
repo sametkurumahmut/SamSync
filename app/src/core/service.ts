@@ -1281,7 +1281,7 @@ export class Service implements Api {
         void this.hashCache.flush();
         // the team's channel, when one is set: never waits for, never fails the run
         if (channel && wantsNotification(this.settings.notifications, detail)) {
-          void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), user: whoami(), version: this.host.appVersion })).then((r) => {
+          void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), user: whoami(), version: this.host.appVersion }, this.config.nodes.filter((n) => n.id !== this.identity.node?.id))).then((r) => {
             for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
           });
         }

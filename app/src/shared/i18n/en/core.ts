@@ -526,6 +526,7 @@ const d: Dict = {
   'İptal makineye bildirildi; orada yapılanlar bekleniyor': 'The machine was told of the cancel; waiting for what was done there',
   'Gönderen işi iptal etti: {label}': 'The sender cancelled the job: {label}',
   'Gönderen iptal etti': 'Cancelled by the sender',
+  'Hedefler: {list}': 'Targets: {list}',
 };
 
 export default d;

@@ -63,3 +63,27 @@ describe('run notifications', () => {
     expect((calls[1].body as { text: string }).text).toContain('Sürüm 3.4');
   });
 });
+
+describe('the machines in a run message', () => {
+  const nodes = [
+    { id: 'T1', group: 'Lab-A', enabled: true },
+    { id: 'A1', group: 'Lab-A', enabled: true },
+    { id: 'A2', group: 'Lab-A', enabled: true },
+    { id: 'A3', group: 'Lab-A', enabled: false },
+    { id: 'B1', group: 'Lab-B', enabled: true },
+    { id: 'B2', group: 'Lab-B', enabled: true },
+    { id: 'NAS', enabled: true },
+  ];
+  const tg = (key: string, title = key) => ({ key, title, root: '', total: 1, done: 1, failed: 0, bytesTotal: 1, bytesDone: 1, status: 'ok' as const });
+
+  it('names a whole group with its count, part of a group with its machines, and the rest one by one', () => {
+    const m = runMessage(run({ targets: [tg('T1'), tg('A1'), tg('A2'), tg('B1', 'B1 - 10.0.0.21'), tg('NAS')] }), { host: 'H' }, nodes);
+    // a machine turned off does not count for the whole group; the address part of a name is left out
+    expect(m.text.split('\n')[1]).toBe('→ Hedefler: Lab-A (3); Lab-B: B1; NAS');
+    expect((m.payload.targets as { id: string; group?: string }[]).map((x) => x.group)).toEqual(['Lab-A', 'Lab-A', 'Lab-A', 'Lab-B', undefined]);
+  });
+
+  it('lists every machine when the groups are not known', () => {
+    expect(runMessage(run(), { host: 'H' }).text.split('\n')[1]).toBe('→ Hedefler: PC1, PC3');
+  });
+});
