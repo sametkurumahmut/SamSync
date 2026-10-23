@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw, Lock, PowerOff } from 'lucide-react';
-import type { HolderReport, RunTargetState, RunLogLine } from '@shared/types';
+import type { HolderReport, NodeConfig, RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, SearchInput, Segmented, useEscapeLayer } from './ui';
 import { Sparkline } from './charts';
@@ -267,7 +267,16 @@ function GroupChips({ run }: { run: LiveRun }) {
   );
 }
 
+const NO_NODES: NodeConfig[] = [];
+
+/** node id -> its group, for the group name in front of each machine of a run */
+export function useGroupOf(): Map<string, string> {
+  const nodes = useApp((s) => s.boot?.config.nodes ?? NO_NODES);
+  return useMemo(() => new Map(nodes.filter((n) => n.group).map((n) => [n.id, n.group!])), [nodes]);
+}
+
 export function RunPanel() {
+  const groupOf = useGroupOf();
   const runs = useApp((s) => s.runs);
   const activeId = useApp((s) => s.activeRunId);
   const open = useApp((s) => s.runPanel);
@@ -387,6 +396,7 @@ export function RunPanel() {
                 <StatusIcon status={x.status} />
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row">
+                    {groupOf.get(x.key) && <span className="run-group">{groupOf.get(x.key)}</span>}
                     <MachineName name={x.title} layout="inline" className="ellipsis" />
                     {x.deferred && (
                       <span className="badge amber" data-tip={t('Makine kapalıydı; röle açılınca teslim edecek')}>

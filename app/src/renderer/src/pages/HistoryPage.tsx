@@ -6,7 +6,7 @@ import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, ListSkeleton, Modal, SearchInput, Segmented } from '../components/ui';
 import { FileTraceModal } from '../components/FileTrace';
-import { CheckBadge, StatusIcon } from '../components/RunPanel';
+import { CheckBadge, StatusIcon, useGroupOf } from '../components/RunPanel';
 import { ErrorHint, ErrorHints } from '../components/ErrorHint';
 import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
@@ -214,6 +214,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
   const [tab, setTab] = useState<'targets' | 'errors' | 'log'>('targets');
   /** Filters the errors and the log lines (machine, path, message). */
   const [query, setQuery] = useState('');
+  const groupOf = useGroupOf();
   const toast = useApp((s) => s.toast);
   const st = useApp();
   const parent = useRef<HTMLDivElement>(null);
@@ -399,6 +400,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
               <StatusIcon status={tg.status} />
               <div className="grow" style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
+                  {groupOf.get(tg.key) && <span className="run-group">{groupOf.get(tg.key)}</span>}
                   <MachineName name={tg.title} layout="inline" />
                   {tg.deferred && <span className="badge amber">{t('kuyrukta')}</span>}
                   {tg.check && <CheckBadge check={tg.check} />}
