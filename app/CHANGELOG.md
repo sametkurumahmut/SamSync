@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.9 — 2026-10-23
 
 - **Hata açıklamaları:** çalıştırma penceresinde ve Geçmiş'te hatalı makinenin altında hatanın olası nedeni ve ne yapılacağı yazıyor (yazma izni yok, disk dolu, dosya kullanımda, ağ koptu, yol çok uzun, makineye ulaşılamadı…); Geçmiş › Hatalar sekmesinin üstünde nedenler sayılarıyla.
 - **HTML rapor:** Geçmiş'te bir çalıştırma, makineleri, hataları ve olası nedenleriyle tek bir sayfa olarak kaydediliyor (paylaşmak ya da yazdırmak için).
