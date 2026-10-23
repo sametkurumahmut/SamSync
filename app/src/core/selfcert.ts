@@ -112,7 +112,9 @@ export async function webCertificate(dir: string, now = new Date()): Promise<Web
     const x = new crypto.X509Certificate(cert);
     const san = x.subjectAltName ?? '';
     const fresh = Date.parse(x.validTo) - now.getTime() > RENEW_DAYS * DAY;
-    const covers = names.every((n) => san.includes(`DNS:${n}`)) && ips.every((ip) => san.includes(`IP Address:${ip}`));
+    // whole entries: 10.0.0.1 is not covered by 10.0.0.10
+    const entries = new Set(san.split(',').map((x) => x.trim()));
+    const covers = names.every((n) => entries.has(`DNS:${n}`)) && ips.every((ip) => entries.has(`IP Address:${ip}`));
     if (fresh && covers && x.checkPrivateKey(crypto.createPrivateKey(key))) return { cert, key, fingerprint: x.fingerprint256, validTo: Date.parse(x.validTo) };
   } catch {
     /* none yet, or unreadable: a new one */

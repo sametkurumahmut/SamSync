@@ -86,6 +86,8 @@ export interface CopySettings {
   postCommandTimeoutSeconds: number;
   /** Upper bound per transfer in MB/s (0 = unlimited), like robocopy /IPG in the PowerShell tool. */
   bandwidthMBps: number;
+  /** The hours the limit holds, "08:00-18:00" (over midnight too: "22:00-06:00"); none: always. Looked at when a send starts. */
+  bandwidthHours?: string;
   excludeFiles: string[];
   excludeDirs: string[];
   /** Sources outside every local root: their own folder stands for the target root (default), or the full path is kept. */
@@ -527,6 +529,8 @@ export interface NotificationSettings {
   telegramChatId?: string;
   onSuccess: boolean;
   onFailure: boolean;
+  /** A message when a send starts too (what goes where), not only when it ends; off by default. */
+  onStart?: boolean;
   /** A summary of the week every Monday at 09:00 (or at the first start after it); off by default. */
   weekly?: boolean;
   /** When the last weekly summary went (or the setting was switched on: the first one waits for the next Monday). */
@@ -893,6 +897,20 @@ export interface PendingSend {
   lastError?: string;
 }
 
+/** What the send's filters leave out of its sources on this computer's disk (Send › Filters). */
+export interface FilterPreview {
+  /** Files and folders that would go. */
+  files: number;
+  dirs: number;
+  excludedFiles: number;
+  /** A folder left out counts once; what is below it is not walked. */
+  excludedDirs: number;
+  /** The first few hundred left out, with the pattern that did it: the send's own, the ignore file's, or SamSync's. */
+  excluded: { path: string; rel: string; isDir: boolean; pattern: string; from: 'options' | 'ignore' | 'samsync' }[];
+  /** The walk stopped early (a very big tree); the counts are what it saw. */
+  capped: boolean;
+}
+
 export interface SendRequest {
   sources: SourceSpec[];
   targetIds: string[];
@@ -942,6 +960,8 @@ export interface PlanOp {
   kind: 'copy' | 'delete' | 'mkdir';
   rel: string;
   isDir: boolean;
+  /** A folder that goes only once empty (the files the filter left out in it stay, and keep it). */
+  onlyIfEmpty?: boolean;
   category: PlanCategory;
   src?: SrcRef;
   size: number;
@@ -1011,6 +1031,8 @@ export interface PackWriteResult {
 export interface SendPlan {
   id: string;
   createdAt: number;
+  /** The send's exclusions as a target's manifest keeps them (a later send with fewer walks the folder again). */
+  manifestExcluded?: string[];
   request: SendRequest;
   targets: TargetPlan[];
   sources: SourceInfo[];
@@ -1167,6 +1189,8 @@ export interface RunLogLine {
 export interface RunSummary {
   id: string;
   label: string;
+  /** A note written on the run afterwards in History (why it went, what to watch). */
+  note?: string;
   origin: SendRequest['origin'];
   startedAt: number;
   finishedAt?: number;
@@ -1198,6 +1222,7 @@ export type AppEvent =
   | { type: 'run-progress'; runId: string; targets: RunTargetState[] }
   | { type: 'run-log'; runId: string; lines: RunLogLine[] }
   | { type: 'run-done'; run: RunSummary }
+  | { type: 'history-changed' }
   | { type: 'run-paused'; runId: string; paused: boolean }
   | { type: 'task-progress'; taskId: string; message: string; done?: number; total?: number; targets?: PlanTargetProgress[] }
   | { type: 'open'; request: OpenRequest }

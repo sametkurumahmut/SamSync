@@ -77,6 +77,8 @@ export class ScheduledSends {
     this.busy = true;
     try {
       for (const item of [...this.items]) {
+        // cancelled while an earlier one was being woken or sent
+        if (!this.items.some((x) => x.id === item.id)) continue;
         if (item.wake && !item.woke && now >= item.at - WAKE_AHEAD_MS) {
           item.woke = true;
           await this.save();

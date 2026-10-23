@@ -155,6 +155,8 @@ export interface RelayWait {
   cancelGraceMs?: number;
   /** The relay was told of the cancel; its answer is awaited. */
   onCancelSent?: () => void;
+  /** The run is paused: the time it stays so does not count against `ackMs` and `doneMs`. */
+  paused?: () => boolean;
 }
 
 /** A sender's word on a job the relay runs, as a file next to it: "pause" holds it while present, "cancel" stops it. */
@@ -193,7 +195,12 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
   const started = Date.now();
   let acked = false;
   let stopBy = 0;
+  let held = 0;
+  let last = started;
   while (true) {
+    const now = Date.now();
+    if (w.paused?.()) held += now - last;
+    last = now;
     if (w.cancel.cancelled && !stopBy) {
       stopBy = Date.now() + (w.cancelGraceMs ?? 30_000);
       // the file stays: a relay that takes the job just now still sees it and stops
@@ -213,7 +220,7 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
       acked = true;
       w.onAck?.();
     }
-    const waited = Date.now() - started;
+    const waited = Date.now() - started - held;
     if (stopBy) {
       await sleep(500);
       continue;
@@ -922,7 +929,7 @@ export class RelayService {
           ? { id: o.id, kind: 'copy', rel: o.rel, isDir: false, size: o.size, mtimeMs: o.mtimeMs, src: o.delta ? { kind: 'patch', file: packFile, offset: o.offset, length: o.length, method: o.method, base: path.join(this.localRoot, ...o.rel.split('/')), size: o.size, ...o.delta } : { kind: 'pack', file: packFile, offset: o.offset, length: o.length, method: o.method }, replaceType: o.replaceType, dstExists: o.dstExists }
           : o.kind === 'mkdir'
             ? { id: o.id, kind: 'mkdir', rel: o.rel, isDir: true, size: 0, replaceType: o.replaceType, dstExists: o.dstExists }
-            : { id: o.id, kind: 'delete', rel: o.rel, isDir: o.isDir, size: 0 },
+            : { id: o.id, kind: 'delete', rel: o.rel, isDir: o.isDir, size: 0, onlyIfEmpty: o.onlyIfEmpty },
       );
       if (ops.length) {
         const group: ExecGroup = { key: this.node.id, title: this.node.name, rootLabel: this.localRoot, open: async () => new FsTransport(this.localRoot), node: this.node, ops, backup: job.pack!.backup };
@@ -979,7 +986,8 @@ export class RelayService {
     for (const rel of job.pack!.subtrees ?? []) {
       const scan = await scanTree(local, rel, { filter, caseInsensitive: true });
       if (!scan.exists) continue;
-      await saveManifestSubtree(local, rel, scan.entries, by, job.label);
+      // its own walk leaves out at most what the sender's did, so the sender's exclusions describe it
+      await saveManifestSubtree(local, rel, scan.entries, by, job.label, job.pack!.excluded);
     }
   }
 
@@ -998,6 +1006,7 @@ export class RelayService {
     try {
       for (const n of await fsp.readdir(this.jobsDir)) {
         if (!n.endsWith('.cancel') && !n.endsWith('.pause')) continue;
+        if (this.busy.has(n.slice(0, n.lastIndexOf('.')))) continue;
         const st = await fsp.stat(path.join(this.jobsDir, n)).catch(() => null);
         if (st && st.mtimeMs < Date.now() - 3600_000) await fsp.rm(path.join(this.jobsDir, n), { force: true });
       }

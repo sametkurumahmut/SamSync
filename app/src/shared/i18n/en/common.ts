@@ -382,6 +382,18 @@ const d: Dict = {
   '{n} değişmiş': '{n} changed',
   '{n} eklenmiş': '{n} added',
   '{n} silinmiş': '{n} removed',
+  'Paylaşıma bu kullanıcıyla bağlanılamadı: makineye Explorer’da bir kez bağlanıp kimliği kaydedin; aynı makineye farklı kullanıcılarla açık bağlantı varsa kapatın.': 'Could not connect to the share as this user: connect to the machine once in Explorer and save the credentials; close any open connections to it under another user.',
+  'SFTP oturumu açılamadı: kullanıcı adını, anahtarı ya da parolayı makineyi düzenleyerek denetleyin.': 'Could not sign in over SFTP: check the user name, key or password by editing the machine.',
+  'Hedef diskte yer kalmadı: yer açın; Ayarlar › Kopyalama › Boş alan alt sınırı inceleme sırasında önceden uyarır.': 'The target disk is full: free some space; Settings › Copy › Free space limit warns ahead in the review.',
+  'Dosyayı hedefte bir program kullanıyor: programı kapatıp yeniden deneyin; çalıştırma penceresindeki “Kapat ve tekrar dene” tutan programları gösterir.': 'A program on the target is using the file: close it and try again; “Close and retry” in the run window shows the programs holding it.',
+  'Yol çok uzun: hedefteki tam yol Windows sınırını aşıyor; hedef kök klasörünü ya da klasör adlarını kısaltın.': 'The path is too long: the full path on the target is over the Windows limit; shorten the target root or the folder names.',
+  'Dosya adı hedefte geçersiz: adında : * ? " < > | gibi karakterler ya da sonda nokta veya boşluk olabilir.': 'The file name is not valid on the target: it may contain characters like : * ? " < > | or end in a dot or a space.',
+  'Hedef disk salt okunur: yazılabilir bir klasör seçin ya da diskin korumasını kaldırın.': 'The target disk is read-only: pick a writable folder or remove the disk’s write protection.',
+  'Ağ bağlantısı yarıda koptu (çoğu zaman zayıf kablosuz bağlantıda olur): yeniden deneyin; Ayarlar › Kopyalama’daki bant sınırı bağlantıyı rahatlatabilir.': 'The network connection dropped midway (it often happens on a weak wireless link): try again; the bandwidth limit in Settings › Copy can ease the link.',
+  'Makineye ulaşılamadı: açık ve aynı ağda olduğunu denetleyin; Ayarlar › Genel › açılınca gönder seçeneği gönderimi makine gelene kadar bekletir.': 'The machine could not be reached: check that it is on and on the same network; Settings › General › send when it is back holds the send until the machine answers.',
+  'Yazma izni yok: paylaşımda bu kullanıcıya yazma izni verin; dosya salt okunursa ya da bir program tarafından korunuyorsa kaldırın.': 'No permission to write: give this user write access on the share; if the file is read-only or protected by a program, lift that.',
+  'Aynı anda çok fazla dosya açık: Ayarlar › Kopyalama’da eşzamanlı dosya sayısını düşürün.': 'Too many files open at once: lower the number of files at a time in Settings › Copy.',
+  'Dosya ya da klasör bulunamadı: kaynak taşındıysa listeye yeniden ekleyin; hedefse paylaşım adını ve kök klasörünü makineyi düzenleyerek denetleyin.': 'File or folder not found: if a source moved, add it to the list again; if it is the target, check the share name and root folder by editing the machine.',
 };
 
 export default d;

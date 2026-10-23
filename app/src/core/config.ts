@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppConfig, CopySettings, NodeConfig, Profile, SyncJob, LocalSettings } from '../shared/types';
 import { t } from '../shared/i18n';
-import { normalizeMac } from '../shared/machine';
+import { normalizeMac, parseHours } from '../shared/machine';
 
 export const DEFAULT_COPY: CopySettings = {
   retryCount: 2,
@@ -155,6 +155,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     postCommandFails: c.postCommandFails === true || undefined,
     postCommandTimeoutSeconds: clampInt(c.postCommandTimeoutSeconds, 60, 1, 3600),
     bandwidthMBps: Math.max(0, Math.min(10000, Number(c.bandwidthMBps) || 0)),
+    bandwidthHours: parseHours(c.bandwidthHours) ? String(c.bandwidthHours).replace(/\s+/g, '') : undefined,
     excludeFiles: c.excludeFiles !== undefined ? asStringArray(c.excludeFiles) : [...DEFAULT_COPY.excludeFiles],
     excludeDirs: c.excludeDirs !== undefined ? asStringArray(c.excludeDirs) : [...DEFAULT_COPY.excludeDirs],
     templateFiles: asStringArray(c.templateFiles).length ? asStringArray(c.templateFiles) : undefined,
@@ -280,11 +281,9 @@ export async function saveConfigFile(file: string, cfg: AppConfig): Promise<void
     const prev = Array.isArray(existing.nodes) ? (existing.nodes as any[]).find((x) => x?.id === n.id) : undefined;
     const merged = { ...(prev ?? {}), ...n };
     delete merged.localRoot;
-    if (!n.group) delete merged.group;
-    if (!n.localNames) delete merged.localNames;
-    if (!n.path) delete merged.path;
-    if (!n.sftp) delete merged.sftp;
-    if (!n.transport) delete merged.transport;
+    // a field of ours the machine no longer has (a tag removed, the relay mark taken off) goes from the file too;
+    // only what this app does not know (the old tool's keys) is kept from the file
+    for (const k of ['group', 'localNames', 'path', 'sftp', 'transport', 'relay', 'mac', 'tags', 'color', 'notes']) if (n[k] === undefined) delete merged[k];
     return merged;
   });
   if (out.copy && existing.copy && typeof existing.copy === 'object') out.copy = { ...(existing.copy as object), ...out.copy };

@@ -382,6 +382,18 @@ const d: Dict = {
   '{n} değişmiş': '{n} modificados',
   '{n} eklenmiş': '{n} añadidos',
   '{n} silinmiş': '{n} eliminados',
+  'Paylaşıma bu kullanıcıyla bağlanılamadı: makineye Explorer’da bir kez bağlanıp kimliği kaydedin; aynı makineye farklı kullanıcılarla açık bağlantı varsa kapatın.': 'No se pudo conectar con el recurso compartido con este usuario: conéctese una vez al equipo en Explorer y guarde las credenciales; cierre las conexiones abiertas a él con otro usuario.',
+  'SFTP oturumu açılamadı: kullanıcı adını, anahtarı ya da parolayı makineyi düzenleyerek denetleyin.': 'No se pudo iniciar sesión por SFTP: compruebe el nombre de usuario, la clave o la contraseña editando el equipo.',
+  'Hedef diskte yer kalmadı: yer açın; Ayarlar › Kopyalama › Boş alan alt sınırı inceleme sırasında önceden uyarır.': 'El disco de destino está lleno: libere espacio; Ajustes › Copia › Límite de espacio libre avisa antes, durante la revisión.',
+  'Dosyayı hedefte bir program kullanıyor: programı kapatıp yeniden deneyin; çalıştırma penceresindeki “Kapat ve tekrar dene” tutan programları gösterir.': 'Un programa del destino está usando el archivo: ciérrelo y vuelva a intentarlo; “Cerrar y reintentar” en la ventana de ejecución muestra los programas que lo mantienen abierto.',
+  'Yol çok uzun: hedefteki tam yol Windows sınırını aşıyor; hedef kök klasörünü ya da klasör adlarını kısaltın.': 'La ruta es demasiado larga: la ruta completa en el destino supera el límite de Windows; acorte la carpeta raíz del destino o los nombres de las carpetas.',
+  'Dosya adı hedefte geçersiz: adında : * ? " < > | gibi karakterler ya da sonda nokta veya boşluk olabilir.': 'El nombre de archivo no es válido en el destino: puede contener caracteres como : * ? " < > | o terminar en un punto o en un espacio.',
+  'Hedef disk salt okunur: yazılabilir bir klasör seçin ya da diskin korumasını kaldırın.': 'El disco de destino es de solo lectura: elija una carpeta con permiso de escritura o quite la protección contra escritura del disco.',
+  'Ağ bağlantısı yarıda koptu (çoğu zaman zayıf kablosuz bağlantıda olur): yeniden deneyin; Ayarlar › Kopyalama’daki bant sınırı bağlantıyı rahatlatabilir.': 'La conexión de red se cortó a mitad (suele ocurrir con una conexión inalámbrica débil): vuelva a intentarlo; el límite de ancho de banda en Ajustes › Copia puede aliviar la conexión.',
+  'Makineye ulaşılamadı: açık ve aynı ağda olduğunu denetleyin; Ayarlar › Genel › açılınca gönder seçeneği gönderimi makine gelene kadar bekletir.': 'No se pudo acceder al equipo: compruebe que está encendido y en la misma red; Ajustes › General › “Enviar a un equipo inaccesible cuando vuelva” retiene el envío hasta que el equipo responda.',
+  'Yazma izni yok: paylaşımda bu kullanıcıya yazma izni verin; dosya salt okunursa ya da bir program tarafından korunuyorsa kaldırın.': 'No hay permiso de escritura: dé permiso de escritura a este usuario en el recurso compartido; si el archivo es de solo lectura o está protegido por un programa, quite esa protección.',
+  'Aynı anda çok fazla dosya açık: Ayarlar › Kopyalama’da eşzamanlı dosya sayısını düşürün.': 'Hay demasiados archivos abiertos a la vez: reduzca el número de archivos en paralelo en Ajustes › Copia.',
+  'Dosya ya da klasör bulunamadı: kaynak taşındıysa listeye yeniden ekleyin; hedefse paylaşım adını ve kök klasörünü makineyi düzenleyerek denetleyin.': 'No se encontró el archivo o la carpeta: si un origen se movió, vuelva a añadirlo a la lista; si es el destino, compruebe el nombre del recurso compartido y la carpeta raíz editando el equipo.',
 };
 
 export default d;

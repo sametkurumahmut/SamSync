@@ -12,7 +12,7 @@ import { heartbeatFresh, readHeartbeat } from './relay';
 import type { ExecGroup, ExecOp, ExecSettings } from './executor';
 import { IGNORE_FILE, readIgnore } from './ignore';
 import { CancelToken, errMessage, mapLimit, newId } from './util';
-import { joinRoot, relJoin, toPosix } from './paths';
+import { joinRoot, relIsWithin, relJoin, toPosix } from './paths';
 import { t } from '../shared/i18n';
 import { RELAY_FOLDER } from '../shared/relay';
 import { OWN_FILE_PATTERNS } from '../shared/files';
@@ -237,6 +237,9 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
     if (errs.length) res.error = errs.slice(0, 5).join('\n');
 
     const db = await loadDb(ctx, job.id, pair.id);
+    // a right side that is not there (a drive unplugged, a machine's folder gone) is not a side that deleted
+    // everything: with a past sync to go by, nothing is compared, let alone deleted on the left
+    if (!rs.exists && Object.keys(db).length) throw new Error(t('Sağ klasör bulunamadı: {path}', { path: rightLabel }));
     const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
     const keys = [...new Set([...ls.entries.keys(), ...rs.entries.keys()])].sort();
     if (job.compare === 'content') {
@@ -257,6 +260,15 @@ export async function comparePair(ctx: CoreContext, job: SyncJob, pair: SyncPair
       const d = defaultAction(job, base, db, time);
       return { ...base, category: d.category ?? category, conflict: d.conflict ?? conflict, action: d.action, defaultAction: d.action };
     });
+    // a folder that could not be listed on one side looks empty there: nothing below it is acted on this time
+    const unread = [...ls.errors, ...rs.errors].map((e) => e.rel);
+    if (unread.length)
+      for (const it of res.items) {
+        if (it.action === 'none' || !unread.some((u) => relIsWithin(it.rel, u, ci) && it.rel !== u)) continue;
+        it.action = 'none';
+        it.defaultAction = 'none';
+        it.conflict = t('Klasör okunamadı; bu sefer dokunulmuyor');
+      }
     const hashed = (lh?.hasher.answered ?? 0) + (rh?.hasher.answered ?? 0);
     if (hashed) res.remoteHashed = hashed;
   } catch (e) {
@@ -298,9 +310,10 @@ export function syncGroups(ctx: CoreContext, job: SyncJob, cmp: CompareResult): 
         const src = pair.right.kind === 'local' ? { kind: 'fs' as const, abs: joinRoot(pair.right.path, it.rel) } : { kind: 'endpoint' as const, key: 'R', rel: it.rel };
         toL.push({ id, kind: it.right.isDir ? 'mkdir' : 'copy', rel: it.rel, isDir: it.right.isDir, size: it.right.size, mtimeMs: it.right.mtimeMs, src, replaceType: !!it.left && it.left.isDir !== it.right.isDir });
       } else if (it.action === 'deleteRight' && it.right) {
-        toR.push({ id, kind: 'delete', rel: it.rel, isDir: it.right.isDir, size: 0 });
+        // a folder goes once its own items did: one the other side added a file to, or with excluded files, stays
+        toR.push({ id, kind: 'delete', rel: it.rel, isDir: it.right.isDir, size: 0, onlyIfEmpty: it.right.isDir || undefined });
       } else if (it.action === 'deleteLeft' && it.left) {
-        toL.push({ id, kind: 'delete', rel: it.rel, isDir: it.left.isDir, size: 0 });
+        toL.push({ id, kind: 'delete', rel: it.rel, isDir: it.left.isDir, size: 0, onlyIfEmpty: it.left.isDir || undefined });
       } else if (it.action === 'keepBoth' && it.left && it.right && !it.left.isDir && !it.right.isDir) {
         // each side gets the other's version next to its own; nothing is overwritten, the two can be merged by hand
         const srcL = pair.left.kind === 'local' ? { kind: 'fs' as const, abs: joinRoot(pair.left.path, it.rel) } : { kind: 'endpoint' as const, key: 'L', rel: it.rel };

@@ -6,14 +6,14 @@ import type { NodeConfig } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Modal } from './ui';
-import { mergeMachines } from '@shared/machinecsv';
+import { mergeMachines, type MachineCsvColumn } from '@shared/machinecsv';
 import { t } from '@shared/i18n';
 
 export function MachinesCsvButtons() {
   const boot = useApp((s) => s.boot!);
   const toast = useApp((s) => s.toast);
   const saveConfig = useApp((s) => s.saveConfig);
-  const [preview, setPreview] = useState<{ file: string; nodes: NodeConfig[]; errors: string[] } | null>(null);
+  const [preview, setPreview] = useState<{ file: string; nodes: NodeConfig[]; errors: string[]; columns: MachineCsvColumn[] } | null>(null);
   const local = boot.isElectron && !boot.remote;
   const exportCsv = async () => {
     const dest = await api.pickSave({ title: t('Makine listesini kaydet'), defaultPath: 'makineler.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
@@ -34,7 +34,7 @@ export function MachinesCsvButtons() {
       toast('error', t('Okunamadı'), (e as Error).message);
     }
   };
-  const merged = preview ? mergeMachines(boot.config.nodes, preview.nodes) : null;
+  const merged = preview ? mergeMachines(boot.config.nodes, preview.nodes, preview.columns) : null;
   const apply = async () => {
     if (!merged) return;
     if (await saveConfig({ ...boot.config, nodes: merged.nodes })) {

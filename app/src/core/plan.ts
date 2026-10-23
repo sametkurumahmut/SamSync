@@ -25,7 +25,7 @@ import { OWN_FILE_PATTERNS } from '../shared/files';
 import { heartbeatFresh, readHeartbeat } from './relay';
 import { AgentHasher } from './agenthash';
 import { myLock, otherLock } from './lock';
-import { manifestEntries } from './manifest';
+import { exclusionsOf, manifestEntries } from './manifest';
 import { lowOnSpace, machineLabel } from '../shared/machine';
 import { TEMPLATE_MAX, fillMachineVars, machineVars, readPlain, templateText } from './template';
 
@@ -48,6 +48,8 @@ const packRef = (file: string, m: PackEntry) => ({ kind: 'pack' as const, file, 
 
 /** How long a reachability check from the window counts for a plan. */
 const RECENT_PROBE_MS = 60_000;
+/** A source file written this recently may still be being written (a build, an export): the review says so. */
+export const SOURCE_SETTLE_MS = 10_000;
 
 export function emptyCounts(): CategoryCounts {
   return { new: 0, changed: 0, targetNewer: 0, extra: 0, deleted: 0, same: 0 };
@@ -416,8 +418,17 @@ async function expandUnits(ctx: CoreContext, req: SendRequest, filter: PathFilte
       // a local root that once was a target may hold an older backup folder: it is never sent along
       const skip = m.rel ? [] : await otherBackupRoots(local, ctx.config.copy.backupFolderName);
       const scan = await scanTree(local, '', { filter: withTopDirsExcluded(filter, skip), cancel, caseInsensitive: true });
-      for (const e of scan.errors) warnings.push(t('Okunamadı: {path} ({error})', { path: `${abs}/${e.rel}`, error: e.error }));
-      units.push({ kind: 'dir', sourceIndex: i, rel: m.rel, abs, entries: scan.entries });
+      // a folder gone or unreadable while it was walked looks empty: a mirror would delete its counterpart on every
+      // target. The whole source is left out when it is the folder itself; an unreadable folder below it is left alone
+      const rootError = scan.errors.find((e) => !e.rel);
+      if (!scan.exists || rootError) {
+        const error = rootError?.error ?? t('tarama sırasında kayboldu');
+        warnings.push(t('Kaynak bulunamadı: {path} ({error})', { path: abs, error }));
+        sources.push({ path: abs, exists: false, isDir: true, size: 0, mtimeMs: 0, rel: m.rel, root: m.root, outsideRoots: m.outside, error });
+        continue;
+      }
+      for (const e of scan.errors) warnings.push(t('Okunamadı: {path} ({error}); hedeflerde bu klasöre dokunulmuyor', { path: `${abs}/${e.rel}`, error: e.error }));
+      units.push({ kind: 'dir', sourceIndex: i, rel: m.rel, abs, entries: scan.entries, skip: scan.errors.length ? scan.errors.map((e) => e.rel) : undefined });
       let size = 0;
       let files = 0;
       for (const e of scan.entries.values()) if (!e.isDir) {
@@ -584,6 +595,8 @@ async function planTarget(
   /** Updated as the work goes on; the caller passes it on to the window. */
   st: PlanTargetProgress = { id: node.id, name: node.name, phase: 'wait', done: 0, total: 0 },
   vars?: VarsCtx,
+  /** This send's exclusions: a manifest taken with others is not trusted (manifest.ts exclusionsOf). */
+  excluded?: string[],
 ): Promise<TargetPlan> {
   // this target's own mode and backup, when the send gives it exceptions
   const opt = targetOptions(req.options, node.id);
@@ -758,7 +771,7 @@ async function planTarget(
     const unitFilter = withTopDirsExcluded(filter, kept);
     // (not for a comparison, a send that asks for a full scan, or when the settings turned the manifest off)
     const manifestDays = ctx.config.copy.manifestMaxDays ?? 7;
-    const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000).catch(() => null) : null;
+    const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000, excluded).catch(() => null) : null;
     if (manifest) {
       fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
       ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
@@ -774,7 +787,14 @@ async function planTarget(
     const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
     // what another source of this send takes over is neither compared, written nor deleted from here
     if (u.skip?.length) for (const [k, e] of dstEntries) if (u.skip.some((s) => relIsWithin(e.rel, s, true))) dstEntries.delete(k);
-    scans?.set(u.rel, dstEntries);
+    // a folder on the target that could not be listed would make its files look new (written without a backup) and
+    // its extras invisible: nothing below it is sent this time
+    const unreadDst = (dstScan?.errors ?? []).map((e) => e.rel);
+    for (const e of dstScan?.errors ?? []) warn(t('{name}: hedefte {path} okunamadı ({error}); altındakiler bu sefer gönderilmiyor.', { name: node.name, path: relJoin(u.rel, e.rel) || '/', error: e.error }));
+    const inUnread = (rel: string) => unreadDst.some((x) => relIsWithin(rel, x, true) && rel !== x);
+    if (unreadDst.length) for (const [k, e] of dstEntries) if (inUnread(e.rel)) dstEntries.delete(k);
+    // a folder part of which another source of the send takes over leaves no manifest (it would miss that part)
+    if (!u.skip?.length) scans?.set(u.rel, dstEntries);
     // a folder on disk is read from there; a folder in a pack straight out of the pack
     const local = u.kind === 'dir' ? new FsTransport(u.abs) : null;
     // a file merged in from another folder for the same place is read from where it is
@@ -782,7 +802,7 @@ async function planTarget(
     const readSrc = (e: PackedEntry) => (local ? (e.abs ? Promise.resolve(fs.createReadStream(e.abs)) : local.readStream(e.rel)) : Promise.resolve(openPackEntry((u as { file: string }).file, e.member!)));
     const files: [string, PackedEntry][] = [];
     for (const [key, e] of u.entries as Map<string, PackedEntry>) {
-      if (inKept(e.rel)) {
+      if (inKept(e.rel) || inUnread(e.rel)) {
         if (!e.isDir) st.done++;
         continue;
       }
@@ -831,13 +851,11 @@ async function planTarget(
         st.done++;
       }
     });
-    // extras: on the target but not in the source
+    // extras: on the target but not in the source. Each one the scan saw goes on its own and a folder only once it is
+    // empty, so a file the filter left out (excluded, ignored) stays where it is, and keeps its folder
     const extras = [...dstEntries.entries()].filter(([k]) => !u.entries.has(k)).map(([, e]) => e).sort((x, y) => x.rel.localeCompare(y.rel));
-    const removedDirs: string[] = [];
     for (const e of extras) {
-      if (removedDirs.some((d) => relIsWithin(e.rel, d, true))) continue;
-      if (e.isDir) removedDirs.push(e.rel);
-      push(b, { kind: 'delete', rel: relJoin(u.rel, e.rel), isDir: e.isDir, category: 'extra', size: e.size, dstMtime: e.mtimeMs, dstSize: e.size, selected: opt.mode === 'mirror', sourceIndex: u.sourceIndex });
+      push(b, { kind: 'delete', rel: relJoin(u.rel, e.rel), isDir: e.isDir, onlyIfEmpty: e.isDir || undefined, category: 'extra', size: e.size, dstMtime: e.mtimeMs, dstSize: e.size, selected: opt.mode === 'mirror', sourceIndex: u.sourceIndex });
     }
   }
 
@@ -924,7 +942,9 @@ export async function buildSendPlan(
   const started = Date.now();
   const cancel = opts.cancel ?? new CancelToken();
   const progress = opts.onProgress ?? (() => undefined);
-  const filter = sendFilter(ctx, req, await sendIgnorePatterns(req));
+  const ignored = await sendIgnorePatterns(req);
+  const filter = sendFilter(ctx, req, ignored);
+  const excluded = exclusionsOf(req.options.excludeFiles, req.options.excludeDirs, ignored);
   const { units, warnings, sources } = await expandUnits(ctx, req, filter, cancel, progress, true, opts.stash);
   const patterns = ctx.config.copy.templateFiles ?? [];
   const stashRaw = opts.stash ? new Map(opts.stash.raw.map((r) => [relKey(r, true), path.join(opts.stash!.dir, 'raw', ...r.split('/'))])) : null;
@@ -969,7 +989,7 @@ export async function buildSendPlan(
   let planned: TargetPlan[];
   try {
     planned = await mapLimit(nodes, 6, async (n, i) => {
-      const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), states[i], vars);
+      const tp = await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), states[i], vars, excluded);
       if (!tp.reachable) states[i].phase = 'failed';
       done++;
       report();
@@ -1006,7 +1026,7 @@ export async function buildSendPlan(
   }
   const directPlanned = new Map<string, TargetPlan>();
   await mapLimit([...behindDown.values()].flat(), 6, async (n) => {
-    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), undefined, vars));
+    directPlanned.set(n.id, await planTarget(ctx, req, n, units, filter, cancel, (m) => warnings.push(m), scansFor(n.id), undefined, vars, excluded));
   });
   // the relayed machines follow their relay in the list, reachable as far as the relay is
   const targets: TargetPlan[] = [];
@@ -1040,9 +1060,14 @@ export async function buildSendPlan(
     const del = mirrors.reduce((s, tp) => s + tp.ops.filter((o) => o.selected && o.kind === 'delete').length, 0);
     if (del) warnings.push(t('Ayna kipi: hedeflerde toplam {n} fazla öğe silinecek.', { n: del }));
   }
+  // a program (a build, an export) may still be writing the sources: a half-written file would go out
+  const fresh = new Set<string>();
+  const since = Date.now() - SOURCE_SETTLE_MS;
+  for (const tp of targets) for (const o of tp.ops) if (o.selected && o.kind === 'copy' && o.src?.kind === 'fs' && (o.srcMtime ?? 0) > since) fresh.add(o.src.abs);
+  if (fresh.size) warnings.push(t('{n} kaynak dosya son {s} saniyede değişti; bir program hâlâ yazıyor olabilir (örneğin {file}). Bitmesini bekleyip yeniden inceleyin.', { n: fresh.size, s: SOURCE_SETTLE_MS / 1000, file: path.basename([...fresh][0]) }));
   // the relays that send on: what they need for each machine's own files
   const stash = relayStashes(ctx, units, vars, [...routing.via.keys()].filter((id) => routing.via.get(id)!.length));
-  return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started, stash };
+  return { id: newId('plan-'), createdAt: Date.now(), request: req, targets, sources, warnings, durationMs: Date.now() - started, stash, manifestExcluded: excluded };
 }
 
 /**

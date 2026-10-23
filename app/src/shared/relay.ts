@@ -25,7 +25,7 @@ export interface PackDelta {
 export type PackOp =
   | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'store'; replaceType?: boolean; dstExists?: boolean; delta?: PackDelta }
   | { kind: 'mkdir'; id: string; rel: string; replaceType?: boolean; dstExists?: boolean }
-  | { kind: 'delete'; id: string; rel: string; isDir: boolean };
+  | { kind: 'delete'; id: string; rel: string; isDir: boolean; onlyIfEmpty?: boolean };
 
 export interface RelayJob {
   id: string;
@@ -50,6 +50,8 @@ export interface RelayJob {
     verify: boolean;
     /** The sent folders (relative to the root): the relay writes its manifest for them after applying. */
     subtrees?: string[];
+    /** The exclusions the sender's scan had: the manifest the machine writes keeps them (manifest.ts). */
+    excluded?: string[];
   };
 }
 

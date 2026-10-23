@@ -1791,3 +1791,11 @@ a {
   justify-content: center;
   flex-wrap: wrap;
 }
+
+.input[aria-invalid='true'] {
+  border-color: var(--red);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--red);
+}

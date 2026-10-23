@@ -47,6 +47,25 @@ export function machineTitle(name: string, address?: string): string {
 }
 
 /** A MAC address as "aa:bb:cc:dd:ee:ff", from any common way of writing one; null when it is not one. */
+/** "08:00-18:00" as minutes of the day, or null when it is not one. */
+export function parseHours(s: string | undefined): { from: number; to: number } | null {
+  const m = /^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$/.exec(s ?? '');
+  if (!m) return null;
+  const from = Number(m[1]) * 60 + Number(m[2]);
+  const to = Number(m[3]) * 60 + Number(m[4]);
+  if (from > 24 * 60 || to > 24 * 60 || Number(m[2]) > 59 || Number(m[4]) > 59 || from === to) return null;
+  return { from, to };
+}
+
+/** Whether a time falls in the hours ("22:00-06:00" goes over midnight); no hours set: always. */
+export function inHours(hours: string | undefined, now: Date): boolean {
+  if (!hours?.trim()) return true;
+  const h = parseHours(hours);
+  if (!h) return true;
+  const m = now.getHours() * 60 + now.getMinutes();
+  return h.from < h.to ? m >= h.from && m < h.to : m >= h.from || m < h.to;
+}
+
 /** Whether this much free space is under the limit set in Settings (2 GB when none is set; 0 turns it off). */
 export function lowOnSpace(free: number | undefined, minFreeGB: number | undefined): boolean {
   const gb = minFreeGB ?? 2;

@@ -43,6 +43,9 @@ describe('run notifications', () => {
     expect(wantsNotification(s, { status: 'ok', dryRun: false })).toBe(false);
     expect(wantsNotification(s, { status: 'failed', dryRun: false })).toBe(true);
     expect(wantsNotification(s, { status: 'failed', dryRun: true })).toBe(false);
+    // a cancel goes to nobody
+    expect(wantsNotification(s, { status: 'cancelled', dryRun: false })).toBe(false);
+    expect(wantsNotification({ ...s, onSuccess: true }, { status: 'cancelled', dryRun: false })).toBe(false);
     expect(wantsNotification({ onSuccess: true, onFailure: true }, { status: 'ok', dryRun: false })).toBe(false);
   });
 

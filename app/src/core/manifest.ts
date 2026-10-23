@@ -13,6 +13,11 @@ export interface ManifestSubtree {
   writtenAt: number;
   by?: { host?: string; user?: string; version?: string };
   label?: string;
+  /**
+   * The exclusions the entries were taken with ("f:*.pdb", "d:Logs", "i:<ignore file pattern>"): a later send that
+   * leaves out less cannot trust them, as what this one left out is not in them.
+   */
+  excluded?: string[];
   /** [rel, isDir, size, mtimeMs], rel relative to the subtree. */
   entries: [string, 0 | 1, number, number][];
 }
@@ -62,10 +67,12 @@ const sameEntry = (a: Entry, b: Entry) => a.isDir === b.isDir && (a.isDir || (a.
  * folder: the folder's direct children as listed now, and a sample of files spread over the whole set.
  * Null means: walk the folder.
  */
-export async function manifestEntries(tgt: Transport, subtreeRel: string, now = Date.now(), maxAgeMs = MANIFEST_MAX_AGE_MS): Promise<{ entries: Map<string, Entry>; writtenAt: number; checked: number } | null> {
+export async function manifestEntries(tgt: Transport, subtreeRel: string, now = Date.now(), maxAgeMs = MANIFEST_MAX_AGE_MS, excluded?: readonly string[]): Promise<{ entries: Map<string, Entry>; writtenAt: number; checked: number } | null> {
   const m = await readManifest(tgt);
   const sub = m?.subtrees[subtreeRel];
   if (!sub || !Array.isArray(sub.entries) || now - sub.writtenAt > maxAgeMs) return null;
+  // taken with an exclusion this send does not have (or with unknown ones): walk the folder instead
+  if (excluded && (!Array.isArray(sub.excluded) || sub.excluded.some((p) => !excluded.includes(p)))) return null;
   const entries = entriesToMap(sub);
   // the direct children now, against what the manifest says about them
   const listed = await tgt.list(subtreeRel).catch(() => null);
@@ -96,14 +103,38 @@ function isOwnFile(key: string): boolean {
 }
 
 /** Replaces one subtree of the manifest (the others stay) and writes it back. */
-export async function saveManifestSubtree(tgt: Transport, subtreeRel: string, entries: Map<string, Entry>, by: ManifestSubtree['by'], label?: string): Promise<void> {
+/**
+ * A run that wrote below subtrees and left no manifest of its own (an undo, a rollback, a sync, a send cut short)
+ * makes them stale: they go, and the next send walks those folders. True when there was one to drop.
+ */
+export async function forgetManifestSubtrees(tgt: Transport, rels: string[]): Promise<boolean> {
+  if (!rels.length) return false;
+  const m = await readManifest(tgt);
+  if (!m) return false;
+  const low = rels.map((r) => r.toLowerCase());
+  const keys = Object.keys(m.subtrees).filter((k) => {
+    const key = k.toLowerCase();
+    return low.some((r) => !key || r === key || r.startsWith(key + '/') || key.startsWith(r + '/'));
+  });
+  if (!keys.length) return false;
+  for (const k of keys) delete m.subtrees[k];
+  await writeManifest(tgt, m);
+  return true;
+}
+
+/** The exclusions of a send in the form a manifest keeps them (see ManifestSubtree.excluded). */
+export function exclusionsOf(excludeFiles: readonly string[], excludeDirs: readonly string[], ignored: readonly string[] = []): string[] {
+  return [...new Set([...excludeFiles.map((p) => `f:${p.trim()}`), ...excludeDirs.map((p) => `d:${p.trim()}`), ...ignored.map((p) => `i:${p.trim()}`)])].sort();
+}
+
+export async function saveManifestSubtree(tgt: Transport, subtreeRel: string, entries: Map<string, Entry>, by: ManifestSubtree['by'], label?: string, excluded?: string[]): Promise<void> {
   const m = (await readManifest(tgt)) ?? { version: 1 as const, subtrees: {} };
   // a subtree inside another one that is kept would go stale: drop the parents and the children of this one
   for (const key of Object.keys(m.subtrees)) {
     if (key === subtreeRel) continue;
     if (!subtreeRel || !key || key.startsWith(subtreeRel + '/') || subtreeRel.startsWith(key + '/')) delete m.subtrees[key];
   }
-  m.subtrees[subtreeRel] = { writtenAt: Date.now(), by, label, entries: mapToEntries(entries) };
+  m.subtrees[subtreeRel] = { writtenAt: Date.now(), by, label, excluded, entries: mapToEntries(entries) };
   await writeManifest(tgt, m);
 }
 

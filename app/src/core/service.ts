@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
-import type { FileTrace,
+import type { FilterPreview, FileTrace,
   AgentUpdateResult,
   HolderReport,
   DriftReport,
@@ -65,7 +65,7 @@ import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assist
 import { HashCache } from './hashcache';
 import { PendingSends } from './pending';
 import { probeNode } from './probe';
-import { driftMessage, runMessage, sendNotification, wantsNotification } from './notifications';
+import { driftMessage, runMessage, sendNotification, startMessage, wantsNotification } from './notifications';
 import { quickIdOf } from './automation';
 import { baseSendOptions } from '../shared/options';
 import { readManifest } from './manifest';
@@ -75,7 +75,7 @@ import { FsTransport, transportForNode, transportForEndpoint, nodeRootLabel, typ
 import { mapSource, normalizeAbs, pathKey } from './paths';
 import { fsSources } from '../shared/sources';
 import { runLocalCommand } from './command';
-import { textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
+import { decodeText, textDiff, MAX_TEXT_DIFF_BYTES } from './textdiff';
 import * as git from './git';
 import { compareJob, syncExecSettings, syncGroups, updateDbAfterRun, resetDb } from './sync';
 import { jobFileText, jobFromFile } from './jobfile';
@@ -88,7 +88,10 @@ import { driftFilter, driftOf, driftTime, type DriftResult } from './drift';
 import { drifted, driftCounts } from '../shared/drift';
 import { arpTable, broadcastAddresses, normalizeMac, subnetBroadcast, wake } from './wol';
 import { releaseDiff, writeReleaseDiff } from './releasediff';
-import { machinesFromCsv, machinesToCsv } from '../shared/machinecsv';
+import { filterPreview } from './filterpreview';
+import { writeRunHtml } from './runreport';
+import { machinesFromCsv, machinesToCsv, type MachineCsvColumn } from '../shared/machinecsv';
+import { inHours } from '../shared/machine';
 import { lastMondayNine, weeklyMessage } from './weekly';
 import { busyFiles, busyPrograms, listProcesses } from './processes';
 import { ScheduledSends } from './scheduled';
@@ -519,8 +522,8 @@ export class Service implements Api {
     await fsp.writeFile(dest, machinesToCsv(this.config.nodes), 'utf8');
   }
 
-  async readMachinesCsv(file: string): Promise<{ nodes: NodeConfig[]; errors: string[] }> {
-    return machinesFromCsv(await fsp.readFile(file, 'utf8'));
+  async readMachinesCsv(file: string): Promise<{ nodes: NodeConfig[]; errors: string[]; columns: MachineCsvColumn[] }> {
+    return machinesFromCsv(decodeText(await fsp.readFile(file)));
   }
 
   async exportConfig(dest: string): Promise<void> {
@@ -549,8 +552,8 @@ export class Service implements Api {
   publicSettings(): LocalSettings {
     const w = this.settings.webUi;
     if (!w) return this.settings;
-    const { passwordHash, ...rest } = w;
-    return { ...this.settings, webUi: { ...rest, hasPassword: !!passwordHash } };
+    const { passwordHash, viewerHash, ...rest } = w;
+    return { ...this.settings, webUi: { ...rest, hasPassword: !!passwordHash, hasViewer: !!viewerHash } };
   }
 
   async saveSettings(patch: Partial<LocalSettings>): Promise<LocalSettings> {
@@ -624,6 +627,8 @@ export class Service implements Api {
     if (patch.password != null && patch.password.length < 8) throw new Error(t('Parola en az 8 karakter olmalı'));
     if (patch.viewerPassword != null && patch.viewerPassword.length < 8) throw new Error(t('Parola en az 8 karakter olmalı'));
     if (next.viewerHash && next.passwordHash && patch.viewerPassword && verifyPassword(patch.viewerPassword, next.passwordHash)) throw new Error(t('İzleyici parolası ana paroladan farklı olmalı'));
+    // the other way round too: a main password that is the viewer's would make every viewer an admin
+    if (next.viewerHash && patch.password && verifyPassword(patch.password, next.viewerHash)) throw new Error(t('İzleyici parolası ana paroladan farklı olmalı'));
     if (next.enabled && !next.passwordHash) throw new Error(t('Önce bir parola belirleyin'));
     this.settings = { ...this.settings, webUi: next };
     await this.persistSettings();
@@ -1263,7 +1268,8 @@ export class Service implements Api {
       postCommand: o.runPostCommand ? c.postCommand : undefined,
       postCommandFails: c.postCommandFails === true,
       postCommandTimeoutSeconds: c.postCommandTimeoutSeconds,
-      bandwidthMBps: c.bandwidthMBps,
+      // the limit holds in its hours only (Settings › Copy), as they are when the send starts
+      bandwidthMBps: inHours(c.bandwidthHours, new Date()) ? c.bandwidthMBps : 0,
       retryInUseAtEnd: this.settings.retryInUseAtEnd === true,
       sources: [],
       targetIds: [],
@@ -1307,7 +1313,7 @@ export class Service implements Api {
   runPlan(
     plan: SendPlan,
     selected: Record<string, string[]> | 'default',
-    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; stages?: { first: string[]; auto: boolean } } = {},
+    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; stages?: { first: string[]; auto: boolean }; fromRelay?: 'job' | 'queue' } = {},
   ): RunHandle {
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
@@ -1376,9 +1382,10 @@ export class Service implements Api {
         node,
         // all or nothing needs the old files to put back
         backup: tp.backup || !!req.options.rollbackOnFailure,
-        ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null })),
+        ops: ops.map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size, mtimeMs: o.srcMtime, src: o.src, replaceType: o.replaceType, dstExists: o.dstMtime != null, onlyIfEmpty: o.onlyIfEmpty })),
         relay: behind || takesPack ? { targets: behind ?? [], job: relayJob(tp.targetId) } : undefined,
         manifest: this.planScans.get(plan.id)?.get(tp.targetId),
+        manifestExcluded: plan.manifestExcluded,
         stash: behind?.length ? plan.stash?.[tp.targetId]?.files : undefined,
       });
     }
@@ -1411,8 +1418,10 @@ export class Service implements Api {
     const after = async (d: RunDetail) => {
       await this.rollbackFailed(d, opts);
       await this.relayFallback(plan, d, overrides);
-      await this.powerAfter(d, opts);
-      await this.retryFailedLater(d, plan);
+      // a relay's run for a sender: the sender restarts the machines and tries the failed ones again, not the relay too
+      // (a delivery from the relay's queue restarts its machine, as nobody else does then; the queue retries it)
+      if (overrides.fromRelay !== 'job') await this.powerAfter(d, opts);
+      if (!overrides.fromRelay) await this.retryFailedLater(d, plan);
     };
     this.track(
       handle,
@@ -1423,7 +1432,20 @@ export class Service implements Api {
       },
       overrides.channel !== false,
     );
+    if (overrides.channel !== false && !opts.dryRun && (plan.request.origin === 'send' || plan.request.origin === 'git')) this.notifyStart(s1.label, groups);
     return handle;
+  }
+
+  /** Settings › Notifications › on start: what goes where, to the team's channel (never waits for, never fails the run). */
+  private notifyStart(label: string, groups: ExecGroup[]): void {
+    const ns = this.settings.notifications;
+    if (!ns?.onStart || !(ns.webhookUrl || (ns.telegramToken && ns.telegramChatId))) return;
+    const targets = groups.flatMap((g) => [{ key: g.key, title: g.title }, ...(g.relay?.targets.map((n) => ({ key: n.id, title: n.name })) ?? [])]);
+    const copies = groups.flatMap((g) => g.ops.filter((o) => o.kind === 'copy'));
+    const msg = startMessage(label, targets, copies.reduce((a, o) => a + o.size, 0), groups.reduce((a, g) => a + g.ops.length, 0), { host: os.hostname(), user: whoami(), version: this.host.appVersion }, this.config.nodes.filter((n) => n.id !== this.identity.node?.id));
+    void sendNotification(ns, msg).then((r) => {
+      for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
+    });
   }
 
   // ------------------------------------------------------------ staged sends
@@ -1486,7 +1508,8 @@ export class Service implements Api {
     const attempt = (req.attempt ?? 0) + 1;
     if (!minutes || d.dryRun || d.status === 'cancelled' || (req.origin !== 'send' && req.origin !== 'git') || attempt > times) return;
     const waiting = new Set(this.pending.list().map((p) => p.targetId));
-    const failed = d.targets.filter((x) => (x.status === 'failed' || x.status === 'partial') && !x.deferred && !waiting.has(x.key) && findNode(this.config, x.key)).map((x) => x.key);
+    // a relay that never took the job: its machines already got a direct send (relayFallback)
+    const failed = d.targets.filter((x) => (x.status === 'failed' || x.status === 'partial') && !x.deferred && !x.relayUnanswered && !waiting.has(x.key) && findNode(this.config, x.key)).map((x) => x.key);
     if (!failed.length) return;
     const base = req.retryLabel ?? (req.label || t('Gönderim'));
     const at = Date.now() + minutes * 60_000;
@@ -1594,7 +1617,7 @@ export class Service implements Api {
         runPlan: (plan, label, report) => {
           try {
             // what the relay does for a sender is reported by the sender's run, once, with every machine in it
-            return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true, channel: report === true });
+            return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true, channel: report === true, fromRelay: report === true ? 'queue' : 'job' });
           } catch {
             return null; // nothing to do on any machine
           }
@@ -1694,6 +1717,15 @@ export class Service implements Api {
     return path.join(this.host.userDataPath, 'reports');
   }
 
+  async setRunNote(runId: string, note: string): Promise<void> {
+    await this.history.setNote(runId, note.trim().slice(0, 1000));
+    this.host.emit({ type: 'history-changed' });
+  }
+
+  async filterPreview(req: SendRequest): Promise<FilterPreview> {
+    return filterPreview(this.ctx(), req);
+  }
+
   async releaseDiff(fromRunId: string, toRunId: string | null): Promise<ReleaseDiff> {
     const names = new Map((this.settings.releaseTags ?? []).map((x) => [x.runId, x.name]));
     return releaseDiff(await this.history.list(), (id) => this.history.get(id), fromRunId, toRunId, names);
@@ -1705,6 +1737,13 @@ export class Service implements Api {
 
   exportRunCsv(id: string) {
     return this.history.exportCsv(id, this.reportsDir());
+  }
+
+  async exportRunHtml(id: string): Promise<string | null> {
+    const run = await this.history.get(id);
+    if (!run) return null;
+    const tag = (this.settings.releaseTags ?? []).find((x) => x.runId === id)?.name;
+    return writeRunHtml(run, this.reportsDir(), tag);
   }
 
   // ------------------------------------------------------------ git

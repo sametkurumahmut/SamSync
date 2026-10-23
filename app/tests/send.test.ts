@@ -124,7 +124,9 @@ describe('send plan + run', () => {
     const ctx = ctxFor();
     const plan = await buildSendPlan(ctx, req([path.join(src, 'M')], { mode: 'mirror', backup: true }, ['T1']));
     const dels = plan.targets[0].ops.filter((o) => o.kind === 'delete');
-    expect(dels.map((d) => d.rel).sort()).toEqual(['M/gone.txt', 'M/olddir']);
+    // each item of an extra folder goes on its own, the folder itself once it is empty
+    expect(dels.map((d) => d.rel).sort()).toEqual(['M/gone.txt', 'M/olddir', 'M/olddir/x.txt']);
+    expect(dels.find((d) => d.rel === 'M/olddir')?.onlyIfEmpty).toBe(true);
     expect(dels.every((d) => d.selected)).toBe(true);
     const run = await execute(ctx, plan);
     expect(run.status).toBe('ok');

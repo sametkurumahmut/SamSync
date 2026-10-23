@@ -157,3 +157,19 @@ describe('watch → automatic send (end to end)', () => {
     }
   });
 });
+
+describe('clock-time schedules without catching up', () => {
+  const s = { enabled: true, mode: 'times' as const, everyMinutes: 60, times: ['09:00'], notify: 'errors' as const };
+  it('run when their time comes and skip one missed for long', () => {
+    const since = new Date(2026, 9, 15, 8, 0).getTime();
+    // the check comes a few seconds after nine: due
+    expect(nextRun(s, undefined, since, new Date(2026, 9, 15, 9, 0, 20).getTime(), false)).toBe(new Date(2026, 9, 15, 9, 0).getTime());
+    // three hours later (the computer slept): skipped, tomorrow it is
+    expect(nextRun(s, undefined, since, new Date(2026, 9, 15, 12, 0).getTime(), false)).toBe(new Date(2026, 9, 16, 9, 0).getTime());
+  });
+  it('with catching up, also run a slot that passed while the app was closed', () => {
+    const last = new Date(2026, 9, 14, 9, 0, 5).getTime();
+    const since = new Date(2026, 9, 15, 10, 0).getTime();
+    expect(nextRun(s, last, since, new Date(2026, 9, 15, 10, 1).getTime(), true)).toBe(new Date(2026, 9, 15, 9, 0).getTime());
+  });
+});

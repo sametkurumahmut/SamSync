@@ -2,6 +2,25 @@
 
 ## Yayımlanmamış
 
+- **Hata açıklamaları:** çalıştırma penceresinde ve Geçmiş'te hatalı makinenin altında hatanın olası nedeni ve ne yapılacağı yazıyor (yazma izni yok, disk dolu, dosya kullanımda, ağ koptu, yol çok uzun, makineye ulaşılamadı…); Geçmiş › Hatalar sekmesinin üstünde nedenler sayılarıyla.
+- **HTML rapor:** Geçmiş'te bir çalıştırma, makineleri, hataları ve olası nedenleriyle tek bir sayfa olarak kaydediliyor (paylaşmak ya da yazdırmak için).
+- **Günlükte arama:** çalıştırma penceresinde ve Geçmiş'te günlükte ve hatalarda arama.
+- **Çalıştırma notu:** Geçmiş'te bir çalıştırmaya not eklenebiliyor; başlığın altında ve listede görünüyor, aramada bulunuyor.
+- **Filtre denemesi:** Gönder › Filtreler › **Neyi dışarıda bırakıyor?** kaynakları şimdiki filtrelerle gezip dışarıda kalan her dosya ve klasörü, onu dışlayan desenle gösteriyor.
+- **Hedeflerde durum süzgeci:** Hedefler sayfasında yalnızca erişilemeyen, meşgul, son gönderimi hatalı, devre dışı ya da SamSync çalışmayan makineler gösterilebiliyor.
+- **Hâlâ yazılan kaynak:** gönderilecek dosyalardan biri son 10 saniyede değiştiyse inceleme uyarıyor.
+- **Başlayınca da bildir:** Ayarlar › Bildirimler › *Gönderim başlayınca da bildir* (varsayılan kapalı): ne gönderildiği, hangi makinelere ve kimin gönderdiği gönderim başlarken de kanala gidiyor.
+- **Bant sınırı saatleri:** Ayarlar › Kopyalama › *Bant sınırı saatleri* (örneğin 08:00-18:00; boş = her zaman): sınır yalnızca bu saatlerde başlayan gönderimlerde geçerli.
+- **İptaller kanala gitmiyor:** iptal edilen bir gönderim Telegram'a ve web kancasına bildirilmiyor; çalıştırma penceresi ve Geçmiş yine gösteriyor.
+- **Güvenlik (web arayüzü):** izleyici girişi artık dosya içeriği okuyamıyor, başkalarının işini iptal edemiyor ve bildirim kanalının anahtarlarını görmüyor. Git sürüm adlarıyla git'e seçenek geçirilemiyor. Aynı anda gelen parola denemeleri de sayılıyor ve uygulamayı yavaşlatmıyor. Ana parola izleyici parolasıyla aynı olamıyor.
+- **Düzeltme (veri kaybı):** ayna kipi ve senkron, fazla bir klasörü silerken filtrenin dışarıda bıraktığı dosyaları da siliyordu. Artık klasörün içindekiler tek tek gidiyor, klasör yalnızca boşalınca kaldırılıyor.
+- **Düzeltme (veri kaybı):** iki yönlü senkron, sağ taraf bulunamadığında (çıkarılmış bir disk) sol taraftaki her şeyi siliyordu; artık o çift çalışmıyor. Okunamayan bir klasörün altında senkron da gönderim de bir şey yapmıyor.
+- **Düzeltme (veri kaybı):** yedek almayan bir makinede **Geri al**, gönderimin güncellediği dosyaları siliyordu; artık yalnızca gönderimin eklediği dosyalar kaldırılıyor. Birkaç gönderimi geri alırken eski yedekler budanmıyor; dosyanın yerine klasör konduysa dosya geri geliyor.
+- **Düzeltme:** hedefteki manifest başka bir filtreyle yazıldıysa güvenilmiyor; geri alma, senkron ya da yarıda kalan bir gönderimden sonra eskiyen manifest siliniyor.
+- **Düzeltme:** yarıda kalan büyük bir dosya, kaynağı arada değiştiyse eski parçanın üstüne devam ettirilmiyor.
+- **Düzeltme (otomasyon):** *Kaçırılanları yetiştir* kapalıyken saatli zamanlamalar hiç çalışmıyordu; açıkken de uygulama kapalıyken kaçan saat yetiştirilmiyordu. Bozulan klasör izlemesi yarım dakikada bir yeniden kuruluyor; sürekli değişen bir dosya gönderimi sonsuza dek ertelemiyor; iptal edilen *Sonra gönder* çalışmıyor; aynı zamanlanmış iş iki kez koşmuyor; kısalan git geçmişi eski commit'leri yeniden göndermiyor.
+- **Düzeltme:** rölenin arkasındaki makineler hatalı bitince hem gönderen hem röle yeniden deniyordu. Paket yüklenirken bir kaynak dosya kaybolunca uygulama çökebiliyordu. Uzun bir duraklatma röle işini zaman aşımına uğratıyordu.
+- **Düzeltme:** CSV içe aktarma dosyada olmayan sütunları boş sayıyordu; Excel'in Türkçe kaydettiği dosyalarda harfler bozuluyordu. Kaldırılan etiket, MAC ve röle işareti yapılandırma dosyasından geri gelmiyor.
 - **Düzeltme:** kısa pencerede (web arayüzünde de) Gönder sayfasındaki boş Kaynaklar kartı **Dosya seç** ve **Klasör seç** düğmelerini ve yol kutusunu kesiyordu. Kart artık sığdığı yüksekliğe göre sıkışıyor: önce büyük simge, sonra açıklama satırı kalkıyor, düğmeler hep görünüyor.
 
 ## 2.4.8 — 2026-10-22

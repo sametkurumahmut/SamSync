@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw, Lock, PowerOff } from 'lucide-react';
 import type { HolderReport, RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
-import { Button, Progress, Segmented, useEscapeLayer } from './ui';
+import { Button, Progress, SearchInput, Segmented, useEscapeLayer } from './ui';
 import { Sparkline } from './charts';
 import { MachineName } from './MachineName';
+import { ErrorHint } from './ErrorHint';
 import { api } from '../lib/api';
 import { ratesPerSecond } from '../lib/rates';
 import { bytes, cls, duration, num } from '../lib/format';
@@ -275,6 +276,7 @@ export function RunPanel() {
   const run = activeId ? runs[activeId] : undefined;
   const now = useNow(!!run && !run.done && open);
   const [logFilter, setLogFilter] = useState<'all' | 'errors'>('all');
+  const [logQuery, setLogQuery] = useState('');
   /** The run a cancel was asked for: the button says so until the run ends (a relay may take a few seconds to stop). */
   const [cancelAsked, setCancelAsked] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -304,8 +306,9 @@ export function RunPanel() {
   // the pace so far and what it leaves: the network to the machines is often the slow part
   const pace = rate(tot.bd, elapsed);
   const remaining = !run.done && pace && tot.bt > tot.bd ? ((tot.bt - tot.bd) / pace) * 1000 : undefined;
-  const log = logFilter === 'errors' ? run.log.filter((l) => l.level === 'error' || l.level === 'warn') : run.log;
   const titleFor = (key?: string) => (key ? run.targets.find((x) => x.key === key)?.title ?? key : '');
+  const q = logQuery.trim().toLocaleLowerCase(locale());
+  const log = run.log.filter((l) => (logFilter === 'all' || l.level === 'error' || l.level === 'warn') && (!q || l.message.toLocaleLowerCase(locale()).includes(q) || (!!l.key && titleFor(l.key).toLocaleLowerCase(locale()).includes(q))));
 
   const copyLog = () => {
     const text = run.log.map((l) => `${new Date(l.t).toLocaleTimeString(locale())} [${l.level}]${l.key ? ` [${titleFor(l.key)}]` : ''} ${l.message}`).join('\n');
@@ -407,6 +410,7 @@ export function RunPanel() {
                   <div className="faint mono ellipsis" style={{ fontSize: 11 }} title={x.error ? x.error : x.current ? x.current : x.root}>
                     {x.error ? <span style={{ color: 'var(--red)' }}>{x.error}</span> : x.current ? x.current : x.backupPath ? t('yedek: {path}', { path: x.backupPath }) : x.via ? t('{relay} üzerinden', { relay: run.targets.find((y) => y.key === x.via && !y.via)?.title ?? x.via }) : x.root}
                   </div>
+                  {(x.status === 'failed' || x.status === 'partial') && <ErrorHint error={x.error} />}
                 </div>
               </div>
             );
@@ -418,6 +422,7 @@ export function RunPanel() {
             {t('Günlük')}
           </span>
           <span className="spacer" />
+          <SearchInput value={logQuery} onChange={setLogQuery} placeholder={t('Günlükte ara')} style={{ width: 180 }} />
           <Segmented
             size="sm"
             value={logFilter}

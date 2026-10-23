@@ -66,6 +66,22 @@ export async function findRepoRoot(p: string): Promise<string | null> {
   }
 }
 
+/**
+ * A revision as given by a caller (a browser in server mode among them): one that starts with "-" would be read by
+ * git as an option (`--output=<file>` writes anywhere), so it is refused, as is one with spaces or control characters.
+ */
+export function safeRev(rev: string): string {
+  if (!rev || rev.startsWith('-') || /[\s\x00-\x1f]/.test(rev)) throw new GitError(t('Geçersiz sürüm adı: {rev}', { rev: String(rev).slice(0, 80) }), '');
+  return rev;
+}
+
+/** A path inside the repository, as given by a caller; one that leads out of it is refused. */
+function insideRepo(root: string, rel: string): string {
+  const abs = path.join(root, rel);
+  if (!isUnder(abs, root)) throw new GitError(t('Depo dışında bir yol: {path}', { path: rel }), '');
+  return abs;
+}
+
 async function hasHead(root: string): Promise<boolean> {
   const out = await git(root, ['rev-parse', '--verify', '-q', 'HEAD'], { allowFail: true });
   return out.toString().trim().length > 0;
@@ -198,8 +214,9 @@ export interface LogQuery {
 
 export async function log(root: string, q: LogQuery = {}): Promise<GitLogPage & { unpushed: string[] }> {
   if (!(await hasHead(root))) return { commits: [], hasMore: false, unpushed: [] };
-  const limit = q.limit ?? 60;
-  const args = ['log', `--format=%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%at${SEP}%P${SEP}%D${SEP}%s${SEP}%b${REC}`, `-n`, String(limit + 1), `--skip=${q.skip ?? 0}`];
+  const limit = Math.max(1, Math.min(1000, Math.floor(Number(q.limit) || 60)));
+  const skip = Math.max(0, Math.floor(Number(q.skip) || 0));
+  const args = ['log', `--format=%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%at${SEP}%P${SEP}%D${SEP}%s${SEP}%b${REC}`, `-n`, String(limit + 1), `--skip=${skip}`];
   const s = q.search?.trim();
   if (s) {
     if (/^[0-9a-f]{4,40}$/i.test(s)) {
@@ -212,7 +229,7 @@ export async function log(root: string, q: LogQuery = {}): Promise<GitLogPage & 
     args.push(`--grep=${s}`, '-i');
   }
   if (q.all) args.push('--all');
-  else if (q.ref) args.push(q.ref);
+  else if (q.ref) args.push(safeRev(q.ref));
   if (q.path) args.push('--', q.path);
   return finishLog(root, await gitText(root, args), limit);
 }
@@ -267,7 +284,7 @@ export async function branches(root: string): Promise<{ current: string; local: 
 // ---------------------------------------------------------------- commit selections
 
 async function commitParents(root: string, shas: string[]): Promise<Map<string, { parent: string; date: number; depth: number }>> {
-  const out = await gitText(root, ['show', '-s', `--format=%H %at %P`, ...shas]);
+  const out = await gitText(root, ['show', '-s', `--format=%H %at %P`, ...shas.map(safeRev)]);
   const map = new Map<string, { parent: string; date: number; depth: number }>();
   for (const l of out.split('\n')) {
     const [sha, at, p1] = l.trim().split(' ');
@@ -350,13 +367,13 @@ export async function gitSources(req: GitSourceRequest): Promise<SourceSpec[]> {
   const out: SourceSpec[] = [];
   if (req.contentFrom === 'worktree') {
     for (const p of uniq) {
-      const abs = path.join(root, p);
+      const abs = insideRepo(root, p);
       const st = await fsp.stat(abs).catch(() => null);
       out.push(st && !st.isDirectory() ? { kind: 'fs', path: abs } : { kind: 'delete', path: abs });
     }
     return out;
   }
-  const rev = req.rev || 'HEAD';
+  const rev = safeRev(req.rev || 'HEAD');
   const info = await blobInfo(root, rev, uniq);
   for (const p of uniq) {
     const abs = path.join(root, p);
@@ -369,6 +386,7 @@ export async function gitSources(req: GitSourceRequest): Promise<SourceSpec[]> {
 export async function blobInfo(root: string, rev: string, paths: string[]): Promise<Map<string, { blob: string; size: number } | null>> {
   const map = new Map<string, { blob: string; size: number } | null>();
   if (!paths.length) return map;
+  safeRev(rev);
   const input = paths.map((p) => `${rev}:${p}`).join('\n') + '\n';
   const out = await gitText(root, ['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'], { input });
   const lines = out.split('\n');
@@ -383,7 +401,7 @@ export async function blobInfo(root: string, rev: string, paths: string[]): Prom
 /** Raw blob content at a revision. The stream errors (instead of ending short) when git fails. */
 export function blobStream(root: string, rev: string, p: string): Readable {
   const out = new PassThrough();
-  const child = spawn('git', ['cat-file', 'blob', `${rev}:${p}`], { cwd: root, windowsHide: true, env: gitEnv });
+  const child = spawn('git', ['cat-file', 'blob', `${safeRev(rev)}:${p}`], { cwd: root, windowsHide: true, env: gitEnv });
   let stderr = '';
   child.stderr.on('data', (d) => (stderr += d.toString()));
   child.stdout.pipe(out, { end: false });
@@ -400,7 +418,7 @@ export function blobStream(root: string, rev: string, p: string): Readable {
 
 export async function showFile(root: string, rev: string, p: string): Promise<Buffer | null> {
   try {
-    return await git(root, ['cat-file', 'blob', `${rev}:${p}`]);
+    return await git(root, ['cat-file', 'blob', `${safeRev(rev)}:${p}`]);
   } catch {
     return null;
   }
@@ -455,7 +473,8 @@ export async function fileDiff(spec: GitDiffSpec): Promise<DiffResult> {
   let leftLabel = '';
   let rightLabel = '';
   if (spec.mode === 'worktree') {
-    const abs = path.join(root, spec.path);
+    const abs = insideRepo(root, spec.path);
+    if (spec.oldPath) insideRepo(root, spec.oldPath);
     const tracked = (await gitText(root, ['ls-files', '--error-unmatch', '--', spec.path], { allowFail: true })).trim();
     const head = await hasHead(root);
     if (!tracked || !head) {

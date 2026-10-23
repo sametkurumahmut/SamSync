@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Server, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon, ListChecks } from 'lucide-react';
+import { Server, Filter, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon, ListChecks } from 'lucide-react';
 import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
 import { api, newTaskId } from '../lib/api';
@@ -31,6 +31,9 @@ export function rootPreview(n: Partial<NodeConfig>, platform: string): string {
   const nr = (n.networkRoot || '').replace(/[\\/]+/g, platform === 'win32' ? '\\' : '/');
   return platform === 'win32' ? `\\\\${n.address || t('adres')}\\${nr}` : `/mnt/${n.address || t('adres')}/${nr}`;
 }
+
+/** The states the machine list can be narrowed to on the Targets page. */
+type MachineState = 'away' | 'busy' | 'failed' | 'off' | 'noagent';
 
 export function TargetsPage() {
   const boot = useApp((s) => s.boot!);
@@ -86,10 +89,23 @@ export function TargetsPage() {
   const [editing, setEditing] = useState<NodeConfig | 'new' | { prefill: Partial<NodeConfig> } | null>(null);
   const [discover, setDiscover] = useState(false);
   const [q, setQ] = useState('');
+  /** Only the machines in one state (away, busy, last send failed, turned off, without SamSync); none: all. */
+  const [state, setState] = useState<MachineState | null>(null);
   const id = boot.identity;
 
   const ql = q.trim().toLowerCase();
-  const nodes = cfg.nodes.filter((n) => !ql || `${n.name} ${n.id} ${n.group ?? ''} ${n.address} ${(n.tags ?? []).map((x) => '#' + x).join(' ')}`.toLowerCase().includes(ql));
+  const inState = (n: NodeConfig, s: MachineState): boolean => {
+    const p = probes[n.id];
+    if (n.id === id.node?.id) return false;
+    if (s === 'away') return !!p && !p.ok;
+    if (s === 'busy') return busyOf(p).length > 0;
+    if (s === 'failed') return ['failed', 'partial'].includes(lastSend.get(n.id)?.status ?? '');
+    if (s === 'off') return !n.enabled;
+    return !!p?.ok && !p.agent?.alive;
+  };
+  const nodes = cfg.nodes.filter((n) => (!ql || `${n.name} ${n.id} ${n.group ?? ''} ${n.address} ${(n.tags ?? []).map((x) => '#' + x).join(' ')}`.toLowerCase().includes(ql)) && (!state || inState(n, state)));
+  const stateLabels: Record<MachineState, string> = { away: t('Erişilemeyen'), busy: t('Meşgul'), failed: t('Son gönderimi hatalı'), off: t('Devre dışı'), noagent: t('SamSync çalışmayan') };
+  const stateCount = (s: MachineState) => cfg.nodes.filter((n) => inState(n, s)).length;
   const groups = new Map<string, NodeConfig[]>();
   for (const n of nodes) {
     const g = n.group ?? '';
@@ -177,6 +193,16 @@ export function TargetsPage() {
           <h1>{t('Hedefler')}</h1>
           <div className="sub">{t('Aynı yapılandırma bütün makinelerde kullanılır; uygulama çalıştığı makineyi kendisi tanır.')}</div>
         </div>
+        <MenuButton
+          buttonProps={{ variant: state ? undefined : 'ghost' }}
+          items={[
+            { label: t('Tümü'), onClick: () => setState(null) },
+            { sep: true },
+            ...(Object.keys(stateLabels) as MachineState[]).map((s) => ({ label: stateLabels[s], hint: String(stateCount(s)), disabled: !stateCount(s) && state !== s, onClick: () => setState(s) })),
+          ]}
+        >
+          <Filter size={14} /> {state ? stateLabels[state] : t('Durum')}
+        </MenuButton>
         <SearchInput value={q} onChange={setQ} placeholder={t('Ara')} style={{ width: 200 }} />
         <Button icon={<RefreshCw size={14} className={probing ? 'spin' : undefined} />} onClick={() => void probe()}>
           {t('Erişimi sına')}
@@ -358,6 +384,22 @@ export function TargetsPage() {
             <Empty art="targets" title={t('Henüz hedef yok')} hint={tx('Örnek: {name}, adres {ip}, paylaşım kökü {root}', { name: <code>PC-1</code>, ip: <code>10.10.1.11</code>, root: <code>Share\Release</code> })} action={<Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>{t('İlk hedefi ekle')}</Button>}>
               {t('Bütün makineleri ekleyin. Her makinenin yerel kökü (kaynak olduğunda) ve paylaşım kökü (hedef olduğunda) ayrı tanımlanır.')}
             </Empty>
+          </div>
+        ) : !ordered.length ? (
+          <div className="card" style={{ marginTop: 16 }}>
+            <Empty
+              title={state ? t('Bu durumda makine yok: {state}', { state: stateLabels[state] }) : t('Aramaya uyan makine yok')}
+              action={
+                <Button
+                  onClick={() => {
+                    setState(null);
+                    setQ('');
+                  }}
+                >
+                  {t('Hepsini göster')}
+                </Button>
+              }
+            />
           </div>
         ) : (
           ordered.map(([g, list]) => (

@@ -79,6 +79,17 @@ export function runMessage(run: RunDetail, from: { host: string; version?: strin
   return { text, payload };
 }
 
+/** The message when a send starts (Settings › Notifications › on start): what goes, to which machines, from whom. */
+export function startMessage(label: string, targets: { key: string; title: string }[], bytes: number, ops: number, from: { host: string; version?: string; user?: string }, nodes: Pick<NodeConfig, 'id' | 'group' | 'enabled'>[] = []): RunMessage {
+  const text = [
+    `▶ ${label} — ${t('başladı: {n} makine, {ops} işlem, {size}', { n: targets.length, ops, size: formatBytes(bytes) })}`,
+    `→ ${t('Hedefler: {list}', { list: targetsText(targets, nodes) })}`,
+    `${t('Gönderen: {who}', { who: senderText(from) })}${from.version ? ` • SamSync ${from.version}` : ''}`,
+  ].join('\n');
+  const groupOf = new Map(nodes.map((n) => [n.id, n.group]));
+  return { text, payload: { event: 'run-start', label, from: from.host, user: from.user, version: from.version, bytes, ops, targets: targets.map((x) => ({ id: x.key, name: x.title, group: groupOf.get(x.key) })), text } };
+}
+
 /** Whether this run should go out, by the settings. */
 /** The message of a drift check that found changes: one line per machine. */
 export function driftMessage(reports: DriftReport[], from: { host: string; version?: string; user?: string }): RunMessage {
@@ -94,7 +105,8 @@ export function driftMessage(reports: DriftReport[], from: { host: string; versi
 }
 
 export function wantsNotification(s: NotificationSettings | undefined, run: Pick<RunDetail, 'status' | 'dryRun'>): boolean {
-  if (!s || run.dryRun) return false;
+  // a cancel is someone's own choice, not news for the team (the run window and History still show it)
+  if (!s || run.dryRun || run.status === 'cancelled') return false;
   if (!s.webhookUrl && !(s.telegramToken && s.telegramChatId)) return false;
   return run.status === 'ok' ? !!s.onSuccess : !!s.onFailure;
 }

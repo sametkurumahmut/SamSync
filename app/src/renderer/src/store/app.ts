@@ -870,6 +870,9 @@ function handleEvent(e: AppEvent) {
         return { runs: { ...s.runs, [e.runId]: { ...r, log: log.length > MAX_LOG ? log.slice(-MAX_LOG) : log } } };
       });
       break;
+    case 'history-changed':
+      useApp.setState((s) => ({ historyVersion: s.historyVersion + 1 }));
+      break;
     case 'run-done': {
       useApp.setState((s) => {
         const r = s.runs[e.run.id];

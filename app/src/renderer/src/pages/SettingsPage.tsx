@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { playFinishSound } from '../lib/sounds';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls, dateTime } from '../lib/format';
+import { parseHours } from '@shared/machine';
 import { t, tk } from '@shared/i18n';
 import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
@@ -296,6 +297,16 @@ export function SettingsPage() {
               </Field>
               <Field label={t('Bant genişliği (MB/sn)')} help={t('Hedef başına; 0 = sınırsız')}>
                 {num('bandwidthMBps', 0, 10000)}
+              </Field>
+              <Field label={t('Bant sınırı saatleri')} help={t('Sınır yalnızca bu saatlerde geçerli, örneğin 08:00-18:00; boş = her zaman. Gönderim başlarken bakılır.')}>
+                <input
+                  className="input mono"
+                  aria-invalid={!!copy.bandwidthHours && !parseHours(copy.bandwidthHours)}
+                  value={copy.bandwidthHours ?? ''}
+                  placeholder="08:00-18:00"
+                  disabled={!copy.bandwidthMBps}
+                  onChange={(e) => setCopy({ ...copy, bandwidthHours: e.target.value || undefined })}
+                />
               </Field>
               <Field label={t('Röle işi alma süresi (sn)')} help={t('Röle bu sürede işi almazsa doğrudan gönderilir')}>
                 {num('relayAckSeconds', 5, 3600)}
@@ -743,6 +754,7 @@ function NotificationsSection() {
         </div>
         <ToggleRow title={t('Başarılı gönderimlerde de bildir')} desc={t('Kapalıyken yalnızca hatalı ya da kısmi bitenler gider')} on={n.onSuccess} onChange={(v) => setN({ ...n, onSuccess: v })} />
         <ToggleRow title={t('Hatalı ve kısmi gönderimlerde bildir')} on={n.onFailure} onChange={(v) => setN({ ...n, onFailure: v })} />
+        <ToggleRow title={t('Gönderim başlayınca da bildir')} desc={t('Ne gönderildiği, hangi makinelere gittiği ve kimin gönderdiği gönderim başlarken de yazılır')} on={!!n.onStart} onChange={(v) => setN({ ...n, onStart: v || undefined })} />
         <ToggleRow
           title={t('Haftalık özet')}
           desc={t('Her pazartesi 09:00’da (bilgisayar kapalıysa ilk açılışta) son yedi günün gönderimleri, hatalı makineler, erişilemeyenler ve sapma bir ileti olarak gider.')}

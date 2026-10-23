@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2, Tag, Search, FileDiff, FileCode } from 'lucide-react';
+import { FileSpreadsheet, Trash2, RotateCcw, Send, GitBranch, ArrowLeftRight, ArchiveRestore, FlaskConical, XCircle, CheckCircle2, Eraser, Undo2, Tag, Search, FileDiff, FileCode, StickyNote } from 'lucide-react';
 import type { RunDetail, RunSummary, ReleaseDiff, ReleaseTag } from '@shared/types';
 import { useApp } from '../store/app';
 import { api } from '../lib/api';
 import { Button, Empty, Field, ListSkeleton, Modal, SearchInput, Segmented } from '../components/ui';
 import { FileTraceModal } from '../components/FileTrace';
 import { CheckBadge, StatusIcon } from '../components/RunPanel';
+import { ErrorHint, ErrorHints } from '../components/ErrorHint';
 import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
 import { MachineName } from '../components/MachineName';
@@ -79,7 +80,7 @@ export function HistoryPage() {
 
   const ql = q.trim().toLowerCase();
   const since = rangeStart(range);
-  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && r.startedAt >= since && (day == null || (r.startedAt >= day && r.startedAt < day + 86400_000)) && (!ql || `${r.label} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
+  const list = (runs ?? []).filter((r) => (origin === 'all' || r.origin === origin) && r.startedAt >= since && (day == null || (r.startedAt >= day && r.startedAt < day + 86400_000)) && (!ql || `${r.label} ${r.note ?? ''} ${r.targets.map((x) => x.title).join(' ')} ${r.sources.join(' ')}`.toLowerCase().includes(ql)));
   const current = list.find((r) => r.id === active) ?? list[0];
 
   return (
@@ -179,6 +180,7 @@ export function HistoryPage() {
                             </span>
                           )}
                           {r.dryRun && <span className="badge amber">{t('deneme')}</span>}
+                          {r.note && <StickyNote size={11} className="faint" aria-label={t('Not')} data-tip={r.note} />}
                         </div>
                         <div className="row faint" style={{ fontSize: 11.5, gap: 6 }}>
                           <O.icon size={11} />
@@ -210,6 +212,8 @@ export function HistoryPage() {
 function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted: () => void }) {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [tab, setTab] = useState<'targets' | 'errors' | 'log'>('targets');
+  /** Filters the errors and the log lines (machine, path, message). */
+  const [query, setQuery] = useState('');
   const toast = useApp((s) => s.toast);
   const st = useApp();
   const parent = useRef<HTMLDivElement>(null);
@@ -219,8 +223,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
 
   const errors = useMemo(() => (detail?.results ?? []).filter((r) => !r.ok), [detail]);
   const titleOf = (key: string) => summary.targets.find((x) => x.key === key)?.title ?? key;
-  const list = tab === 'errors' ? errors : [];
-  const v = useVirtualizer({ count: tab === 'log' ? detail?.log.length ?? 0 : list.length, getScrollElement: () => parent.current, estimateSize: () => (tab === 'log' ? 22 : 40), overscan: 20 });
+  const q = query.trim().toLocaleLowerCase(locale());
+  const has = (...parts: (string | undefined)[]) => !q || parts.some((p) => p?.toLocaleLowerCase(locale()).includes(q));
+  const list = tab === 'errors' ? errors.filter((r) => has(r.rel, r.error, titleOf(r.key))) : [];
+  const logLines = (detail?.log ?? []).filter((l) => tab === 'log' && has(l.message, l.key && titleOf(l.key)));
+  const v = useVirtualizer({ count: tab === 'log' ? logLines.length : list.length, getScrollElement: () => parent.current, estimateSize: () => (tab === 'log' ? 22 : 40), overscan: 20 });
   const failedTargets = summary.targets.filter((x) => x.status === 'failed' || x.status === 'partial').map((x) => x.key);
   const O = ORIGIN[summary.origin];
 
@@ -267,6 +274,11 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
             {dateTime(summary.startedAt)} • {duration((summary.finishedAt ?? summary.startedAt) - summary.startedAt)} • {bytes(summary.bytes)}
           </div>
+          {summary.note && (
+            <div className="run-note selectable">
+              <StickyNote size={12} /> <span>{summary.note}</span>
+            </div>
+          )}
         </div>
         {/* in a narrow window the buttons go under the title and wrap, instead of squeezing it */}
         <div className="history-actions">
@@ -290,6 +302,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           {(summary.origin === 'send' || summary.origin === 'git') && !summary.dryRun && summary.opsOk > 0 && (
             <ReleasePointActions summary={summary} />
           )}
+          <RunNoteButton summary={summary} />
           <Button
             size="sm"
             icon={<FileSpreadsheet size={13} />}
@@ -302,6 +315,20 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
             }}
           >
             CSV
+          </Button>
+          <Button
+            size="sm"
+            icon={<FileCode size={13} />}
+            tip={t('Makineler, hatalar ve olası nedenleri tek sayfada; paylaşmak ya da yazdırmak için')}
+            onClick={async () => {
+              const f = await api.exportRunHtml(summary.id);
+              if (f) {
+                await api.openPath(f).catch(() => undefined);
+                toast('ok', t('HTML rapor oluşturuldu'), f);
+              }
+            }}
+          >
+            HTML
           </Button>
           <Button
             size="sm"
@@ -348,6 +375,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
             { value: 'log', label: t('Günlük') },
           ]}
         />
+        {(tab === 'errors' || tab === 'log') && <SearchInput value={query} onChange={setQuery} placeholder={tab === 'log' ? t('Günlükte ara') : t('Hatalarda ara')} style={{ width: 220 }} />}
         <span className="spacer" />
         {summary.sources.length > 0 && (
           <span className="faint ellipsis mono" style={{ fontSize: 11.5, maxWidth: 420 }} title={summary.sources.join('\n')}>
@@ -363,6 +391,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           </span>
         )}
       </div>
+      {tab === 'errors' && <ErrorHints errors={errors.map((r) => r.error)} />}
       <div ref={parent} className="pane-scroll" tabIndex={0} role="region" aria-label={summary.label} style={{ borderTop: '1px solid var(--border)' }}>
         {tab === 'targets' &&
           summary.targets.map((tg) => (
@@ -378,6 +407,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
                   {tg.via ? t('{relay} üzerinden', { relay: summary.targets.find((y) => y.key === tg.via && !y.via)?.title ?? tg.via }) : tg.root}
                 </div>
                 {tg.error && <div style={{ color: 'var(--red)', fontSize: 12 }}>{tg.error}</div>}
+                {(tg.status === 'failed' || tg.status === 'partial') && <ErrorHint error={tg.error} />}
                 {tg.backupPath && <div className="faint" style={{ fontSize: 11.5 }}>{t('yedek: {path}', { path: tg.backupPath })}</div>}
               </div>
               <span className="tabular faint nowrap" style={{ fontSize: 12 }}>
@@ -392,6 +422,8 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
         {tab === 'errors' &&
           (errors.length === 0 ? (
             <Empty icon={<CheckCircle2 size={20} color="var(--green)" />} title={t('Hata yok')} />
+          ) : list.length === 0 ? (
+            <Empty icon={<Search size={20} />} title={t('Aramaya uyan hata yok')} />
           ) : (
             <div style={{ height: v.getTotalSize(), position: 'relative' }}>
               {v.getVirtualItems().map((vi) => {
@@ -416,7 +448,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
         {tab === 'log' && detail && (
           <div style={{ height: v.getTotalSize(), position: 'relative' }} className="selectable">
             {v.getVirtualItems().map((vi) => {
-              const l = detail.log[vi.index];
+              const l = logLines[vi.index];
               return (
                 <div key={vi.key} className={cls('log-line', l.level)} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`, height: vi.size, padding: '0 14px' }}>
                   <span className="lt">{new Date(l.t).toLocaleTimeString(locale())}</span>
@@ -548,6 +580,66 @@ function ReleaseDiffModal({ summary, onClose }: { summary: RunSummary; onClose: 
  * A run named as a release point, and the way back to it: every later send to its machines is undone from the
  * backups, newest first. The names live in this machine's settings, next to the history they belong to.
  */
+/** A note on a run (why it went, what to watch), written afterwards; shown under its title and found by the search. */
+function RunNoteButton({ summary }: { summary: RunSummary }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(summary.note ?? '');
+  const toast = useApp((s) => s.toast);
+  const save = async () => {
+    try {
+      await api.setRunNote(summary.id, text);
+      setOpen(false);
+    } catch (e) {
+      toast('error', t('Not kaydedilemedi'), (e as Error).message);
+    }
+  };
+  return (
+    <>
+      <Button
+        size="sm"
+        icon={<StickyNote size={13} />}
+        onClick={() => {
+          setText(summary.note ?? '');
+          setOpen(true);
+        }}
+      >
+        {summary.note ? t('Notu düzenle') : t('Not ekle')}
+      </Button>
+      {open && (
+        <Modal
+          title={t('Çalıştırma notu')}
+          icon={<StickyNote size={16} />}
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              {summary.note && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setText('');
+                    void api.setRunNote(summary.id, '').then(() => setOpen(false));
+                  }}
+                >
+                  {t('Notu sil')}
+                </Button>
+              )}
+              <span className="spacer" />
+              <Button onClick={() => setOpen(false)}>{t('Vazgeç')}</Button>
+              <Button variant="primary" onClick={() => void save()}>
+                {t('Kaydet')}
+              </Button>
+            </>
+          }
+        >
+          <Field label={t('Not')} help={t('Neden gönderildiği, nelere dikkat edileceği; Geçmiş’te başlığın altında görünür ve aramada bulunur.')}>
+            <textarea className="input" rows={4} autoFocus maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function ReleasePointActions({ summary }: { summary: RunSummary }) {
   const tags = useApp((s) => s.boot?.settings.releaseTags ?? NO_TAGS);
   const saveSettings = useApp((s) => s.saveSettings);

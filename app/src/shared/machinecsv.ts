@@ -4,6 +4,7 @@
 import type { NodeConfig, TransportKind } from './types';
 
 export const MACHINE_CSV_COLUMNS = ['id', 'name', 'group', 'address', 'transport', 'networkRoot', 'path', 'localRoots', 'tags', 'mac', 'relay', 'enabled'] as const;
+export type MachineCsvColumn = (typeof MACHINE_CSV_COLUMNS)[number];
 
 const esc = (v: string) => (/[;,"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
@@ -69,17 +70,21 @@ const list = (v: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
-/** The machines of a CSV file (by the header's column names, in any order); rows without an id are reported. */
-export function machinesFromCsv(text: string): { nodes: NodeConfig[]; errors: string[] } {
+/**
+ * The machines of a CSV file (by the header's column names, in any order); rows without an id are reported.
+ * `columns`: the columns the file has; an import changes only those on the machines already there.
+ */
+export function machinesFromCsv(text: string): { nodes: NodeConfig[]; errors: string[]; columns: MachineCsvColumn[] } {
   const clean = text.replace(/^\uFEFF/, '');
   const first = clean.split(/\r?\n/, 1)[0] ?? '';
   const sep = first.split(';').length >= first.split(',').length ? ';' : ',';
   const rows = parseCsv(clean, sep);
   const errors: string[] = [];
-  if (!rows.length) return { nodes: [], errors: ['empty'] };
+  if (!rows.length) return { nodes: [], errors: ['empty'], columns: [] };
   const head = rows[0].map((h) => h.trim().toLowerCase());
   const col = (name: string) => head.indexOf(name.toLowerCase());
-  if (col('id') < 0) return { nodes: [], errors: ['no id column'] };
+  const columns = MACHINE_CSV_COLUMNS.filter((c) => col(c) >= 0);
+  if (col('id') < 0) return { nodes: [], errors: ['no id column'], columns };
   const nodes: NodeConfig[] = [];
   rows.slice(1).forEach((r, i) => {
     const get = (name: string) => {
@@ -108,11 +113,14 @@ export function machinesFromCsv(text: string): { nodes: NodeConfig[]; errors: st
     if (yes(get('relay'))) n.relay = true;
     nodes.push(n);
   });
-  return { nodes, errors };
+  return { nodes, errors, columns };
 }
 
-/** What an import would do to the machine list: the new machines, the changed ones (by id), and the list after it. */
-export function mergeMachines(current: NodeConfig[], incoming: NodeConfig[]): { added: NodeConfig[]; changed: NodeConfig[]; same: number; nodes: NodeConfig[] } {
+/**
+ * What an import would do to the machine list: the new machines, the changed ones (by id), and the list after it.
+ * A machine already there takes only the file's `columns`; what the file has no column for stays as it was.
+ */
+export function mergeMachines(current: NodeConfig[], incoming: NodeConfig[], columns: readonly MachineCsvColumn[] = MACHINE_CSV_COLUMNS): { added: NodeConfig[]; changed: NodeConfig[]; same: number; nodes: NodeConfig[] } {
   const byId = new Map(current.map((n) => [n.id.toLowerCase(), n]));
   const added: NodeConfig[] = [];
   const changed: NodeConfig[] = [];
@@ -124,9 +132,15 @@ export function mergeMachines(current: NodeConfig[], incoming: NodeConfig[]): { 
       added.push(n);
       continue;
     }
-    // what the file says wins; what it cannot say (SFTP, colours, notes, local names) stays
-    const merged: NodeConfig = { ...old, ...n, id: old.id, sftp: old.sftp, color: old.color, notes: old.notes, localNames: old.localNames };
-    for (const k of ['group', 'path', 'tags', 'mac', 'relay'] as const) if (n[k] === undefined) delete merged[k];
+    // what the file says wins; what it has no column for, or cannot say (SFTP, colours, notes, local names), stays
+    const merged: NodeConfig = { ...old };
+    const has = new Set(columns);
+    for (const k of ['name', 'address', 'transport', 'networkRoot', 'localRoots', 'enabled'] as const) if (has.has(k)) (merged as unknown as Record<string, unknown>)[k] = n[k];
+    for (const k of ['group', 'path', 'tags', 'mac', 'relay'] as const) {
+      if (!has.has(k)) continue;
+      if (n[k] === undefined) delete merged[k];
+      else (merged as unknown as Record<string, unknown>)[k] = n[k];
+    }
     const key = (x: NodeConfig) => JSON.stringify([x.name, x.group ?? '', x.address, x.transport ?? 'smb', x.networkRoot, x.path ?? '', x.localRoots, x.tags ?? [], x.mac ?? '', !!x.relay, x.enabled]);
     if (key(merged) === key(old)) same++;
     else {

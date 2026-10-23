@@ -91,6 +91,26 @@ export class History {
     await fsp.writeFile(path.join(this.dir, 'index.json'), JSON.stringify(idx), 'utf8');
   }
 
+  /** Writes (or, when empty, removes) the note of a run in the index and in its own file. */
+  async setNote(id: string, note: string): Promise<void> {
+    const idx = await this.load();
+    const s = idx.find((x) => x.id === id);
+    if (!s) throw new Error(t('Çalıştırma bulunamadı'));
+    if (note) s.note = note;
+    else delete s.note;
+    const run = await this.get(id);
+    if (run) {
+      if (note) run.note = note;
+      else delete run.note;
+      const hasLogFile = await fsp
+        .stat(this.logFile(id))
+        .then((st) => st.size > 0)
+        .catch(() => false);
+      await fsp.writeFile(path.join(this.dir, `${id}.json`), JSON.stringify(hasLogFile ? { ...run, log: [] } : run), 'utf8');
+    }
+    await fsp.writeFile(path.join(this.dir, 'index.json'), JSON.stringify(idx), 'utf8');
+  }
+
   async get(id: string): Promise<RunDetail | null> {
     if (!/^[\w.-]+$/.test(id)) return null;
     try {

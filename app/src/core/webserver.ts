@@ -48,8 +48,6 @@ export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'describeSources',
   'mapPath',
   'planSend',
-  'cancelTask',
-  'compareWithTarget',
   'runs',
   'run',
   'gitRepos',
@@ -57,9 +55,7 @@ export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'gitLog',
   'gitBranches',
   'gitSources',
-  'gitDiff',
   'compareJob',
-  'syncItemDiff',
   'browse',
   'findBackups',
   'backupSets',
@@ -67,7 +63,6 @@ export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
   'diffNodes',
   'whatsNew',
   'assistantStatus',
-  'assistantAsk',
   'statFile',
   'integrationStatus',
   'updateState',
@@ -84,6 +79,10 @@ export const VIEWER_ALLOWED: ReadonlySet<string> = new Set<string>([
 const COOKIE = 'samsync_session';
 const SESSION_MS = 12 * 3600_000;
 const MAX_BODY = 32 * 1024 * 1024;
+/** The sign-in form holds a password: anything bigger is not one. */
+const MAX_LOGIN_BODY = 4096;
+/** Password checks at once (each takes a moment of CPU); more wait for a minute like a locked address. */
+const MAX_LOGINS = 4;
 /** Failed logins from one address before it has to wait, and how long. */
 const MAX_FAILS = 5;
 const LOCK_MS = 60_000;
@@ -97,6 +96,14 @@ export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16);
   const hash = crypto.scryptSync(password.normalize('NFC'), salt, 32, SCRYPT);
   return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+}
+
+/** The same check off the main thread: a burst of sign-ins does not freeze the app and its sends. */
+export async function verifyPasswordAsync(password: string, stored: string | undefined): Promise<boolean> {
+  const m = /^scrypt\$([0-9a-f]{32})\$([0-9a-f]{64})$/.exec(stored ?? '');
+  if (!m) return false;
+  const got = await new Promise<Buffer>((resolve, reject) => crypto.scrypt(password.normalize('NFC'), Buffer.from(m[1], 'hex'), 32, SCRYPT, (e, key) => (e ? reject(e) : resolve(key))));
+  return crypto.timingSafeEqual(Buffer.from(m[2], 'hex'), got);
 }
 
 export function verifyPassword(password: string, stored: string | undefined): boolean {
@@ -156,20 +163,34 @@ function cookies(req: http.IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    // a cookie of another program on this host may not be encoded the way ours are: it is skipped, not an error
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      /* not ours */
+    }
   }
   return out;
 }
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+class BodyTooLarge extends Error {
+  constructor() {
+    super('body too large');
+  }
+}
+
+function readBody(req: http.IncomingMessage, max = MAX_BODY): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY) {
-        reject(new Error('body too large'));
-        req.destroy();
+      if (size > max) {
+        // nothing more is read; the answer (413) closes the connection, so the rest is never taken in
+        req.pause();
+        req.removeAllListeners('data');
+        reject(new BodyTooLarge());
         return;
       }
       chunks.push(c);
@@ -179,11 +200,22 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+/** Settings (alone, or inside bootstrap's result) without the notification channel's token and URL. */
+function withoutSecrets(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result;
+  const r = result as { settings?: { notifications?: object }; notifications?: object };
+  const strip = (n: object | undefined) => (n ? { ...n, telegramToken: undefined, webhookUrl: undefined } : n);
+  if (r.settings) return { ...r, settings: { ...r.settings, notifications: strip(r.settings.notifications) } };
+  if ('notifications' in r) return { ...r, notifications: strip(r.notifications) };
+  return result;
+}
+
 export class WebServer {
   private server: http.Server | https.Server | null = null;
   private clients = new Set<http.ServerResponse>();
   private sessions = new Map<string, { until: number; role: 'admin' | 'viewer' }>();
   private fails = new Map<string, { n: number; until: number }>();
+  private loginsRunning = 0;
   private lastError: string | undefined;
 
   constructor(private o: WebServerOptions) {}
@@ -252,6 +284,7 @@ export class WebServer {
   private fail(res: http.ServerResponse, code: number, message: string): void {
     if (res.headersSent) return void res.end();
     res.statusCode = code;
+    if (code === 413) res.setHeader('connection', 'close');
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ ok: false, error: message }));
   }
@@ -299,11 +332,13 @@ export class WebServer {
         args = body ? (JSON.parse(body) as unknown[]) : [];
         if (!Array.isArray(args)) throw new Error('arguments must be an array');
       } catch (e) {
-        return this.fail(res, 400, e instanceof Error ? e.message : String(e));
+        return this.fail(res, e instanceof BodyTooLarge ? 413 : 400, e instanceof Error ? e.message : String(e));
       }
       try {
         let result = await this.o.call(method, args);
         if (method === 'bootstrap' && result && typeof result === 'object') result = { ...(result as object), remote: true, readOnly: session.role === 'viewer' || undefined };
+        // a viewer does not get the channel's secrets (with a bot token one can post as the bot)
+        if (session.role === 'viewer' && (method === 'bootstrap' || method === 'saveSettings')) result = withoutSecrets(result);
         res.setHeader('content-type', 'application/json');
         res.end(JSON.stringify({ ok: true, result: result ?? null }));
       } catch (e) {
@@ -329,14 +364,26 @@ export class WebServer {
   }
 
   private async login(req: http.IncomingMessage, res: http.ServerResponse, ip: string): Promise<void> {
+    let body: string;
+    try {
+      body = await readBody(req, MAX_LOGIN_BODY);
+    } catch {
+      return this.fail(res, 413, 'too large');
+    }
+    // looked at once the form is in, so guesses sent side by side all see the count of the ones before them
     const f = this.fails.get(ip);
-    if (f && f.until > Date.now()) return this.redirect(res, '/login?e=locked');
-    const form = new URLSearchParams(await readBody(req));
-    const given = form.get('password') ?? '';
-    const role: 'admin' | 'viewer' | null = verifyPassword(given, this.o.passwordHash) ? 'admin' : this.o.viewerHash && verifyPassword(given, this.o.viewerHash) ? 'viewer' : null;
+    if ((f && f.until > Date.now()) || this.loginsRunning >= MAX_LOGINS) return this.redirect(res, '/login?e=locked');
+    const n = (f?.n ?? 0) + 1;
+    this.fails.set(ip, { n, until: n >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
+    const given = new URLSearchParams(body).get('password') ?? '';
+    let role: 'admin' | 'viewer' | null;
+    this.loginsRunning++;
+    try {
+      role = (await verifyPasswordAsync(given, this.o.passwordHash)) ? 'admin' : this.o.viewerHash && (await verifyPasswordAsync(given, this.o.viewerHash)) ? 'viewer' : null;
+    } finally {
+      this.loginsRunning--;
+    }
     if (!role) {
-      const n = (f?.n ?? 0) + 1;
-      this.fails.set(ip, { n, until: n >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
       this.o.log?.('warn', `web UI: wrong password from ${ip} (${n})`);
       return this.redirect(res, n >= MAX_FAILS ? '/login?e=locked' : '/login?e=1');
     }

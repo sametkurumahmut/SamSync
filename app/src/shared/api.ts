@@ -1,4 +1,5 @@
-import type { FileTrace,
+import type { MachineCsvColumn } from './machinecsv';
+import type { FilterPreview, FileTrace,
   NodeConfig,
   TimelineEntry,
   InventoryEntry,
@@ -111,7 +112,7 @@ export interface Api {
   exportConfig(dest: string): Promise<void>;
   /** The machine list as a CSV file at `dest`, and a CSV file read back as machines (nothing saved yet). */
   exportMachinesCsv(dest: string): Promise<void>;
-  readMachinesCsv(path: string): Promise<{ nodes: NodeConfig[]; errors: string[] }>;
+  readMachinesCsv(path: string): Promise<{ nodes: NodeConfig[]; errors: string[]; columns: MachineCsvColumn[] }>;
   pickSave(opts: PickOptions): Promise<string | null>;
   useConfigFile(path: string | null): Promise<Bootstrap>;
   saveSettings(patch: Partial<LocalSettings>): Promise<LocalSettings>;
@@ -193,8 +194,14 @@ export interface Api {
   deleteRun(id: string): Promise<void>;
   clearRuns(): Promise<void>;
   exportRunCsv(id: string): Promise<string | null>;
+  /** The run as one HTML page in the reports folder (machines, errors with their likely cause, the note). */
+  exportRunHtml(id: string): Promise<string | null>;
   /** What changed on the machines between two runs (`to` null: the latest send to them), and the same as a report file. */
   releaseDiff(fromRunId: string, toRunId: string | null): Promise<ReleaseDiff>;
+  /** A note on a run in History (empty removes it). */
+  setRunNote(runId: string, note: string): Promise<void>;
+  /** What the filters of this request leave out of its sources (walked on this computer). */
+  filterPreview(req: SendRequest): Promise<FilterPreview>;
   exportReleaseDiff(fromRunId: string, toRunId: string | null, format: 'csv' | 'html'): Promise<string>;
 
   gitRepos(): Promise<GitRepoInfo[]>;
@@ -317,7 +324,10 @@ export const API_METHODS = {
   deleteRun: true,
   clearRuns: true,
   exportRunCsv: true,
+  exportRunHtml: true,
   releaseDiff: true,
+  filterPreview: true,
+  setRunNote: true,
   exportReleaseDiff: true,
   gitRepos: true,
   gitAddRepo: true,

@@ -15,6 +15,7 @@ import { pathWithin, samePath } from '@shared/sources';
 import { coverageOf } from '@shared/coverage';
 import { useStartWatchFromSend } from './AutomationPage';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { FilterPreviewButton } from '../components/FilterPreview';
 import { ScheduleFields } from '../components/ScheduleFields';
 import { describeSchedule } from './AutomationPage';
 
@@ -706,6 +707,9 @@ export function OptionsCard({ git }: { git?: boolean }) {
             <Field label={t('Hariç klasörler')} help={t('.git, Logs, bin/Debug — ada ya da göreli yola göre')}>
               <TagInput value={options.excludeDirs} onChange={(v) => set({ excludeDirs: v })} placeholder="Logs" />
             </Field>
+            <div className="row" style={{ alignItems: 'flex-end' }}>
+              <FilterPreviewButton options={options} />
+            </div>
           </div>
         )}
       </div>

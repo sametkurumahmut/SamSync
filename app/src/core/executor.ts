@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
-import { Transform, type Readable } from 'node:stream';
+import { pipeline, Transform, type Readable } from 'node:stream';
 import type { NodeConfig, RunDetail, RunLogLine, RunOpResult, RunSummary, RunTargetState, SendOptions, SendRequest, SrcRef, StashFile } from '../shared/types';
 import type { CoreContext } from './context';
 import { InUseError, type Transport } from './transport';
@@ -15,7 +15,7 @@ import { hashStream, hashing } from './compare';
 import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
 import { myLock, otherLock, removeLock, writeLock } from './lock';
-import { applyOps, saveManifestSubtree } from './manifest';
+import { applyOps, forgetManifestSubtrees, saveManifestSubtree } from './manifest';
 import type { Entry } from './transport';
 import os from 'node:os';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
@@ -32,6 +32,11 @@ export interface ExecOp {
   replaceType?: boolean;
   /** Whether the target held something at this path when the plan was made (false lets the run skip a look). */
   dstExists?: boolean;
+  /**
+   * A folder to remove only once it is empty: what the scan saw in it goes as ops of their own, and what the filter
+   * left out (an excluded or ignored file) keeps the folder where it is.
+   */
+  onlyIfEmpty?: boolean;
 }
 
 export interface ExecGroup {
@@ -51,6 +56,8 @@ export interface ExecGroup {
   relay?: { targets: NodeConfig[]; job: RelayJob };
   /** What the plan saw below each sent folder on this target: the run leaves it, updated, as the target's manifest. */
   manifest?: Map<string, Map<string, Entry>>;
+  /** The exclusions the manifest's entries were taken with (manifest.ts exclusionsOf). */
+  manifestExcluded?: string[];
   /** A relay: the files it keeps aside for the machines behind it (machine folder, raw templates), carried in its pack. */
   stash?: StashFile[];
 }
@@ -129,8 +136,12 @@ function tmpRelFor(rel: string): string {
   const parent = relParent(rel);
   return relJoin(parent, `.${relBase(rel)}.${Math.random().toString(36).slice(2, 8)}${TMP_SUFFIX}`);
 }
-function partRelFor(rel: string): string {
-  return relJoin(relParent(rel), `.${relBase(rel)}.resume${TMP_SUFFIX}`);
+/**
+ * The partial file of a big copy, named after the source version it holds the start of (size and time): a source
+ * changed since (even in place, same size) gets a partial of its own instead of a mix of old and new bytes.
+ */
+export function partRelFor(rel: string, size: number, mtimeMs = 0): string {
+  return relJoin(relParent(rel), `.${relBase(rel)}.resume-${size}-${Math.floor(mtimeMs)}${TMP_SUFFIX}`);
 }
 
 async function readAll(stream: Readable): Promise<Buffer> {
@@ -416,6 +427,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return et.readStream(src.rel);
     };
 
+    const dropOtherPartials = async (rel: string, keep: string) => {
+      const prefix = `.${relBase(rel)}.resume`;
+      for (const e of await tgt.list(relParent(rel)).catch(() => [])) {
+        const name = relBase(e.rel);
+        if (!e.isDir && name.startsWith(prefix) && name.endsWith(TMP_SUFFIX) && name !== relBase(keep)) await tgt.remove(relJoin(relParent(rel), name), false).catch(() => undefined);
+      }
+    };
+
     /** A partial file from an earlier attempt that can be continued: its size, or 0 to start from the beginning. */
     const resumePoint = async (op: ExecOp, partRel: string): Promise<number> => {
       const src = op.src!;
@@ -433,7 +452,9 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
 
     const doCopy = async (op: ExecOp, stage?: typeof staged): Promise<boolean> => {
       const big = op.size >= RESUME_MIN;
-      const tmp = big ? partRelFor(op.rel) : tmpRelFor(op.rel);
+      const tmp = big ? partRelFor(op.rel, op.size, op.mtimeMs) : tmpRelFor(op.rel);
+      // partials of other versions of this file (older sources, an older SamSync) can never be continued
+      if (big && !s.dryRun) await dropOtherPartials(op.rel, tmp);
       let base = 0;
       const onProgress = (n: number) => {
         st.bytesDone += n - base;
@@ -573,6 +594,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     // files a program held open, tried once more at the end when asked for: the program may have let go by then
     const held: ExecOp[] = [];
     let heldAt = 0;
+    /** Folders not removed because files the filter left out are still in them. */
+    const kept: string[] = [];
     const runOp = async (op: ExecOp, _index?: number, last = false) => {
       await holdWhilePaused();
       if (gc.cancelled) return;
@@ -583,24 +606,29 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       }
       let lastErr: unknown;
       let inUse = false;
+      // across attempts: an attempt that moved the old file to the backup and then failed has still kept it
+      let backedUp = false;
       for (let attempt = 0; attempt <= s.retryCount; attempt++) {
         await holdWhilePaused();
         if (gc.cancelled) return;
         try {
-          let backedUp = false;
           if (op.kind === 'copy' && switching) {
             // written beside its place; it is recorded when the switch puts it in
             await doCopy(op, staged);
             return;
           }
-          if (op.kind === 'copy') backedUp = await doCopy(op);
+          if (op.kind === 'copy') backedUp = (await doCopy(op)) || backedUp;
           else if (op.kind === 'mkdir') {
             if (op.dstExists !== false || op.replaceType) {
               const cur = await tgt.stat(op.rel);
-              if (cur && !cur.isDir) backedUp = await backupOrRemove(op.rel, false);
+              if (cur && !cur.isDir) backedUp = (await backupOrRemove(op.rel, false)) || backedUp;
             }
             await tgt.mkdirp(op.rel);
-          } else backedUp = await backupOrRemove(op.rel, op.isDir);
+          } else if (op.isDir && op.onlyIfEmpty && (await tgt.list(op.rel).catch(() => [])).length) {
+            kept.push(op.rel);
+            record(op, true);
+            return;
+          } else backedUp = (await backupOrRemove(op.rel, op.isDir)) || backedUp;
           record(op, true, undefined, backedUp);
           return;
         } catch (e) {
@@ -608,7 +636,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
           // a file in use stays in use for the retry period: say so at once, unless it is the same file already
           if (e instanceof InUseError) {
             if (await alignInUse(op).catch(() => false)) {
-              record(op, true, undefined, false);
+              record(op, true, undefined, backedUp);
               return;
             }
             if (s.retryInUseAtEnd && !last) {
@@ -663,6 +691,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       } else {
         await mapLimit(delFiles, s.parallelFiles, runOp);
         for (const d of delDirs) await runOp(d);
+        if (kept.length) log('info', t('{n} klasör, içinde filtrenin dışarıda bıraktığı dosyalar olduğu için yerinde kaldı: {dirs}', { n: kept.length, dirs: kept.slice(0, 5).join(', ') + (kept.length > 5 ? '…' : '') }), g.key);
       }
       if (held.length && !gc.cancelled) {
         await sleep(Math.max(0, heldAt + IN_USE_RETRY_WAIT_MS - Date.now()));
@@ -670,12 +699,20 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         for (const op of held.splice(0)) await runOp(op, 0, true);
       }
 
+      // what this run wrote and no manifest of its own describes: the manifest there no longer does either
+      const forget = async () => {
+        if (s.dryRun || tgt.kind !== 'fs') return;
+        const wrote = results.filter((r) => r.key === g.key && r.ok).map((r) => r.rel);
+        await forgetManifestSubtrees(tgt, wrote).catch((e) => log('warn', t('Manifest güncellenemedi: {error}', { error: errMessage(e) }), g.key));
+      };
       if (gc.cancelled) {
         st.status = 'cancelled';
         log('warn', t('İptal edildi'), g.key);
+        await forget();
       } else {
         st.status = st.failed === 0 ? 'ok' : st.failed === g.ops.length ? 'failed' : 'partial';
         if (g.manifest?.size && tgt.kind === 'fs' && !s.dryRun && st.status !== 'failed') await leaveManifest(g, tgt);
+        else await forget();
         if (trashed) log('info', t('{n} eski hâl geri dönüşüm kutusuna taşındı', { n: trashed }), g.key);
         if (backedUpAny) {
           st.backupPath = relJoin(s.backupFolderName, runStamp);
@@ -683,7 +720,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         }
         // an age limit also clears versions on a side that kept nothing new this time
         const byAge = !!s.backupMaxDays && s.backupMaxDays > 0 && backup && !s.dryRun && st.status === 'ok';
-        if (backedUpAny || byAge) {
+        // an undo keeps every backup: going back several sends needs the older sends' backups after this one
+        if ((backedUpAny || byAge) && s.origin !== 'restore') {
           // the copies are done: an unreadable backup folder is worth a warning, not a failed run
           await pruneBackups(tgt, s.backupFolderName, s.backupKeep, (m) => log('info', m, g.key), s.backupMaxDays).catch((e) =>
             log('warn', t('Eski yedekler temizlenemedi: {error}', { error: errMessage(e) }), g.key),
@@ -740,7 +778,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const by = { host: os.hostname(), user: process.env.USERNAME || undefined, version: ctx.appVersion };
     for (const [rel, scanned] of g.manifest!) {
       try {
-        await saveManifestSubtree(tgt, rel, applyOps(scanned, rel, done), by, s.label);
+        await saveManifestSubtree(tgt, rel, applyOps(scanned, rel, done), by, s.label, g.manifestExcluded);
       } catch (e) {
         log('warn', t('Manifest yazılamadı ({path}): {error}', { path: rel || '/', error: errMessage(e) }), g.key);
       }
@@ -815,10 +853,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         else void holdWhilePaused().then(() => cb(null, chunk));
       },
     });
-    const limitedStream = limiter ? stream.pipe(limiter.transform()) : stream;
-    limitedStream.on('error', (e) => gate.destroy(e));
+    // one chain: an error anywhere (a source gone, a cancel, the network) ends every part, the pack's open files too
+    pipeline([stream, ...(limiter ? [limiter.transform()] : []), gate], () => undefined);
     try {
-      packed = await submitRelayPack(tgt, job.id, limitedStream.pipe(gate), undefined, gc.signal);
+      packed = await submitRelayPack(tgt, job.id, gate, undefined, gc.signal);
     } catch (e) {
       const stopped = gc.cancelled;
       st.status = stopped ? 'cancelled' : 'failed';
@@ -847,13 +885,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         return { kind: 'copy', id: op.id, rel: op.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, replaceType: op.replaceType, dstExists: op.dstExists, delta: deltas.get(op.rel)?.out.info };
       }
       if (op.kind === 'mkdir') return { kind: 'mkdir', id: op.id, rel: op.rel, replaceType: op.replaceType, dstExists: op.dstExists };
-      return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir };
+      return { kind: 'delete', id: op.id, rel: op.rel, isDir: op.isDir, onlyIfEmpty: op.onlyIfEmpty };
     });
     for (const [i, f] of (g.stash ?? []).entries()) {
       const e = byRel.get(stashRel(f));
       if (e) ops.push({ kind: 'copy', id: `stash-${i}`, rel: e.rel, size: e.size, mtimeMs: e.mtimeMs, offset: e.offset, length: e.length, method: e.method, dstExists: false });
     }
-    job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify, subtrees: g.manifest ? [...g.manifest.keys()] : undefined };
+    job.pack = { ops, backup: g.backup ?? s.backup, verify: s.verify, subtrees: g.manifest ? [...g.manifest.keys()] : undefined, excluded: g.manifestExcluded };
     const rows = relayed.get(g.key) ?? [];
     const now = Date.now();
     for (const r of rows) Object.assign(r, { status: 'running', startedAt: now });
@@ -939,11 +977,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         ackMs: s.relayAckMs ?? 60_000,
         doneMs: s.relayDoneMs ?? 15 * 60_000,
         cancelGraceMs: s.relayCancelGraceMs,
+        paused: () => paused,
         onAck: () => log('info', acked, g.key),
         onCancelSent: () => log('warn', t('İptal makineye bildirildi; orada yapılanlar bekleniyor'), g.key),
       });
     } finally {
       relayWaits.delete(g.key);
+      // nothing waits any more: a pause sent there must not outlive the wait
+      if (paused) void signalRelayJob(tgt, jobId, 'pause', false).catch(() => undefined);
     }
   }
 

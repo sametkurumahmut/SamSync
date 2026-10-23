@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { buildSendPlan } from '../src/core/plan';
-import { startRun, RESUME_MIN, type ExecSettings } from '../src/core/executor';
+import { startRun, partRelFor, RESUME_MIN, type ExecSettings } from '../src/core/executor';
 import { transportForNode } from '../src/core/transport';
 import { tmpDir, pathNode, makeCtx, defaultOptions, sleep } from './helpers';
 
@@ -41,6 +41,12 @@ async function setup() {
   return { base, src, tgt, big, ctx };
 }
 
+/** Where the partial file of src/big.bin, as it is now, waits on the target. */
+function partOf(src: string, tgt: string): string {
+  const st = fs.statSync(path.join(src, 'big.bin'));
+  return path.join(tgt, ...partRelFor('big.bin', st.size, st.mtimeMs).split('/'));
+}
+
 async function run(ctx: ReturnType<typeof makeCtx>, src: string, extra: Partial<ExecSettings> = {}) {
   const plan = await buildSendPlan(ctx, { sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: defaultOptions, origin: 'send' });
   const tp = plan.targets[0];
@@ -52,7 +58,7 @@ describe('a copy that broke off', () => {
   it('continues a big file from the bytes already on the target', async () => {
     const { src, tgt, big, ctx } = await setup();
     // the first 5 MB arrived last time
-    const part = path.join(tgt, '.big.bin.resume.samsync-tmp');
+    const part = partOf(src, tgt);
     await fsp.writeFile(part, big.subarray(0, 5 * 1024 * 1024));
     const d = await (await run(ctx, src)).done;
     expect(d.status).toBe('ok');
@@ -64,7 +70,7 @@ describe('a copy that broke off', () => {
 
   it('starts over when the partial file is not a prefix of the source', async () => {
     const { src, tgt, ctx } = await setup();
-    const part = path.join(tgt, '.big.bin.resume.samsync-tmp');
+    const part = partOf(src, tgt);
     await fsp.writeFile(part, randomBytes(5 * 1024 * 1024));
     const d = await (await run(ctx, src)).done;
     expect(d.status).toBe('ok');
@@ -82,7 +88,7 @@ describe('a copy that broke off', () => {
     const d = await h.done;
     expect(Date.now() - t0).toBeLessThan(1500);
     expect(d.status).toBe('cancelled');
-    const part = path.join(tgt, '.big.bin.resume.samsync-tmp');
+    const part = partOf(src, tgt);
     expect(fs.existsSync(part)).toBe(true);
     const partial = fs.statSync(part).size;
     expect(partial).toBeGreaterThan(0);
@@ -104,6 +110,25 @@ describe('a copy that broke off', () => {
     const ops = tp.ops.filter((o) => o.selected).map((o) => ({ id: o.id, kind: o.kind, rel: o.rel, isDir: o.isDir, size: o.size + (o.rel === 'big.bin' ? 7 : 0), mtimeMs: o.srcMtime, src: o.src, dstExists: false }));
     const d = await startRun(ctx, [{ key: 'T', title: 'T', rootLabel: tp.root, open: () => transportForNode(ctx, ctx.config.nodes[0]), ops }], settings).done;
     expect(d.results.find((r) => r.rel === 'big.bin')?.ok).toBe(false);
+    expect(fs.readdirSync(tgt).filter((n) => n.includes('samsync-tmp'))).toEqual([]);
+  });
+});
+
+describe('a partial file of another version', () => {
+  it('is not continued when the source changed in place since, and an old one is cleared', async () => {
+    const { src, tgt, big, ctx } = await setup();
+    // a partial of the file as it was, then the source changes in place: same size, same last bytes
+    await fsp.writeFile(partOf(src, tgt), big.subarray(0, 5 * 1024 * 1024));
+    const changed = Buffer.from(big);
+    changed.fill(7, 1024, 4096);
+    await fsp.writeFile(path.join(src, 'big.bin'), changed);
+    await fsp.utimes(path.join(src, 'big.bin'), new Date(), new Date(Date.now() + 5000));
+    // and a partial an older SamSync left under its fixed name
+    await fsp.writeFile(path.join(tgt, '.big.bin.resume.samsync-tmp'), 'old');
+    const d = await (await run(ctx, src)).done;
+    expect(d.status).toBe('ok');
+    expect(d.log.some((l) => /kaldığı yerden|from where it stopped/.test(l.message))).toBe(false);
+    expect(hash(path.join(tgt, 'big.bin'))).toBe(hash(path.join(src, 'big.bin')));
     expect(fs.readdirSync(tgt).filter((n) => n.includes('samsync-tmp'))).toEqual([]);
   });
 });

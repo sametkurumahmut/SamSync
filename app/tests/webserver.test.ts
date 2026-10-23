@@ -164,3 +164,40 @@ describe('server mode over HTTPS', () => {
     await expect(fetch(`http://127.0.0.1:${p}/login`)).rejects.toThrow();
   });
 });
+
+describe('server mode against guessing and a viewer', () => {
+  it('counts guesses sent side by side, and refuses a sign-in form that is not one', async () => {
+    await setup();
+    const answers = await Promise.all(Array.from({ length: 12 }, () => login('x').then((r) => r.headers.get('location'))));
+    // no more than the allowed tries got a real answer; the rest were told to wait
+    expect(answers.filter((a) => a === '/login?e=1').length).toBeLessThanOrEqual(4);
+    expect(answers.filter((a) => a === '/login?e=locked').length).toBeGreaterThanOrEqual(8);
+    const big = await req('/login', { method: 'POST', body: 'password=' + 'x'.repeat(10_000), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    expect(big.status).toBe(413);
+  });
+
+  it('gives a viewer no channel secrets and none of the calls that read files or stop others’ work', async () => {
+    const dir = await tmpDir();
+    fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html>');
+    port = await freePort();
+    const server = new WebServer({
+      port,
+      host: '127.0.0.1',
+      passwordHash: hashPassword('ana-parola-1'),
+      viewerHash: hashPassword('izleyici-parola'),
+      staticDir: dir,
+      call: async (method) => (method === 'bootstrap' ? { settings: { notifications: { telegramToken: 'gizli', telegramChatId: '1', webhookUrl: 'https://x', onFailure: true } } } : { ok: 1 }),
+    });
+    servers.push(server);
+    await server.start();
+    const cookie = cookieOf(await login('izleyici-parola'));
+    const call = async (m: string, body = '[]') => (await req(`/api/${m}`, { method: 'POST', cookie, headers: { 'x-samsync': '1' }, body })).json();
+    const boot = (await call('bootstrap')) as { result: { readOnly: boolean; settings: { notifications: Record<string, unknown> } } };
+    expect(boot.result.readOnly).toBe(true);
+    expect(boot.result.settings.notifications).toMatchObject({ telegramChatId: '1', onFailure: true });
+    expect(boot.result.settings.notifications.telegramToken).toBeUndefined();
+    expect(boot.result.settings.notifications.webhookUrl).toBeUndefined();
+    for (const m of ['cancelTask', 'gitDiff', 'compareWithTarget', 'syncItemDiff', 'assistantAsk', 'saveSettings']) expect(((await call(m)) as { ok: boolean }).ok).toBe(false);
+    expect(((await call('runs')) as { ok: boolean }).ok).toBe(true);
+  });
+});

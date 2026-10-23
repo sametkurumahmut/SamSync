@@ -166,7 +166,8 @@ export async function restoreRunGroups(ctx: CoreContext, run: RunDetail): Promis
   for (const ts of run.targets) {
     const node = findNode(ctx.config, ts.key);
     if (!node) continue;
-    const done = run.results.filter((r) => r.key === ts.key && r.ok && r.kind !== 'mkdir');
+    // a folder the run made where a file was: the file comes back (from the backup) in its place
+    const done = run.results.filter((r) => r.key === ts.key && r.ok && (r.kind !== 'mkdir' || r.backedUp));
     if (!done.length) continue;
     const open = () => transportForNode(ctx, node);
     const tgt = await open();
@@ -179,7 +180,7 @@ export async function restoreRunGroups(ctx: CoreContext, run: RunDetail): Promis
           const st = await tgt.stat(from);
           if (!st) continue;
           if (!st.isDir) {
-            ops.push({ id: String(i++), kind: 'copy', rel: r.rel, isDir: false, size: st.size, mtimeMs: st.mtimeMs, src: { kind: 'endpoint', key: 'self', rel: from } });
+            ops.push({ id: String(i++), kind: 'copy', rel: r.rel, isDir: false, size: st.size, mtimeMs: st.mtimeMs, src: { kind: 'endpoint', key: 'self', rel: from }, replaceType: r.kind === 'mkdir' || undefined });
           } else {
             ops.push({ id: String(i++), kind: 'mkdir', rel: r.rel, isDir: true, size: 0 });
             const scan = await scanTree(tgt, from, { caseInsensitive: tgt.caseInsensitive });
@@ -189,8 +190,9 @@ export async function restoreRunGroups(ctx: CoreContext, run: RunDetail): Promis
               else ops.push({ id: String(i++), kind: 'copy', rel: target, isDir: false, size: e.size, mtimeMs: e.mtimeMs, src: { kind: 'endpoint', key: 'self', rel: relJoin(from, e.rel) } });
             }
           }
-        } else if (r.kind === 'copy') {
-          // nothing was kept, so the run created it: it goes
+        } else if (r.kind === 'copy' && r.created) {
+          // the run created it: it goes. A file it replaced without keeping the old one (a machine with backups
+          // off, a file already the same) stays as it is: deleting it would lose more than the run brought
           ops.push({ id: String(i++), kind: 'delete', rel: r.rel, isDir: false, size: 0 });
         }
       }

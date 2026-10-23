@@ -92,6 +92,8 @@ export class ReflogWatcher {
   private offset = 0;
   private pending: { from?: string } = {};
   private reading = false;
+  /** stop() came while start() was still asking git: start must not set the watch up after all. */
+  private stopped = false;
   error?: string;
 
   constructor(
@@ -103,8 +105,10 @@ export class ReflogWatcher {
 
   async start(): Promise<void> {
     this.error = undefined;
+    this.stopped = false;
     try {
       const gitDir = (await gitText(this.repo, ['rev-parse', '--absolute-git-dir'])).trim();
+      if (this.stopped) return;
       this.file = path.join(gitDir, 'logs', 'HEAD');
       this.offset = fs.existsSync(this.file) ? fs.statSync(this.file).size : 0;
       fs.watchFile(this.file, { interval: this.intervalMs }, () => void this.read());
@@ -119,7 +123,11 @@ export class ReflogWatcher {
     this.reading = true;
     try {
       const size = fs.existsSync(this.file) ? fs.statSync(this.file).size : 0;
-      if (size < this.offset) this.offset = 0; // the reflog was expired or rewritten
+      // the reflog was expired or rewritten: what is in it now is old history, not new moves to send
+      if (size < this.offset) {
+        this.offset = size;
+        return;
+      }
       if (size === this.offset) return;
       const fd = fs.openSync(this.file, 'r');
       const buf = Buffer.alloc(size - this.offset);
@@ -145,6 +153,7 @@ export class ReflogWatcher {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.file) fs.unwatchFile(this.file);
     this.file = '';
   }

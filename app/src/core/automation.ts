@@ -37,12 +37,23 @@ const IGNORED = [/(^|[\\/])\.git([\\/]|$)/, /~$/, /\.(tmp|swp|swx|crdownload|par
 
 // ------------------------------------------------------------------ folder watch
 
-/** Watches files and folders, collects changed paths and reports them after a quiet period. */
+/** A watch that broke (a share gone after sleep, a folder not there yet) is set up again this often. */
+const WATCH_RETRY_MS = 30_000;
+
+/**
+ * Watches files and folders, collects changed paths and reports them after a quiet period, or after `maxWaitMs` at
+ * the latest (a file rewritten all the time would otherwise put the send off for ever). A watch that fails is tried
+ * again every half minute; `onError` hears of it, and of the recovery (undefined).
+ */
 export class ChangeCollector {
   private watchers: fs.FSWatcher[] = [];
   /** path -> true once a create/rename event was seen (false: only content "change" events) */
   private changed = new Map<string, boolean>();
   private timer: NodeJS.Timeout | null = null;
+  private retry: NodeJS.Timeout | null = null;
+  private stopped = false;
+  /** When the first change of the batch being collected came. */
+  private firstAt = 0;
   error?: string;
 
   constructor(
@@ -50,6 +61,8 @@ export class ChangeCollector {
     private quietMs: number,
     private onBatch: (paths: string[], contentOnly: Set<string>) => void,
     private ignore: (abs: string) => boolean = () => false,
+    private onError?: (error: string | undefined) => void,
+    private maxWaitMs = Math.max(60_000, quietMs * 10),
   ) {}
 
   get pending(): number {
@@ -57,6 +70,7 @@ export class ChangeCollector {
   }
 
   start(): void {
+    this.stopped = false;
     this.error = undefined;
     for (const raw of this.paths) {
       const p = normalizeAbs(raw);
@@ -64,25 +78,44 @@ export class ChangeCollector {
         const st = fs.statSync(p);
         if (st.isDirectory()) {
           const w = fs.watch(p, { recursive: true }, (ev, name) => name && this.touch(path.join(p, name.toString()), ev === 'rename'));
-          w.on('error', (e) => (this.error = `${p}: ${errMessage(e)}`));
+          w.on('error', (e) => this.broke(`${p}: ${errMessage(e)}`));
           this.watchers.push(w);
         } else {
           // editors often save by replacing the file, so watch the folder and pick our name out
           const dir = path.dirname(p);
           const base = path.basename(p).toLowerCase();
           const w = fs.watch(dir, (_ev, name) => name && name.toString().toLowerCase() === base && this.touch(p));
-          w.on('error', (e) => (this.error = `${p}: ${errMessage(e)}`));
+          w.on('error', (e) => this.broke(`${p}: ${errMessage(e)}`));
           this.watchers.push(w);
         }
       } catch (e) {
         this.error = `${p}: ${errMessage(e)}`;
       }
     }
+    if (this.error) this.broke(this.error);
+  }
+
+  /** A watch stopped (Node closes a watcher on its error): said, and tried again in a while. */
+  private broke(error: string): void {
+    this.error = error;
+    this.onError?.(error);
+    if (this.stopped || this.retry) return;
+    this.retry = setTimeout(() => {
+      this.retry = null;
+      if (this.stopped) return;
+      this.closeWatchers();
+      this.start();
+      if (!this.error) this.onError?.(undefined);
+    }, WATCH_RETRY_MS);
+    this.retry.unref?.();
   }
 
   touch(abs: string, renamed = true): void {
     if (IGNORED.some((r) => r.test(abs)) || this.ignore(abs)) return;
     this.changed.set(abs, renamed || !!this.changed.get(abs));
+    const now = Date.now();
+    if (!this.firstAt) this.firstAt = now;
+    if (now - this.firstAt >= this.maxWaitMs) return this.flush();
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), this.quietMs);
   }
@@ -90,6 +123,7 @@ export class ChangeCollector {
   flush(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.firstAt = 0;
     if (!this.changed.size) return;
     const batch = [...this.changed.keys()];
     const contentOnly = new Set([...this.changed].filter(([, renamed]) => !renamed).map(([p]) => p));
@@ -98,8 +132,15 @@ export class ChangeCollector {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
+    this.closeWatchers();
+  }
+
+  private closeWatchers(): void {
     for (const w of this.watchers) w.close();
     this.watchers = [];
   }
@@ -244,6 +285,11 @@ class WatchRunner {
         if (!root) return false;
         const rel = toPosix(path.relative(root, abs));
         return !!rel && ancestorExcluded(filter, rel);
+      }, (error) => {
+        // the watch broke or came back: the card says so
+        this.state.error = error;
+        this.state.status = error ? 'error' : 'watching';
+        this.onChange();
       });
       this.collector.start();
       this.state.error = this.collector.error;
@@ -498,6 +544,9 @@ function parseTime(t: string): [number, number] | null {
 }
 
 /** Next due time of a schedule after `last` (or after `since` when it never ran). */
+/** Without catching up, a clock-time slot still runs when the check comes this much after it (a busy or waking computer). */
+const SLOT_GRACE_MS = 5 * 60_000;
+
 export function nextRun(s: SyncSchedule, last: number | undefined, since: number, now = Date.now(), catchUp = true): number | undefined {
   if (s.mode === 'interval') {
     const every = Math.max(1, s.everyMinutes) * 60_000;
@@ -505,8 +554,9 @@ export function nextRun(s: SyncSchedule, last: number | undefined, since: number
   }
   const times = s.times.map(parseTime).filter((x): x is [number, number] => !!x);
   if (!times.length) return undefined;
-  // without catching up, a slot that already passed is skipped, not run late
-  const after = Math.max(last ?? since, since, catchUp ? -Infinity : now);
+  // catching up: every slot since the last run goes, also one that passed while the app was closed. Without it a slot
+  // runs when its time comes (a tick a little late is fine) and one missed for longer is skipped, not run late
+  const after = catchUp ? (last ?? since) : Math.max(last ?? since, since, now - SLOT_GRACE_MS);
   let best: number | undefined;
   for (let day = 0; day <= 1; day++) {
     for (const [h, m] of times) {
@@ -657,8 +707,11 @@ export class Automation {
   async checkSchedules(): Promise<void> {
     if (this.host.isPaused()) return;
     const now = Date.now();
-    for (const s of this.snapshot().schedules) {
-      if (!s.enabled || !s.activeHere || s.running || s.nextAt == null || s.nextAt > now) continue;
+    for (const due of this.snapshot().schedules) {
+      if (!due.enabled || !due.activeHere || due.running || due.nextAt == null || due.nextAt > now) continue;
+      // looked at again right before it runs: a tick that started while an earlier job ran may have run it already
+      const s = this.snapshot().schedules.find((x) => x.jobId === due.jobId);
+      if (!s || !s.enabled || s.running || s.nextAt == null || s.nextAt > Date.now()) continue;
       const quickId = quickIdOf(s.jobId);
       if (quickId) {
         const q = this.host.getQuickSends?.().find((x) => x.id === quickId);

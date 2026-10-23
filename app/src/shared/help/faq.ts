@@ -924,6 +924,61 @@ export const FAQ: FaqEntry[] = [
     page: 'settings',
   },
   {
+    id: 'error-hints',
+    topic: 'trouble',
+    q: { tr: 'Bir makine hatalı bitti; hatanın anlamı ne, ne yapmalıyım?', en: 'A machine failed; what does the error mean and what do I do?' },
+    a: {
+      tr: 'Çalıştırma penceresinde ve Geçmiş’te hatalı makinenin altında hatanın olası nedeni ve ne yapılacağı yazar: yazma izni yok, disk dolu, dosyayı bir program kullanıyor, ağ bağlantısı koptu, yol çok uzun, makineye ulaşılamadı gibi. Geçmiş › Hatalar sekmesi bu nedenleri listenin üstünde sayar; **HTML** düğmesi hepsini tek sayfa olarak kaydeder.',
+      en: 'In the run window and in History, a failed machine shows the likely cause of its error and what to do: no permission to write, the disk is full, a program uses the file, the link dropped, the path is too long, the machine could not be reached. History › Errors counts the causes above the list; the **HTML** button saves it all as one page.',
+    },
+    keywords: ['hata', 'error', 'neden', 'why', 'izin', 'permission', 'disk dolu', 'disk full', 'kullanımda', 'in use', 'rapor', 'report', 'html'],
+    page: 'history',
+  },
+  {
+    id: 'filter-preview',
+    topic: 'send',
+    q: { tr: 'Filtrelerim hangi dosyaları dışarıda bırakıyor?', en: 'Which files do my filters leave out?' },
+    a: {
+      tr: 'Gönder › Filtreler › **Neyi dışarıda bırakıyor?** kaynakları şimdiki filtrelerle gezer ve dışarıda kalan her dosya ve klasörü onu dışlayan desenle gösterir: gönderimin kendi deseni, klasördeki `.samsyncignore` ya da SamSync’in kendi dosyaları. Bir klasör dışarıda kalınca altındakiler ayrıca sayılmaz.',
+      en: 'Send › Filters › **What do they leave out?** walks the sources with the current filters and shows every file and folder left out, with the pattern that did it: the send’s own, the folder’s `.samsyncignore`, or SamSync’s own files. Below a folder left out nothing is counted again.',
+    },
+    keywords: ['filtre', 'filter', 'hariç', 'exclude', 'dışarıda', 'left out', 'samsyncignore', 'desen', 'pattern'],
+    page: 'send',
+  },
+  {
+    id: 'run-note',
+    topic: 'trouble',
+    q: { tr: 'Bir gönderime neden yapıldığını not edebilir miyim?', en: 'Can I note why a send was made?' },
+    a: {
+      tr: 'Evet: Geçmiş’te çalıştırmayı seçip **Not ekle**. Not başlığın altında ve listede bir simgeyle görünür, Geçmiş’teki arama onu da bulur, HTML raporda da yer alır.',
+      en: 'Yes: pick the run in History and **Add note**. The note shows under the title and with an icon in the list, the History search finds it, and the HTML report has it too.',
+    },
+    keywords: ['not', 'note', 'açıklama', 'comment', 'neden', 'why', 'geçmiş', 'history'],
+    page: 'history',
+  },
+  {
+    id: 'bandwidth-hours',
+    topic: 'settings',
+    q: { tr: 'Bant sınırı yalnızca mesai saatlerinde olabilir mi?', en: 'Can the bandwidth limit hold in working hours only?' },
+    a: {
+      tr: 'Evet: Ayarlar › Kopyalama › *Bant sınırı saatleri* alanına örneğin `08:00-18:00` yazın (gece aşan `22:00-06:00` da olur; boş = her zaman). Sınır bu saatlerde başlayan gönderimlere uygulanır; dışında gönderimler sınırsız gider. Gönderim başlarken bakılır.',
+      en: 'Yes: put for example `08:00-18:00` in Settings › Copy › *Bandwidth limit hours* (over midnight like `22:00-06:00` works too; empty = always). The limit applies to sends that start in those hours; outside them sends go unlimited. It is looked at when a send starts.',
+    },
+    keywords: ['bant', 'bandwidth', 'saat', 'hours', 'mesai', 'working hours', 'yavaş', 'slow', 'sınır', 'limit'],
+    page: 'settings',
+  },
+  {
+    id: 'targets-state',
+    topic: 'targets',
+    q: { tr: 'Yalnızca sorunlu makineleri nasıl görürüm?', en: 'How do I see only the machines with a problem?' },
+    a: {
+      tr: 'Hedefler sayfasında aramanın yanındaki **Durum** menüsünden seçin: erişilemeyen, meşgul, son gönderimi hatalı, devre dışı ya da SamSync çalışmayan makineler. Menüde her durumun yanında kaç makine olduğu yazar.',
+      en: 'Pick it in the **Status** menu beside the search on the Targets page: unreachable, busy, last send failed, turned off, or without SamSync. The menu shows how many machines each state has.',
+    },
+    keywords: ['durum', 'status', 'süz', 'filter', 'erişilemeyen', 'unreachable', 'meşgul', 'busy', 'hatalı', 'failed'],
+    page: 'targets',
+  },
+  {
     id: 'logs',
     topic: 'trouble',
     q: { tr: 'Günlükler nerede?', en: 'Where are the logs?' },
