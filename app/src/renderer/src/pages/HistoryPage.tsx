@@ -12,6 +12,7 @@ import { HistoryStats } from '../components/HistoryStats';
 import { ago, bytes, cls, dateTime, duration, num, splitPath } from '../lib/format';
 import { MachineName } from '../components/MachineName';
 import { locale, t, tk } from '@shared/i18n';
+import { askConfirm } from '../components/ConfirmDialog';
 
 type Range = 'all' | 'today' | '7d' | '30d';
 
@@ -111,7 +112,7 @@ export function HistoryPage() {
             variant="ghost"
             icon={<Eraser size={14} />}
             onClick={async () => {
-              if (!confirm(t('Bütün geçmiş silinsin mi?'))) return;
+              if (!(await askConfirm(t('Bütün geçmiş silinsin mi?'), { danger: true }))) return;
               await api.clearRuns();
               load();
               toast('ok', t('Geçmiş temizlendi'));
@@ -236,7 +237,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
   const canUndo = !!summary.options?.backup && !summary.dryRun && summary.origin !== 'restore' && summary.opsOk > 0;
   const undo = async () => {
     const n = summary.targets.filter((x) => x.status === 'ok' || x.status === 'partial').length;
-    if (!confirm(t('{n} makinede bu gönderimin değiştirdiği ve sildiği dosyalar yedeklerinden geri gelecek, eklediği yeni dosyalar silinecek. Şimdiki hâlleri de yedeklenir. Devam edilsin mi?', { n }))) return;
+    if (!(await askConfirm(t('{n} makinede bu gönderimin değiştirdiği ve sildiği dosyalar yedeklerinden geri gelecek, eklediği yeni dosyalar silinecek. Şimdiki hâlleri de yedeklenir. Devam edilsin mi?', { n }), { danger: true }))) return;
     try {
       const id = await api.restoreRun(summary.id, true);
       st.watchRun(id);

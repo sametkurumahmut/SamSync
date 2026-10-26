@@ -41,6 +41,7 @@ import { t, tk, locale } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { withoutMirror } from '@shared/options';
 import { relsFor } from '@shared/sources';
+import { askConfirm } from '../components/ConfirmDialog';
 
 function StatusPill({ status }: { status: WatchState['status'] }) {
   const map: Record<WatchState['status'], { label: string; cls: string; icon: React.ReactNode }> = {
@@ -242,7 +243,7 @@ export function AutomationPage() {
                       icon={<Trash2 size={13} />}
                       tip={t('Kaldır')}
                       onClick={async () => {
-                        if (!confirm(t('“{name}” izlemesi kaldırılsın mı?', { name: w.name }))) return;
+                        if (!(await askConfirm(t('“{name}” izlemesi kaldırılsın mı?', { name: w.name }), { danger: true }))) return;
                         useApp.setState({ automation: await api.watchRemove(w.id) });
                         await saveSettings({});
                         toast('ok', t('İzleme kaldırıldı'));

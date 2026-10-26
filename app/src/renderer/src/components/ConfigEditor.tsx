@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { useUnsaved } from '../lib/unsaved';
 import { Button, Modal } from './ui';
 import { t } from '@shared/i18n';
+import { askConfirm } from './ConfirmDialog';
 
 /** Where JSON.parse stopped, as line and column, so the message points at the text. */
 function parseError(text: string): string | null {
@@ -95,8 +96,8 @@ export function ConfigEditor({ onClose }: { onClose: () => void }) {
           <FileJson size={16} />
         </div>
       }
-      onClose={() => {
-        if (dirty && !confirm(t('Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.', { what: t('Yapılandırma (JSON)') }))) return;
+      onClose={async () => {
+        if (dirty && !(await askConfirm(t('Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.', { what: t('Yapılandırma (JSON)') }), { danger: true }))) return;
         onClose();
       }}
       footer={

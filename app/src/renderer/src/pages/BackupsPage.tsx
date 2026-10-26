@@ -9,6 +9,7 @@ import { baseName, bytes, cls, dateTime } from '../lib/format';
 import { t } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { readStored, writeStored } from '../lib/persist';
+import { askConfirm } from '../components/ConfirmDialog';
 
 /** A version is a date folder inside one backup folder: the configured one or an older one at the target root. */
 const versionKey = (v: BackupVersion) => `${v.folder}/${v.stamp}`;
@@ -94,7 +95,7 @@ export function BackupsPage() {
   const chosen = Object.entries(picks).filter(([, s]) => !!s) as [string, string][];
   const restore = async () => {
     if (!chosen.length) return;
-    if (!confirm(t('{n} hedefte “{path}” seçilen yedekle değiştirilecek. Devam edilsin mi?', { n: chosen.length, path: rel }))) return;
+    if (!(await askConfirm(t('{n} hedefte “{path}” seçilen yedekle değiştirilecek. Devam edilsin mi?', { n: chosen.length, path: rel }), { danger: true }))) return;
     try {
       const id = await api.restore(
         rel,

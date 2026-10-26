@@ -9,6 +9,7 @@ import { Button, Checkbox, Field, ListSkeleton, Modal, Segmented } from './ui';
 import { ago, bytes, cls, num } from '../lib/format';
 import { t } from '@shared/i18n';
 import { machineLabel } from '@shared/machine';
+import { askConfirm } from './ConfirmDialog';
 
 export function DistributeDialog({ source, onClose }: { source: NodeConfig; onClose: () => void }) {
   const nodes = useApp((s) => s.boot!.config.nodes);
@@ -39,7 +40,7 @@ export function DistributeDialog({ source, onClose }: { source: NodeConfig; onCl
     return next;
   };
   const go = async () => {
-    if (mode === 'mirror' && !confirm(t('Ayna kipi hedeflerde {name} makinesinde olmayan dosyaları siler. Sürsün mü?', { name: source.name }))) return;
+    if (mode === 'mirror' && !(await askConfirm(t('Ayna kipi hedeflerde {name} makinesinde olmayan dosyaları siler. Sürsün mü?', { name: source.name }), { danger: true }))) return;
     setBusy(true);
     try {
       const runId = await api.distributeFrom(source.id, [...picked], [...targets], mode);

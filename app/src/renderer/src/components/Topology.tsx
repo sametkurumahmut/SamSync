@@ -9,6 +9,7 @@ import { cls } from '../lib/format';
 import { MachineName } from './MachineName';
 import { busyUnknown, dotClass } from './BusyBadge';
 import { t } from '@shared/i18n';
+import { askConfirm } from './ConfirmDialog';
 
 /** Machine cards stretch between these to fill their group box, so the address line is never cut short. */
 const MIN_NODE_W = 150;
@@ -145,7 +146,7 @@ export function Topology({ compact }: { compact?: boolean }) {
     if (box.key === current) return;
     if (!configWritable) return toast('warn', t('Yapılandırma salt okunur'));
     const groupName = box.key ? box.members[0]?.group ?? box.name : undefined;
-    if (!confirm(groupName ? t('{name} makinesi {group} grubuna taşınsın mı?', { name: node.name, group: groupName }) : t('{name} makinesi gruptan çıkarılsın mı?', { name: node.name }))) return;
+    if (!(await askConfirm(groupName ? t('{name} makinesi {group} grubuna taşınsın mı?', { name: node.name, group: groupName }) : t('{name} makinesi gruptan çıkarılsın mı?', { name: node.name })))) return;
     const next = cfg.nodes.map((n) => (n.id === node.id ? { ...n, group: groupName, relay: groupName ? n.relay : undefined } : n));
     if (await saveConfig({ ...cfg, nodes: next })) toast('ok', groupName ? t('{name} → {group}', { name: node.name, group: groupName }) : t('{name} gruptan çıkarıldı', { name: node.name }));
   };

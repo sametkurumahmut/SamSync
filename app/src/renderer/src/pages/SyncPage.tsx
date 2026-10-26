@@ -41,6 +41,7 @@ import { ago, bytes, cls, num, shortDateTime, splitPath } from '../lib/format';
 import { locale, t, tk } from '@shared/i18n';
 import { tx } from '../lib/i18n';
 import { readStored, writeStored } from '../lib/persist';
+import { askConfirm } from '../components/ConfirmDialog';
 
 const VARIANTS: { value: SyncVariant; label: string; desc: string; icon: typeof ArrowRight }[] = [
   { value: 'twoWay', label: tk('İki yönlü'), desc: tk('Değişiklikleri iki tarafa da yayar, silinenleri son eşitlemeden anlar'), icon: ArrowLeftRight },
@@ -217,7 +218,7 @@ export function SyncPage() {
               onSave={() => void persist().then((ok) => ok && toast('ok', t('İş kaydedildi')))}
               onRevert={() => setDraft(null)}
               onDelete={async () => {
-                if (!confirm(t('“{name}” silinsin mi?', { name: job.name }))) return;
+                if (!(await askConfirm(t('“{name}” silinsin mi?', { name: job.name }), { danger: true }))) return;
                 await saveConfig({ ...cfg, syncJobs: jobs.filter((x) => x.id !== job.id) });
                 await api.resetSyncState(job.id);
                 setActiveId(null);

@@ -22,6 +22,7 @@ import { PathLink } from '../components/PathLink';
 import { DiscoverDialog, nodeFromHost } from '../components/DiscoverDialog';
 import { LatencySpark } from '../components/charts';
 import { lowOnSpace, machineLabel, normalizeMac } from '@shared/machine';
+import { askConfirm } from '../components/ConfirmDialog';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -143,7 +144,7 @@ export function TargetsPage() {
   };
   // restart or shut down a machine whose SamSync allows it, a minute from now (or cancel that)
   const powerNode = async (n: NodeConfig, action: 'restart' | 'shutdown' | 'cancel') => {
-    if (action !== 'cancel' && !confirm(action === 'restart' ? t('{name} bir dakika içinde yeniden başlatılsın mı? Ekranda uyarı çıkar.', { name: n.name }) : t('{name} bir dakika içinde kapatılsın mı? Ekranda uyarı çıkar.', { name: n.name }))) return;
+    if (action !== 'cancel' && !(await askConfirm(action === 'restart' ? t('{name} bir dakika içinde yeniden başlatılsın mı? Ekranda uyarı çıkar.', { name: n.name }) : t('{name} bir dakika içinde kapatılsın mı? Ekranda uyarı çıkar.', { name: n.name }), { danger: true }))) return;
     const [r] = await api.power([n.id], action);
     if (r?.ok) toast('ok', action === 'cancel' ? t('İptal edildi') : action === 'restart' ? t('{name} yeniden başlıyor', { name: n.name }) : t('{name} kapanıyor', { name: n.name }));
     else toast('error', t('Yapılamadı'), r?.error);
@@ -161,7 +162,7 @@ export function TargetsPage() {
       return next;
     });
   const updateAgents = async (ids: string[]) => {
-    if (!confirm(t('{n} makineye SamSync {version} kurulumu bırakılsın mı? Makineler ellerindeki iş bitince kurar ve yeniden açılır.', { n: ids.length, version: boot.appVersion }))) return;
+    if (!(await askConfirm(t('{n} makineye SamSync {version} kurulumu bırakılsın mı? Makineler ellerindeki iş bitince kurar ve yeniden açılır.', { n: ids.length, version: boot.appVersion })))) return;
     const nameOf = (nid: string) => cfg.nodes.find((n) => n.id === nid)?.name ?? nid;
     setUpdating(ids);
     try {
@@ -662,7 +663,7 @@ function NodeEditor({ node, prefill, onClose }: { node: NodeConfig | null; prefi
   };
 
   const remove = async () => {
-    if (!node || !confirm(t('{name} silinsin mi?', { name: node.name }))) return;
+    if (!node || !(await askConfirm(t('{name} silinsin mi?', { name: node.name }), { danger: true }))) return;
     if (await saveConfig({ ...cfg, nodes: cfg.nodes.filter((x) => x !== node), profiles: cfg.profiles.map((p) => ({ ...p, targetIds: p.targetIds.filter((tid) => tid !== node.id) })) })) onClose();
   };
 

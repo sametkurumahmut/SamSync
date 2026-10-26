@@ -11,6 +11,7 @@ import { ratesPerSecond } from '../lib/rates';
 import { bytes, cls, duration, num } from '../lib/format';
 import { tx } from '../lib/i18n';
 import { locale, t } from '@shared/i18n';
+import { askConfirm } from './ConfirmDialog';
 
 export function StatusIcon({ status, size = 16 }: { status: RunTargetState['status']; size?: number }) {
   if (status === 'running') return <Loader2 size={size} className="spin" color="var(--accent)" />;
@@ -43,7 +44,7 @@ function HoldersBox({ runId }: { runId: string }) {
   const closeAndRetry = async (r: HolderReport) => {
     const progs = r.programs.filter((p) => p.closable !== false);
     if (!progs.length) return;
-    if (!confirm(t('{machine} makinesinde {names} kapatılsın ve kullanımdaki dosyalar yeniden yazılsın mı? O programlardaki kaydedilmemiş işler kaybolabilir.', { machine: r.title, names: progs.map((p) => p.name).join(', ') }))) return;
+    if (!(await askConfirm(t('{machine} makinesinde {names} kapatılsın ve kullanımdaki dosyalar yeniden yazılsın mı? O programlardaki kaydedilmemiş işler kaybolabilir.', { machine: r.title, names: progs.map((p) => p.name).join(', ') }), { danger: true }))) return;
     setClosing(r.key);
     try {
       const c = await api.closeHolders(runId, r.key, progs.map((p) => p.pid));

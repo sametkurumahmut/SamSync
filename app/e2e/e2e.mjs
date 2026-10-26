@@ -123,6 +123,8 @@ try {
     const undo = page.getByRole('button', { name: 'Restore', exact: true });
     await undo.waitFor();
     await undo.click();
+    // the app asks in its own dialog, not the browser's
+    await page.getByRole('dialog', { name: 'SamSync' }).getByRole('button', { name: 'OK', exact: true }).click();
     await page.getByText('Completed successfully').waitFor({ timeout: 60_000 });
     for (const n of labA) {
       const now = snapshot(path.join(n.path, 'Data'));

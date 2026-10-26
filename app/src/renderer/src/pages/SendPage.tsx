@@ -18,6 +18,7 @@ import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { FilterPreviewButton } from '../components/FilterPreview';
 import { ScheduleFields } from '../components/ScheduleFields';
 import { describeSchedule } from './AutomationPage';
+import { askConfirm } from '../components/ConfirmDialog';
 
 export const MODE_OPTIONS: { value: SendMode; label: string; tip: string }[] = [
   { value: 'overwrite', label: tk('Üzerine yaz'), tip: tk('Yeni ve değişen her dosyayı yazar.\nHedefteki daha yeni dosyalar da güncellenir (uyarıyla).') },
@@ -571,7 +572,7 @@ function QuickSendsBar({ canSave }: { canSave: boolean }) {
             className="chip-x"
             aria-label={t('Kaldır')}
             onClick={async () => {
-              if (!confirm(t('“{name}” hızlı gönderimi kaldırılsın mı?', { name: q.name }))) return;
+              if (!(await askConfirm(t('“{name}” hızlı gönderimi kaldırılsın mı?', { name: q.name }), { danger: true }))) return;
               await remove(q.id);
             }}
           >

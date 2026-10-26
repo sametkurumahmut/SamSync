@@ -40,6 +40,7 @@ import { bytes as bytesText } from '../lib/format';
 import { resolveLang, setLang, systemLang, t, type Lang } from '@shared/i18n';
 import { DEFAULT_SEND_OPTIONS, baseSendOptions } from '@shared/options';
 import { machineTitle } from '@shared/machine';
+import { askConfirm } from '../components/ConfirmDialog';
 
 export type Page = AppPage;
 
@@ -426,9 +427,9 @@ export const useApp = create<State>((set, get) => ({
     }
   },
 
-  setPage(p) {
+  async setPage(p) {
     const open = Object.values(get().unsaved);
-    if (p !== get().page && open.length && !confirm(t('Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.', { what: open.join(', ') }))) return;
+    if (p !== get().page && open.length && !(await askConfirm(t('Kaydedilmemiş değişiklikler var: {what}. Sayfadan çıkılsın mı? Bu değişiklikler kaybolur.', { what: open.join(', ') }), { danger: true }))) return;
     location.hash = p;
     set({ page: p });
     writeStored('samsync.page', p);
@@ -760,7 +761,7 @@ export const useApp = create<State>((set, get) => ({
     const mirrors = r.plan.targets.filter((tp) => tp.mode === 'mirror');
     const deletes = mirrors.reduce((n, tp) => n + tp.ops.filter((o) => o.kind === 'delete' && r.selected[tp.targetId]?.has(o.id)).length, 0);
     const dry = dryRun ?? r.plan.request.options.dryRun;
-    if (deletes && !dry && !confirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }))) return;
+    if (deletes && !dry && !(await askConfirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }), { danger: true }))) return;
     try {
       const runId = await api.executePlan(r.plan.id, selected, { ...(dryRun != null ? { dryRun } : {}), ...(r.stages?.first.length && !dry ? { stages: r.stages } : {}) });
       set({ review: null });

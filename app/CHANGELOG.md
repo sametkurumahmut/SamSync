@@ -1,5 +1,9 @@
 # Sürüm Geçmişi
 
+## 2.4.11 — 2026-10-26
+
+- **Onay pencereleri:** ayna kipinin silme uyarısı ve öteki bütün "emin misiniz?" soruları artık tarayıcının hazır kutusu yerine SamSync'in kendi penceresinde çıkıyor. Silme, üzerine yazma ya da kapatma gibi işlerde onay düğmesi kırmızı ve odak *Vazgeç*'te; yanlışlıkla Enter'a basmak bir şey silmiyor.
+
 ## 2.4.10 — 2026-10-23
 
 - **Makinenin grubu:** çalıştırma penceresinde ve Geçmiş'teki çalıştırma ayrıntısında her makinenin adının başında, varsa grubunun adı küçük bir etiket olarak yazıyor.

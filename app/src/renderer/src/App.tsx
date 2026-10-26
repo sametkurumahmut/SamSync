@@ -35,6 +35,7 @@ import { cls } from './lib/format';
 import { pathForFile } from './lib/api';
 import { Button, PageSkeleton } from './components/ui';
 import { Toasts } from './components/Toasts';
+import { ConfirmHost } from './components/ConfirmDialog';
 import { PlanReview, PlanningOverlay } from './components/PlanReview';
 import { RunPanel, RunPill } from './components/RunPanel';
 import { CommandPalette } from './components/CommandPalette';
@@ -356,6 +357,7 @@ function Shell() {
       <NotificationCenter />
       <ServerPicker />
       <Toasts />
+      <ConfirmHost />
     </div>
   );
 }

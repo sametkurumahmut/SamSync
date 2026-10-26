@@ -15,6 +15,7 @@ import { WebUiSection } from '../components/WebUiSettings';
 import { AgentSection } from '../components/AgentSettings';
 import { tx } from '../lib/i18n';
 import { Masonry } from '../components/Masonry';
+import { askConfirm } from '../components/ConfirmDialog';
 
 const LANG_NAMES = { tr: 'Türkçe', en: 'English', de: 'Deutsch', es: 'Español' } as const; // i18n-ignore: each language by its own name
 
@@ -118,7 +119,7 @@ export function SettingsPage() {
       [file] = await api.pick({ files: true, title: t('Eski sihirbazın durum dosyası'), filters: [{ name: 'JSON', extensions: ['json'] }] });
       if (!file) return;
     }
-    if (s.wizardImport && !confirm(t('Bu ayarlar daha önce içe aktarılmıştı. Son seçim yeniden yazılsın mı? Var olan profiller korunur.'))) return;
+    if (s.wizardImport && !(await askConfirm(t('Bu ayarlar daha önce içe aktarılmıştı. Son seçim yeniden yazılsın mı? Var olan profiller korunur.')))) return;
     setWizardBusy(true);
     try {
       const r = await api.importWizardState(file);

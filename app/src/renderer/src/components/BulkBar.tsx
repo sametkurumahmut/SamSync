@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { Button, Field, Modal } from './ui';
 import { t } from '@shared/i18n';
 import { compareVersions } from '@shared/version';
+import { askConfirm } from './ConfirmDialog';
 
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -26,7 +27,7 @@ export function BulkBar({ ids, onClear, onUpdate, onWake }: { ids: string[]; onC
   const power = async (action: 'restart' | 'shutdown') => {
     const able = picked.filter((n) => probes[n.id]?.agent?.alive && probes[n.id]?.agent?.power);
     if (!able.length) return toast('warn', t('Seçilenlerden hiçbiri buna izin vermiyor'), t('O makinelerde Ayarlar › Ajan › yeniden başlatma ve kapatma izni açık olmalı'));
-    if (!confirm(action === 'restart' ? t('{n} makine bir dakika içinde yeniden başlatılsın mı?', { n: able.length }) : t('{n} makine bir dakika içinde kapatılsın mı?', { n: able.length }))) return;
+    if (!(await askConfirm(action === 'restart' ? t('{n} makine bir dakika içinde yeniden başlatılsın mı?', { n: able.length }) : t('{n} makine bir dakika içinde kapatılsın mı?', { n: able.length }), { danger: true }))) return;
     const r = await api.power(
       able.map((n) => n.id),
       action,

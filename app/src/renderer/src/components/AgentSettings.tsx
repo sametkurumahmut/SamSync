@@ -6,6 +6,7 @@ import type { AgentSettings } from '@shared/types';
 import { useApp } from '../store/app';
 import { Button, Field, TagInput, ToggleRow } from './ui';
 import { t } from '@shared/i18n';
+import { askConfirm } from './ConfirmDialog';
 
 const DEFAULTS: AgentSettings = { receivePacks: true, notifyOnApply: true };
 
@@ -20,7 +21,7 @@ export function AgentChecks() {
   const node = boot.identity.node;
   if (!checks?.length || !node) return null;
   const fix = async (root: string) => {
-    if (!confirm(t('Bu makinenin ilk yerel kökü {old} yerine {root} olsun mu?', { old: node.localRoots[0] ?? '-', root }))) return;
+    if (!(await askConfirm(t('Bu makinenin ilk yerel kökü {old} yerine {root} olsun mu?', { old: node.localRoots[0] ?? '-', root })))) return;
     const roots = [root, ...node.localRoots.slice(1).filter((r) => r.toLowerCase() !== root.toLowerCase())];
     await saveConfig({ ...boot.config, nodes: boot.config.nodes.map((n) => (n.id === node.id ? { ...n, localRoots: roots } : n)) });
   };
