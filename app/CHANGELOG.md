@@ -1,6 +1,6 @@
 # Sürüm Geçmişi
 
-## Yayımlanmamış
+## 2.4.12 — 2026-10-27
 
 - **Görünüm düzeltmeleri:**
   - Gönder sayfasında seçenekler alttaki çubuğun arkasına kayıyordu; sütunlar artık kendi içinde kayıyor, çubuk hep üstte.
