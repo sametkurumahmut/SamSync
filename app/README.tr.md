@@ -309,9 +309,9 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-İş akışı Windows, macOS ve Linux'ta test edip paketler ve hepsini bir GitHub Release'e yükler (`latest*.yml` güncelleme dosyalarıyla). Üç derleme de geçerse iş akışı `SHA256SUMS.txt` ekler, sürümü kendisi yayımlar ve kurulu uygulamalar güncellemeyi alır; biri başarısız olursa sürüm taslak kalır. `ci.yml` her PR'da üç işletim sisteminde tip denetimini, lint'i ve testleri, Windows ve Linux'ta uçtan uca testi çalıştırır.
+İş akışı Windows, macOS ve Linux'ta test edip paketler ve hepsini bir GitHub Release'e yükler (`latest*.yml` güncelleme dosyalarıyla). Üç derleme de geçerse iş akışı `SHA256SUMS.txt` ekler, sürümü kendisi yayımlar ve kurulu uygulamalar güncellemeyi alır; biri başarısız olursa sürüm taslak kalır. Sürüm notları, sürümün [CHANGELOG.md](CHANGELOG.md) bölümüdür (İngilizce); altında *Türkçe* başlığıyla katlanmış olarak [CHANGELOG.tr.md](CHANGELOG.tr.md) bölümü durur (`scripts/release-notes.mjs`). Güncelleme penceresi kendi dilindeki kısmı gösterir; İngilizce bölümü olmayan sürüm yayımlanmaz. `ci.yml` her PR'da üç işletim sisteminde tip denetimini, lint'i ve testleri, Windows ve Linux'ta uçtan uca testi çalıştırır.
 
-**Web sitesi.** `pages.yml` proje sitesini README'lerden, SSS'den ve ekran görüntülerinden kurar (`npm run site`, `site/` klasörüne) ve GitHub Pages'e yayımlar. Bir kez açılır: Settings → Pages → Source *GitHub Actions*, sonra depo değişkeni `SAMSYNC_PAGES` = `true`.
+**Web sitesi.** `pages.yml` proje sitesini README'lerden, SSS'den, ekran görüntülerinden ve sürüm geçmişlerinin son sürümlerinden kurar (`npm run site`, `site/` klasörüne) ve GitHub Pages'e yayımlar: bunları değiştiren her push'ta ve her sürümden sonra. Bir kez açılır: Settings → Pages → Source *GitHub Actions*, sonra depo değişkeni `SAMSYNC_PAGES` = `true`.
 
 ## Veriler
 

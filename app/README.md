@@ -303,9 +303,9 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-The workflow tests and packages the app on Windows, macOS and Linux and uploads everything to a GitHub Release (with the `latest*.yml` update feeds). Once all three builds pass, the workflow adds `SHA256SUMS.txt`, publishes the release itself and installed apps get the update; if one fails, the release stays a draft. `ci.yml` runs the type check, the lint and the tests on all three systems for every pull request, and the end-to-end test on Windows and Linux.
+The workflow tests and packages the app on Windows, macOS and Linux and uploads everything to a GitHub Release (with the `latest*.yml` update feeds). Once all three builds pass, the workflow adds `SHA256SUMS.txt`, publishes the release itself and installed apps get the update; if one fails, the release stays a draft. The release notes are the version's section of [CHANGELOG.md](CHANGELOG.md) in English, with the one from [CHANGELOG.tr.md](CHANGELOG.tr.md) folded under *Türkçe* (`scripts/release-notes.mjs`); the update window shows the part in its own language, and the release is not published without the English section. `ci.yml` runs the type check, the lint and the tests on all three systems for every pull request, and the end-to-end test on Windows and Linux.
 
-**Website.** `pages.yml` builds the project site from the READMEs, the FAQ and the screenshots (`npm run site`, into `site/`) and deploys it to GitHub Pages. Turn it on once: Settings → Pages → Source *GitHub Actions*, then the repository variable `SAMSYNC_PAGES` = `true`.
+**Website.** `pages.yml` builds the project site from the READMEs, the FAQ, the screenshots and the latest versions of the changelogs (`npm run site`, into `site/`) and deploys it to GitHub Pages, on every push that changes those and after every release. Turn it on once: Settings → Pages → Source *GitHub Actions*, then the repository variable `SAMSYNC_PAGES` = `true`.
 
 ## Data
 

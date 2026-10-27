@@ -103,7 +103,7 @@ import { HOLDERS_MAX_FILES, closePrograms, holdersUnder } from './holders';
 import type { RelayJob } from '../shared/relay';
 import { Automation } from './automation';
 import { convertWizardState, findWizardStates, isWizardState } from './wizardImport';
-import { resolveLang, setLang, systemLang, t, type Lang } from '../shared/i18n';
+import { getLang, resolveLang, setLang, systemLang, t, type Lang } from '../shared/i18n';
 
 export interface HostAdapter {
   isElectron: boolean;
@@ -115,7 +115,7 @@ export interface HostAdapter {
   systemLanguages?: string[];
   /** The GitHub repository the app updates from, for the release notes link. */
   repositoryUrl?: string;
-  /** CHANGELOG.md as shipped with the app, for the "what's new" card. */
+  /** CHANGELOG.md as shipped with the app, for the "what's new" card (CHANGELOG.tr.md next to it in Turkish). */
   changelogPath?: string;
   /** Where README.md and README.tr.md are (resources/ in the packaged app), for the help bot. */
   docsDir?: string;
@@ -2221,7 +2221,9 @@ export class Service implements Api {
         return null;
       }
     }
-    const section = await readChangelogSection(this.host.changelogPath, version);
+    // the Turkish notes in Turkish, the English ones in every other language
+    const own = getLang() === 'tr' ? this.host.changelogPath.replace(/\.md$/i, '.tr.md') : this.host.changelogPath;
+    const section = (await readChangelogSection(own, version)) ?? (own !== this.host.changelogPath ? await readChangelogSection(this.host.changelogPath, version) : null);
     return section && section.items.length ? section : null;
   }
 

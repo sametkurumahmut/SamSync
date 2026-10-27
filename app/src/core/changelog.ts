@@ -1,5 +1,6 @@
-// The "what's new" card after an update: the section of CHANGELOG.md for the running version. The file
-// travels with the app (resources/ in the packaged build, the project folder in development).
+// The "what's new" card after an update: the section of CHANGELOG.md (English) or CHANGELOG.tr.md (Turkish) for
+// the running version. The files travel with the app (resources/ in the packaged build, the project folder in
+// development).
 import fsp from 'node:fs/promises';
 import type { ChangelogSection } from '../shared/types';
 

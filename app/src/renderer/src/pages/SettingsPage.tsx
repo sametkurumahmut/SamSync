@@ -7,7 +7,8 @@ import { playFinishSound } from '../lib/sounds';
 import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls, dateTime } from '../lib/format';
 import { parseHours } from '@shared/machine';
-import { t, tk } from '@shared/i18n';
+import { getLang, t, tk } from '@shared/i18n';
+import { notesInLang } from '@shared/releasenotes';
 import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
 import { ConfigEditor } from '../components/ConfigEditor';
@@ -873,7 +874,7 @@ function UpdateStatus() {
       )}
       {update.notes && p !== 'none' && (
         <div className="faint selectable" style={{ fontSize: 12, marginTop: 8, whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto' }}>
-          {update.notes.replace(/<[^>]+>/g, '')}
+          {notesInLang(update.notes, getLang()).replace(/<[^>]+>/g, '')}
         </div>
       )}
     </div>

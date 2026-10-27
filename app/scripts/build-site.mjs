@@ -1,6 +1,6 @@
 // Builds the project's website (GitHub Pages) from what the app already ships: the READMEs as the documentation,
-// the FAQ the help bot answers from, and the README screenshots. One source for all three, so the site, the
-// bot and the repository never disagree.
+// the FAQ the help bot answers from, the README screenshots and the latest versions from the changelogs. One source
+// for all of them, so the site, the bot, the release pages and the repository never disagree.
 //   node scripts/build-site.mjs [outDir]     → <repo>/site by default (index.html in English, tr/ in Turkish)
 import fs from 'node:fs';
 import os from 'node:os';
@@ -91,6 +91,8 @@ const TEXT = {
     screenshots: 'Screenshots',
     docs: 'Documentation',
     faq: 'Questions and answers',
+    changes: 'What’s new',
+    allReleases: 'All releases',
     contents: 'Contents',
     version: `Latest version ${pkg.version}`,
     items: [
@@ -117,6 +119,8 @@ const TEXT = {
     screenshots: 'Ekran görüntüleri',
     docs: 'Belgeler',
     faq: 'Sorular ve yanıtlar',
+    changes: 'Yenilikler',
+    allReleases: 'Bütün sürümler',
     contents: 'İçindekiler',
     version: `Son sürüm ${pkg.version}`,
     items: [
@@ -131,6 +135,23 @@ const TEXT = {
 };
 
 const SHOTS = ['overview', 'send', 'compare', 'targets', 'sync', 'history'];
+/** How many versions the page shows; the rest are on the GitHub release pages. */
+const CHANGES = 5;
+
+/** The latest versions from the changelog in the page's language (English: CHANGELOG.md, Turkish: CHANGELOG.tr.md). */
+function changesHtml(lang) {
+  const file = path.join(root, lang === 'en' ? 'CHANGELOG.md' : 'CHANGELOG.tr.md');
+  if (!fs.existsSync(file)) return '';
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const sections = text.split(/^## /m).slice(1, CHANGES + 1);
+  return sections
+    .map((sec, i) => {
+      const nl = sec.indexOf('\n');
+      const head = sec.slice(0, nl).trim();
+      return `<details${i === 0 ? ' open' : ''}><summary>${esc(head)}</summary><div>${new Marked().parse(sec.slice(nl + 1))}</div></details>`;
+    })
+    .join('\n');
+}
 
 function page(lang) {
   const T = TEXT[lang];
@@ -160,7 +181,7 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
 <header class="top">
   <a class="brand" href="./"><img src="${up}icon.png" alt="" width="28" height="28"><span>SamSync</span></a>
   <nav aria-label="${esc(T.contents)}">
-    <a href="#features">${esc(T.features)}</a><a href="#screenshots">${esc(T.screenshots)}</a><a href="#docs">${esc(T.docs)}</a><a href="#faq">${esc(T.faq)}</a>
+    <a href="#features">${esc(T.features)}</a><a href="#changes">${esc(T.changes)}</a><a href="#screenshots">${esc(T.screenshots)}</a><a href="#docs">${esc(T.docs)}</a><a href="#faq">${esc(T.faq)}</a>
     <a href="${T.other.href}" lang="${lang === 'en' ? 'tr' : 'en'}">${esc(T.other.label)}</a>
     <a href="${REPO}">GitHub</a>
   </nav>
@@ -184,6 +205,10 @@ ${items.map((f) => `<details id="faq-${esc(f.id)}"><summary>${esc(f.q[lang])}</s
 </section>
 <section id="features"><h2>${esc(T.features)}</h2>
 <div class="grid">${T.items.map(([h, p]) => `<div class="card"><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join('')}</div>
+</section>
+<section id="changes" class="faq changes"><h2>${esc(T.changes)}</h2>
+${changesHtml(lang)}
+<p><a href="${REPO}/releases">${esc(T.allReleases)} →</a></p>
 </section>
 <section id="screenshots"><h2>${esc(T.screenshots)}</h2>
 <div class="shots">${SHOTS.map((s) => `<a href="${up}screenshots/${lang}-${s}.png"><img src="${up}screenshots/${lang}-${s}.png" alt="${esc(s)}" loading="lazy"></a>`).join('')}</div>

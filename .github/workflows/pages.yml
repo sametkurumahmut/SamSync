@@ -1,5 +1,6 @@
-# The project website on GitHub Pages, built from the READMEs, the help bot's FAQ and the screenshots
-# (app/scripts/build-site.mjs). It runs on pushes that touch those and by hand.
+# The project website on GitHub Pages, built from the READMEs, the help bot's FAQ, the screenshots and the
+# changelogs (app/scripts/build-site.mjs). It runs on pushes that touch those, after every release (so the page
+# names the version just out), and by hand.
 # One-time setup: Settings → Pages → Source: "GitHub Actions", then the repository variable SAMSYNC_PAGES = true
 # (Settings → Secrets and variables → Actions → Variables). Without the variable the job is skipped, not failed.
 name: Pages
@@ -7,7 +8,10 @@ name: Pages
 on:
   push:
     branches: [master]
-    paths: ['app/README*.md', 'app/src/shared/help/**', 'docs/screenshots/**', 'app/scripts/build-site.mjs', '.github/workflows/pages.yml']
+    paths: ['app/README*.md', 'app/CHANGELOG*.md', 'app/src/shared/help/**', 'docs/screenshots/**', 'app/scripts/build-site.mjs', '.github/workflows/pages.yml']
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +25,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: vars.SAMSYNC_PAGES == 'true'
+    # after a release only when it was published (a failed build leaves a draft and the old version stands)
+    if: vars.SAMSYNC_PAGES == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment:
       name: github-pages

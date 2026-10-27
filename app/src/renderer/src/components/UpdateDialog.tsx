@@ -3,7 +3,8 @@ import { useApp } from '../store/app';
 import { Button, Modal } from './ui';
 import { api } from '../lib/api';
 import { shortDate } from '../lib/format';
-import { t } from '@shared/i18n';
+import { getLang, t } from '@shared/i18n';
+import { notesInLang } from '@shared/releasenotes';
 
 /** The release notes as plain text: the update feed carries them as HTML. */
 function plainNotes(notes: string): string {
@@ -32,7 +33,7 @@ export function UpdateDialog() {
   const close = () => useApp.setState({ updatePrompt: false });
   if (!open || !update || update.phase !== 'ready') return null;
   const version = update.version ?? '';
-  const notes = update.notes ? plainNotes(update.notes) : '';
+  const notes = update.notes ? plainNotes(notesInLang(update.notes, getLang())) : '';
   return (
     <Modal
       title={t('SamSync v{version} kurulmaya hazır', { version })}

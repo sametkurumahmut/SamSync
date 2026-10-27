@@ -73,8 +73,8 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
-      # the notes are this version's CHANGELOG section: the update window in the app shows them (without notes
-      # GitHub would show the tagged commit's message)
+      # the notes are this version's CHANGELOG section in English, with the Turkish one folded under it: the update
+      # window in the app shows the part in its language (without notes GitHub would show the tagged commit's message)
       - uses: actions/checkout@v5
         with:
           path: src
