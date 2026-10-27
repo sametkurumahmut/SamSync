@@ -303,7 +303,7 @@ A cross-platform desktop app written from scratch to replace the old PowerShell 
   - `--to` selects the targets: machine, `group:`, `profile:`, `all`, `last`.
   - `--yes` sends at once, without the review.
   - `--restore` opens the Backups page with the items.
-  - `--plan-only` and `--check-only` run without opening a window: the plan or the state of the targets is written to standard output. The states are `Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata`; exit code 0 means everything is the same.
+  - `--plan-only` and `--check-only` run without opening a window: the plan or the state of the targets is written to standard output. The states are `Ayni` / `Farkli` / `Yok` / `Erisilemedi` / `Hata` (same / different / missing / unreachable / error; the old tool's words, kept so its scripts keep working); exit code 0 means everything is the same.
   - The processes Explorer starts for each item are merged into one send.
 - **Profiles** — store the send options together with the targets. The old wizard's profiles and last settings can be brought in with Settings → Configuration file → *Import wizard settings*.
 - **Mirror mode** — if there are items to delete on the targets, a separate confirmation with the total count is asked before sending. A one-click send that would delete is not sent directly; the review opens.
