@@ -2546,3 +2546,58 @@ a.titlebar-btn {
   line-height: 1.55;
   white-space: pre-wrap;
 }
+
+/* ------------------------------------------------------------------ polish */
+/* a short window: the Send page's columns scroll on their own instead of running under the action bar */
+.send-grid > .col {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.action-bar {
+  position: relative;
+  z-index: 2;
+}
+/* the Today tile's chart sits under its text, not across it */
+.ov-tile:has(.ov-spark) {
+  padding-bottom: 34px;
+}
+/* the help search is one field: the input inside the bar has no frame of its own */
+.help-search .input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-left: 0;
+}
+/* the last line of a diff stays clear of the horizontal scroll bar */
+.diff-scroll {
+  padding-bottom: 12px;
+}
+/* the command search stays in the middle of the title bar on every page */
+@media (min-width: 1000px) {
+  .titlebar-search {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+/* option rows: the labels on one line, and a number box or a select as tall as the segmented controls beside it */
+.options-row {
+  align-items: flex-start;
+}
+.options-row > .field > .input,
+.options-row > .field > .select {
+  height: 34px;
+}
+/* a single folder pair (no remove button) uses the whole width */
+.pair-row.solo {
+  grid-template-columns: 16px minmax(0, 1fr) 30px minmax(0, 1fr);
+}
+/* a long path or machine name ends in an ellipsis instead of being cut */
+.endpoint .input {
+  text-overflow: ellipsis;
+}
+.endpoint .select {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+}

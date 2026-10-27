@@ -135,11 +135,12 @@ export function Segmented<T extends string>({
   );
 }
 
-export function SearchInput({ value, onChange, placeholder, autoFocus, style }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; style?: CSSProperties }) {
+/** `size` md: as tall as the buttons beside it in a page header (sm, the default, for lists and cards). */
+export function SearchInput({ value, onChange, placeholder, autoFocus, style, size = 'sm' }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; style?: CSSProperties; size?: 'sm' | 'md' }) {
   return (
     <div className="input-wrap" style={style}>
       <Search size={14} />
-      <input className="input sm" value={value} placeholder={placeholder} aria-label={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)} spellCheck={false} />
+      <input className={cls('input', size === 'sm' && 'sm')} value={value} placeholder={placeholder} aria-label={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)} spellCheck={false} />
       {value && (
         <button className="btn ghost icon sm clear" onClick={() => onChange('')} style={{ width: 22, height: 22 }}>
           <X size={13} />

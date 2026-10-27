@@ -121,7 +121,7 @@ export function ComparePage() {
         {mode === 'sources' && (
           <>
             <Segmented value={options.compare} onChange={(compare) => setOptions({ compare })} options={compareOptions()} />
-            <Button size="lg" variant="primary" icon={<Play size={15} />} disabled={!sendPaths.length || !targets.length} onClick={() => void run()}>
+            <Button variant="primary" icon={<Play size={15} />} disabled={!sendPaths.length || !targets.length} onClick={() => void run()}>
               {plan ? t('Yeniden karşılaştır') : t('Karşılaştır')}
             </Button>
           </>
@@ -142,7 +142,7 @@ export function ComparePage() {
                   {t('Düzenle')}
                 </Button>
               </div>
-              <div style={{ maxHeight: 120, overflow: 'auto', padding: '0 12px 10px' }}>
+              <div style={{ maxHeight: 120, overflow: 'auto', padding: sendPaths.length ? '0 12px 10px' : '4px 16px 16px' }}>
                 {sendPaths.length ? (
                   sendPaths.map((p) => (
                     <div key={p} className="row mono ellipsis" style={{ fontSize: 11.5, gap: 6 }} title={p}>

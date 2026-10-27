@@ -319,6 +319,26 @@ describe('agents', () => {
       s.stop();
     }
   }, 30000);
+
+  it('go back to a release point only on that point’s machines', async () => {
+    const s = await sides();
+    try {
+      await write(path.join(s.src, 'a.txt'), 'v1', new Date('2026-01-01T00:00:00Z'));
+      const point = await send(s, req(s.src, { targetIds: ['PC1'], options: { ...defaultOptions, backup: true } }));
+      expect(point.run.status).toBe('ok');
+      await write(path.join(s.src, 'a.txt'), 'v2 sonra', new Date('2026-02-01T00:00:00Z'));
+      const later = await send(s, req(s.src, { options: { ...defaultOptions, backup: true } }));
+      expect(later.run.status).toBe('ok');
+      expect(read(path.join(s.pc2, 'Data', 'a.txt'))).toBe('v2 sonra');
+      const r = await s.me.restoreToTag(point.run.id, false);
+      expect(r).toEqual({ restored: 1, skipped: [] });
+      expect(read(path.join(s.pc1, 'Data', 'a.txt'))).toBe('v1');
+      // PC2 was not in the release point: the later send stays there
+      expect(read(path.join(s.pc2, 'Data', 'a.txt'))).toBe('v2 sonra');
+    } finally {
+      s.stop();
+    }
+  }, 30000);
 });
 
 describe('machine folder', () => {

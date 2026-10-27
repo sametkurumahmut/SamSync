@@ -2012,13 +2012,14 @@ export class Service implements Api {
   }
 
   /** Undoes a run: what it replaced or deleted comes back from its backups, what it created goes. */
-  async restoreRun(runId: string, backupCurrent: boolean): Promise<string> {
+  /** `only`: just these machines of the run (going back to a release point leaves the others as they are). */
+  async restoreRun(runId: string, backupCurrent: boolean, only?: ReadonlySet<string>): Promise<string> {
     const run = await this.history.get(runId);
     if (!run) throw new Error(t('Çalıştırma bulunamadı.'));
     if (!run.options?.backup) throw new Error(t('Bu gönderim yedek almadan yapılmış; geri alınamaz.'));
     if (run.dryRun) throw new Error(t('Deneme çalıştırması hiçbir şey yazmadı.'));
     const ctx = this.ctx();
-    const groups = await restoreRunGroups(ctx, run);
+    const groups = (await restoreRunGroups(ctx, run)).filter((g) => !only || only.has(g.key));
     if (!groups.length) throw new Error(t('Geri alınacak bir şey bulunamadı (yedekler silinmiş olabilir).'));
     const s = this.execSettings(t('Geri alma: {label}', { label: run.label }), 'restore', { backup: backupCurrent, notify: true }, { sources: run.sources, targetIds: groups.map((g) => g.key) });
     const handle = this.startQueued(ctx, groups, s);
@@ -2043,7 +2044,8 @@ export class Service implements Api {
     let restored = 0;
     for (const r of later) {
       try {
-        const id = await this.restoreRun(r.id, backupCurrent);
+        // only on the release point's machines: a later send that also went elsewhere stays there
+        const id = await this.restoreRun(r.id, backupCurrent, machines);
         const d = await this.runsActive.get(id)?.done;
         if (d && d.status !== 'ok') skipped.push(`${r.label}: ${t('{ok} başarılı, {failed} hatalı', { ok: d.opsOk, failed: d.opsFailed })}`);
         else restored++;

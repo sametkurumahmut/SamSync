@@ -219,6 +219,7 @@ a {
   --sidebar-w: 64px;
 }
 .titlebar {
+  position: relative;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -496,7 +497,8 @@ a {
   transform: translateY(0.5px);
 }
 .btn:disabled {
-  opacity: 0.45;
+  /* still readable: a disabled main button says what it would do */
+  opacity: 0.6;
   cursor: default;
   transform: none;
 }

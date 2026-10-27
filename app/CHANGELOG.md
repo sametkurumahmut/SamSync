@@ -1,5 +1,21 @@
 # Sürüm Geçmişi
 
+## Yayımlanmamış
+
+- **Görünüm düzeltmeleri:**
+  - Gönder sayfasında seçenekler alttaki çubuğun arkasına kayıyordu; sütunlar artık kendi içinde kayıyor, çubuk hep üstte.
+  - Genel bakış'ta *Bugün* kartının grafiği alt satırın üstüne taşmıyor.
+  - Üst çubuktaki komut arama kutusu geniş pencerede her sayfada ortada duruyor.
+  - Senkron'da klasör çifti satırı kartı dolduruyor, uzun yollar "…" ile kısalıyor, makine seçicinin oku kesilmiyor.
+  - Hedefler'de arama kutusu ve *Durum* düğmesi araç çubuğunun öteki düğmeleriyle aynı boyda.
+  - Git'te fark görünümünün yatay kaydırma çubuğu son satırı örtmüyor.
+  - Gönder'deki *Eşzamanlı hedef* ve Senkron'daki *Saklanacak sürüm* kutuları satırlarıyla hizalı.
+  - Karşılaştır'da düğme seçicilerle aynı boyda; boş Kaynaklar kartının ipucu kenara yapışmıyor.
+  - Ayarlar › Hakkında'da veri klasörü Windows'ta ters bölüyle yazıyor; *Geliştirici araçları* artık bir düğme.
+  - Yardım'da arama simgesi kutunun içinde. Kapalı düğmeler daha okunur.
+- **Düzeltme:** sürüm noktasında "Bu noktaya dön…", sonraki bir gönderim noktada olmayan makinelere de gittiyse onu o makinelerde de geri alıyordu; artık yalnızca noktanın makinelerinde geri alıyor.
+- **Düzeltme:** hedefteki manifest klasör adının büyük/küçük harfine bakıyordu: `Bin` diye yazılan bir klasör `bin` diye gönderilince manifest kullanılmıyor, ikisi ayrı kayıt olarak kalıyordu. Artık aynı klasör sayılıyor.
+
 ## 2.4.11 — 2026-10-26
 
 - **Onay pencereleri:** ayna kipinin silme uyarısı ve öteki bütün "emin misiniz?" soruları artık tarayıcının hazır kutusu yerine SamSync'in kendi penceresinde çıkıyor. Silme, üzerine yazma ya da kapatma gibi işlerde onay düğmesi kırmızı ve odak *Vazgeç*'te; yanlışlıkla Enter'a basmak bir şey silmiyor.

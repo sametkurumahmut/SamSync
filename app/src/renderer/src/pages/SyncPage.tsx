@@ -366,7 +366,7 @@ function JobView({
             ))}
           </div>
           {job.variant === 'custom' && <CustomEditor value={job.custom!} onChange={(custom) => onChange({ custom })} />}
-          <div className="row" style={{ gap: 14, flexWrap: 'wrap', marginTop: 12 }}>
+          <div className="row options-row" style={{ gap: 14, flexWrap: 'wrap', marginTop: 12 }}>
             <Field label={t('Karşılaştırma')}>
               <Segmented value={job.compare} onChange={(compare) => onChange({ compare })} options={compareOptions()} />
             </Field>
@@ -586,7 +586,7 @@ function CustomEditor({ value, onChange }: { value: CustomActions; onChange: (v:
 
 function PairEditor({ pair, onChange, onRemove, index }: { pair: SyncPair; onChange: (p: SyncPair) => void; onRemove?: () => void; index: number }) {
   return (
-    <div className="pair-row">
+    <div className={cls('pair-row', !onRemove && 'solo')}>
       <span className="faint tabular" style={{ width: 16 }}>
         {index + 1}
       </span>
@@ -595,7 +595,7 @@ function PairEditor({ pair, onChange, onRemove, index }: { pair: SyncPair; onCha
         <ArrowLeftRight size={16} />
       </div>
       <EndpointEditor value={pair.right} onChange={(right) => onChange({ ...pair, right })} side={t('Sağ')} />
-      {onRemove ? <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={onRemove} /> : <span style={{ width: 27 }} />}
+      {onRemove && <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={onRemove} />}
     </div>
   );
 }

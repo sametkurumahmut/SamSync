@@ -411,6 +411,20 @@ describe('a target manifest and the send’s exclusions', () => {
     expect(await manifestEntries(tgt, 'Bin', Date.now(), 86400_000, pdbOut)).toBeNull();
     expect(await manifestEntries(tgt, 'Bin', Date.now(), 86400_000)).not.toBeNull();
   });
+
+  it('is the same folder whatever the case of its name', async () => {
+    const { saveManifestSubtree, manifestEntries, readManifest } = await import('../src/core/manifest');
+    const dir = await tmpDir();
+    await write(path.join(dir, 'Bin', 'a.dll'), 'a');
+    const tgt = new FsTransport(dir);
+    const st = fs.statSync(path.join(dir, 'Bin', 'a.dll'));
+    const entries = new Map([['a.dll', { rel: 'a.dll', isDir: false, size: st.size, mtimeMs: st.mtimeMs }]]);
+    await saveManifestSubtree(tgt, 'Bin', entries, {}, 'x');
+    expect(await manifestEntries(tgt, 'bin')).not.toBeNull();
+    // a later send that writes it as BIN replaces the old record instead of keeping two
+    await saveManifestSubtree(tgt, 'BIN', entries, {}, 'y');
+    expect(Object.keys((await readManifest(tgt))!.subtrees)).toEqual(['BIN']);
+  });
 });
 
 describe('a watch on a file that keeps changing', () => {

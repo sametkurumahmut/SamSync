@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2, Volume2 } from 'lucide-react';
+import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2, Volume2, Wrench } from 'lucide-react';
 import type { CopySettings, LocalSettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
@@ -626,7 +626,7 @@ export function SettingsPage() {
               <span>{boot.gitVersion ?? t('bulunamadı')}</span>
               <span className="faint">{t('Veri klasörü')}</span>
               <span className="mono selectable" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>
-                {boot.userDataPath}
+                {boot.platform === 'win32' ? boot.userDataPath.replace(/\//g, '\\') : boot.userDataPath}
               </span>
               <span className="faint">{t('Lisans')}</span>
               <span>
@@ -657,7 +657,7 @@ export function SettingsPage() {
               <Button size="sm" icon={<Sparkles size={13} />} onClick={async () => useApp.setState({ whatsNew: await api.whatsNew(true) })}>
                 {t('Bu sürümdeki yenilikler')}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => void api.windowControl('devtools')}>
+              <Button size="sm" icon={<Wrench size={13} />} onClick={() => void api.windowControl('devtools')}>
                 {t('Geliştirici araçları')}
               </Button>
             </div>

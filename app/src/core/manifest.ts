@@ -69,7 +69,9 @@ const sameEntry = (a: Entry, b: Entry) => a.isDir === b.isDir && (a.isDir || (a.
  */
 export async function manifestEntries(tgt: Transport, subtreeRel: string, now = Date.now(), maxAgeMs = MANIFEST_MAX_AGE_MS, excluded?: readonly string[]): Promise<{ entries: Map<string, Entry>; writtenAt: number; checked: number } | null> {
   const m = await readManifest(tgt);
-  const sub = m?.subtrees[subtreeRel];
+  // a folder written as Release by one send and release by another is the same folder on Windows
+  const key = m ? Object.keys(m.subtrees).find((k) => k.toLowerCase() === subtreeRel.toLowerCase()) : undefined;
+  const sub = key != null ? m!.subtrees[key] : undefined;
   if (!sub || !Array.isArray(sub.entries) || now - sub.writtenAt > maxAgeMs) return null;
   // taken with an exclusion this send does not have (or with unknown ones): walk the folder instead
   if (excluded && (!Array.isArray(sub.excluded) || sub.excluded.some((p) => !excluded.includes(p)))) return null;
@@ -130,9 +132,11 @@ export function exclusionsOf(excludeFiles: readonly string[], excludeDirs: reado
 export async function saveManifestSubtree(tgt: Transport, subtreeRel: string, entries: Map<string, Entry>, by: ManifestSubtree['by'], label?: string, excluded?: string[]): Promise<void> {
   const m = (await readManifest(tgt)) ?? { version: 1 as const, subtrees: {} };
   // a subtree inside another one that is kept would go stale: drop the parents and the children of this one
+  const rel = subtreeRel.toLowerCase();
   for (const key of Object.keys(m.subtrees)) {
+    const k = key.toLowerCase();
     if (key === subtreeRel) continue;
-    if (!subtreeRel || !key || key.startsWith(subtreeRel + '/') || subtreeRel.startsWith(key + '/')) delete m.subtrees[key];
+    if (!rel || !k || k === rel || k.startsWith(rel + '/') || rel.startsWith(k + '/')) delete m.subtrees[key];
   }
   m.subtrees[subtreeRel] = { writtenAt: Date.now(), by, label, excluded, entries: mapToEntries(entries) };
   await writeManifest(tgt, m);

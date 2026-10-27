@@ -195,7 +195,6 @@ export function TargetsPage() {
           <div className="sub">{t('Aynı yapılandırma bütün makinelerde kullanılır; uygulama çalıştığı makineyi kendisi tanır.')}</div>
         </div>
         <MenuButton
-          buttonProps={{ variant: state ? undefined : 'ghost' }}
           items={[
             { label: t('Tümü'), onClick: () => setState(null) },
             { sep: true },
@@ -204,7 +203,7 @@ export function TargetsPage() {
         >
           <Filter size={14} /> {state ? stateLabels[state] : t('Durum')}
         </MenuButton>
-        <SearchInput value={q} onChange={setQ} placeholder={t('Ara')} style={{ width: 200 }} />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Ara')} style={{ width: 200 }} size="md" />
         <Button icon={<RefreshCw size={14} className={probing ? 'spin' : undefined} />} onClick={() => void probe()}>
           {t('Erişimi sına')}
         </Button>
