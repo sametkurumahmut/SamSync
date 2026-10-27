@@ -469,6 +469,13 @@ export function TargetsPage() {
                           </div>
                         );
                       })()}
+                      {/* the same line on every remote card, so the rows below line up across the grid */}
+                      {!isLocal && !lastSend.get(n.id) && (
+                        <div className="row faint" style={{ fontSize: 11.5, gap: 5 }}>
+                          <Gauge size={12} />
+                          <span className="ellipsis">{t('Henüz gönderim yok')}</span>
+                        </div>
+                      )}
                       <div className="row" style={{ gap: 6, flexWrap: 'wrap', rowGap: 4 }}>
                         {!isLocal &&
                           (p ? (

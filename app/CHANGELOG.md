@@ -7,7 +7,7 @@
   - Genel bakış'ta *Bugün* kartının grafiği alt satırın üstüne taşmıyor.
   - Üst çubuktaki komut arama kutusu geniş pencerede her sayfada ortada duruyor.
   - Senkron'da klasör çifti satırı kartı dolduruyor, uzun yollar "…" ile kısalıyor, makine seçicinin oku kesilmiyor.
-  - Hedefler'de arama kutusu ve *Durum* düğmesi araç çubuğunun öteki düğmeleriyle aynı boyda.
+  - Hedefler'de arama kutusu ve *Durum* düğmesi araç çubuğunun öteki düğmeleriyle aynı boyda. Kartlardaki satırlar yan yana hizalı: henüz gönderim yapılmamış makinenin kartında *Henüz gönderim yok* yazıyor, bağlantı satırı yukarı kaymıyor.
   - Git'te fark görünümünün yatay kaydırma çubuğu son satırı örtmüyor.
   - Gönder'deki *Eşzamanlı hedef* ve Senkron'daki *Saklanacak sürüm* kutuları satırlarıyla hizalı.
   - Karşılaştır'da düğme seçicilerle aynı boyda; boş Kaynaklar kartının ipucu kenara yapışmıyor.

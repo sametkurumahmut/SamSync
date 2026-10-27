@@ -2248,6 +2248,8 @@
   gap: 4px;
   min-width: 0;
   font-size: 11px;
+  /* as tall with an address alone as with the smaller mono text and a separator: cards line up */
+  min-height: 1.25em;
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
