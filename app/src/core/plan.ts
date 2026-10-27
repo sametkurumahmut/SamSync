@@ -650,6 +650,7 @@ async function planTarget(
   // someone else writing here right now shows in the review
   const lock = otherLock(tgt, myLock(req.label ?? '', ctx.appVersion)).catch(() => null);
   let fromManifest: number | undefined;
+  const leftovers: string[] = [];
   const b: OpBuilder = { ops: [], counts: emptyCounts() };
   const time = { toleranceMs: ctx.config.copy.timeToleranceSec * 1000, ignoreDstShift: ctx.config.copy.ignoreDstShift };
   const missingFromPack: string[] = [];
@@ -783,6 +784,7 @@ async function planTarget(
       listed = n;
     };
     const dstScan = manifest ? null : dstRoot?.isDir ? await scanTree(tgt, u.rel, { filter: unitFilter, cancel, caseInsensitive: true, onProgress: onListed }) : null;
+    for (const rel of dstScan?.leftovers ?? []) leftovers.push(relJoin(u.rel, rel));
     st.phase = 'compare';
     const dstEntries = manifest ? filterEntries(manifest.entries, unitFilter) : (dstScan?.entries ?? new Map<string, Entry>());
     // what another source of this send takes over is neither compared, written nor deleted from here
@@ -917,6 +919,7 @@ async function planTarget(
     fromManifest,
     inUse,
     missingFromPack: missingFromPack.length ? missingFromPack : undefined,
+    leftovers: leftovers.length ? leftovers : undefined,
   };
 }
 

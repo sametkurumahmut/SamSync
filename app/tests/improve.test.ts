@@ -443,3 +443,65 @@ describe('a watch on a file that keeps changing', () => {
     expect(batches.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+
+describe('temporary files a dropped link left on a target', () => {
+  const day = 86400_000;
+  const old = () => new Date(Date.now() - 2 * day);
+
+  it('are never part of the target’s tree; only the ones nothing will use again are reported', async () => {
+    const { scanTree, staleTemp } = await import('../src/core/scan');
+    const dir = await tmpDir();
+    await write(path.join(dir, 'a.txt'), 'a');
+    // an older SamSync's name (no time in it): its date decides
+    const legacy = '.a.txt.k3j9x1.samsync-tmp';
+    await write(path.join(dir, legacy), 'x', old());
+    // a copy started three days ago, whatever date the file was given
+    const started = `sub/.b.txt.${(Date.now() - 3 * day).toString(36)}-ab12.samsync-tmp`;
+    await write(path.join(dir, started), 'x');
+    // a copy on its way in right now, and a big file's part kept for the next attempt
+    await write(path.join(dir, `.c.txt.${Date.now().toString(36)}-cd34.samsync-tmp`), 'x', old());
+    await write(path.join(dir, '.big.bin.resume-9000000-1700000000000.samsync-tmp'), 'x', old());
+    const scan = await scanTree(new FsTransport(dir), '');
+    expect([...scan.entries.values()].map((e) => e.rel).sort()).toEqual(['a.txt', 'sub']);
+    expect(scan.leftovers.sort()).toEqual([legacy, started].sort());
+    expect(staleTemp('.big.bin.resume-9000000-1700000000000.samsync-tmp', Date.now() - 15 * day)).toBe(true);
+  });
+
+  it('are left out of a mirror send and the stale ones go once it is done', async () => {
+    const base = await tmpDir();
+    const src = path.join(base, 'me', 'Data');
+    const dirT = path.join(base, 't');
+    await write(path.join(src, 'a.txt'), 'yeni');
+    const stale = path.join(dirT, 'Data', '.a.txt.k3j9x1.samsync-tmp');
+    const part = path.join(dirT, 'Data', '.big.bin.resume-9000000-1700000000000.samsync-tmp');
+    await write(stale, 'x', old());
+    await write(part, 'x', old());
+    const nodes: NodeConfig[] = [{ ...pathNode('Me', path.join(base, 'me')), localRoots: [path.join(base, 'me')] }, pathNode('T', dirT)];
+    const cfgFile = path.join(base, 'config.json');
+    await fsp.writeFile(cfgFile, JSON.stringify({ schema: 2, nodes, copy: { retryCount: 0, waitSeconds: 0 } }));
+    const ud = path.join(base, 'ud');
+    await fsp.mkdir(ud, { recursive: true });
+    await fsp.writeFile(path.join(ud, 'settings.json'), JSON.stringify({ configPath: cfgFile, localNodeId: 'Me' }));
+    const me = new Service({ isElectron: false, appVersion: '2.5.0', userDataPath: ud, initialPaths: [], emit: () => undefined });
+    await me.init();
+    try {
+      const plan = await me.planSend({ sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: { ...defaultOptions, mode: 'mirror' }, origin: 'send' }, 'p');
+      const tp = plan.targets[0];
+      // nothing of SamSync's own is shown as an extra file to delete
+      expect(tp.ops.map((o) => `${o.kind}:${o.rel}`)).toEqual(['copy:Data/a.txt']);
+      expect(tp.leftovers).toEqual(['Data/.a.txt.k3j9x1.samsync-tmp']);
+      const run = await me.runPlan(plan, 'default', { notify: false }).done;
+      expect(run.status).toBe('ok');
+      expect(fs.existsSync(stale)).toBe(false);
+      // a part young enough to be continued stays
+      expect(fs.existsSync(part)).toBe(true);
+      expect(fs.readFileSync(path.join(dirT, 'Data', 'a.txt'), 'utf8')).toBe('yeni');
+    } finally {
+      me.automation?.stop();
+      me.relay?.stop();
+      me.later.stop();
+      me.pending.stop();
+    }
+  }, 30000);
+});

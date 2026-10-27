@@ -131,8 +131,8 @@ export function ComparePage() {
         {mode === 'machines' ? (
           <MachineCompare />
         ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 32%) minmax(0, 1fr)', gap: 14, minHeight: 0, height: '100%' }}>
-          <div className="col" style={{ gap: 14, minHeight: 0 }}>
+        <div className="compare-grid">
+          <div className="col" style={{ gap: 14 }}>
             <div className="card">
               <div className="card-head">
                 <h2>{t('Kaynaklar')}</h2>
@@ -159,7 +159,7 @@ export function ComparePage() {
             </div>
           </div>
 
-          <div className="card" style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="card compare-result">
             {!plan ? (
               <Empty art="compare" title={t('Henüz karşılaştırma yok')} hint={tx('Örnek: {src} klasörünü {grp} grubundaki makinelerle karşılaştırın', { src: <code>D:\Release</code>, grp: <code>Lab-A</code> })}>
                 {t('Kaynakları ve hedefleri seçip Karşılaştır’a basın. Hiçbir şey gönderilmez; yalnızca farklar listelenir.')}
@@ -190,8 +190,8 @@ export function ComparePage() {
                     <WifiOff size={15} /> {tp.error || t('Hedefe erişilemiyor')}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 38%) minmax(0, 1fr)', minHeight: 0, flex: 1 }}>
-                    <div className="col" style={{ minHeight: 0, borderRight: '1px solid var(--border)' }}>
+                  <div className="compare-split">
+                    <div className="col">
                       <div className="col" style={{ gap: 8, padding: 10 }}>
                         <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                           {FILTERS.map((f) => (

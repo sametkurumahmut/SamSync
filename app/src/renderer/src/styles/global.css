@@ -1801,3 +1801,45 @@ a {
 .input[aria-invalid='true'] {
   border-color: var(--red);
 }
+
+/* ------------------------------------------------------------------ phone width (the web interface on a phone or an upright tablet) */
+@media (max-width: 820px) {
+  .titlebar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .platform-web .titlebar {
+    padding-right: 10px;
+  }
+  .brand .ver,
+  .titlebar .crumb,
+  .titlebar-btn > span {
+    display: none;
+  }
+  .titlebar-search {
+    min-width: 0;
+    width: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+  .titlebar-search > span {
+    display: none;
+  }
+  .page-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 14px 10px;
+  }
+  /* the whole page scrolls, its title and buttons too: a phone has no height to keep them in view */
+  .page {
+    overflow-y: auto;
+  }
+  .page-body,
+  .page-body.fill {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+    padding: 0 14px 18px;
+  }
+}

@@ -9,6 +9,7 @@ const d: Dict = {
   // Recycle Bin and versioning
   'Geri dönüşüm kutusu kullanılamadı ({error}); eski hâller yedek klasörüne taşınacak.': 'No se pudo usar la Papelera de reciclaje ({error}); las versiones anteriores se moverán a la carpeta de copia de seguridad.',
   '{n} eski hâl geri dönüşüm kutusuna taşındı': pl('{n} versión anterior movida a la Papelera de reciclaje', '{n} versiones anteriores movidas a la Papelera de reciclaje'),
+  'Yarım kalmış kopyalardan {n} geçici dosya silindi': pl('Se eliminó {n} archivo temporal de copias interrumpidas', 'Se eliminaron {n} archivos temporales de copias interrumpidas'),
   'Eski yedekler temizlenemedi: {error}': 'No se pudieron limpiar las copias de seguridad antiguas: {error}',
   'Geri dönüşüm kutusu': 'Papelera de reciclaje',
   'Bu makinedeki klasörlerde eski hâller geri dönüşüm kutusuna gider;\nağ yollarında ve hedef makinelerde yedek klasörüne taşınır':

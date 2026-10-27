@@ -1007,6 +1007,8 @@ export interface TargetPlan {
   missingFromPack?: string[];
   /** The target's folders came from its manifest (written then) after a check, not from a walk over the network. */
   fromManifest?: number;
+  /** SamSync's own temporary files that copies cut short left there (a dropped link): the send removes them at the end. */
+  leftovers?: string[];
   /** SamSync runs there with a fresh heartbeat: the changes go as one pack that the machine applies itself. */
   agent?: boolean;
   /** Files whose content SamSync on the target hashed on its own disk for the comparison (not read over the network). */

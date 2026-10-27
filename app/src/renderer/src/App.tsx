@@ -87,12 +87,30 @@ export function App() {
   return <Shell key={lang} />;
 }
 
+/** A window as narrow as a phone or an upright tablet (the web interface on one): the sidebar stays a strip of icons there. */
+function useNarrow(query = '(max-width: 820px)'): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const change = () => setOn(m.matches);
+    // a resize too: not every browser tells a media query about a turned screen
+    m.addEventListener('change', change);
+    window.addEventListener('resize', change);
+    return () => {
+      m.removeEventListener('change', change);
+      window.removeEventListener('resize', change);
+    };
+  }, [query]);
+  return on;
+}
+
 function Shell() {
   const boot = useApp((s) => s.boot);
   const bootError = useApp((s) => s.bootError);
   const page = useApp((s) => s.page);
   const setPage = useApp((s) => s.setPage);
-  const collapsed = useApp((s) => s.collapsed);
+  const narrow = useNarrow();
+  const collapsed = useApp((s) => s.collapsed) || narrow;
   const toggleSidebar = useApp((s) => s.toggleSidebar);
   const dark = useApp((s) => s.dark);
   const saveSettings = useApp((s) => s.saveSettings);
@@ -309,10 +327,13 @@ function Shell() {
             {dark ? <Sun size={17} /> : <Moon size={17} />}
             <span>{dark ? t('Açık tema') : t('Koyu tema')}</span>
           </button>
-          <button className="nav-item" aria-label={collapsed ? t('Genişlet') : t('Daralt')} aria-expanded={!collapsed} onClick={toggleSidebar} data-tip={collapsed ? t('Genişlet') : undefined} data-tip-pos="right">
-            {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-            <span>{t('Daralt')}</span>
-          </button>
+          {/* nothing to widen into on a phone */}
+          {!narrow && (
+            <button className="nav-item" aria-label={collapsed ? t('Genişlet') : t('Daralt')} aria-expanded={!collapsed} onClick={toggleSidebar} data-tip={collapsed ? t('Genişlet') : undefined} data-tip-pos="right">
+              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+              <span>{t('Daralt')}</span>
+            </button>
+          )}
         </div>
       </nav>
 

@@ -1,5 +1,11 @@
 # Sürüm Geçmişi
 
+## 2.4.13 — 2026-10-27
+
+- **Telefon ve tablet:** web arayüzü telefonda ve dik tutulan tablette (820 piksel ve altı) sığıyor. Kenar çubuğu simge şeridi olarak kalıyor, üst çubuk sadeleşiyor, sayfalar tek sütuna geçiyor ve başlığıyla birlikte bütün olarak kayıyor. Gönder sayfasının alt çubuğu ekranın altında yapışık ve küçük; Git, Karşılaştır, Senkron, Hedefler ve Geçmiş'te hiçbir şey yana taşmıyor.
+- **Geçici dosyalar:** kopan bir bağlantının hedefte bıraktığı SamSync geçici dosyaları (`*.samsync-tmp`) o klasörü tarayan bir sonraki gönderimin sonunda siliniyor: bir günden eski olanlar, büyük dosyaların yarım parçaları da 14 gün sonra. Bu dosyalar karşılaştırmada ve incelemede artık fazla dosya olarak görünmüyor. Ayna kipi, büyük bir dosyanın kaldığı yerden sürecek parçasını da artık fazla dosya sanıp silmiyor.
+- **Düzeltme:** Ayarlar'da uzun bir klasör yolu açıklama satırında kırılıyor, kartı genişletmiyor.
+
 ## 2.4.12 — 2026-10-27
 
 - **Görünüm düzeltmeleri:**

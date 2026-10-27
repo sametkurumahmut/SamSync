@@ -16,6 +16,7 @@ import { joinRoot, relBase, relDepth, relJoin, relParent } from './paths';
 import { RELAY_FOLDER } from '../shared/relay';
 import { myLock, otherLock, removeLock, writeLock } from './lock';
 import { applyOps, forgetManifestSubtrees, saveManifestSubtree } from './manifest';
+import { PART_MAX_AGE_MS } from './scan';
 import type { Entry } from './transport';
 import os from 'node:os';
 import { CancelToken, RateLimiter, errMessage, formatBytes, mapLimit, newId, parseStamp, sleep, stamp, throttle } from './util';
@@ -60,6 +61,8 @@ export interface ExecGroup {
   manifestExcluded?: string[];
   /** A relay: the files it keeps aside for the machines behind it (machine folder, raw templates), carried in its pack. */
   stash?: StashFile[];
+  /** SamSync's temporary files that copies cut short left here (the plan found them): removed once the run is done. */
+  cleanup?: string[];
 }
 
 export interface ExecSettings {
@@ -125,16 +128,18 @@ const IN_USE_RETRY_WAIT_MS = 5000;
 export const RESUME_MIN = 8 * 1024 * 1024;
 /** The target's tail that is compared with the source before a partial file is continued. */
 const RESUME_TAIL = 256 * 1024;
-/** A partial file nobody continued for this long is thrown away. */
-const RESUME_MAX_AGE_MS = 14 * 86400_000;
+/** A partial file nobody continued for this long is thrown away (a scan reports it as a leftover then). */
+const RESUME_MAX_AGE_MS = PART_MAX_AGE_MS;
 /** Local files at least this big are streamed (and hashed on the way) instead of copied by the OS, when a hash cache is on. */
 const HASH_WHILE_COPY_MIN = 256 * 1024;
 /** A run keeps this many of its latest log lines in memory once the rest went to its log file. */
 const LOG_KEEP = 2000;
 
+/** The name carries when the copy started, so a later scan can tell one a dropped link left behind (scan.ts staleTemp). */
 function tmpRelFor(rel: string): string {
   const parent = relParent(rel);
-  return relJoin(parent, `.${relBase(rel)}.${Math.random().toString(36).slice(2, 8)}${TMP_SUFFIX}`);
+  const rand = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+  return relJoin(parent, `.${relBase(rel)}.${Date.now().toString(36)}-${rand}${TMP_SUFFIX}`);
 }
 /**
  * The partial file of a big copy, named after the source version it holds the start of (size and time): a source
@@ -713,6 +718,11 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         st.status = st.failed === 0 ? 'ok' : st.failed === g.ops.length ? 'failed' : 'partial';
         if (g.manifest?.size && tgt.kind === 'fs' && !s.dryRun && st.status !== 'failed') await leaveManifest(g, tgt);
         else await forget();
+        if (g.cleanup?.length && !s.dryRun) {
+          let gone = 0;
+          for (const rel of g.cleanup) if (await tgt.remove(rel, false).then(() => true, () => false)) gone++;
+          if (gone) log('info', t('Yarım kalmış kopyalardan {n} geçici dosya silindi', { n: gone }), g.key);
+        }
         if (trashed) log('info', t('{n} eski hâl geri dönüşüm kutusuna taşındı', { n: trashed }), g.key);
         if (backedUpAny) {
           st.backupPath = relJoin(s.backupFolderName, runStamp);

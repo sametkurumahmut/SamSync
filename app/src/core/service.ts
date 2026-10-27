@@ -1387,6 +1387,7 @@ export class Service implements Api {
         manifest: this.planScans.get(plan.id)?.get(tp.targetId),
         manifestExcluded: plan.manifestExcluded,
         stash: behind?.length ? plan.stash?.[tp.targetId]?.files : undefined,
+        cleanup: tp.leftovers,
       });
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));
