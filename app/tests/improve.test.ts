@@ -420,7 +420,9 @@ describe('a target manifest and the send’s exclusions', () => {
     const st = fs.statSync(path.join(dir, 'Bin', 'a.dll'));
     const entries = new Map([['a.dll', { rel: 'a.dll', isDir: false, size: st.size, mtimeMs: st.mtimeMs }]]);
     await saveManifestSubtree(tgt, 'Bin', entries, {}, 'x');
-    expect(await manifestEntries(tgt, 'bin')).not.toBeNull();
+    // where the disk ignores case (Windows, macOS) bin is that folder; on Linux it is another one, walked instead
+    const caseless = fs.existsSync(path.join(dir, 'bIN'));
+    expect((await manifestEntries(tgt, 'bin')) != null).toBe(caseless);
     // a later send that writes it as BIN replaces the old record instead of keeping two
     await saveManifestSubtree(tgt, 'BIN', entries, {}, 'y');
     expect(Object.keys((await readManifest(tgt))!.subtrees)).toEqual(['BIN']);
