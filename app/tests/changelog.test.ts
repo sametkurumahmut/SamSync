@@ -56,3 +56,15 @@ describe('release notes', () => {
     expect(out.trimEnd().endsWith('</details>')).toBe(true);
   });
 });
+
+describe('changelog section with indented bullets', () => {
+  it('keeps them under their item, wrapped lines included', () => {
+    const md = '## 4.0.0 — 2026-11-01\n\n- **Fixes:**\n  - one\n  - two that\n    wraps\n- Plain item\n  that wraps.\n';
+    expect(changelogSection(md, '4.0.0')).toEqual({
+      version: '4.0.0',
+      date: '2026-11-01',
+      items: ['**Fixes:**', 'Plain item that wraps.'],
+      sub: [['one', 'two that wraps'], []],
+    });
+  });
+});

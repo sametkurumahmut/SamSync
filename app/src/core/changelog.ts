@@ -20,13 +20,26 @@ export function changelogSection(markdown: string, version: string): ChangelogSe
   }
   if (start < 0) return null;
   const items: string[] = [];
+  const sub: string[][] = [];
+  // a wrapped line belongs to the bullet above it, an indented one under it
+  let inSub = false;
   for (let i = start + 1; i < lines.length; i++) {
     const l = lines[i];
     if (/^##\s/.test(l)) break;
-    if (/^\s*[-*]\s+/.test(l)) items.push(l.replace(/^\s*[-*]\s+/, '').trim());
-    else if (l.trim() && items.length) items[items.length - 1] += ' ' + l.trim();
+    const bullet = /^(\s*)[-*]\s+(.*)$/.exec(l);
+    if (bullet && bullet[1].length > 0 && items.length) {
+      (sub[items.length - 1] ??= []).push(bullet[2].trim());
+      inSub = true;
+    } else if (bullet) {
+      items.push(bullet[2].trim());
+      inSub = false;
+    } else if (l.trim() && items.length) {
+      const list = inSub ? sub[items.length - 1] : null;
+      if (list) list[list.length - 1] += ' ' + l.trim();
+      else items[items.length - 1] += ' ' + l.trim();
+    }
   }
-  return { version, date, items };
+  return sub.length ? { version, date, items, sub: items.map((_, k) => sub[k] ?? []) } : { version, date, items };
 }
 
 export async function readChangelogSection(file: string, version: string): Promise<ChangelogSection | null> {

@@ -2,6 +2,7 @@
 // diverged content, and a config.json that points at them. Nothing outside the demo folder is touched.
 // The names are deliberately generic (two labs of PCs, a NAS): the README screenshots come from here.
 //   node scripts/demo-env.mjs [folder] [extraLocalRoot]
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -76,6 +77,40 @@ w(path.join(tg, 'A-PC1/Config/settings.ini'), '[Display]\nWidth=1920\nHeight=108
 copy('Data/Catalog/prices.csv', 'A-PC2');
 w(path.join(tg, 'A-PC2/Data/Catalog/products.json'), catalog('3.4', [...ITEMS, ['C-001', 'Edited locally', 99]], ',\n  "updated": "2026-10-17"'), 0.05);
 // A-PC3 and the rest: empty (everything new)
+
+// A short Git history in the source tree for the Git page (generic files, inside this machine's root): three commits
+// that end at today's catalog and prices, the display settings changed since and this month's report not added yet.
+// Every file keeps its content and date, so the other pages look the same. Skipped when git is not installed.
+function demoGit() {
+  const who = { GIT_AUTHOR_NAME: 'Demo', GIT_AUTHOR_EMAIL: 'demo@example.com', GIT_COMMITTER_NAME: 'Demo', GIT_COMMITTER_EMAIL: 'demo@example.com' };
+  const git = (args, daysAgo = 0) => {
+    const at = new Date(Date.now() - daysAgo * day).toISOString();
+    return spawnSync('git', args, { cwd: src, stdio: 'ignore', env: { ...process.env, ...who, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } }).status === 0;
+  };
+  if (!git(['init', '-q', '-b', 'main'])) return;
+  const now = new Map();
+  for (const rel of ['Data/Catalog/products.json', 'Data/Catalog/prices.csv', 'Config/settings.ini']) {
+    now.set(rel, { data: fs.readFileSync(path.join(src, rel)), at: fs.statSync(path.join(src, rel)).mtime });
+  }
+  const back = (rel) => {
+    const f = path.join(src, rel);
+    fs.writeFileSync(f, now.get(rel).data);
+    fs.utimesSync(f, now.get(rel).at, now.get(rel).at);
+  };
+  fs.writeFileSync(path.join(src, 'Data/Catalog/products.json'), catalog('3.3', ITEMS.slice(0, 2)));
+  fs.writeFileSync(path.join(src, 'Data/Catalog/prices.csv'), 'sku;price;valid_from\nA-100;1250;2026-09-01\nA-200;1850;2026-09-01\n');
+  fs.writeFileSync(path.join(src, 'Config/settings.ini'), '[Display]\nWidth=1920\nHeight=1080\nVSync=1\n[Audio]\nVolume=80\n');
+  git(['add', '-A', '--', '.', ':(exclude)Data/Reports/2026-10.xml']);
+  git(['commit', '-q', '-m', 'Initial data, models and settings'], 9);
+  back('Data/Catalog/prices.csv');
+  git(['add', 'Data/Catalog/prices.csv']);
+  git(['commit', '-q', '-m', 'Update the price list'], 3);
+  back('Data/Catalog/products.json');
+  git(['add', 'Data/Catalog/products.json']);
+  git(['commit', '-q', '-m', 'Catalog 3.4: add the mounting kit'], 1);
+  back('Config/settings.ini');
+}
+demoGit();
 
 const nodes = [
   {

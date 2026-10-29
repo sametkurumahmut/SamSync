@@ -123,6 +123,17 @@ export const FAQ: FaqEntry[] = [
     page: 'settings',
   },
   {
+    id: 'web-phone',
+    topic: 'settings',
+    q: { tr: 'SamSync’i telefondan ya da tabletten kullanabilir miyim?', en: 'Can I use SamSync from a phone or a tablet?' },
+    a: {
+      tr: 'Evet, web arayüzüyle: hep açık duran makinede Ayarlar › Web arayüzü’nü açın, telefonun tarayıcısında oradaki adresi (`http://<ip>:8780`) açıp parolayla girin. 820 piksel ve altında kenar çubuğu simge şeridine döner, sayfalar tek sütuna geçer ve bütün olarak kayar; Gönder sayfasının alt çubuğu ekranın altında kalır. Telefonun ağa, o makineye ulaşabildiği bir yerden (aynı ağ ya da VPN) bağlanması gerekir.',
+      en: 'Yes, through the web interface: turn on Settings › Web interface on the always-on machine, open the address shown there (`http://<ip>:8780`) in the phone’s browser and sign in with the password. At 820 pixels or less the sidebar turns into a strip of icons, the pages go to one column and scroll as a whole, and the bar at the bottom of the Send page stays on screen. The phone has to be on a network that reaches that machine (the same network or a VPN).',
+    },
+    keywords: ['telefon', 'tablet', 'mobil', 'phone', 'mobile', 'ipad', 'android', 'iphone', 'web'],
+    page: 'settings',
+  },
+  {
     id: 'agent',
     topic: 'relay',
     q: { tr: 'Makine kartındaki "ajan" ne demek?', en: 'What does "agent" on a machine card mean?' },
@@ -857,6 +868,17 @@ export const FAQ: FaqEntry[] = [
     page: 'settings',
   },
   {
+    id: 'whats-changed',
+    topic: 'settings',
+    q: { tr: 'Bir sürümde neyin değiştiğini nereden görürüm?', en: 'Where do I see what changed in a version?' },
+    a: {
+      tr: 'Güncellemeden sonraki ilk açılışta **Bu sürümde yeni** kartı o sürümün değişikliklerini uygulamanın dilinde gösterir; karttaki **Sürüm notları** düğmesi GitHub’daki sürüm sayfasını açar. Sürüm sayfalarında önce İngilizce notlar, altında katlanmış **Türkçe** bölümü vardır; güncelleme penceresi de kendi dilindeki kısmı gösterir. Projenin web sitesindeki *Yenilikler* bölümü son beş sürümü listeler.',
+      en: 'On the first start after an update, the **New in this version** card shows that version’s changes in the app’s language; its **Release notes** button opens the release page on GitHub. Release pages have the English notes first and a folded **Türkçe** section under them; the update window shows the part in its own language too. The *What’s new* section of the project website lists the last five versions.',
+    },
+    keywords: ['yenilikler', 'değişiklikler', 'sürüm notları', 'changelog', 'release notes', 'what is new', 'whats new', 'changes'],
+    page: 'settings',
+  },
+  {
     id: 'config-file',
     topic: 'settings',
     q: { tr: 'config.json nerede, nasıl düzenlenir?', en: 'Where is config.json and how is it edited?' },
@@ -910,6 +932,17 @@ export const FAQ: FaqEntry[] = [
       en: 'No. Files of 8 MB and more are written under a fixed temporary name; after a cancel, a dropped link or a closed app, the next send checks the tail of the partial file against the source and **continues from where it stopped** (the log says so). If the source changed meanwhile it starts over. Cancel stops the copy at once.',
     },
     keywords: ['yarım', 'resume', 'devam', 'iptal', 'cancel', 'kaldığı yerden'],
+    page: 'send',
+  },
+  {
+    id: 'temp-files',
+    topic: 'trouble',
+    q: { tr: 'Hedefte .samsync-tmp ile biten dosyalar var; ne bunlar?', en: 'There are files ending in .samsync-tmp on a target; what are they?' },
+    a: {
+      tr: 'SamSync’in yazarken kullandığı geçici dosyalar: her dosya önce geçici adla yazılır, doğrulanınca yerine konur. Bağlantı yazma sırasında koparsa geride kalabilirler. Karşılaştırmada ve incelemede hiç görünmezler, ayna kipi onları fazla dosya sanıp silmez; bir günden eski olanlar (büyük dosyaların sürdürülecek parçaları 14 gün sonra) o klasörü tarayan bir sonraki gönderimin sonunda silinir. Elle silmek de güvenlidir, ama süren bir gönderim varken değil.',
+      en: 'The temporary files SamSync writes through: every file is first written under a temporary name and put in place once checked. A link that drops during the write can leave them behind. They never show in a comparison or a review, and mirror mode does not take them for extra files; the ones older than a day (the parts of big files kept for resuming: after 14 days) are removed at the end of the next send that walks that folder. Deleting them by hand is safe too, just not while a send is running.',
+    },
+    keywords: ['samsync-tmp', 'geçici', 'temporary', 'tmp', 'artık dosya', 'leftover', 'yarım'],
     page: 'send',
   },
   {

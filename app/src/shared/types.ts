@@ -359,6 +359,8 @@ export interface ChangelogSection {
   date?: string;
   /** The section's bullet items, markdown as written (bold and code spans). */
   items: string[];
+  /** The indented bullets under each item (same order as `items`), when the section has any. */
+  sub?: string[][];
 }
 
 /** What the import of the old wizard's state did. */

@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md)
 
+## Yayımlanmamış
+
+- **Düzeltme (Git):** kökü bir Git deposu olan makinede Git sayfası, SamSync'in oradaki kendi dosyalarını (ajanın `_SamSyncRelay` klasörü, kilit ve manifest dosyaları, yazılmakta olan kopyalar) artık yerel değişiklik olarak listelemiyor; yerel değişiklikler gönderilirken bunlar da gitmiyor.
+- **Yenilikler kartı:** sürüm notlarındaki girintili maddeler artık ayrı madde olarak değil, başlıklarının altında görünüyor.
+- **Yardım:** üç yeni soru: SamSync'i telefondan ya da tabletten kullanmak, hedefteki `.samsync-tmp` dosyaları ve bir sürümde neyin değiştiğinin nereden görüleceği.
+- **Web sitesi:** Git ekran görüntüsü projenin kendi çalışma ağacından değil, küçük bir demo deposundan alınıyor; ekran görüntüleri yeniden çekildi.
+
 ## 2.4.13 — 2026-10-27
 
 - **Telefon ve tablet:** web arayüzü telefonda ve dik tutulan tablette (820 piksel ve altı) sığıyor. Kenar çubuğu simge şeridi olarak kalıyor, üst çubuk sadeleşiyor, sayfalar tek sütuna geçiyor ve başlığıyla birlikte bütün olarak kayıyor. Gönder sayfasının alt çubuğu ekranın altında yapışık ve küçük; Git, Karşılaştır, Senkron, Hedefler ve Geçmiş'te hiçbir şey yana taşmıyor.

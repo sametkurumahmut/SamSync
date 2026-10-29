@@ -28,6 +28,16 @@ async function repoWithHistory() {
 }
 
 describe('git', () => {
+  it('does not list SamSync’s own files in a root as local changes', async () => {
+    const repo = await repoWithHistory();
+    await write(path.join(repo, '_SamSyncRelay', 'alive.json'), '{}');
+    await write(path.join(repo, 'samsync-manifest.json'), '{}');
+    await write(path.join(repo, 'dir', '.b2.txt.mvl2ucjb-ab12.samsync-tmp'), 'x');
+    await write(path.join(repo, 'new.txt'), 'n');
+    const st = await git.status(repo);
+    expect(st.changes.map((c) => c.path)).toEqual(['new.txt']);
+  });
+
   it('lists commits with paging and search', async () => {
     const repo = await repoWithHistory();
     const page = await git.log(repo, { limit: 2 });

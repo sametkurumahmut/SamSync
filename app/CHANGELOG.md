@@ -2,6 +2,13 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## Unreleased
+
+- **Fix (Git):** when a root is a Git repository, the Git page no longer lists SamSync's own files in it as local changes (the agent's `_SamSyncRelay` folder, the lock and manifest files, copies on their way in), so sending the local changes does not carry them along.
+- **What's new card:** indented items of the release notes now show under their heading instead of as separate items.
+- **Help:** three new questions: using SamSync from a phone or a tablet, the `.samsync-tmp` files on a target, and where to see what changed in a version.
+- **Website:** the Git screenshot comes from a small demo repository instead of the project's own working tree, and the screenshots were retaken.
+
 ## 2.4.13 — 2026-10-27
 
 - **Phone and tablet:** the web interface fits on a phone and on a tablet held upright (820 pixels and below). The sidebar stays as an icon strip, the top bar gets simpler, pages go to one column and scroll as a whole with their header. The bottom bar of the Send page sticks to the bottom of the screen and is small; nothing overflows sideways on Git, Compare, Sync, Targets and History.

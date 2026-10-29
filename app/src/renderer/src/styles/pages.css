@@ -1907,6 +1907,17 @@
 .whats-new li::marker {
   color: var(--accent);
 }
+/* the bullets indented under an item in the changelog */
+.whats-new ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+  color: var(--text-2);
+}
+.whats-new ul li::marker {
+  color: var(--text-3);
+}
 .whats-new code {
   font-family: var(--mono);
   font-size: 11.5px;

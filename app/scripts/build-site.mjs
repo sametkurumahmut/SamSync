@@ -143,7 +143,12 @@ function changesHtml(lang) {
   const file = path.join(root, lang === 'en' ? 'CHANGELOG.md' : 'CHANGELOG.tr.md');
   if (!fs.existsSync(file)) return '';
   const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
-  const sections = text.split(/^## /m).slice(1, CHANGES + 1);
+  // released versions only: what is written under "Unreleased" is not out yet
+  const sections = text
+    .split(/^## /m)
+    .slice(1)
+    .filter((sec) => /^\d/.test(sec))
+    .slice(0, CHANGES);
   return sections
     .map((sec, i) => {
       const nl = sec.indexOf('\n');

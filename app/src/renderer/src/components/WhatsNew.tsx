@@ -65,7 +65,16 @@ export function WhatsNewModal() {
     >
       <ul className="whats-new">
         {section.items.map((item, i) => (
-          <li key={i}>{inlineMarkdown(item)}</li>
+          <li key={i}>
+            {inlineMarkdown(item)}
+            {!!section.sub?.[i]?.length && (
+              <ul>
+                {section.sub[i].map((s, j) => (
+                  <li key={j}>{inlineMarkdown(s)}</li>
+                ))}
+              </ul>
+            )}
+          </li>
         ))}
       </ul>
     </Modal>

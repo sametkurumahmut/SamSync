@@ -6,6 +6,8 @@ import type { DiffLine, DiffResult, GitChange, GitChangeKind, GitCommit, GitLogP
 import { textDiff } from './textdiff';
 import { isUnder, normalizeAbs, toPosix } from './paths';
 import { t } from '../shared/i18n';
+import { LOCK_FILE, MANIFEST_FILE } from '../shared/files';
+import { RELAY_FOLDER } from '../shared/relay';
 
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
@@ -96,6 +98,15 @@ function kindFrom(x: string, y: string): GitChangeKind {
   return y as GitChangeKind;
 }
 
+/**
+ * SamSync's own files in a working tree (the relay folder its agent keeps in a root, its lock and manifest, copies
+ * on their way in): a root that is a repository would otherwise list them as new files, and a send would carry them.
+ */
+function samsyncOwn(p: string): boolean {
+  const name = p.slice(p.lastIndexOf('/') + 1).toLowerCase();
+  return p.split('/').includes(RELAY_FOLDER) || name === LOCK_FILE || name === MANIFEST_FILE || name.endsWith('.samsync-tmp') || (name.startsWith('.samsync-speedtest-') && name.endsWith('.tmp'));
+}
+
 export interface StatusResult {
   info: GitRepoInfo;
   changes: GitChange[];
@@ -140,7 +151,7 @@ export async function status(root: string): Promise<StatusResult> {
       const f = line.split(' ');
       changes.push({ path: f.slice(10).join(' '), kind: 'U', staged: false, unstaged: true });
     } else if (type === '?') {
-      changes.push({ path: line.slice(2), kind: '?', untracked: true });
+      if (!samsyncOwn(line.slice(2))) changes.push({ path: line.slice(2), kind: '?', untracked: true });
     }
   }
   // line counts against HEAD for tracked files
