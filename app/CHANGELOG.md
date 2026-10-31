@@ -2,7 +2,7 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
-## Unreleased
+## 2.4.14 — 2026-10-31
 
 - **Team notifications:** Settings › Notifications has an on/off switch for the webhook and one for Telegram; switching a channel off keeps its address. **Which runs report** chooses between Send, Git, Sync, Automation and Undo; by default only the sends started from the Send page go to the channel. Send › Options › **Notify the team** switches a single send off, and with the per-list options a whole list, for your own folders say. The section also says when messages go: when a run ends, at the start of a Send or Git send if asked for, when drift is found and in the weekly summary; cancelled runs and dry runs never.
 - **Fix (Git):** when a root is a Git repository, the Git page no longer lists SamSync's own files in it as local changes (the agent's `_SamSyncRelay` folder, the lock and manifest files, copies on their way in), so sending the local changes does not carry them along.
