@@ -4,6 +4,7 @@
 
 ## Yayımlanmamış
 
+- **Ekip bildirimleri:** Ayarlar › Bildirimler'de web kancası ve Telegram için ayrı açma-kapama anahtarları var; kanal kapatılınca adresi saklanır. **Hangi işler bildirsin**, Gönder, Git, Senkron, Otomasyon ve Geri alma arasından seçer; varsayılanda yalnızca Gönder sayfasından başlatılan gönderimler kanala gider. Gönder › Seçenekler › **Ekibe bildir** tek bir gönderimi, listeye özel seçeneklerle de bütün bir listeyi kapatır, örneğin kendi klasörleriniz için. Bölüm iletilerin ne zaman gittiğini de yazıyor: bir iş bitince, istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette; iptal edilen ve deneme çalıştırmaları hiç gitmez.
 - **Düzeltme (Git):** kökü bir Git deposu olan makinede Git sayfası, SamSync'in oradaki kendi dosyalarını (ajanın `_SamSyncRelay` klasörü, kilit ve manifest dosyaları, yazılmakta olan kopyalar) artık yerel değişiklik olarak listelemiyor; yerel değişiklikler gönderilirken bunlar da gitmiyor.
 - **Yenilikler kartı:** sürüm notlarındaki girintili maddeler artık ayrı madde olarak değil, başlıklarının altında görünüyor.
 - **Yardım:** üç yeni soru: SamSync'i telefondan ya da tabletten kullanmak, hedefteki `.samsync-tmp` dosyaları ve bir sürümde neyin değiştiğinin nereden görüleceği.

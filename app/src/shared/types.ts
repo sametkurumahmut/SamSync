@@ -123,6 +123,8 @@ export interface SendOptions {
   /** Run the pre-copy command of the settings before each target (default on when one is set). */
   runPreCommand?: boolean;
   notify: boolean;
+  /** Tell the team's channel (Settings › Notifications) about this send; on unless switched off, for a list of one's own folders, say. */
+  teamNotify?: boolean;
   /** Per target (node id) mode and backup that differ from the ones above. */
   perTarget?: Record<string, TargetOptions>;
   /** Walk every target folder over the network instead of trusting the manifest SamSync left there. */
@@ -524,11 +526,19 @@ export interface QuickSend {
 }
 
 /** Where a finished run is reported besides the desktop notification (this machine's settings). */
+/** The kinds of runs that may report to the team's channel: Send page, Git page, sync jobs, undo, and what watches and schedules start. */
+export type NotifyKind = 'send' | 'git' | 'sync' | 'restore' | 'automation';
+
 export interface NotificationSettings {
   /** Any HTTP endpoint that takes a JSON POST (a Teams/Slack workflow, a script of your own). */
   webhookUrl?: string;
   telegramToken?: string;
   telegramChatId?: string;
+  /** A channel can be switched off and on again without losing its address (undefined = on). */
+  webhookEnabled?: boolean;
+  telegramEnabled?: boolean;
+  /** Which runs report (undefined = the Send page only, shared/notify.ts); drift and the weekly summary are not runs and always go. */
+  kinds?: NotifyKind[];
   onSuccess: boolean;
   onFailure: boolean;
   /** A message when a send starts too (what goes where), not only when it ends; off by default. */

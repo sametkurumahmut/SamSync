@@ -809,6 +809,16 @@ const d: Dict = {
   'Bu durumda makine yok: {state}': 'No hay equipos en este estado: {state}',
   'Aramaya uyan makine yok': 'Ningún equipo coincide con la búsqueda',
   'Hepsini göster': 'Mostrar todos',
+  Git: 'Git',
+  'İleti şu durumlarda gider: bir iş bitince (aşağıda seçilen işlerde), istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette. İptal edilen ve deneme çalıştırmaları hiç gitmez; bir gönderimi Gönder › Seçenekler › Ekibe bildir ile tek tek de kapatabilirsiniz.': 'Se envía un mensaje cuando termina una ejecución (de las elegidas abajo), si lo desea al empezar un envío de Enviar o Git, cuando se detecta una desviación y en el resumen semanal. Las ejecuciones canceladas y las de prueba nunca se avisan; también puede desactivar un envío concreto con Enviar › Opciones › Avisar al equipo.',
+  'Web kancasına gönder': 'Enviar al webhook',
+  'Kapalıyken adres saklanır, ileti gitmez': 'Desactivado: la dirección se guarda y no se envía nada',
+  'Önce adres girin': 'Escriba primero una dirección',
+  'Telegram’a gönder': 'Enviar a Telegram',
+  'Kapalıyken bot anahtarı ve sohbet saklanır, ileti gitmez': 'Desactivado: el token del bot y el chat se guardan y no se envía nada',
+  'Önce bot anahtarını ve sohbeti girin': 'Escriba primero el token del bot y el chat',
+  'Hangi işler bildirsin': 'Qué ejecuciones avisan',
+  'Varsayılan yalnızca Gönder: oradan başlattığınız gönderimler. Otomasyon, izlemelerin ve zamanlamaların başlattıklarıdır.': 'Por defecto solo Enviar: los envíos que inicia allí. Automatización es lo que inician las vigilancias y las programaciones.',
 };
 
 export default d;

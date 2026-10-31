@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import type { Api, IntegrationStatus, PickOptions, BrowseEntry } from '../shared/api';
 import type { FilterPreview, FileTrace,
+  NotifyKind,
   AgentUpdateResult,
   HolderReport,
   DriftReport,
@@ -65,7 +66,7 @@ import { ASSISTANT_MODEL, ASSISTANT_SECRET, askAssistant, assistantError, assist
 import { HashCache } from './hashcache';
 import { PendingSends } from './pending';
 import { probeNode } from './probe';
-import { driftMessage, runMessage, sendNotification, startMessage, wantsNotification } from './notifications';
+import { driftMessage, hasChannel, kindWanted, runMessage, sendNotification, startMessage, wantsNotification } from './notifications';
 import { quickIdOf } from './automation';
 import { baseSendOptions } from '../shared/options';
 import { readManifest } from './manifest';
@@ -359,7 +360,7 @@ export class Service implements Api {
       ctx: () => this.ctx(),
       runPlan: (plan, notify, nodes) => {
         try {
-          return this.runPlan(plan, 'default', { notify, nodes });
+          return this.runPlan(plan, 'default', { notify, nodes, kind: 'automation' });
         } catch {
           return null;
         }
@@ -1179,7 +1180,7 @@ export class Service implements Api {
       if (!found.length) return;
       this.host.notify?.(t('Sapma: {n} makinede değişiklik', { n: found.length }), found.map((r) => `${r.name}: ${driftCounts(r)}`).join('\n'));
       const ns = this.settings.notifications;
-      if (ns && (ns.webhookUrl || (ns.telegramToken && ns.telegramChatId))) {
+      if (ns && hasChannel(ns)) {
         void sendNotification(ns, driftMessage(reports, { host: os.hostname(), user: whoami(), version: this.host.appVersion })).then((r) => {
           for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
         });
@@ -1278,15 +1279,18 @@ export class Service implements Api {
     };
   }
 
-  /** `channel` false: the run is part of someone else's send (a relay or an agent working for the sender), whose own run reports it. */
-  private track(handle: RunHandle, notify: boolean, after?: (d: Awaited<RunHandle['done']>) => Promise<void>, channel = true) {
+  /**
+   * `channel` false: the run is part of someone else's send (a relay or an agent working for the sender), whose own run
+   * reports it, or the send was told not to; a kind: what the run counts as for Settings › Notifications (true: its origin).
+   */
+  private track(handle: RunHandle, notify: boolean, after?: (d: Awaited<RunHandle['done']>) => Promise<void>, channel: boolean | NotifyKind = true) {
     this.runsActive.set(handle.id, handle);
     handle.done
       .then(async (detail) => {
         await this.history.save(detail).catch((e) => this.log.error(t('Geçmiş'), t('Kaydedilemedi'), e));
         void this.hashCache.flush();
         // the team's channel, when one is set: never waits for, never fails the run
-        if (channel && wantsNotification(this.settings.notifications, detail)) {
+        if (channel !== false && wantsNotification(this.settings.notifications, detail, channel === true ? detail.origin : channel)) {
           void sendNotification(this.settings.notifications!, runMessage(detail, { host: os.hostname(), user: whoami(), version: this.host.appVersion }, this.config.nodes.filter((n) => n.id !== this.identity.node?.id))).then((r) => {
             for (const [ch, res] of Object.entries(r)) if (res !== 'ok') this.log.warn(t('Bildirim'), t('{channel} gönderilemedi: {error}', { channel: ch, error: res }));
           });
@@ -1313,7 +1317,7 @@ export class Service implements Api {
   runPlan(
     plan: SendPlan,
     selected: Record<string, string[]> | 'default',
-    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; stages?: { first: string[]; auto: boolean }; fromRelay?: 'job' | 'queue' } = {},
+    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; kind?: NotifyKind; stages?: { first: string[]; auto: boolean }; fromRelay?: 'job' | 'queue' } = {},
   ): RunHandle {
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
@@ -1392,6 +1396,8 @@ export class Service implements Api {
     }
     if (!groups.length) throw new Error(t('Seçili işlem yok.'));
     const opts = { ...req.options, ...(overrides.dryRun != null ? { dryRun: overrides.dryRun } : {}) };
+    // the team's channel: not for a run inside someone else's send, nor for a send switched off from it (Send › options)
+    const channel: boolean | NotifyKind = overrides.channel === false || opts.teamNotify === false ? false : (overrides.kind ?? true);
     const label = req.label || (req.origin === 'git' ? t('Git gönderimi') : t('Gönderim'));
     const last = plan.sources[plan.sources.length - 1];
     const shown = plan.sources.slice(0, 200);
@@ -1429,18 +1435,18 @@ export class Service implements Api {
       overrides.notify ?? opts.notify !== false,
       async (d) => {
         await after(d);
-        if (stages && s2) await this.firstStageDone(d, label, later, s2, stages.auto, after, overrides.notify ?? opts.notify !== false, overrides.channel !== false);
+        if (stages && s2) await this.firstStageDone(d, label, later, s2, stages.auto, after, overrides.notify ?? opts.notify !== false, channel);
       },
-      overrides.channel !== false,
+      channel,
     );
-    if (overrides.channel !== false && !opts.dryRun && (plan.request.origin === 'send' || plan.request.origin === 'git')) this.notifyStart(s1.label, groups);
+    if (channel !== false && !opts.dryRun && (plan.request.origin === 'send' || plan.request.origin === 'git')) this.notifyStart(s1.label, groups, channel === true ? plan.request.origin : channel);
     return handle;
   }
 
   /** Settings › Notifications › on start: what goes where, to the team's channel (never waits for, never fails the run). */
-  private notifyStart(label: string, groups: ExecGroup[]): void {
+  private notifyStart(label: string, groups: ExecGroup[], kind: NotifyKind): void {
     const ns = this.settings.notifications;
-    if (!ns?.onStart || !(ns.webhookUrl || (ns.telegramToken && ns.telegramChatId))) return;
+    if (!ns?.onStart || !hasChannel(ns) || !kindWanted(ns, kind)) return;
     const targets = groups.flatMap((g) => [{ key: g.key, title: g.title }, ...(g.relay?.targets.map((n) => ({ key: n.id, title: n.name })) ?? [])]);
     const copies = groups.flatMap((g) => g.ops.filter((o) => o.kind === 'copy'));
     const msg = startMessage(label, targets, copies.reduce((a, o) => a + o.size, 0), groups.reduce((a, g) => a + g.ops.length, 0), { host: os.hostname(), user: whoami(), version: this.host.appVersion }, this.config.nodes.filter((n) => n.id !== this.identity.node?.id));
@@ -1452,13 +1458,13 @@ export class Service implements Api {
   // ------------------------------------------------------------ staged sends
 
   /** First stage run id -> what the second stage sends, kept until it goes or is dropped (the last few only). */
-  private staged = new Map<string, { state: StagedSend; groups: ExecGroup[]; settings: ExecSettings; notify: boolean; channel: boolean; after: (d: RunDetail) => Promise<void> }>();
+  private staged = new Map<string, { state: StagedSend; groups: ExecGroup[]; settings: ExecSettings; notify: boolean; channel: boolean | NotifyKind; after: (d: RunDetail) => Promise<void> }>();
 
   /**
    * The first machines of a staged send are done: when every one of them went through (and its health check, if
    * any, said yes) the rest go now with `auto`, or wait for a go; otherwise the send stops here and waits.
    */
-  private async firstStageDone(d: RunDetail, label: string, later: ExecGroup[], settings: ExecSettings, auto: boolean, after: (d: RunDetail) => Promise<void>, notify: boolean, channel: boolean): Promise<void> {
+  private async firstStageDone(d: RunDetail, label: string, later: ExecGroup[], settings: ExecSettings, auto: boolean, after: (d: RunDetail) => Promise<void>, notify: boolean, channel: boolean | NotifyKind): Promise<void> {
     const firstOk = d.status === 'ok' && d.targets.every((x) => x.status === 'ok' && x.check?.ok !== false);
     const rest = later.flatMap((g) => [{ key: g.key, name: g.title }, ...(g.relay?.targets.map((n) => ({ key: n.id, name: n.name })) ?? [])]);
     const state: StagedSend = { runId: d.id, label, rest, status: firstOk ? 'waiting' : 'stopped', firstOk, at: Date.now() };
@@ -1850,7 +1856,7 @@ export class Service implements Api {
     const conflicts = result.stats.byCategory.conflict;
     if (!groups.length) return { handle: null, actions: conflicts };
     const handle = startRun(ctx, groups, syncExecSettings(ctx, job, label, result, groups));
-    this.track(handle, false, (detail) => updateDbAfterRun(ctx, job, result, detail));
+    this.track(handle, false, (detail) => updateDbAfterRun(ctx, job, result, detail), 'automation');
     return { handle, actions: groups.reduce((a, g) => a + g.ops.length, 0) };
   }
 
@@ -1907,7 +1913,7 @@ export class Service implements Api {
     this.plans.set(plan.id, plan);
     this.planScans.set(plan.id, scans);
     try {
-      return this.runPlan(plan, 'default', { notify: false, unreachableFails: true });
+      return this.runPlan(plan, 'default', { notify: false, unreachableFails: true, kind: 'automation' });
     } catch {
       return null;
     }
@@ -1916,7 +1922,7 @@ export class Service implements Api {
   /** Sends a test message to the webhook and the Telegram chat set in the settings. */
   async sendWeeklySummary(): Promise<{ webhook?: string; telegram?: string }> {
     const s = this.settings.notifications;
-    if (!s || !(s.webhookUrl || (s.telegramToken && s.telegramChatId))) return {};
+    if (!s || !hasChannel(s)) return {};
     const names = new Map(this.config.nodes.map((n) => [n.id, n.name]));
     const msg = weeklyMessage(await this.history.list(), [...this.lastProbes.values()], names, this.drift, { host: os.hostname(), user: whoami(), version: this.host.appVersion });
     return sendNotification(s, msg);
@@ -1944,7 +1950,8 @@ export class Service implements Api {
     const s = this.settings.notifications;
     if (!s) return {};
     const text = t('SamSync bildirim sınaması: {host}', { host: os.hostname() });
-    return sendNotification(s, { text, payload: { event: 'test', from: os.hostname(), version: this.host.appVersion, text } });
+    // a test checks the addresses: a channel switched off for now is tried too
+    return sendNotification({ ...s, webhookEnabled: true, telegramEnabled: true }, { text, payload: { event: 'test', from: os.hostname(), version: this.host.appVersion, text } });
   }
 
   async syncItemDiff(compareId: string, pairId: string, key: string): Promise<DiffResult> {

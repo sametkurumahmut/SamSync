@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock, RotateCcw, Undo2, Layers } from 'lucide-react';
+import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock, RotateCcw, Undo2, Layers, Megaphone } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
@@ -630,6 +630,11 @@ export function OptionsCard({ git }: { git?: boolean }) {
   const reset = useApp((s) => s.resetOptions);
   const postCommand = useApp((s) => s.boot!.config.copy.postCommand);
   const preCommand = useApp((s) => s.boot!.config.copy.preCommand);
+  // a team channel set and switched on in Settings › Notifications
+  const channel = useApp((s) => {
+    const n = s.boot!.settings.notifications;
+    return !!n && ((!!n.webhookUrl && n.webhookEnabled !== false) || (!!n.telegramToken && !!n.telegramChatId && n.telegramEnabled !== false));
+  });
   const [filters, setFilters] = useState(false);
   return (
     <div className="card options-card">
@@ -688,6 +693,15 @@ export function OptionsCard({ git }: { git?: boolean }) {
           <ToggleRow icon={<ScanSearch size={16} className="faint" />} title={t('Hedefi baştan tara')} desc={t('SamSync’in hedefte bıraktığı manifeste güvenmez, klasörleri ağ üzerinden gezer (yavaş ama kesin)')} on={!!options.fullScan} onChange={(v) => set({ fullScan: v || undefined })} />
           {git && <ToggleRow icon={<Trash2 size={16} className="faint" />} title={t('Silinenleri hedefte de sil')} desc={t('Git’te silinen ya da taşınan dosyalar hedeften kaldırılır')} on={options.propagateDeletes} onChange={(v) => set({ propagateDeletes: v })} />}
           <ToggleRow icon={<Bell size={16} className="faint" />} title={t('Bitince bildir')} desc={t('Masaüstü bildirimi gösterir')} on={options.notify} onChange={(v) => set({ notify: v })} />
+          {channel && (
+            <ToggleRow
+              icon={<Megaphone size={16} className="faint" />}
+              title={t('Ekibe bildir')}
+              desc={t('Telegram ve web kancasına gider (Ayarlar › Bildirimler); kendi klasörlerinizin listesinde kapatabilirsiniz')}
+              on={options.teamNotify !== false}
+              onChange={(v) => set({ teamNotify: v ? undefined : false })}
+            />
+          )}
           {preCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Öncesi komut')} desc={<span className="mono">{preCommand}</span>} on={options.runPreCommand !== false} onChange={(v) => set({ runPreCommand: v })} />}
           {postCommand && <ToggleRow icon={<Terminal size={16} className="faint" />} title={t('Sonrası komut')} desc={<span className="mono">{postCommand}</span>} on={options.runPostCommand} onChange={(v) => set({ runPostCommand: v })} />}
         </div>

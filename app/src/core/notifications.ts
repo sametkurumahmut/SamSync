@@ -1,10 +1,11 @@
 // Telling the team: when a run ends, a message to a webhook (any HTTP endpoint, a Teams/Slack flow) and/or
 // to a Telegram chat through a bot, as set in this machine's settings. Nothing here blocks the run.
-import type { DriftReport, NodeConfig, NotificationSettings, RunDetail } from '../shared/types';
+import type { DriftReport, NodeConfig, NotificationSettings, NotifyKind, RunDetail } from '../shared/types';
 import { formatBytes } from './util';
 import { t } from '../shared/i18n';
 import { driftCounts } from '../shared/drift';
 import { machineTitle } from '../shared/machine';
+import { DEFAULT_NOTIFY_KINDS } from '../shared/notify';
 
 export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
@@ -104,10 +105,26 @@ export function driftMessage(reports: DriftReport[], from: { host: string; versi
   };
 }
 
-export function wantsNotification(s: NotificationSettings | undefined, run: Pick<RunDetail, 'status' | 'dryRun'>): boolean {
+/** The channels that are set and switched on. */
+export function activeChannels(s: NotificationSettings | undefined): { webhook: boolean; telegram: boolean } {
+  return { webhook: !!s?.webhookUrl && s.webhookEnabled !== false, telegram: !!(s?.telegramToken && s.telegramChatId) && s.telegramEnabled !== false };
+}
+
+/** True when at least one channel is set and switched on. */
+export function hasChannel(s: NotificationSettings | undefined): boolean {
+  const c = activeChannels(s);
+  return c.webhook || c.telegram;
+}
+
+/** True when this kind of run reports at all (Settings › Notifications › which runs; the Send page alone unless chosen). */
+export function kindWanted(s: NotificationSettings | undefined, kind: NotifyKind): boolean {
+  return (s?.kinds ?? DEFAULT_NOTIFY_KINDS).includes(kind);
+}
+
+export function wantsNotification(s: NotificationSettings | undefined, run: Pick<RunDetail, 'status' | 'dryRun'>, kind?: NotifyKind): boolean {
   // a cancel is someone's own choice, not news for the team (the run window and History still show it)
   if (!s || run.dryRun || run.status === 'cancelled') return false;
-  if (!s.webhookUrl && !(s.telegramToken && s.telegramChatId)) return false;
+  if (!hasChannel(s) || (kind && !kindWanted(s, kind))) return false;
   return run.status === 'ok' ? !!s.onSuccess : !!s.onFailure;
 }
 
@@ -116,10 +133,11 @@ async function post(fetchImpl: Fetch, url: string, body: unknown): Promise<void>
   if (!r.ok) throw new Error(`HTTP ${r.status}${await r.text().then((x) => (x ? `: ${x.slice(0, 200)}` : '')).catch(() => '')}`);
 }
 
-/** Sends the message to every channel that is set; one result line per channel ('ok' or the error). */
+/** Sends the message to every channel that is set and switched on; one result line per channel ('ok' or the error). */
 export async function sendNotification(s: NotificationSettings, m: RunMessage, fetchImpl: Fetch = globalThis.fetch as unknown as Fetch): Promise<{ webhook?: string; telegram?: string }> {
   const out: { webhook?: string; telegram?: string } = {};
-  if (s.webhookUrl) {
+  const on = activeChannels(s);
+  if (on.webhook && s.webhookUrl) {
     try {
       await post(fetchImpl, s.webhookUrl, m.payload);
       out.webhook = 'ok';
@@ -127,7 +145,7 @@ export async function sendNotification(s: NotificationSettings, m: RunMessage, f
       out.webhook = e instanceof Error ? e.message : String(e);
     }
   }
-  if (s.telegramToken && s.telegramChatId) {
+  if (on.telegram && s.telegramToken && s.telegramChatId) {
     try {
       await post(fetchImpl, `https://api.telegram.org/bot${s.telegramToken}/sendMessage`, { chat_id: s.telegramChatId, text: m.text, disable_web_page_preview: true });
       out.telegram = 'ok';

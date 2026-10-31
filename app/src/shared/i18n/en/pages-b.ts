@@ -806,6 +806,16 @@ const d: Dict = {
   'Bu durumda makine yok: {state}': 'No machines in this state: {state}',
   'Aramaya uyan makine yok': 'No machines match the search',
   'Hepsini göster': 'Show all',
+  Git: 'Git',
+  'İleti şu durumlarda gider: bir iş bitince (aşağıda seçilen işlerde), istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette. İptal edilen ve deneme çalıştırmaları hiç gitmez; bir gönderimi Gönder › Seçenekler › Ekibe bildir ile tek tek de kapatabilirsiniz.': 'A message goes when a run ends (for the runs chosen below), when a Send or Git send starts if you want, when drift is found, and in the weekly summary. Cancelled runs and dry runs never go; you can also switch a single send off with Send › Options › Notify the team.',
+  'Web kancasına gönder': 'Send to the webhook',
+  'Kapalıyken adres saklanır, ileti gitmez': 'When off, the address is kept and nothing is sent',
+  'Önce adres girin': 'Enter an address first',
+  'Telegram’a gönder': 'Send to Telegram',
+  'Kapalıyken bot anahtarı ve sohbet saklanır, ileti gitmez': 'When off, the bot token and the chat are kept and nothing is sent',
+  'Önce bot anahtarını ve sohbeti girin': 'Enter the bot token and the chat first',
+  'Hangi işler bildirsin': 'Which runs report',
+  'Varsayılan yalnızca Gönder: oradan başlattığınız gönderimler. Otomasyon, izlemelerin ve zamanlamaların başlattıklarıdır.': 'By default only Send: the sends you start there. Automation is what watches and schedules start.',
 };
 
 export default d;

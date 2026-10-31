@@ -806,6 +806,16 @@ const d: Dict = {
   'Bu durumda makine yok: {state}': 'Keine Rechner in diesem Zustand: {state}',
   'Aramaya uyan makine yok': 'Kein Rechner passt zur Suche',
   'Hepsini göster': 'Alle anzeigen',
+  Git: 'Git',
+  'İleti şu durumlarda gider: bir iş bitince (aşağıda seçilen işlerde), istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette. İptal edilen ve deneme çalıştırmaları hiç gitmez; bir gönderimi Gönder › Seçenekler › Ekibe bildir ile tek tek de kapatabilirsiniz.': 'Eine Nachricht geht, wenn ein Lauf endet (bei den unten gewählten Läufen), auf Wunsch beim Start einer Sendung von Senden oder Git, wenn eine Abweichung gefunden wird, und in der Wochenübersicht. Abgebrochene Läufe und Probeläufe gehen nie; eine einzelne Sendung schalten Sie unter Senden › Optionen › Team benachrichtigen ab.',
+  'Web kancasına gönder': 'An den Webhook senden',
+  'Kapalıyken adres saklanır, ileti gitmez': 'Aus: die Adresse bleibt gespeichert, es geht nichts raus',
+  'Önce adres girin': 'Zuerst eine Adresse eingeben',
+  'Telegram’a gönder': 'An Telegram senden',
+  'Kapalıyken bot anahtarı ve sohbet saklanır, ileti gitmez': 'Aus: Bot-Token und Chat bleiben gespeichert, es geht nichts raus',
+  'Önce bot anahtarını ve sohbeti girin': 'Zuerst Bot-Token und Chat eingeben',
+  'Hangi işler bildirsin': 'Welche Läufe melden',
+  'Varsayılan yalnızca Gönder: oradan başlattığınız gönderimler. Otomasyon, izlemelerin ve zamanlamaların başlattıklarıdır.': 'Standardmäßig nur Senden: die Sendungen, die Sie dort starten. Automatisierung ist, was Überwachungen und Zeitpläne starten.',
 };
 
 export default d;

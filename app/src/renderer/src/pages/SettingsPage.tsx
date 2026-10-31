@@ -1,14 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2, Volume2, Wrench } from 'lucide-react';
-import type { CopySettings, LocalSettings, NotificationSettings, UpdateConfig, UpdateSource } from '@shared/types';
+import type { CopySettings, LocalSettings, NotificationSettings, NotifyKind, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
 import { playFinishSound } from '../lib/sounds';
-import { Button, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { Button, Checkbox, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
 import { ago, cls, dateTime } from '../lib/format';
 import { parseHours } from '@shared/machine';
 import { getLang, t, tk } from '@shared/i18n';
 import { notesInLang } from '@shared/releasenotes';
+import { DEFAULT_NOTIFY_KINDS } from '@shared/notify';
 import { menuEntries } from '@shared/menu';
 import { useUnsaved } from '../lib/unsaved';
 import { ConfigEditor } from '../components/ConfigEditor';
@@ -713,6 +714,15 @@ function AssistantSection() {
   );
 }
 
+/** The kinds of runs that may report, named as in the sidebar (undo has no page of its own). */
+const NOTIFY_KINDS: { id: NotifyKind; label: string }[] = [
+  { id: 'send', label: tk('Gönder') },
+  { id: 'git', label: tk('Git') },
+  { id: 'sync', label: tk('Senkron') },
+  { id: 'automation', label: tk('Otomasyon') },
+  { id: 'restore', label: tk('Geri alma') },
+];
+
 /** Webhook / Telegram reports of finished runs (this machine). */
 function NotificationsSection() {
   const boot = useApp((s) => s.boot!);
@@ -743,6 +753,9 @@ function NotificationsSection() {
       }
     >
       <div className="col" style={{ gap: 12 }}>
+        <div className="faint" style={{ fontSize: 12.5 }}>
+          {t('İleti şu durumlarda gider: bir iş bitince (aşağıda seçilen işlerde), istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette. İptal edilen ve deneme çalıştırmaları hiç gitmez; bir gönderimi Gönder › Seçenekler › Ekibe bildir ile tek tek de kapatabilirsiniz.')}
+        </div>
         <Field label={t('Web kancası (URL)')} help={t('Her bitişte JSON gönderilir: durum, etiket, makineler, işlem ve bayt sayıları, süre, özet metin. Teams/Slack iş akışı ya da kendi betiğiniz.')}>
           <input className="input mono" value={n.webhookUrl ?? ''} onChange={(e) => setN({ ...n, webhookUrl: e.target.value.trim() || undefined })} placeholder="https://…" spellCheck={false} />
         </Field>
@@ -754,6 +767,30 @@ function NotificationsSection() {
             <input className="input mono" value={n.telegramChatId ?? ''} onChange={(e) => setN({ ...n, telegramChatId: e.target.value.trim() || undefined })} placeholder="-1001234567890" spellCheck={false} />
           </Field>
         </div>
+        <div className="form-grid">
+          <ToggleRow title={t('Web kancasına gönder')} desc={n.webhookUrl ? t('Kapalıyken adres saklanır, ileti gitmez') : t('Önce adres girin')} disabled={!n.webhookUrl} on={!!n.webhookUrl && n.webhookEnabled !== false} onChange={(v) => setN({ ...n, webhookEnabled: v ? undefined : false })} />
+          <ToggleRow title={t('Telegram’a gönder')} desc={n.telegramToken && n.telegramChatId ? t('Kapalıyken bot anahtarı ve sohbet saklanır, ileti gitmez') : t('Önce bot anahtarını ve sohbeti girin')} disabled={!(n.telegramToken && n.telegramChatId)} on={!!(n.telegramToken && n.telegramChatId) && n.telegramEnabled !== false} onChange={(v) => setN({ ...n, telegramEnabled: v ? undefined : false })} />
+        </div>
+        <Field label={t('Hangi işler bildirsin')} help={t('Varsayılan yalnızca Gönder: oradan başlattığınız gönderimler. Otomasyon, izlemelerin ve zamanlamaların başlattıklarıdır.')}>
+          <div className="row" style={{ gap: 14, flexWrap: 'wrap' }}>
+            {NOTIFY_KINDS.map((k) => {
+              const cur = n.kinds ?? DEFAULT_NOTIFY_KINDS;
+              const on = cur.includes(k.id);
+              const toggle = (v: boolean) => {
+                const next = NOTIFY_KINDS.map((x) => x.id).filter((id) => (id === k.id ? v : cur.includes(id)));
+                // the default stays unwritten, so a later change of the default reaches it
+                const same = next.length === DEFAULT_NOTIFY_KINDS.length && next.every((id) => DEFAULT_NOTIFY_KINDS.includes(id));
+                setN({ ...n, kinds: same ? undefined : next });
+              };
+              return (
+                <label key={k.id} className="check-label" onClick={() => toggle(!on)}>
+                  <Checkbox label={t(k.label)} checked={on} onChange={toggle} />
+                  {t(k.label)}
+                </label>
+              );
+            })}
+          </div>
+        </Field>
         <ToggleRow title={t('Başarılı gönderimlerde de bildir')} desc={t('Kapalıyken yalnızca hatalı ya da kısmi bitenler gider')} on={n.onSuccess} onChange={(v) => setN({ ...n, onSuccess: v })} />
         <ToggleRow title={t('Hatalı ve kısmi gönderimlerde bildir')} on={n.onFailure} onChange={(v) => setN({ ...n, onFailure: v })} />
         <ToggleRow title={t('Gönderim başlayınca da bildir')} desc={t('Ne gönderildiği, hangi makinelere gittiği ve kimin gönderdiği gönderim başlarken de yazılır')} on={!!n.onStart} onChange={(v) => setN({ ...n, onStart: v || undefined })} />

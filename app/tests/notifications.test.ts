@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runMessage, sendNotification, wantsNotification, type Fetch } from '../src/core/notifications';
+import { hasChannel, runMessage, sendNotification, wantsNotification, type Fetch } from '../src/core/notifications';
 import type { RunDetail } from '../src/shared/types';
 
 const run = (over: Partial<RunDetail> = {}): RunDetail => ({
@@ -88,5 +88,37 @@ describe('the machines in a run message', () => {
 
   it('lists every machine when the groups are not known', () => {
     expect(runMessage(run(), { host: 'H' }).text.split('\n')[1]).toBe('→ Hedefler: PC1, PC3');
+  });
+});
+
+describe('switching the team channels', () => {
+  const both = { webhookUrl: 'http://hook', telegramToken: 'T', telegramChatId: '42', onSuccess: true, onFailure: true };
+
+  it('keeps a switched-off channel quiet without losing its address', async () => {
+    const urls: string[] = [];
+    const fetchImpl: Fetch = async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, text: async () => '' };
+    };
+    const m = runMessage(run({ status: 'ok' }), { host: 'H' });
+    expect(await sendNotification({ ...both, telegramEnabled: false }, m, fetchImpl)).toEqual({ webhook: 'ok' });
+    expect(urls).toEqual(['http://hook']);
+    // both off: nothing to send, so no run asks for it
+    const off = { ...both, webhookEnabled: false, telegramEnabled: false };
+    expect(hasChannel(off)).toBe(false);
+    expect(wantsNotification(off, { status: 'failed', dryRun: false })).toBe(false);
+    expect(hasChannel({ ...off, telegramEnabled: true })).toBe(true);
+  });
+
+  it('reports only the kinds of runs chosen; the Send page alone when none are chosen', () => {
+    const failed = { status: 'failed' as const, dryRun: false };
+    expect(wantsNotification(both, failed, 'send')).toBe(true);
+    expect(wantsNotification(both, failed, 'sync')).toBe(false);
+    expect(wantsNotification(both, failed, 'automation')).toBe(false);
+    expect(wantsNotification({ ...both, kinds: ['send', 'git', 'sync', 'automation', 'restore'] }, failed, 'sync')).toBe(true);
+    const sendOnly = { ...both, kinds: ['send' as const, 'git' as const] };
+    expect(wantsNotification(sendOnly, failed, 'send')).toBe(true);
+    expect(wantsNotification(sendOnly, failed, 'automation')).toBe(false);
+    expect(wantsNotification(sendOnly, failed, 'restore')).toBe(false);
   });
 });

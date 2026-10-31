@@ -505,3 +505,45 @@ describe('temporary files a dropped link left on a target', () => {
     }
   }, 30000);
 });
+
+describe('the team channel and one send', () => {
+  it('hears about a send unless that send was switched off from it', async () => {
+    const base = await tmpDir();
+    const src = path.join(base, 'me', 'Data');
+    const dirT = path.join(base, 't');
+    await fsp.mkdir(dirT, { recursive: true });
+    const nodes: NodeConfig[] = [{ ...pathNode('Me', path.join(base, 'me')), localRoots: [path.join(base, 'me')] }, pathNode('T', dirT)];
+    const cfgFile = path.join(base, 'config.json');
+    await fsp.writeFile(cfgFile, JSON.stringify({ schema: 2, nodes, copy: { retryCount: 0, waitSeconds: 0 } }));
+    const ud = path.join(base, 'ud');
+    await fsp.mkdir(ud, { recursive: true });
+    await fsp.writeFile(path.join(ud, 'settings.json'), JSON.stringify({ configPath: cfgFile, localNodeId: 'Me', notifications: { webhookUrl: 'http://hook.test/run', onSuccess: true, onFailure: true } }));
+    const posted: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      posted.push(JSON.parse(init.body).label);
+      return new Response('', { status: 200 });
+    }) as unknown as typeof fetch;
+    const me = new Service({ isElectron: false, appVersion: '2.5.0', userDataPath: ud, initialPaths: [], emit: () => undefined });
+    await me.init();
+    try {
+      const send = async (file: string, label: string, extra: Partial<SendRequest['options']> = {}) => {
+        await write(path.join(src, file), label);
+        const plan = await me.planSend({ sources: [{ kind: 'fs', path: src }], targetIds: ['T'], options: { ...defaultOptions, ...extra }, origin: 'send', label }, `p-${label}`);
+        expect((await me.runPlan(plan, 'default', { notify: false }).done).status).toBe('ok');
+      };
+      await send('a.txt', 'release');
+      for (let i = 0; i < 50 && posted.length < 1; i++) await sleep(50);
+      expect(posted).toEqual(['release']);
+      await send('b.txt', 'my own folders', { teamNotify: false });
+      await sleep(400);
+      expect(posted).toEqual(['release']);
+    } finally {
+      globalThis.fetch = realFetch;
+      me.automation?.stop();
+      me.relay?.stop();
+      me.later.stop();
+      me.pending.stop();
+    }
+  }, 30000);
+});

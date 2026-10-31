@@ -465,6 +465,8 @@ const d: Dict = {
   'Bu makinelere bu noktadan sonra giden gönderimler, en yenisinden başlayarak yedeklerinden geri alınır. Şimdiki hâller de yedeklenir. Yedek almadan yapılmış bir gönderim atlanır ve sonuçta belirtilir.': 'Los envíos a estas máquinas posteriores a este punto se deshacen desde sus copias de seguridad, el más reciente primero. El estado actual también se respalda. Un envío hecho sin copia se omite y se indica en el resultado.',
   'Bu noktadan sonra bu makinelere giden bir gönderim yok; makineler zaten bu durumda.': 'No fue nada a estas máquinas después de este punto; ya están en este estado.',
   'Hedef diskinde boş alan': 'Espacio libre en el disco de destino',
+  'Ekibe bildir': 'Avisar al equipo',
+  'Telegram ve web kancasına gider (Ayarlar › Bildirimler); kendi klasörlerinizin listesinde kapatabilirsiniz': 'Va a Telegram y al webhook (Ajustes › Notificaciones); puede desactivarlo en la lista de sus propias carpetas',
 };
 
 export default d;
