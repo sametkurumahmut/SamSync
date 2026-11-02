@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.15 — 2026-11-02
+
+- **Röle ilerlemesi:** röle artık çalışırken gönderene ne kadar ilerlediğini bildiriyor. Çalıştırma panelindeki kendi satırı ve üstteki grup sayısı (örneğin `Lab-B 1/4`), arkasındaki makineler de bitene kadar beklemeden, kendi kopyası uygulanır uygulanmaz bitti oluyor. O makinelerin satırları dağıtım sırasında 0'da beklemek yerine her birinin ne kadar ilerlediğini gösteriyor. Rölenin de bu sürümde olması gerekir; eski sürümdeki bir röleyle eskisi gibi çalışır.
+- **Röle bitirme süresi:** Ayarlar › Kopyalama › *Röle bitirme süresi* artık rölenin son haberinden sayılıyor: haber vermeye devam eden uzun bir dağıtım yarıda kesilmiyor, bu süre boyunca sessiz kalan bir röle yine hatalı sayılıyor.
+
 ## 2.4.14 — 2026-10-31
 
 - **Ekip bildirimleri:** Ayarlar › Bildirimler'de web kancası ve Telegram için ayrı açma-kapama anahtarları var; kanal kapatılınca adresi saklanır. **Hangi işler bildirsin**, Gönder, Git, Senkron, Otomasyon ve Geri alma arasından seçer; varsayılanda yalnızca Gönder sayfasından başlatılan gönderimler kanala gider. Gönder › Seçenekler › **Ekibe bildir** tek bir gönderimi, listeye özel seçeneklerle de bütün bir listeyi kapatır, örneğin kendi klasörleriniz için. Bölüm iletilerin ne zaman gittiğini de yazıyor: bir iş bitince, istenirse Gönder ve Git gönderimleri başlarken, sapma bulununca ve haftalık özette; iptal edilen ve deneme çalıştırmaları hiç gitmez.

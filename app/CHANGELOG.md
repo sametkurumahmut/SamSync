@@ -2,6 +2,11 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.15 — 2026-11-02
+
+- **Relay progress:** a relay now tells its sender how far it is while it works. Its own row in the run panel, and its group's count above (for example `Lab-B 1/4`), turns done as soon as its own copy is applied, instead of only when the machines behind it are done too. The rows of those machines show how far each one is during the distribution instead of waiting at 0. The relay needs this version too; with an older relay it works as before.
+- **Relay finish time:** Settings › Copy › *Relay finish time* now counts from the relay's last word: a long distribution that keeps reporting is no longer cut off, and a relay that goes silent for that long still counts as failed.
+
 ## 2.4.14 — 2026-10-31
 
 - **Team notifications:** Settings › Notifications has an on/off switch for the webhook and one for Telegram; switching a channel off keeps its address. **Which runs report** chooses between Send, Git, Sync, Automation and Undo; by default only the sends started from the Send page go to the channel. Send › Options › **Notify the team** switches a single send off, and with the per-list options a whole list, for your own folders say. The section also says when messages go: when a run ends, at the start of a Send or Git send if asked for, when drift is found and in the weekly summary; cancelled runs and dry runs never.
