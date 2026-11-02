@@ -547,3 +547,44 @@ describe('the team channel and one send', () => {
     }
   }, 30000);
 });
+
+describe('a relay that tells how far it is', () => {
+  it('is waited for as long as it keeps telling, and the news reaches the sender', async () => {
+    const dir = await tmpDir();
+    const tgt = new FsTransport(dir);
+    const jobs = path.join(dir, RELAY_FOLDER, 'jobs');
+    const results = path.join(dir, RELAY_FOLDER, 'results');
+    await fsp.mkdir(jobs, { recursive: true });
+    await fsp.mkdir(results, { recursive: true });
+    await fsp.writeFile(path.join(jobs, 'j2.ack'), '{}');
+    const seen: string[] = [];
+    const own = { targetId: 'R', status: 'ok' as const, opsOk: 3, opsFailed: 0, bytes: 30 };
+    const wait = waitRelayResult(tgt, 'j2', { cancel: new CancelToken(), ackMs: 5000, doneMs: 700, onProgress: (p) => seen.push(p.own ? `own:${p.targets?.[0]?.done ?? '-'}` : 'none') });
+    // the relay keeps telling, past the 700 ms the whole job would have had otherwise
+    for (let i = 0; i < 6; i++) {
+      await fsp.writeFile(path.join(results, 'j2.progress.json'), JSON.stringify({ id: 'j2', at: Date.now() + i, own, targets: [{ targetId: 'B', status: 'running', done: i, total: 10, failed: 0, bytesDone: i, bytesTotal: 10 }] }));
+      await sleep(400);
+    }
+    await fsp.writeFile(path.join(results, 'j2.json'), JSON.stringify({ id: 'j2', finishedAt: Date.now(), targets: [own] }));
+    const r = await wait;
+    expect(r.targets[0].targetId).toBe('R');
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(seen[0]).toMatch(/^own:/);
+  }, 20000);
+
+  it('counts as failed once it goes silent for the time limit', async () => {
+    const dir = await tmpDir();
+    const tgt = new FsTransport(dir);
+    const jobs = path.join(dir, RELAY_FOLDER, 'jobs');
+    const results = path.join(dir, RELAY_FOLDER, 'results');
+    await fsp.mkdir(jobs, { recursive: true });
+    await fsp.mkdir(results, { recursive: true });
+    await fsp.writeFile(path.join(jobs, 'j3.ack'), '{}');
+    await fsp.writeFile(path.join(results, 'j3.progress.json'), JSON.stringify({ id: 'j3', at: 1 }));
+    const err = await waitRelayResult(tgt, 'j3', { cancel: new CancelToken(), ackMs: 5000, doneMs: 600 }).then(
+      () => null,
+      (e: Error) => e.message,
+    );
+    expect(err).toMatch(/haber vermiyor|no word/);
+  }, 20000);
+});

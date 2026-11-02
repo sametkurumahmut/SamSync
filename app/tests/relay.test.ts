@@ -113,6 +113,9 @@ describe('relay end to end', () => {
       expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
       expect(rows.T.done).toBe(rows.T.total);
       expect(fs.existsSync(path.join(s.server, '_SamSyncRelay', 'jobs', `${d.id}.pack`))).toBe(false);
+      // the relay told its own apply on the way (said once in the log) and left no progress file behind
+      expect(d.log.filter((l) => l.key === 'T' && /^Paket uygulandı|^Pack applied/.test(l.message))).toHaveLength(1);
+      expect(fs.readdirSync(path.join(s.server, '_SamSyncRelay', 'results')).filter((n) => n.endsWith('.progress.json'))).toEqual([]);
       // the relay's own history shows the apply, and its card state counts the job
       const relayRuns = await s.relay!.runs();
       expect(relayRuns.some((r) => /^Paket: |^Pack: /.test(r.label))).toBe(true);

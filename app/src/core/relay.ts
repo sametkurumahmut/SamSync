@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentCheck, AgentSettings, BusyProgram, DriftSummary, RelayStash, NodeConfig, RelayPending, RelayState, RunDetail, SendOptions, SendPlan, SendRequest, SourceSpec } from '../shared/types';
-import { RELAY_FOLDER, type RelayJob, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
+import { RELAY_FOLDER, type RelayJob, type RelayProgress, type RelayResult, type RelaySource, type RelayTargetResult } from '../shared/relay';
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
 import { FsTransport, transportForNode, type Transport } from './transport';
@@ -29,6 +29,8 @@ import { t } from '../shared/i18n';
 
 const JOBS = relJoin(RELAY_FOLDER, 'jobs');
 const RESULTS = relJoin(RELAY_FOLDER, 'results');
+/** How often a relay rewrites a running job's progress for its sender. */
+const PROGRESS_EVERY_MS = 2000;
 /** The relay writes this every half minute while it runs; senders read it to know it is alive. */
 export const ALIVE_FILE = relJoin(RELAY_FOLDER, 'alive.json');
 export const HEARTBEAT_MS = 30_000;
@@ -148,9 +150,11 @@ export interface RelayWait {
   cancel: CancelToken;
   /** How long the relay may take to pick the job up (SamSync must be running there). */
   ackMs: number;
-  /** How long the whole fan-out may take. */
+  /** How long the whole fan-out may take; with a relay that tells its progress, how long it may stay silent. */
   doneMs: number;
   onAck?: () => void;
+  /** The relay's word while it works: its own apply done, how far each machine behind it is. */
+  onProgress?: (p: RelayProgress) => void;
   /** After a cancel, how long to wait for the relay to say what it had done by then (default 30 s). */
   cancelGraceMs?: number;
   /** The relay was told of the cancel; its answer is awaited. */
@@ -197,6 +201,10 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
   let stopBy = 0;
   let held = 0;
   let last = started;
+  // the time limit counts from the relay's last word (from the start with a relay that says nothing on the way)
+  let newsAt = started;
+  let heldAtNews = 0;
+  let newsSeen = 0;
   while (true) {
     const now = Date.now();
     if (w.paused?.()) held += now - last;
@@ -216,6 +224,13 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
     if (stopBy && Date.now() > stopBy) throw new CancelledError();
     const result = await readJson<RelayResult>(tgt, relJoin(RESULTS, `${id}.json`));
     if (result?.id === id) return result;
+    const news = await readJson<RelayProgress>(tgt, relJoin(RESULTS, `${id}.progress.json`)).catch(() => null);
+    if (news?.id === id && news.at !== newsSeen) {
+      newsSeen = news.at;
+      newsAt = Date.now();
+      heldAtNews = held;
+      w.onProgress?.(news);
+    }
     if (!acked && (await tgt.stat(relJoin(JOBS, `${id}.ack`)))) {
       acked = true;
       w.onAck?.();
@@ -230,7 +245,8 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
       await tgt.remove(relJoin(JOBS, `${id}.json`), false).catch(() => undefined);
       throw new RelayError(t('Röle {ms} sn içinde işi almadı; oradaki SamSync çalışmıyor olabilir', { ms: Math.round(w.ackMs / 1000) }), true);
     }
-    if (waited > w.doneMs) throw new RelayError(t('Röle {m} dakika içinde bitirmedi', { m: Math.round(w.doneMs / 60000) }), false);
+    const quiet = Date.now() - newsAt - (held - heldAtNews);
+    if (quiet > w.doneMs) throw new RelayError(newsSeen ? t('Röle {m} dakikadır haber vermiyor', { m: Math.round(w.doneMs / 60000) }) : t('Röle {m} dakika içinde bitirmedi', { m: Math.round(w.doneMs / 60000) }), false);
     await sleep(Math.min(1500, 300 + waited / 10));
   }
 }
@@ -628,7 +644,10 @@ export class RelayService {
       } else own = await this.applyPack(id, job, ctl);
       result.targets.push(own);
       ownOk = own.status !== 'failed' && own.status !== 'cancelled';
+      // the sender learns at once that this machine is done, before the machines behind it are
+      if (job.targetIds.length) await this.writeProgress(id, { own });
     }
+    const ownResult = result.targets[0];
     try {
       if (!job.targetIds.length) throw null;
       if (ctl.cancelled) {
@@ -642,7 +661,15 @@ export class RelayService {
       // cancelled while the machines were compared: nothing goes out
       const handle = ctl.cancelled ? null : this.host.runPlan(plan, req.label!);
       if (handle) this.track(ctl, handle);
-      const detail: RunDetail | null = handle ? await handle.done : null;
+      // how far each machine is, every few seconds: the sender shows it and knows this relay is still at it
+      const report = () =>
+        handle &&
+        this.writeProgress(id, {
+          own: ownResult,
+          targets: handle.targets().map((x) => ({ targetId: x.key, status: x.status, done: x.done, total: x.total, failed: x.failed, bytesDone: x.bytesDone, bytesTotal: x.bytesTotal })),
+        });
+      const ticker = handle ? setInterval(() => void report(), PROGRESS_EVERY_MS) : null;
+      const detail: RunDetail | null = handle ? await handle.done.finally(() => ticker && clearInterval(ticker)) : null;
       for (const tp of plan.targets) {
         const got = detail?.targets.find((x) => x.key === tp.targetId);
         // a cancelled job queues nothing for the machines that were off
@@ -677,6 +704,7 @@ export class RelayService {
       const tmp = path.join(this.resultsDir, `${id}.${newId()}.tmp`);
       await fsp.writeFile(tmp, JSON.stringify(result, null, 1));
       await fsp.rename(tmp, path.join(this.resultsDir, `${id}.json`));
+      await fsp.rm(path.join(this.resultsDir, `${id}.progress.json`), { force: true });
       await fsp.rm(file, { force: true });
       for (const k of ['ack', 'cancel', 'pause']) await fsp.rm(path.join(this.jobsDir, `${id}.${k}`), { force: true });
     } catch (e) {
@@ -988,6 +1016,17 @@ export class RelayService {
       if (!scan.exists) continue;
       // its own walk leaves out at most what the sender's did, so the sender's exclusions describe it
       await saveManifestSubtree(local, rel, scan.entries, by, job.label, job.pack!.excluded);
+    }
+  }
+
+  /** A job's progress for its sender (results/<id>.progress.json); a write that fails only means less news. */
+  private async writeProgress(id: string, p: Omit<RelayProgress, 'id' | 'at'>): Promise<void> {
+    try {
+      const tmp = path.join(this.resultsDir, `${id}.${newId()}.tmp`);
+      await fsp.writeFile(tmp, JSON.stringify({ id, at: Date.now(), ...p }));
+      await fsp.rename(tmp, path.join(this.resultsDir, `${id}.progress.json`));
+    } catch {
+      /* the final result still comes */
     }
   }
 

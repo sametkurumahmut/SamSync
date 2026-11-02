@@ -310,7 +310,7 @@ const d: Dict = {
   'Röle işi alma süresi (sn)': 'Tiempo de toma de tarea del relé (s)',
   'Röle bu sürede işi almazsa doğrudan gönderilir': 'Si el relé no toma la tarea en este tiempo, el envío se hace directamente',
   'Röle bitirme süresi (dk)': 'Tiempo de finalización del relé (min)',
-  'Rölenin dağıtımı bu sürede bitmezse hata sayılır': 'Si el relé no termina de reenviar en este tiempo, cuenta como error',
+  'Röle bu süre boyunca hiç haber vermezse hata sayılır (eski sürümdeki bir röle için: dağıtım bu sürede bitmezse)': 'Si el relé no da noticias durante este tiempo, cuenta como fallido (con un relé de una versión anterior: si no termina de repartir en este tiempo)',
   'son gönderim': 'último envío',
 
   // quick sends

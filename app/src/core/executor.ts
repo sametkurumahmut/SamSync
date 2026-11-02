@@ -8,7 +8,7 @@ import { RelayError, heartbeatFresh, readHeartbeat, signalRelayJob, submitRelayJ
 import { AgentHasher } from './agenthash';
 import { DELTA_BLOCK, DELTA_MIN, changedBlocks, patchedStream, type BlockList, type DeltaInfo } from './delta';
 import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
-import type { PackOp, RelayJob } from '../shared/relay';
+import type { PackOp, RelayJob, RelayProgress, RelayTargetProgress } from '../shared/relay';
 import { blobStream } from './git';
 import { openPlain, openVars } from './template';
 import { hashStream, hashing } from './compare';
@@ -114,6 +114,8 @@ export interface RunHandle {
   readonly paused: boolean;
   /** Stops one target only: its remaining operations are skipped, the other targets go on. */
   cancelTarget(key: string): void;
+  /** Where every target is right now (copies, for a relay telling its sender). */
+  targets(): RunTargetState[];
 }
 
 const TMP_SUFFIX = '.samsync-tmp';
@@ -907,10 +909,21 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     for (const r of rows) Object.assign(r, { status: 'running', startedAt: now });
     st.current = undefined;
     emitProgress();
+    let ownLogged = false;
+    /** The relay's word on its own apply as this run's state ('deferred' cannot happen to the relay itself). */
+    const ownStatus = (x: string): RunTargetState['status'] => (x === 'cancelled' ? (groupCancel.get(g.key)!.cancelled ? 'cancelled' : 'failed') : x === 'deferred' ? 'failed' : (x as RunTargetState['status']));
     try {
       await submitRelayJob(tgt, job);
       log('info', rows.length ? t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }) : t('Paket bırakıldı; makine kendisi uyguluyor'), g.key);
-      const result = await waitRelay(g, tgt, job.id, rows.length ? t('Röle işi aldı, dağıtıyor') : t('Makine paketi aldı, uyguluyor'));
+      const result = await waitRelay(g, tgt, job.id, rows.length ? t('Röle işi aldı, dağıtıyor') : t('Makine paketi aldı, uyguluyor'), (p) => {
+        // the relay applied its own copy before sending on: its row (and its group's count) says so at once
+        if (p.own && st.status === 'running') {
+          Object.assign(st, { status: ownStatus(p.own.status), error: p.own.error, failed: p.own.opsFailed, done: g.ops.length, bytesDone: st.bytesTotal });
+          if (p.own.status === 'ok' && g.ops.length) log('ok', t('Paket uygulandı: {ok}/{n} işlem', { ok: p.own.opsOk, n: g.ops.length }), g.key);
+          ownLogged = true;
+        }
+        followRelay(rows, p.targets);
+      });
       // the relay's own apply
       const own = result.targets.find((x) => x.targetId === g.key);
       if (!own) {
@@ -919,7 +932,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: st.error });
         st.failed = g.ops.length;
       } else {
-        st.status = own.status === 'cancelled' ? (groupCancel.get(g.key)!.cancelled ? 'cancelled' : 'failed') : own.status === 'deferred' ? 'failed' : own.status;
+        st.status = ownStatus(own.status);
         st.error = own.error;
         const failedIds = new Set(own.failedOps ?? []);
         const heldIds = new Set(own.inUseOps ?? []);
@@ -936,7 +949,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         if (own.backupPath) st.backupPath = own.backupPath;
         if (own.check) st.check = own.check;
         // a machine that only passes its own files on (distributing from it) had nothing to apply
-        if (g.ops.length || own.status !== 'ok') log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
+        if ((g.ops.length || own.status !== 'ok') && !(ownLogged && own.status === 'ok')) log(own.status === 'ok' ? 'ok' : 'error', own.status === 'ok' ? t('Paket uygulandı: {ok}/{n} işlem', { ok: own.opsOk, n: g.ops.length }) : t('Paket uygulanamadı: {ok} başarılı, {failed} hatalı{error}', { ok: own.opsOk, failed: own.opsFailed, error: own.error ? `: ${own.error}` : '' }), g.key);
       }
       st.done = g.ops.length;
       st.bytesDone = st.bytesTotal;
@@ -977,8 +990,19 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     }
   }
 
-  /** Waits for a relay's answer; meanwhile the run's pause and cancel go on to the relay. */
-  async function waitRelay(g: ExecGroup, tgt: Transport, jobId: string, acked: string) {
+  /** The rows of the machines behind a relay while it sends to them: how far each is, and the ones already through. */
+  function followRelay(rows: RunTargetState[], progress: RelayTargetProgress[] | undefined) {
+    for (const x of progress ?? []) {
+      const r = rows.find((y) => y.key === x.targetId);
+      if (!r || r.status !== 'running') continue;
+      const through = x.status === 'ok' || x.status === 'partial' || x.status === 'failed';
+      Object.assign(r, { done: x.done, total: Math.max(x.total, 1), failed: x.failed, bytesDone: x.bytesDone, bytesTotal: x.bytesTotal }, through ? { status: x.status, finishedAt: Date.now() } : {});
+    }
+    emitProgress();
+  }
+
+  /** Waits for a relay's answer; meanwhile the run's pause and cancel go on to the relay, and its progress shows. */
+  async function waitRelay(g: ExecGroup, tgt: Transport, jobId: string, acked: string, onProgress?: (p: RelayProgress) => void) {
     relayWaits.set(g.key, { tgt, id: jobId });
     if (paused) void signalRelayJob(tgt, jobId, 'pause').catch(() => undefined);
     try {
@@ -989,6 +1013,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         cancelGraceMs: s.relayCancelGraceMs,
         paused: () => paused,
         onAck: () => log('info', acked, g.key),
+        onProgress,
         onCancelSent: () => log('warn', t('İptal makineye bildirildi; orada yapılanlar bekleniyor'), g.key),
       });
     } finally {
@@ -1008,7 +1033,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     try {
       await submitRelayJob(tgt, job);
       log('info', t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }), g.key);
-      const result = await waitRelay(g, tgt, job.id, t('Röle işi aldı, dağıtıyor'));
+      const result = await waitRelay(g, tgt, job.id, t('Röle işi aldı, dağıtıyor'), (p) => followRelay(rows, p.targets));
       applyRelayResult(rows, result);
     } catch (e) {
       const unanswered = e instanceof RelayError && e.unanswered;
@@ -1044,6 +1069,9 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       gc.cancel();
       // a paused run lets the dropped target's wait end so its state is settled at once
       release();
+    },
+    targets() {
+      return states.map((x) => ({ ...x }));
     },
   };
 }

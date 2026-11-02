@@ -310,7 +310,7 @@ const d: Dict = {
   'Röle işi alma süresi (sn)': 'Relay-Übernahmezeit (s)',
   'Röle bu sürede işi almazsa doğrudan gönderilir': 'Übernimmt das Relay den Auftrag in dieser Zeit nicht, wird direkt gesendet',
   'Röle bitirme süresi (dk)': 'Relay-Abschlusszeit (Min.)',
-  'Rölenin dağıtımı bu sürede bitmezse hata sayılır': 'Ist die Weitergabe durch das Relay in dieser Zeit nicht fertig, gilt sie als fehlgeschlagen',
+  'Röle bu süre boyunca hiç haber vermezse hata sayılır (eski sürümdeki bir röle için: dağıtım bu sürede bitmezse)': 'Meldet sich das Relais so lange gar nicht, gilt es als fehlgeschlagen (bei einem Relais mit älterer Version: wenn es in dieser Zeit nicht fertig weitergegeben hat)',
   'son gönderim': 'letzte Übertragung',
 
   // quick sends

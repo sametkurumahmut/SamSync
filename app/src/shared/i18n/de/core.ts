@@ -544,6 +544,7 @@ const d: Dict = {
   '{name}: hedefte {path} okunamadı ({error}); altındakiler bu sefer gönderilmiyor.': '{name}: {path} konnte auf dem Ziel nicht gelesen werden ({error}); was darunter liegt, wird diesmal nicht gesendet.',
   'Sağ klasör bulunamadı: {path}': 'Rechter Ordner nicht gefunden: {path}',
   'Klasör okunamadı; bu sefer dokunulmuyor': 'Der Ordner konnte nicht gelesen werden; er bleibt diesmal unberührt',
+  'Röle {m} dakikadır haber vermiyor': 'Das Relais meldet sich seit {m} Minuten nicht',
 };
 
 export default d;

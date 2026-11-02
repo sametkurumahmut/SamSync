@@ -314,7 +314,7 @@ export function SettingsPage() {
               <Field label={t('Röle işi alma süresi (sn)')} help={t('Röle bu sürede işi almazsa doğrudan gönderilir')}>
                 {num('relayAckSeconds', 5, 3600)}
               </Field>
-              <Field label={t('Röle bitirme süresi (dk)')} help={t('Rölenin dağıtımı bu sürede bitmezse hata sayılır')}>
+              <Field label={t('Röle bitirme süresi (dk)')} help={t('Röle bu süre boyunca hiç haber vermezse hata sayılır (eski sürümdeki bir röle için: dağıtım bu sürede bitmezse)')}>
                 {num('relayTimeoutMinutes', 1, 1440)}
               </Field>
               <Field label={t('Röle kuyruğu: yeniden deneme (dk)')} help={t('Kapalı makinenin işleri rölede bekler, bu aralıkla denenir; 0 = kuyruk yok')}>

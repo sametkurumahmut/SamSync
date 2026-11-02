@@ -544,6 +544,7 @@ const d: Dict = {
   '{name}: hedefte {path} okunamadı ({error}); altındakiler bu sefer gönderilmiyor.': '{name}: no se pudo leer {path} en el destino ({error}); lo que hay debajo no se envía esta vez.',
   'Sağ klasör bulunamadı: {path}': 'Carpeta derecha no encontrada: {path}',
   'Klasör okunamadı; bu sefer dokunulmuyor': 'No se pudo leer la carpeta; esta vez no se toca',
+  'Röle {m} dakikadır haber vermiyor': 'El relé lleva {m} minutos sin dar noticias',
 };
 
 export default d;

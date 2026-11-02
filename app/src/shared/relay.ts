@@ -80,6 +80,28 @@ export interface RelayResult {
   targets: RelayTargetResult[];
 }
 
+/** One machine behind a relay while the relay sends to it. */
+export interface RelayTargetProgress {
+  targetId: string;
+  status: 'queued' | 'running' | 'ok' | 'partial' | 'failed' | 'cancelled';
+  done: number;
+  total: number;
+  failed: number;
+  bytesDone: number;
+  bytesTotal: number;
+}
+
+/**
+ * What a relay says while a job runs (results/<id>.progress.json, rewritten every few seconds): its own apply once
+ * done, and how far each machine behind it is. The sender shows it and counts its time limit from the last one.
+ */
+export interface RelayProgress {
+  id: string;
+  at: number;
+  own?: RelayTargetResult;
+  targets?: RelayTargetProgress[];
+}
+
 export interface RelayRouting {
   /** Machines the sender writes to itself. */
   direct: NodeConfig[];
