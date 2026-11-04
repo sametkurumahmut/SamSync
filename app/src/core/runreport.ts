@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { RunDetail } from '../shared/types';
 import { errorHint } from '../shared/errorhint';
 import { formatBytes, stamp } from './util';
+import { duration } from '../shared/units';
 import { locale, t } from '../shared/i18n';
 
 const MAX_ERRORS = 500;
@@ -29,7 +30,14 @@ export async function writeRunHtml(run: RunDetail, outDir: string, releaseName?:
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   const when = (ms?: number) => (ms ? new Date(ms).toLocaleString(locale()) : '');
-  const took = (a?: number, b?: number) => (a && b ? `${Math.max(1, Math.round((b - a) / 1000))} ${t('sn')}` : '');
+  // the same words as the pages: 48 ms, 3,4 sn, 2 dk 5 sn
+  const took = (a?: number, b?: number) => (a && b ? duration(b - a) : '');
+  /** How much a machine got, and how fast when there was enough to measure it by (as History's rows say). */
+  const got = (x: RunDetail['targets'][number]) => {
+    const ms = x.startedAt && x.finishedAt ? x.finishedAt - x.startedAt : 0;
+    const speed = ms >= 2000 && x.bytesDone >= 1024 * 1024 ? ` • ${t('{speed}/sn', { speed: formatBytes((x.bytesDone / ms) * 1000) })}` : '';
+    return formatBytes(x.bytesDone) + speed;
+  };
   const status = (s: string) => (STATUS_TEXT[s] ?? (() => s))();
   const titleOf = new Map(run.targets.map((x) => [x.key, x.title]));
 
@@ -37,7 +45,7 @@ export async function writeRunHtml(run: RunDetail, outDir: string, releaseName?:
     .map((x) => {
       const hint = x.status === 'failed' || x.status === 'partial' ? errorHint(x.error) : null;
       const via = x.via ? ` <span class="m">${h(t('{relay} üzerinden', { relay: titleOf.get(x.via) ?? x.via }))}</span>` : '';
-      return `<tr class="${h(x.status)}"><td>${h(x.title)}${via}</td><td class="s">${h(status(x.status))}</td><td class="n">${x.done - x.failed}/${x.total}</td><td class="n">${h(formatBytes(x.bytesDone))}</td><td class="n">${h(took(x.startedAt, x.finishedAt))}</td><td>${h(x.error)}${hint ? `<div class="hint">${h(hint)}</div>` : ''}</td></tr>`;
+      return `<tr class="${h(x.status)}"><td>${h(x.title)}${via}</td><td class="s">${h(status(x.status))}</td><td class="n">${x.done - x.failed}/${x.total}</td><td class="n">${h(got(x))}</td><td class="n">${h(took(x.startedAt, x.finishedAt))}</td><td>${h(x.error)}${hint ? `<div class="hint">${h(hint)}</div>` : ''}</td></tr>`;
     })
     .join('\n');
   const failed = run.results.filter((r) => !r.ok);

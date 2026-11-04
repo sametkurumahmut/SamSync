@@ -394,6 +394,9 @@ const d: Dict = {
   'Yazma izni yok: paylaşımda bu kullanıcıya yazma izni verin; dosya salt okunursa ya da bir program tarafından korunuyorsa kaldırın.': 'No permission to write: give this user write access on the share; if the file is read-only or protected by a program, lift that.',
   'Aynı anda çok fazla dosya açık: Ayarlar › Kopyalama’da eşzamanlı dosya sayısını düşürün.': 'Too many files open at once: lower the number of files at a time in Settings › Copy.',
   'Dosya ya da klasör bulunamadı: kaynak taşındıysa listeye yeniden ekleyin; hedefse paylaşım adını ve kök klasörünü makineyi düzenleyerek denetleyin.': 'File or folder not found: if a source moved, add it to the list again; if it is the target, check the share name and root folder by editing the machine.',
+  Makineler: 'Machines',
+  'bitiş ≈ {clock}': 'done ≈ {clock}',
+  'Son çalıştırmayı Geçmiş’te aç': 'Open the last run in History',
 };
 
 export default d;

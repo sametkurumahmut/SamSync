@@ -1,4 +1,4 @@
-import { cloneElement, createContext, isValidElement, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type CSSProperties, type ReactElement } from 'react';
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type CSSProperties, type ReactElement, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Minus, X, Search } from 'lucide-react';
 import { cls, splitPath } from '../lib/format';
@@ -136,11 +136,27 @@ export function Segmented<T extends string>({
 }
 
 /** `size` md: as tall as the buttons beside it in a page header (sm, the default, for lists and cards). */
-export function SearchInput({ value, onChange, placeholder, autoFocus, style, size = 'sm' }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; style?: CSSProperties; size?: 'sm' | 'md' }) {
+export function SearchInput({ value, onChange, placeholder, autoFocus, style, size = 'sm', inputRef }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; style?: CSSProperties; size?: 'sm' | 'md'; inputRef?: Ref<HTMLInputElement> }) {
   return (
     <div className="input-wrap" style={style}>
       <Search size={14} />
-      <input className={cls('input', size === 'sm' && 'sm')} value={value} placeholder={placeholder} aria-label={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)} spellCheck={false} />
+      <input
+        ref={inputRef}
+        className={cls('input', size === 'sm' && 'sm')}
+        value={value}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+        // Escape empties a filled box first (and keeps a dialog around it open)
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && value) {
+            e.stopPropagation();
+            onChange('');
+          }
+        }}
+        spellCheck={false}
+      />
       {value && (
         <button className="btn ghost icon sm clear" onClick={() => onChange('')} style={{ width: 22, height: 22 }}>
           <X size={13} />

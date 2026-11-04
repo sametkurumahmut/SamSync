@@ -56,7 +56,7 @@ async function setup(opts: { relayRunning: boolean; ackSeconds?: number; agentOn
     const ud = path.join(base, `ud-${id}`);
     await fsp.mkdir(ud, { recursive: true });
     await fsp.writeFile(path.join(ud, 'settings.json'), JSON.stringify({ configPath: cfgFile, localNodeId: id }));
-    const svc = new Service({ isElectron: false, appVersion: 'test', userDataPath: ud, initialPaths: [], emit: () => undefined });
+    const svc = new Service({ isElectron: false, appVersion: '2.5.0', userDataPath: ud, initialPaths: [], emit: () => undefined });
     await svc.init();
     return { svc, base };
   };
@@ -111,7 +111,13 @@ describe('relay end to end', () => {
       expect(d.log.some((l) => /röle dağıttı|passed on by the relay/.test(l.message))).toBe(true);
       // the relay's own files came as one compressed pack, applied there, and the pack is gone again
       expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
+      // both ends open zstd: the relay's (slow) link gets the smaller level
+      expect(d.log.some((l) => /^(Paket|Pack): .* • zstd 6( • |$)/.test(l.message))).toBe(true);
+      // where the time went: the relay's own copy, then the distribution
+      expect(d.log.some((l) => l.key === 'T' && /^Röle kendi kopyasını [\d.,]+ sn, dağıtımı [\d.,]+ sn|^The relay finished its own copy in [\d.,]+ s/.test(l.message))).toBe(true);
       expect(rows.T.done).toBe(rows.T.total);
+      // the phase it waited in ("applying the pack…") is gone from the finished row
+      expect(rows.T.current).toBeUndefined();
       expect(fs.existsSync(path.join(s.server, '_SamSyncRelay', 'jobs', `${d.id}.pack`))).toBe(false);
       // the relay told its own apply on the way (said once in the log) and left no progress file behind
       expect(d.log.filter((l) => l.key === 'T' && /^Paket uygulandı|^Pack applied/.test(l.message))).toHaveLength(1);
@@ -126,6 +132,8 @@ describe('relay end to end', () => {
       expect(manifest.subtrees['Data'].entries.length).toBe(3);
       const again = await s.me.planSend(req(s.src), 't1b');
       expect(again.targets.find((tp) => tp.targetId === 'T')!.fromManifest).toBeTruthy();
+      // and so did the machines behind it: the relay wrote their manifests after copying to them
+      for (const dir of [s.pc1, s.pc2]) expect(JSON.parse(fs.readFileSync(path.join(dir, 'samsync-manifest.json'), 'utf8')).subtrees['Data'].entries.length).toBeGreaterThan(0);
       // the sender runs SamSync too, so it takes packs itself: an agent, not a relay
       expect(await s.me.relayState()).toMatchObject({ active: true, role: 'agent', jobs: 0 });
     } finally {
@@ -157,6 +165,26 @@ describe('relay end to end', () => {
     } finally {
       s.stop();
       srv.close();
+    }
+  }, 30000);
+
+  it('passes a pack on to a machine behind it that runs SamSync, and writes the others directly', async () => {
+    const s = await setup({ relayRunning: true, agentOn: true });
+    try {
+      await write(path.join(s.src, 'a.txt'), 'A');
+      await write(path.join(s.src, 'sub', 'b.txt'), 'B');
+      const d = await s.me.runPlan(await s.me.planSend(req(s.src), 'rp1'), 'default', { notify: false }).done;
+      expect(d.status).toBe('ok');
+      expect(read(path.join(s.pc1, 'Data', 'sub', 'b.txt'))).toBe('B');
+      expect(read(path.join(s.pc2, 'Data', 'a.txt'))).toBe('A');
+      // PC1 took its changes from the relay as one pack and applied them itself
+      expect(await s.agent!.relayState()).toMatchObject({ role: 'agent', jobs: 1, lastOk: true });
+      expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'jobs'))).toEqual([]);
+      // PC1 wrote its manifest from its own disk, PC2's came from the relay
+      expect(JSON.parse(fs.readFileSync(path.join(s.pc1, 'samsync-manifest.json'), 'utf8')).subtrees['Data'].entries.length).toBeGreaterThan(0);
+      expect(fs.existsSync(path.join(s.pc2, 'samsync-manifest.json'))).toBe(true);
+    } finally {
+      s.stop();
     }
   }, 30000);
 
@@ -250,9 +278,21 @@ describe('agent on a machine without a group', () => {
       const d = await s.me.runPlan(plan, 'default', { notify: false }).done;
       expect(d.status).toBe('ok');
       expect(read(path.join(s.pc1, 'Data', 'sub', 'b.txt'))).toBe('B');
-      expect(d.log.some((l) => /^Paket: |^Pack: /.test(l.message))).toBe(true);
+      expect(d.log.some((l) => /^(Paket|Pack): .* • zstd 3( • |$)/.test(l.message))).toBe(true);
+      expect(d.log.some((l) => /^Makine paketi [\d.,]+ sn içinde uyguladı|^The machine applied the pack in/.test(l.message))).toBe(true);
       expect(fs.readdirSync(path.join(s.pc1, '_SamSyncRelay', 'jobs'))).toEqual([]);
       expect(await s.agent!.relayState()).toMatchObject({ active: true, role: 'agent', jobs: 1, lastOk: true });
+      // an older SamSync there says nothing of zstd: it gets gzip, which it opens
+      const alive = path.join(s.pc1, '_SamSyncRelay', 'alive.json');
+      const beat = JSON.parse(fs.readFileSync(alive, 'utf8'));
+      fs.writeFileSync(alive, JSON.stringify({ ...beat, zstd: undefined, version: '2.0.0', at: Date.now() }));
+      await write(path.join(s.src, 'a.txt'), 'A-gzip');
+      const dz = await send('ag1b');
+      expect(dz.status).toBe('ok');
+      expect(read(path.join(s.pc1, 'Data', 'a.txt'))).toBe('A-gzip');
+      expect(dz.log.some((l) => /^(Paket|Pack): /.test(l.message) && !/zstd/.test(l.message))).toBe(true);
+      // and the run says the machine runs an older SamSync, and how to bring it up to date
+      expect(dz.log.some((l) => l.level === 'warn' && /SamSync 2.0.0/.test(l.message))).toBe(true);
       // after the apply its own command runs (start the program again)
       const marker = path.join(s.base, 'after.txt');
       await s.agent!.saveSettings({ agent: { receivePacks: true, notifyOnApply: false, afterApply: `echo ok> "${marker}"` } });
@@ -382,8 +422,8 @@ describe('block delta through the agent', () => {
       expect(d.log.some((l) => /^Blok farkı: |^Block delta: /.test(l.message))).toBe(true);
       // one block of nine went into the pack
       const packLine = d.log.find((l) => /^Paket: |^Pack: /.test(l.message))!.message;
-      expect(packLine).toMatch(/→ (\d+(\.\d+)? KB|1(\.\d+)? MB)/);
-      expect(d.log.find((l) => /^Blok farkı: |^Block delta: /.test(l.message))!.message).toMatch(/1\.0 MB/);
+      expect(packLine).toMatch(/→ (\d+([.,]\d+)? KB|1([.,]\d+)? MB)/);
+      expect(d.log.find((l) => /^Blok farkı: |^Block delta: /.test(l.message))!.message).toMatch(/(^|\s)1 MB/);
     } finally {
       s.stop();
     }

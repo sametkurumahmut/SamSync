@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Transform } from 'node:stream';
 import { t } from '../shared/i18n';
+import { bytes } from '../shared/units';
 
 export const isWin = process.platform === 'win32';
 
@@ -65,16 +66,9 @@ export function errMessage(e: unknown): string {
   return String(e);
 }
 
+/** A size for the log and messages: the same words as the pages use (shared/units). */
 export function formatBytes(n: number): string {
-  if (!Number.isFinite(n)) return '-';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${i === 0 ? v : v.toFixed(v >= 100 ? 0 : 1)} ${u[i]}`;
+  return bytes(n);
 }
 
 /** Throttles a callback: fires at most once per `ms`, always delivers the trailing call. */

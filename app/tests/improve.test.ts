@@ -119,7 +119,7 @@ describe('the start message', () => {
       { id: 'A2', group: 'Lab', enabled: true },
       { id: 'X', enabled: true },
     ]);
-    expect(m.text.split('\n')).toEqual(['▶ Sürüm — başladı: 3 makine, 7 işlem, 2.0 KB', '→ Hedefler: Lab (2); X', 'Gönderen: PC\\ali']);
+    expect(m.text.split('\n')).toEqual(['▶ Sürüm — başladı: 3 makine, 7 işlem, 2 KB', '→ Hedefler: Lab (2); X', 'Gönderen: PC\\ali']);
     expect(m.payload).toMatchObject({ event: 'run-start', bytes: 2048, ops: 7 });
   });
 });
@@ -215,7 +215,7 @@ describe('a run as an HTML report', () => {
     const run = {
       id: 'run-2', label: 'Sürüm <3>', note: 'not & dikkat', origin: 'send', startedAt: 1_000_000, finishedAt: 1_060_000, status: 'partial', dryRun: false,
       targets: [
-        { key: 'A', title: 'PC-A', root: '', total: 2, done: 2, failed: 0, bytesTotal: 10, bytesDone: 10, status: 'ok', startedAt: 1_000_000, finishedAt: 1_010_000 },
+        { key: 'A', title: 'PC-A', root: '', total: 2, done: 2, failed: 0, bytesTotal: 20 * 1024 * 1024, bytesDone: 20 * 1024 * 1024, status: 'ok', startedAt: 1_000_000, finishedAt: 1_010_000 },
         { key: 'B', title: 'PC-B', root: '', total: 2, done: 2, failed: 2, bytesTotal: 10, bytesDone: 0, status: 'failed', error: 'EACCES: permission denied', startedAt: 1_000_000, finishedAt: 1_020_000 },
       ],
       opsTotal: 4, opsOk: 2, opsFailed: 2, bytes: 10, sources: ['D:\\Data'], targetIds: ['A', 'B'],
@@ -232,6 +232,9 @@ describe('a run as an HTML report', () => {
     // a service started by an earlier test may have switched the language
     expect(html).toMatch(/class="hint">(Yazma izni yok|No permission to write)/);
     expect(html).toContain('PC-A');
+    // its size and speed, and the time as the pages write it (20 MB in 10 s)
+    expect(html).toMatch(/20 MB • 2 MB\/(sn|s)/);
+    expect(html).toMatch(/>(10 sn|10 s)</);
     expect(html).not.toContain('<script');
   });
 });
@@ -344,9 +347,8 @@ describe('sends set for later', () => {
     const { ScheduledSends } = await import('../src/core/scheduled');
     const dir = await tmpDir();
     const ran: string[] = [];
-    let s!: InstanceType<typeof ScheduledSends>;
     let second = '';
-    s = new ScheduledSends(path.join(dir, 's.json'), {
+    const s: InstanceType<typeof ScheduledSends> = new ScheduledSends(path.join(dir, 's.json'), {
       run: async (item) => {
         ran.push(item.id);
         // the user cancels the next one while this one goes

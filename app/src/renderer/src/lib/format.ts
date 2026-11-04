@@ -1,16 +1,6 @@
 import { locale, t } from '@shared/i18n';
+export { bytes, duration } from '@shared/units';
 
-export function bytes(n: number | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '–';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${i === 0 ? v : v.toLocaleString(locale(), { maximumFractionDigits: v >= 100 ? 0 : 1 })} ${u[i]}`;
-}
 
 export function num(n: number): string {
   return n.toLocaleString(locale());
@@ -44,16 +34,6 @@ export function shortDateTime(t: number | undefined): string {
     : d.toLocaleString(locale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export function duration(ms: number | undefined): string {
-  if (ms == null) return '–';
-  if (ms < 1000) return `${ms} ms`;
-  const s = ms / 1000;
-  if (s < 60) return t('{s} sn', { s: s.toFixed(s < 10 ? 1 : 0) });
-  const m = Math.floor(s / 60);
-  const r = Math.round(s % 60);
-  if (m < 60) return t('{m} dk {s} sn', { m, s: r });
-  return t('{h} sa {m} dk', { h: Math.floor(m / 60), m: m % 60 });
-}
 
 export function splitPath(p: string): { dir: string; name: string } {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));

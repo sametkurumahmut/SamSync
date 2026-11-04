@@ -13,7 +13,8 @@ import { t } from '@shared/i18n';
 
 export function HelpPage() {
   const lang = helpLang();
-  const setPage = useApp((s) => s.setPage);
+  const openPage = useApp((s) => s.openPage);
+  const setPage = (p: Parameters<typeof openPage>[0], section?: string) => void openPage(p, section ? { section } : undefined);
   const repositoryUrl = useApp((s) => s.boot?.repositoryUrl);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Set<string>>(() => new Set(readStored<string[]>('samsync.help.open', [])));
@@ -105,7 +106,7 @@ export function HelpPage() {
   );
 }
 
-function TopicCard({ id, title, entries, lang, open, toggle, forceOpen, setPage }: { id: FaqTopic; title: string; entries: typeof FAQ; lang: 'tr' | 'en'; open: Set<string>; toggle: (id: string) => void; forceOpen: boolean; setPage: (p: NonNullable<(typeof FAQ)[number]['page']>) => void }) {
+function TopicCard({ id, title, entries, lang, open, toggle, forceOpen, setPage }: { id: FaqTopic; title: string; entries: typeof FAQ; lang: 'tr' | 'en'; open: Set<string>; toggle: (id: string) => void; forceOpen: boolean; setPage: (p: NonNullable<(typeof FAQ)[number]['page']>, section?: string) => void }) {
   return (
     <div className="card help-topic" id={`help-${id}`} style={{ marginBottom: 12 }}>
       <div className="card-head">
@@ -130,7 +131,7 @@ function TopicCard({ id, title, entries, lang, open, toggle, forceOpen, setPage 
                 <div className="help-faq-a">
                   <p>{inlineMarkdown(f.a[lang])}</p>
                   {f.page && (
-                    <button className="link-btn row" style={{ gap: 4 }} onClick={() => setPage(f.page!)}>
+                    <button className="link-btn row" style={{ gap: 4 }} onClick={() => setPage(f.page!, f.section)}>
                       {t('Sayfayı aç')} <ArrowRight size={11} />
                     </button>
                   )}

@@ -832,7 +832,7 @@ export class Service implements Api {
     for (const r of await this.history.list()) {
       const tg = r.targets.find((x) => x.key === nodeId);
       if (!tg) continue;
-      out.push({ runId: r.id, label: r.label, origin: r.origin, at: r.startedAt, finishedAt: tg.finishedAt ?? r.finishedAt, status: tg.status, done: tg.done, failed: tg.failed, bytes: tg.bytesDone, via: tg.via, deferred: tg.deferred, error: tg.error, check: tg.check, release: tags.get(r.id), dryRun: r.dryRun || undefined });
+      out.push({ runId: r.id, label: r.label, origin: r.origin, at: r.startedAt, finishedAt: tg.finishedAt ?? r.finishedAt, status: tg.status, done: tg.done, failed: tg.failed, bytes: tg.bytesDone, via: tg.via, deferred: tg.deferred, error: tg.error, check: tg.check, release: tags.get(r.id), dryRun: r.dryRun || undefined, ms: tg.startedAt && tg.finishedAt ? tg.finishedAt - tg.startedAt : undefined });
     }
     return out.sort((a, b) => b.at - a.at).slice(0, 300);
   }
@@ -1377,7 +1377,7 @@ export class Service implements Api {
       const node = nodeOf(tp.targetId)!;
       // a machine running SamSync (its heartbeat was fresh when the plan was made) takes its changes as a pack,
       // whether or not others are behind it
-      const takesPack = !!tp.agent && node.transport !== 'sftp' && !req.direct && node.id !== ctx.localNodeId;
+      const takesPack = !!tp.agent && node.transport !== 'sftp' && (!req.direct || !!req.relayed) && node.id !== ctx.localNodeId;
       groups.push({
         key: tp.targetId,
         title: tp.targetName,
@@ -1621,12 +1621,16 @@ export class Service implements Api {
           }
           throw new Error(t('Bu soru burada yanıtlanmıyor'));
         },
-        runPlan: (plan, label, report) => {
+        runPlan: (plan, label, report, scans) => {
+          // the groups take their manifests while the run is set up; kept no longer than that
+          if (scans) this.planScans.set(plan.id, scans);
           try {
             // what the relay does for a sender is reported by the sender's run, once, with every machine in it
             return this.runPlan({ ...plan, request: { ...plan.request, label } }, 'default', { notify: false, unreachableFails: true, channel: report === true, fromRelay: report === true ? 'queue' : 'job' });
           } catch {
             return null; // nothing to do on any machine
+          } finally {
+            if (scans) this.planScans.delete(plan.id);
           }
         },
         runGroups: (groups, label, o) => {

@@ -21,8 +21,7 @@ export function MachineTimeline({ node, onClose }: { node: NodeConfig; onClose: 
   }, [node.id]);
   const open = (runId: string) => {
     onClose();
-    useApp.setState({ openRunId: runId });
-    useApp.getState().setPage('history');
+    void useApp.getState().openPage('history', { run: runId });
   };
   // grouped by day, as the History page does
   const days = new Map<string, TimelineEntry[]>();
@@ -67,6 +66,7 @@ export function MachineTimeline({ node, onClose }: { node: NodeConfig; onClose: 
                   {new Date(r.at).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })}
                   {r.bytes > 0 ? ` • ${bytes(r.bytes)}` : ''}
                   {r.finishedAt && r.finishedAt > r.at ? ` • ${duration(r.finishedAt - r.at)}` : ''}
+                  {r.ms && r.ms >= 2000 && r.bytes >= 1024 * 1024 ? ` • ${t('{speed}/sn', { speed: bytes((r.bytes / r.ms) * 1000) })}` : ''}
                   {r.via ? ` • ${t('{relay} üzerinden', { relay: r.via })}` : ''}
                   {r.failed > 0 ? ` • ${t('{n} hata', { n: r.failed })}` : ''}
                 </span>

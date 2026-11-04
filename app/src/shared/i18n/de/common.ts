@@ -394,6 +394,9 @@ const d: Dict = {
   'Yazma izni yok: paylaşımda bu kullanıcıya yazma izni verin; dosya salt okunursa ya da bir program tarafından korunuyorsa kaldırın.': 'Keine Schreibberechtigung: Geben Sie diesem Benutzer auf der Freigabe Schreibrechte; heben Sie den Schreibschutz auf, wenn die Datei schreibgeschützt oder durch ein Programm gesperrt ist.',
   'Aynı anda çok fazla dosya açık: Ayarlar › Kopyalama’da eşzamanlı dosya sayısını düşürün.': 'Zu viele Dateien gleichzeitig geöffnet: Verringern Sie unter Einstellungen › Kopieren die Zahl der gleichzeitig übertragenen Dateien.',
   'Dosya ya da klasör bulunamadı: kaynak taşındıysa listeye yeniden ekleyin; hedefse paylaşım adını ve kök klasörünü makineyi düzenleyerek denetleyin.': 'Datei oder Ordner nicht gefunden: Wurde eine Quelle verschoben, fügen Sie sie der Liste erneut hinzu; handelt es sich um das Ziel, prüfen Sie Freigabenamen und Stammordner, indem Sie den Rechner bearbeiten.',
+  Makineler: 'Maschinen',
+  'bitiş ≈ {clock}': 'fertig ≈ {clock}',
+  'Son çalıştırmayı Geçmiş’te aç': 'Letzten Lauf im Verlauf öffnen',
 };
 
 export default d;

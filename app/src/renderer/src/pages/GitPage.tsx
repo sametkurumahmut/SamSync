@@ -130,7 +130,7 @@ export function GitPage() {
                 </span>
               )}
               {!!info.behind && (
-                <span className="row" style={{ gap: 1, color: 'var(--amber)' }}>
+                <span className="row" style={{ gap: 1, color: 'var(--amber-text)' }}>
                   <ArrowDown size={12} />
                   {info.behind}
                 </span>

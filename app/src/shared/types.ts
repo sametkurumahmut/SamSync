@@ -931,6 +931,11 @@ export interface SendRequest {
   origin: 'send' | 'git' | 'restore' | 'sync';
   /** Look at and write to every machine from here, even where a relay would take over (comparisons, checks). */
   direct?: boolean;
+  /**
+   * With `direct`: a relay passing a job on to the machines of its group. Nothing is routed through a relay again,
+   * but a machine running SamSync still takes its changes as one pack, and its manifest counts as on any send.
+   */
+  relayed?: boolean;
   /** An automatic retry of the machines a send failed on: which one this is, and the first send's label (see copy.retryFailedMinutes). */
   attempt?: number;
   retryLabel?: string;
@@ -957,7 +962,7 @@ export type PlainSrc =
   | { kind: 'fs'; abs: string }
   | { kind: 'git'; repo: string; rev: string; path: string; blob?: string }
   /** A member of a pack file (a pack added as a source, or the one a sender left on a relay). */
-  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'store' };
+  | { kind: 'pack'; file: string; offset: number; length: number; method: 'gzip' | 'zstd' | 'store' };
 
 export type SrcRef =
   | PlainSrc
@@ -965,7 +970,7 @@ export type SrcRef =
   /** A text file with machine variables, filled in for one machine (see core/template.ts); the op's size is the filled-in one. */
   | { kind: 'vars'; from: PlainSrc; vars: Record<'id' | 'name' | 'title' | 'address' | 'group', string> }
   /** A pack member holding only the blocks that differ; the others come from `base`, the file already there. */
-  | { kind: 'patch'; file: string; offset: number; length: number; method: 'gzip' | 'store'; base: string; size: number; blockSize: number; blocks: number[]; baseSize: number; baseMtimeMs: number; hash: string };
+  | { kind: 'patch'; file: string; offset: number; length: number; method: 'gzip' | 'zstd' | 'store'; base: string; size: number; blockSize: number; blocks: number[]; baseSize: number; baseMtimeMs: number; hash: string };
 
 export interface PlanOp {
   id: string;
@@ -1110,6 +1115,8 @@ export interface TimelineEntry {
   origin: RunSummary['origin'];
   at: number;
   finishedAt?: number;
+  /** Time spent writing to this machine (from its own start, not the run's). */
+  ms?: number;
   status: RunTargetState['status'];
   done: number;
   failed: number;

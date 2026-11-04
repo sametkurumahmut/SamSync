@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Server, Filter, Plus, RefreshCw, Pencil, Laptop, FileJson, FolderOpen, Trash2, Wifi, WifiOff, KeyRound, HardDrive, Network, Copy as CopyIcon, Pin, ExternalLink, Share2, Gauge, Radar, Clock, X, Tag, ArrowUpCircle, AlertTriangle, Power, RotateCw, PowerOff, Ban, Waypoints, History as HistoryIcon, ListChecks } from 'lucide-react';
 import type { AgentUpdateResult, NodeConfig, ProbeResult, RunSummary, SpeedTestResult, TransportKind } from '@shared/types';
 import { useApp } from '../store/app';
@@ -93,6 +93,26 @@ export function TargetsPage() {
   /** Only the machines in one state (away, busy, last send failed, turned off, without SamSync); none: all. */
   const [state, setState] = useState<MachineState | null>(null);
   const id = boot.identity;
+  // the command palette went to a machine: every machine shown, that card brought into view and marked
+  const jump = useApp((s) => s.targetsJump);
+  const jumpTimers = useRef<number[]>([]);
+  useEffect(() => {
+    if (!jump) return;
+    useApp.setState({ targetsJump: null });
+    setQ('');
+    setState(null);
+    const el = () => document.querySelector<HTMLElement>(`.target-card[data-node="${CSS.escape(jump.node)}"]`);
+    // (the timers outlive this effect: taking the jump back out of the store runs it again at once)
+    jumpTimers.current.forEach(clearTimeout);
+    jumpTimers.current = [
+      window.setTimeout(() => {
+        el()?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el()?.classList.add('flash');
+      }, 150),
+      window.setTimeout(() => el()?.classList.remove('flash'), 1800),
+    ];
+  }, [jump]);
+  useEffect(() => () => jumpTimers.current.forEach(clearTimeout), []);
 
   const ql = q.trim().toLowerCase();
   const inState = (n: NodeConfig, s: MachineState): boolean => {
@@ -430,7 +450,7 @@ export function TargetsPage() {
                   const p = probes[n.id];
                   const isLocal = n.id === id.node?.id;
                   return (
-                    <div key={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local', picking && picked.has(n.id) && 'picked')}>
+                    <div key={n.id} data-node={n.id} className={cls('card target-card', !n.enabled && 'disabled', isLocal && 'local', picking && picked.has(n.id) && 'picked')}>
                       <div className="row" style={{ gap: 10 }}>
                         {picking && !isLocal && <Checkbox checked={picked.has(n.id)} onChange={(v) => pick([n.id], v)} label={n.name} />}
                         <span className={cls('dot', isLocal ? 'ok' : dotClass(p, probing))} data-tip={isLocal ? undefined : busyUnknown(p)} />
@@ -506,32 +526,6 @@ export function TargetsPage() {
                             ↑{(speed[n.id] as SpeedTestResult).writeMBps.toFixed(1)} ↓{(speed[n.id] as SpeedTestResult).readMBps.toFixed(1)} MB/sn • {(speed[n.id] as SpeedTestResult).latencyMs} ms
                           </span>
                         )}
-                        <span className="spacer" />
-                        {!isLocal && <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip={t('Bu makinenin geçmişi: ona giden gönderimler, sürüm noktaları, denetimler')} onClick={() => setTimeline(n)} />}
-                        {!isLocal && p?.ok && p.agent?.alive && (
-                          <Button size="sm" variant="ghost" iconOnly icon={<Waypoints size={13} />} tip={t('Buradan dağıt: bu makinedeki klasörleri öbür makinelere onun ağı üzerinden gönderir')} disabled={boot.readOnly} onClick={() => setDistributing(n)} />
-                        )}
-                        {!isLocal && p?.ok && p.agent?.alive && p.agent.power && (
-                          <MenuButton
-                            align="end"
-                            width={240}
-                            buttonProps={{ size: 'sm', variant: 'ghost', iconOnly: true, tip: t('Yeniden başlat ya da kapat') }}
-                            items={[
-                              { label: t('Yeniden başlat (1 dk sonra)'), icon: <RotateCw size={15} />, onClick: () => void powerNode(n, 'restart') },
-                              { label: t('Kapat (1 dk sonra)'), icon: <PowerOff size={15} />, onClick: () => void powerNode(n, 'shutdown') },
-                              { sep: true },
-                              { label: t('Bekleyeni iptal et'), icon: <Ban size={15} />, onClick: () => void powerNode(n, 'cancel') },
-                            ]}
-                          >
-                            <RotateCw size={13} />
-                          </MenuButton>
-                        )}
-                        {wakeable(n) && (
-                          <Button size="sm" variant="ghost" iconOnly icon={<Power size={13} />} loading={waking.includes(n.id)} tip={t('Uyandır: ağ üzerinden açma paketi gönderir ({mac})', { mac: p!.macs!.join(', ') })} onClick={() => void wakeNodes([n.id])} />
-                        )}
-                        {!isLocal && (
-                          <Button size="sm" variant="ghost" iconOnly icon={<Gauge size={13} />} tip={t('Hız sına: 3 MB yazar, geri okur, siler')} loading={speed[n.id] === 'running'} disabled={!p?.ok} onClick={() => void testSpeed(n)} />
-                        )}
                         {n.relay && (
                           <span
                             className={cls('badge', p?.relayAlive === false ? 'red' : 'violet')}
@@ -545,8 +539,36 @@ export function TargetsPage() {
                             #{tag}
                           </span>
                         ))}
-                        <span className="badge">{t('{n} kök', { n: n.localRoots.length })}</span>
-                        <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => setEditing(n)} disabled={!boot.configWritable} />
+                        {/* the buttons stay together: in a narrow card they go to the next line as one, on the right */}
+                        <span className="row nowrap card-actions">
+                          {!isLocal && <Button size="sm" variant="ghost" iconOnly icon={<HistoryIcon size={13} />} tip={t('Bu makinenin geçmişi: ona giden gönderimler, sürüm noktaları, denetimler')} onClick={() => setTimeline(n)} />}
+                          {!isLocal && p?.ok && p.agent?.alive && (
+                            <Button size="sm" variant="ghost" iconOnly icon={<Waypoints size={13} />} tip={t('Buradan dağıt: bu makinedeki klasörleri öbür makinelere onun ağı üzerinden gönderir')} disabled={boot.readOnly} onClick={() => setDistributing(n)} />
+                          )}
+                          {!isLocal && p?.ok && p.agent?.alive && p.agent.power && (
+                            <MenuButton
+                              align="end"
+                              width={240}
+                              buttonProps={{ size: 'sm', variant: 'ghost', iconOnly: true, tip: t('Yeniden başlat ya da kapat') }}
+                              items={[
+                                { label: t('Yeniden başlat (1 dk sonra)'), icon: <RotateCw size={15} />, onClick: () => void powerNode(n, 'restart') },
+                                { label: t('Kapat (1 dk sonra)'), icon: <PowerOff size={15} />, onClick: () => void powerNode(n, 'shutdown') },
+                                { sep: true },
+                                { label: t('Bekleyeni iptal et'), icon: <Ban size={15} />, onClick: () => void powerNode(n, 'cancel') },
+                              ]}
+                            >
+                              <RotateCw size={13} />
+                            </MenuButton>
+                          )}
+                          {wakeable(n) && (
+                            <Button size="sm" variant="ghost" iconOnly icon={<Power size={13} />} loading={waking.includes(n.id)} tip={t('Uyandır: ağ üzerinden açma paketi gönderir ({mac})', { mac: p!.macs!.join(', ') })} onClick={() => void wakeNodes([n.id])} />
+                          )}
+                          {!isLocal && (
+                            <Button size="sm" variant="ghost" iconOnly icon={<Gauge size={13} />} tip={t('Hız sına: 3 MB yazar, geri okur, siler')} loading={speed[n.id] === 'running'} disabled={!p?.ok} onClick={() => void testSpeed(n)} />
+                          )}
+                          <span className="badge">{t('{n} kök', { n: n.localRoots.length })}</span>
+                          <Button size="sm" variant="ghost" iconOnly icon={<Pencil size={13} />} tip={t('Düzenle')} onClick={() => setEditing(n)} disabled={!boot.configWritable} />
+                        </span>
                       </div>
                     </div>
                   );

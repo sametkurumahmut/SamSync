@@ -9,7 +9,7 @@ import { Button } from '../components/ui';
 import { StatusIcon } from '../components/RunPanel';
 import { Topology } from '../components/Topology';
 import { Sparkline } from '../components/charts';
-import { ago, bytes, cls, num } from '../lib/format';
+import { ago, bytes, cls, dateTime, duration, num } from '../lib/format';
 import { t } from '@shared/i18n';
 import { machineTitle } from '@shared/machine';
 
@@ -152,7 +152,7 @@ export function OverviewPage() {
             <div className="ov-tile-head">
               <Boxes size={14} /> {t('Envanter')}
             </div>
-            <div className="ov-tile-value">{inv ? (inv.behind || inv.missing ? inv.behind + inv.missing : '✓') : '…'}</div>
+            <div className={cls('ov-tile-value', !!inv && !inv.folders && 'faint')}>{inv ? (inv.behind || inv.missing ? inv.behind + inv.missing : inv.folders ? '✓' : '—') : '…'}</div>
             <div className="ov-tile-sub">{inv ? (inv.folders ? (inv.behind || inv.missing ? t('{b} geride, {m} eksik', { b: inv.behind, m: inv.missing }) : t('{n} klasör, hepsi aynı', { n: inv.folders })) : t('manifest yok')) : t('okunuyor…')}</div>
           </button>
           {((relayState?.active && (relayState.role !== 'agent' || !!relayState.jobs)) || updateHot) && (
@@ -212,7 +212,13 @@ export function OverviewPage() {
                 </button>
               ))}
               {stats.last.map((r) => (
-                <button key={r.id} className="ov-run" onClick={() => setPage('history')}>
+                <button
+                  key={r.id}
+                  className="ov-run"
+                  data-tip={r.finishedAt ? `${dateTime(r.startedAt)} • ${duration(r.finishedAt - r.startedAt)}` : dateTime(r.startedAt)}
+                  // straight to this run in History, as a machine's history does
+                  onClick={() => void useApp.getState().openPage('history', { run: r.id })}
+                >
                   <StatusIcon status={r.status} size={15} />
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div className="ellipsis" style={{ fontWeight: 600 }}>

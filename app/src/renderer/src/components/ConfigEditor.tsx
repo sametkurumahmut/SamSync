@@ -143,7 +143,7 @@ export function ConfigEditor({ onClose }: { onClose: () => void }) {
             <CheckCircle2 size={14} color="var(--green)" /> {dirty ? t('Geçerli JSON; kaydedince yapılandırma denetlenir.') : t('Değişiklik yok')}
           </span>
         )}
-        {!boot.configWritable && <span style={{ color: 'var(--amber)' }}>{t('Dosya yazılamıyor; yalnızca okunur.')}</span>}
+        {!boot.configWritable && <span style={{ color: 'var(--amber-text)' }}>{t('Dosya yazılamıyor; yalnızca okunur.')}</span>}
       </div>
     </Modal>
   );

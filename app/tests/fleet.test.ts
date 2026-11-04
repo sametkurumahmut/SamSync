@@ -128,6 +128,27 @@ describe('busy machines', () => {
     expect(busyPrograms(procs, 'C:\\Release', ['viewer.EXE']).map((p) => p.pid)).toEqual(process.platform === 'win32' ? [11, 13] : [13]);
   });
 
+  it('a relay passing a job on writes a busy machine instead of keeping the job in a queue of its own', async () => {
+    const w = await world({ running: ['T', 'PC1'], agent: { PC1: { holdWhileBusy: true } }, extra: { T: { relay: true } } });
+    const exe = path.join(w.dir.PC1, 'bin', path.basename(process.execPath));
+    await fsp.mkdir(path.dirname(exe), { recursive: true });
+    await fsp.copyFile(process.execPath, exe);
+    const child = spawn(exe, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
+    try {
+      await until(async () => (await w.svc.PC1!.relay!.checkBusy()).some((p) => p.pid === child.pid));
+      await w.svc.PC1!.relay!.heartbeat();
+      await write(path.join(w.src, 'r.txt'), 'R');
+      const { run } = await send(w, req(w, ['T', 'PC1']));
+      expect(run.status).toBe('ok');
+      expect(read(path.join(w.dir.PC1, 'Data', 'r.txt'))).toBe('R');
+      // nothing waits on the relay: its queue would later send without the machine's own files
+      expect(w.svc.T!.pending.list()).toHaveLength(0);
+    } finally {
+      child.kill();
+      w.stop();
+    }
+  }, 60000);
+
   it('show on the card and in the review, and a machine that asks for it waits until the program closes', async () => {
     const w = await world({ running: ['PC1'], agent: { PC1: { holdWhileBusy: true } } });
     // a program started from inside the machine's folder (a copy of this very runtime)

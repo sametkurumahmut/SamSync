@@ -31,6 +31,8 @@ function toSplit(lines: DiffLine[]): SplitRow[] {
   return out;
 }
 
+const NO_LINES: DiffLine[] = [];
+
 export function DiffView({ diff, loading, error, title, emptyHint }: { diff: DiffResult | null; loading?: boolean; error?: string; title?: React.ReactNode; emptyHint?: string }) {
   const [mode, setMode] = useState<'unified' | 'split'>(() => (localStorage.getItem('samsync.diffMode') as 'unified' | 'split') || 'unified');
   const setModeP = (m: 'unified' | 'split') => {
@@ -38,7 +40,7 @@ export function DiffView({ diff, loading, error, title, emptyHint }: { diff: Dif
     setMode(m);
   };
   const parent = useRef<HTMLDivElement>(null);
-  const lines = diff?.lines ?? [];
+  const lines = diff?.lines ?? NO_LINES;
   const split = useMemo(() => (mode === 'split' ? toSplit(lines) : []), [lines, mode]);
   const count = mode === 'split' ? split.length : lines.length;
   const v = useVirtualizer({ count, getScrollElement: () => parent.current, estimateSize: () => 20, overscan: 30 });

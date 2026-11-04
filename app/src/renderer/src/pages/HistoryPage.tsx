@@ -73,6 +73,8 @@ export function HistoryPage() {
   useEffect(() => {
     if (!openRunId || !runs) return;
     setActive(openRunId);
+    // nothing in the way of the run: no search, no type, no day
+    setQ('');
     setOrigin('all');
     setRange('all');
     setDay(null);
@@ -345,7 +347,7 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
           />
         </div>
       </div>
-      <div className="stat-grid" style={{ padding: 14 }}>
+      <div className="stat-grid history-stat-grid">
         <div className="stat">
           <div className="k">{t('Başarılı işlem')}</div>
           <div className="v" style={{ color: 'var(--green)' }}>
@@ -413,12 +415,20 @@ function RunDetailView({ summary, onDeleted }: { summary: RunSummary; onDeleted:
                 {(tg.status === 'failed' || tg.status === 'partial') && <ErrorHint error={tg.error} />}
                 {tg.backupPath && <div className="faint" style={{ fontSize: 11.5 }}>{t('yedek: {path}', { path: tg.backupPath })}</div>}
               </div>
-              <span className="tabular faint nowrap" style={{ fontSize: 12 }}>
-                {tg.done - tg.failed}/{tg.total}
-                {tg.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: tg.failed })}</span>}
+              {/* what it did over how much, and how long over how fast: two short columns of two lines each */}
+              <span className="tabular faint nowrap" style={{ fontSize: 12, textAlign: 'right' }}>
+                <div>
+                  {tg.done - tg.failed}/{tg.total}
+                  {tg.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: tg.failed })}</span>}
+                </div>
+                {tg.bytesDone > 0 && <div style={{ fontSize: 11 }}>{bytes(tg.bytesDone)}</div>}
               </span>
-              <span className="faint tabular nowrap" style={{ fontSize: 12, width: 70, textAlign: 'right' }}>
-                {tg.finishedAt && tg.startedAt ? duration(tg.finishedAt - tg.startedAt) : ''}
+              <span className="faint tabular nowrap" style={{ fontSize: 12, minWidth: 62, textAlign: 'right' }}>
+                <div>{tg.finishedAt && tg.startedAt ? duration(tg.finishedAt - tg.startedAt) : ''}</div>
+                {/* the speed on this machine, when there was enough to measure it by */}
+                {tg.finishedAt && tg.startedAt && tg.finishedAt - tg.startedAt >= 2000 && tg.bytesDone >= 1024 * 1024 && (
+                  <div style={{ fontSize: 11 }}>{t('{speed}/sn', { speed: bytes((tg.bytesDone / (tg.finishedAt - tg.startedAt)) * 1000) })}</div>
+                )}
               </span>
             </div>
           ))}

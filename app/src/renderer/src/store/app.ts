@@ -157,6 +157,10 @@ interface State {
   automation: AutomationState | null;
   toasts: Toast[];
   palette: boolean;
+  /** Where the Settings page goes when it opens or this changes (the command palette): a card by its id, or a search. */
+  settingsJump: { section?: string; find?: string; at: number } | null;
+  /** The machine the Targets page shows when it opens or this changes (the command palette). */
+  targetsJump: { node: string; at: number } | null;
   /** The keyboard shortcuts list is open. */
   shortcuts: boolean;
   /** The "what's new" card for the version that just started. */
@@ -216,6 +220,8 @@ interface State {
 
   init(): Promise<void>;
   setPage(p: Page): void;
+  /** Opens a page; on Settings it also goes to a card or runs a search there, on Targets to a machine, in History to a run (help answers, the command palette, a machine's history). */
+  openPage(p: Page, at?: { section?: string; find?: string; node?: string; run?: string }): Promise<void>;
   toggleSidebar(): void;
   toast(kind: Toast['kind'], title: string, message?: string, action?: Toast['action']): void;
   dismissToast(id: number): void;
@@ -338,6 +344,8 @@ export const useApp = create<State>((set, get) => ({
   automation: null,
   toasts: [],
   palette: false,
+  settingsJump: null,
+  targetsJump: null,
   shortcuts: false,
   whatsNew: null,
   helpBot: false,
@@ -433,6 +441,15 @@ export const useApp = create<State>((set, get) => ({
     location.hash = p;
     set({ page: p });
     writeStored('samsync.page', p);
+  },
+
+  async openPage(p, at) {
+    await get().setPage(p);
+    // (not when leaving the page before was refused)
+    if (!at || get().page !== p) return;
+    if (p === 'settings') set({ settingsJump: { section: at.section, find: at.find, at: Date.now() } });
+    else if (p === 'targets' && at.node) set({ targetsJump: { node: at.node, at: Date.now() } });
+    else if (p === 'history' && at.run) set({ openRunId: at.run });
   },
 
   toggleSidebar() {

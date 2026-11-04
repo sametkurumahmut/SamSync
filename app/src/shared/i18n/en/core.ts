@@ -133,7 +133,7 @@ const d: Dict = {
     `{label} started: ${n(p, 'targets', '{targets} target', '{targets} targets')}, ${n(p, 'ops', '{ops} operation', '{ops} operations')} (dry run, nothing will be written)`,
   '{label} başladı: {targets} hedef, {ops} işlem': (p) =>
     `{label} started: ${n(p, 'targets', '{targets} target', '{targets} targets')}, ${n(p, 'ops', '{ops} operation', '{ops} operations')}`,
-  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn': 'Done: {ok} succeeded, {failed} failed, {size}, {s} s',
+  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {time}': 'Done: {ok} succeeded, {failed} failed, {size}, {time}',
   'Hedefe bağlanılamadı: {error}': 'Could not connect to the target: {error}',
   'Kaynak uç bulunamadı: {key}': 'Source endpoint not found: {key}',
   '→ {root} ({n} işlem, yedekli)': pl('→ {root} ({n} operation, with backup)', '→ {root} ({n} operations, with backup)'),
@@ -532,7 +532,6 @@ const d: Dict = {
   'Kısmen': 'Partly',
   'Sürüyor': 'Running',
   'Sırada': 'Queued',
-  sn: 's',
   'deneme çalıştırması': 'dry run',
   'Süre': 'Duration',
   '{n} klasör, içinde filtrenin dışarıda bıraktığı dosyalar olduğu için yerinde kaldı: {dirs}': '{n} folders stayed, as files the filter left out are still in them: {dirs}',
@@ -545,6 +544,15 @@ const d: Dict = {
   'Sağ klasör bulunamadı: {path}': 'Right folder not found: {path}',
   'Klasör okunamadı; bu sefer dokunulmuyor': 'The folder could not be read; it is left alone this time',
   'Röle {m} dakikadır haber vermiyor': 'The relay has sent no word for {m} minutes',
+  '{name} üzerinde SamSync {version} çalışıyor, bu bilgisayardan eski; Hedefler › Ajanları güncelle ile güncelleyince orada da yenilikler çalışır': '{name} runs SamSync {version}, older than this computer; once it is updated with Targets › Update agents, what is new works there too',
+  '{s} sn • {speed}/sn': '{s} s • {speed}/s',
+  'Makine paketi {s} sn içinde uyguladı': 'The machine applied the pack in {s} s',
+  'Röle kendi kopyasını {own} sn, dağıtımı {all} sn içinde bitirdi': 'The relay finished its own copy in {own} s and the distribution in {all} s',
+  'Röle işi {s} sn içinde bitirdi': 'The relay finished the job in {s} s',
+  'paket orada, alınması bekleniyor…': 'pack is there, waiting for it to be picked up…',
+  'paketi uyguluyor…': 'applying the pack…',
+  'paketi uyguluyor, ardından dağıtacak…': 'applying the pack, then passing it on…',
+  'işi aldı, dağıtıyor…': 'took the job, passing it on…',
 };
 
 export default d;

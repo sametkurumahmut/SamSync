@@ -640,7 +640,7 @@ async function planTarget(
   const freeSpace = tgt.freeSpace().catch(() => undefined);
   // a relay without a fresh heartbeat has no SamSync running: it is written to directly, nobody waits for it
   // SamSync running on the machine (relay or not) takes the changes as a pack; its heartbeat on the share says so
-  const askBeat = node.transport !== 'sftp' && !req.direct && !isSelf;
+  const askBeat = node.transport !== 'sftp' && (!req.direct || !!req.relayed) && !isSelf;
   // content comparison: SamSync there hashes its own disk instead of every file coming back over the network;
   // a direct look (the Compare page, --check-only) asks too: hashes are only read, nothing goes through the machine
   const wantHashes = opt.compare === 'content' && node.transport !== 'sftp' && !isSelf && tgt.kind === 'fs';
@@ -772,7 +772,7 @@ async function planTarget(
     const unitFilter = withTopDirsExcluded(filter, kept);
     // (not for a comparison, a send that asks for a full scan, or when the settings turned the manifest off)
     const manifestDays = ctx.config.copy.manifestMaxDays ?? 7;
-    const manifest = dstRoot?.isDir && !req.direct && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000, excluded).catch(() => null) : null;
+    const manifest = dstRoot?.isDir && (!req.direct || !!req.relayed) && !req.options.fullScan && manifestDays > 0 && tgt.kind === 'fs' ? await manifestEntries(tgt, u.rel, Date.now(), manifestDays * 86400_000, excluded).catch(() => null) : null;
     if (manifest) {
       fromManifest = Math.min(fromManifest ?? Infinity, manifest.writtenAt);
       ctx.log.info(t('Plan'), t('{name}: {path} manifestten alındı ({n} kayıt, {checked} örnek doğrulandı)', { name: node.name, path: u.rel || '/', n: manifest.entries.size, checked: manifest.checked }));
@@ -898,7 +898,9 @@ async function planTarget(
   // programs keeping the target folder busy there: said in the review; the machine may ask to be left alone meanwhile
   const hb = askBeat ? await beat : null;
   const busyBy = hb && heartbeatFresh(hb) && hb.busyBy?.length ? [...new Set(hb.busyBy.map((p) => p.name))] : undefined;
-  const holdForBusy = !!busyBy && !!hb?.holdWhileBusy && b.ops.some((o) => o.selected);
+  // a relay passing a job on never holds a machine back: its own queue would send it later without that
+  // machine's own files (they came with the job), and the job could go twice; the sender decides about busy machines
+  const holdForBusy = !!busyBy && !!hb?.holdWhileBusy && !req.relayed && b.ops.some((o) => o.selected);
   if (busyBy) warn(holdForBusy ? t('{name}: {programs} hedef klasörü kullanıyor; bu makineye program kapanınca gönderilecek', { name: node.name, programs: busyBy.join(', ') }) : t('{name}: {programs} hedef klasörü kullanıyor; değiştirilecek dosyalar kullanımda olabilir', { name: node.name, programs: busyBy.join(', ') }));
   const agentHashed = (await hasher)?.answered || undefined;
   const other = await lock;

@@ -135,6 +135,37 @@ try {
     await page.keyboard.press('Escape');
   });
 
+  await step('settings: the search keeps the cards that hold the text and hides the rest', async () => {
+    await page.keyboard.press('Control+,');
+    const box = page.getByPlaceholder('Search settings');
+    await box.waitFor();
+    await box.fill('telegram');
+    await page.waitForTimeout(400);
+    const shown = await page.locator('.settings-section:not(.find-hidden)').count();
+    const all = await page.locator('.settings-section').count();
+    if (!(shown >= 1 && shown < all)) throw new Error(`the search for "telegram" left ${shown} of ${all} cards`);
+    // Escape empties the box and every card is back
+    await box.press('Escape');
+    await page.waitForTimeout(300);
+    if ((await page.locator('.settings-section.find-hidden').count()) !== 0) throw new Error('cards stayed hidden after Escape');
+  });
+
+  await step('palette: a machine name with its group goes to its card on Targets', async () => {
+    const pc2 = labA.find((n) => n.id === 'A-PC2') ?? labA[0];
+    await page.keyboard.press('Control+K');
+    await page.keyboard.type(`${pc2.name.split(' - ')[0]} lab-a`);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Enter');
+    const card = page.locator(`.target-card[data-node="${pc2.id}"]`);
+    await card.waitFor();
+    await page.waitForTimeout(800);
+    const inView = await card.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+    if (!inView) throw new Error(`${pc2.id}'s card is not in view after the jump`);
+  });
+
   await step('accessibility: no critical or serious axe-core violations on the main pages', async () => {
     const axe = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
     // the smallest window the app allows: lists overflow there, as on a CI runner's small screen

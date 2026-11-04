@@ -53,10 +53,8 @@ export function startLaunchPipe(onLaunch: (m: LaunchMessage) => void, onError: (
   if (process.platform !== 'win32') return null;
   const server = net.createServer((sock) => {
     const chunks: Buffer[] = [];
-    let size = 0;
     sock.on('data', (d: Buffer) => {
       chunks.push(d);
-      size += d.length;
       const buf = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
       if (buf.length < 4) return;
       const need = buf.readUInt32LE(0);

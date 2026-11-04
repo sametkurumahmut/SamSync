@@ -816,6 +816,15 @@ const d: Dict = {
   'Önce bot anahtarını ve sohbeti girin': 'Enter the bot token and the chat first',
   'Hangi işler bildirsin': 'Which runs report',
   'Varsayılan yalnızca Gönder: oradan başlattığınız gönderimler. Otomasyon, izlemelerin ve zamanlamaların başlattıklarıdır.': 'By default only Send: the sends you start there. Automation is what watches and schedules start.',
+  'Ayarlarda ara': 'Search settings',
+  '“{q}” hiçbir ayarda geçmiyor': 'No setting mentions “{q}”',
+  'Ayarlarda ara: “{q}”': 'Search settings: “{q}”',
+  'Ayarlar sayfasında ayarlarda ara': 'Search the settings on the Settings page',
+  'Bu makinelere son gönderimlerin hızına göre ({n} gönderim)': pl('From the speed of the last send to these machines', 'From the speed of the last {n} sends to these machines'),
+  'yaklaşık {time}': 'about {time}',
+  'Bu makinenin tahmini süresi': 'This machine’s estimated time',
+  'Bu makine gönderimi uzatıyor: ötekilerin {n} katı sürer (son gönderimlerin hızına göre)': 'This machine holds the send up: it takes {n} times as long as the others (from the speed of the last sends)',
+  'Bugünkü farklarla yaklaşık {time} sürer; saat {clock} gibi biter': 'With today’s differences it takes about {time}; done around {clock}',
 };
 
 export default d;

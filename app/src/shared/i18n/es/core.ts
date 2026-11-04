@@ -133,7 +133,7 @@ const d: Dict = {
     `{label} iniciado: ${n(p, 'targets', '{targets} destino', '{targets} destinos')}, ${n(p, 'ops', '{ops} operación', '{ops} operaciones')} (prueba, no se escribirá nada)`,
   '{label} başladı: {targets} hedef, {ops} işlem': (p) =>
     `{label} iniciado: ${n(p, 'targets', '{targets} destino', '{targets} destinos')}, ${n(p, 'ops', '{ops} operación', '{ops} operaciones')}`,
-  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn': 'Terminado: {ok} con éxito, {failed} con error, {size}, {s} s',
+  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {time}': 'Terminado: {ok} con éxito, {failed} con error, {size}, {time}',
   'Hedefe bağlanılamadı: {error}': 'No se pudo conectar con el destino: {error}',
   'Kaynak uç bulunamadı: {key}': 'Extremo de origen no encontrado: {key}',
   '→ {root} ({n} işlem, yedekli)': pl('→ {root} ({n} operación, con copia de seguridad)', '→ {root} ({n} operaciones, con copia de seguridad)'),
@@ -532,7 +532,6 @@ const d: Dict = {
   'Kısmen': 'Parcial',
   'Sürüyor': 'En ejecución',
   'Sırada': 'En cola',
-  sn: 's',
   'deneme çalıştırması': 'prueba',
   'Süre': 'Duración',
   '{n} klasör, içinde filtrenin dışarıda bıraktığı dosyalar olduğu için yerinde kaldı: {dirs}': '{n} carpetas se quedaron porque aún contienen archivos que el filtro dejó fuera: {dirs}',
@@ -545,6 +544,15 @@ const d: Dict = {
   'Sağ klasör bulunamadı: {path}': 'Carpeta derecha no encontrada: {path}',
   'Klasör okunamadı; bu sefer dokunulmuyor': 'No se pudo leer la carpeta; esta vez no se toca',
   'Röle {m} dakikadır haber vermiyor': 'El relé lleva {m} minutos sin dar noticias',
+  '{name} üzerinde SamSync {version} çalışıyor, bu bilgisayardan eski; Hedefler › Ajanları güncelle ile güncelleyince orada da yenilikler çalışır': '{name} ejecuta SamSync {version}, más antiguo que este equipo; al actualizarlo con Destinos › Actualizar agentes, lo nuevo funciona también allí',
+  '{s} sn • {speed}/sn': '{s} s • {speed}/s',
+  'Makine paketi {s} sn içinde uyguladı': 'El equipo aplicó el paquete en {s} s',
+  'Röle kendi kopyasını {own} sn, dağıtımı {all} sn içinde bitirdi': 'El relé terminó su propia copia en {own} s y la distribución en {all} s',
+  'Röle işi {s} sn içinde bitirdi': 'El relé terminó el trabajo en {s} s',
+  'paket orada, alınması bekleniyor…': 'el paquete está allí, esperando a que lo recojan…',
+  'paketi uyguluyor…': 'aplicando el paquete…',
+  'paketi uyguluyor, ardından dağıtacak…': 'aplica el paquete y luego lo reparte…',
+  'işi aldı, dağıtıyor…': 'tomó el trabajo, lo reparte…',
 };
 
 export default d;

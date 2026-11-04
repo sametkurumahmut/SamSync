@@ -133,7 +133,7 @@ const d: Dict = {
     `{label} gestartet: ${n(p, 'targets', '{targets} Ziel', '{targets} Ziele')}, ${n(p, 'ops', '{ops} Vorgang', '{ops} Vorgänge')} (Probelauf, es wird nichts geschrieben)`,
   '{label} başladı: {targets} hedef, {ops} işlem': (p) =>
     `{label} gestartet: ${n(p, 'targets', '{targets} Ziel', '{targets} Ziele')}, ${n(p, 'ops', '{ops} Vorgang', '{ops} Vorgänge')}`,
-  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn': 'Fertig: {ok} erfolgreich, {failed} fehlerhaft, {size}, {s} s',
+  'Bitti: {ok} başarılı, {failed} hatalı, {size}, {time}': 'Fertig: {ok} erfolgreich, {failed} fehlerhaft, {size}, {time}',
   'Hedefe bağlanılamadı: {error}': 'Verbindung zum Ziel nicht möglich: {error}',
   'Kaynak uç bulunamadı: {key}': 'Quellendpunkt nicht gefunden: {key}',
   '→ {root} ({n} işlem, yedekli)': pl('→ {root} ({n} Vorgang, mit Sicherung)', '→ {root} ({n} Vorgänge, mit Sicherung)'),
@@ -532,7 +532,6 @@ const d: Dict = {
   'Kısmen': 'Teilweise',
   'Sürüyor': 'Läuft',
   'Sırada': 'In der Warteschlange',
-  sn: 's',
   'deneme çalıştırması': 'Probelauf',
   'Süre': 'Dauer',
   '{n} klasör, içinde filtrenin dışarıda bıraktığı dosyalar olduğu için yerinde kaldı: {dirs}': '{n} Ordner blieben bestehen, da noch Dateien darin liegen, die der Filter ausgeschlossen hat: {dirs}',
@@ -545,6 +544,15 @@ const d: Dict = {
   'Sağ klasör bulunamadı: {path}': 'Rechter Ordner nicht gefunden: {path}',
   'Klasör okunamadı; bu sefer dokunulmuyor': 'Der Ordner konnte nicht gelesen werden; er bleibt diesmal unberührt',
   'Röle {m} dakikadır haber vermiyor': 'Das Relais meldet sich seit {m} Minuten nicht',
+  '{name} üzerinde SamSync {version} çalışıyor, bu bilgisayardan eski; Hedefler › Ajanları güncelle ile güncelleyince orada da yenilikler çalışır': 'Auf {name} läuft SamSync {version}, älter als auf diesem Computer; nach einer Aktualisierung mit Ziele › Agenten aktualisieren funktioniert das Neue auch dort',
+  '{s} sn • {speed}/sn': '{s} s • {speed}/s',
+  'Makine paketi {s} sn içinde uyguladı': 'Der Computer hat das Paket in {s} s angewendet',
+  'Röle kendi kopyasını {own} sn, dağıtımı {all} sn içinde bitirdi': 'Das Relais hat seine eigene Kopie in {own} s und die Verteilung in {all} s abgeschlossen',
+  'Röle işi {s} sn içinde bitirdi': 'Das Relais hat den Auftrag in {s} s abgeschlossen',
+  'paket orada, alınması bekleniyor…': 'Paket liegt bereit, wartet auf Abholung…',
+  'paketi uyguluyor…': 'wendet das Paket an…',
+  'paketi uyguluyor, ardından dağıtacak…': 'wendet das Paket an, gibt es dann weiter…',
+  'işi aldı, dağıtıyor…': 'hat den Auftrag, gibt ihn weiter…',
 };
 
 export default d;

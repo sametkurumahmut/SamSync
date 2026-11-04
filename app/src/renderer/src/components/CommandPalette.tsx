@@ -33,26 +33,36 @@ import { MOD } from './Shortcuts';
 import { useGit } from '../store/git';
 import { api } from '../lib/api';
 import { cls } from '../lib/format';
+import { matchScore as score } from '@shared/fold';
 import { useEscapeLayer } from './ui';
-import { locale, t } from '@shared/i18n';
+import { t, tk } from '@shared/i18n';
+
+/** The Settings page's cards: id, title (a dictionary key) and words it is also found by. */
+const SETTINGS_CARDS: [string, string, string][] = [
+  ['look', tk('Görünüm'), 'theme tema dil language accent'],
+  ['background', tk('Arka plan ve başlangıç'), 'tray tepsi startup'],
+  ['copy', tk('Kopyalama'), 'copy relay röle backup yedek verify'], // i18n-ignore: words to find it by, either language
+  ['config', tk('Yapılandırma dosyası'), 'config.json csv'],
+  ['integration', tk('Sağ tık menüleri'), 'explorer notepad++ menu'],
+  ['updates', tk('Güncellemeler'), 'update'],
+  ['notifications', tk('Bildirimler'), 'telegram webhook notify'],
+  ['agent', tk('Ajan: bu makineye gelen paketler'), 'agent pack paket'],
+  ['webui', tk('Web arayüzü (sunucu kipi)'), 'web https server'],
+  ['assistant', tk('Yardım botu'), 'claude api bot'],
+  ['about', tk('Hakkında'), 'about version'],
+];
 
 interface Cmd {
   id: string;
   group: string;
   label: string;
   hint?: string;
+  /** More words it is found by (not shown). */
+  keywords?: string;
+  /** Only listed for a query that holds it (one entry per machine would fill the list otherwise). */
+  onlyFound?: boolean;
   icon: ReactNode;
   run: () => void | Promise<void>;
-}
-
-function score(text: string, q: string): number {
-  if (!q) return 1;
-  const lt = text.toLocaleLowerCase(locale());
-  const s = q.toLocaleLowerCase(locale());
-  if (lt.includes(s)) return 2 + (lt.startsWith(s) ? 1 : 0);
-  let i = 0;
-  for (const ch of lt) if (ch === s[i]) i++;
-  return i === s.length ? 1 : 0;
 }
 
 export function CommandPalette() {
@@ -86,6 +96,17 @@ export function CommandPalette() {
       { id: 'p-history', group: pages, label: t('Geçmiş'), hint: key('history'), icon: <History size={15} />, run: go('history') },
       { id: 'p-help', group: pages, label: t('Yardım'), hint: key('help'), icon: <CircleHelp size={15} />, run: go('help') },
       { id: 'p-settings', group: pages, label: t('Ayarlar'), hint: '', icon: <Settings size={15} />, run: go('settings') },
+      // the cards of the Settings page, each a place of its own
+      ...SETTINGS_CARDS.map(
+        ([section, title, keywords]): Cmd => ({
+          id: `s-${section}`,
+          group: t('Ayarlar'),
+          label: `${t('Ayarlar')} › ${t(title)}`,
+          keywords,
+          icon: <Settings size={15} />,
+          run: () => st.openPage('settings', { section }),
+        }),
+      ),
       { id: 'a-bot', group: actions, label: t('Yardım botuna sor…'), hint: 'F1', icon: <Bot size={15} />, run: () => useApp.setState({ helpBot: true }) },
       { id: 'a-shortcuts', group: actions, label: t('Klavye kısayolları'), hint: `${MOD} /`, icon: <Keyboard size={15} />, run: () => useApp.setState({ shortcuts: true }) },
       {
@@ -190,6 +211,18 @@ export function CommandPalette() {
         },
       },
       {
+        id: 'a-last-run',
+        group: actions,
+        label: t('Son çalıştırmayı Geçmiş’te aç'),
+        keywords: 'history geçmiş last son run', // i18n-ignore: words to find it by, either language
+        icon: <History size={15} />,
+        run: async () => {
+          const last = (await api.runs())[0];
+          if (!last) return st.toast('info', t('Henüz gönderim yok'));
+          await st.openPage('history', { run: last.id });
+        },
+      },
+      {
         id: 'a-update',
         group: actions,
         label: t('Güncellemeleri denetle'),
@@ -210,15 +243,42 @@ export function CommandPalette() {
           st.toast('ok', t('{name} profili uygulandı', { name: p.name }), t('{n} hedef seçildi', { n: p.targetIds.length }));
         },
       })),
+      ...st.boot.config.nodes.map((n) => ({
+        id: `node-${n.id}`,
+        group: t('Makineler'),
+        label: n.name,
+        hint: [n.address, n.group].filter(Boolean).join(' • '),
+        keywords: `${n.group ?? ''} ${n.address} ${n.id} ${(n.tags ?? []).map((x) => '#' + x).join(' ')}`,
+        onlyFound: true,
+        icon: <Server size={15} />,
+        run: () => st.openPage('targets', { node: n.id }),
+      })),
     ];
     return list;
   }, [st]);
 
-  const filtered = cmds
-    .map((c) => ({ c, s: score(`${c.label} ${c.group}`, q) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .map((x) => x.c);
+  const scored = cmds
+    .map((c) => ({ c, s: score(`${c.label} ${c.group} ${c.keywords ?? ''}`, q) }))
+    // a machine shows once two letters or more are typed and found in it, not for a letter anywhere in the list
+    .filter((x) => (x.c.onlyFound ? x.s > 1 && q.trim().length >= 2 : x.s > 0))
+    .sort((a, b) => b.s - a.s);
+  const matched = scored.filter((x) => x.s > 1).map((x) => x.c);
+  const loose = scored.filter((x) => x.s === 1).map((x) => x.c);
+  // anything typed can also be looked for among the settings: after the commands that hold it, before the loose matches
+  const query = q.trim();
+  const filtered: Cmd[] = query
+    ? [
+        ...matched,
+        {
+          id: 'a-settings-find',
+          group: t('Ayarlar'),
+          label: t('Ayarlarda ara: “{q}”', { q: query }),
+          icon: <Search size={15} />,
+          run: () => st.openPage('settings', { find: query }),
+        },
+        ...loose,
+      ]
+    : [...matched, ...loose];
 
   useEscapeLayer(close, open);
   useEffect(() => setIdx(0), [q]);

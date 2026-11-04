@@ -48,10 +48,10 @@ function Paragraphs({ text }: { text: string }) {
   return <>{out}</>;
 }
 
-function HitButton({ hit, onGo }: { hit: HelpHit; onGo: (p: AppPage) => void }) {
+function HitButton({ hit, onGo }: { hit: HelpHit; onGo: (p: AppPage, section?: string) => void }) {
   const ask = useApp((s) => s.askHelp);
   return (
-    <button className="help-hit" onClick={() => (hit.doc.kind === 'faq' ? void ask(hit.doc.title) : hit.doc.page ? onGo(hit.doc.page) : undefined)}>
+    <button className="help-hit" onClick={() => (hit.doc.kind === 'faq' ? void ask(hit.doc.title) : hit.doc.page ? onGo(hit.doc.page, hit.doc.faq?.section) : undefined)}>
       {hit.doc.kind === 'faq' ? <CircleHelp size={12} /> : <BookOpen size={12} />}
       <span className="ellipsis">{hit.doc.kind === 'faq' ? hit.doc.title : (hit.doc.section ?? hit.doc.title)}</span>
     </button>
@@ -65,7 +65,7 @@ export function HelpBot() {
   const ai = useApp((s) => s.helpAi);
   const aiReady = useApp((s) => s.assistant?.configured ?? false);
   const ask = useApp((s) => s.askHelp);
-  const setPage = useApp((s) => s.setPage);
+  const openPage = useApp((s) => s.openPage);
   const [text, setText] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,8 +80,8 @@ export function HelpBot() {
   }, [open, messages.length, busy]);
 
   if (!open) return null;
-  const go = (p: AppPage) => {
-    setPage(p);
+  const go = (p: AppPage, section?: string) => {
+    void openPage(p, section ? { section } : undefined);
     useApp.setState({ helpBot: false });
   };
   const submit = () => {
@@ -154,7 +154,7 @@ export function HelpBot() {
                     {m.source.doc.kind === 'faq' ? <CircleHelp size={11} /> : <BookOpen size={11} />}
                     <span className="ellipsis">{m.source.doc.kind === 'faq' ? t('SSS') : `README › ${m.source.doc.section ?? m.source.doc.title}`}</span>
                     {m.source.doc.page && (
-                      <button className="link-btn" onClick={() => go(m.source!.doc.page!)}>
+                      <button className="link-btn" onClick={() => go(m.source!.doc.page!, m.source!.doc.faq?.section)}>
                         {t('Sayfayı aç')} <ArrowRight size={11} />
                       </button>
                     )}

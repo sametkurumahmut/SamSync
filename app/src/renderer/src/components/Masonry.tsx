@@ -15,7 +15,8 @@ interface Placement {
 /** How long after the first paint the columns are still chosen again (sections that fill in from the app). */
 const SETTLE_MS = 1200;
 
-export function Masonry({ children, minWidth = 440, gap = 14, className }: { children: ReactNode; minWidth?: number; gap?: number; className?: string }) {
+/** `relayout`: a new value shares the cards out again (cards hidden or shown by a search). */
+export function Masonry({ children, minWidth = 440, gap = 14, className, relayout }: { children: ReactNode; minWidth?: number; gap?: number; className?: string; relayout?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const items = Children.toArray(children);
   const placed = useRef<Placement | null>(null);
@@ -61,7 +62,7 @@ export function Masonry({ children, minWidth = 440, gap = 14, className }: { chi
       clearTimeout(settle);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [items.length, minWidth, gap]);
+  }, [items.length, minWidth, gap, relayout]);
 
   return (
     <div ref={ref} className={className ? `masonry ${className}` : 'masonry'}>

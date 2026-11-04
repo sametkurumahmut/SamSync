@@ -23,7 +23,7 @@ export interface PackDelta {
 }
 
 export type PackOp =
-  | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'store'; replaceType?: boolean; dstExists?: boolean; delta?: PackDelta }
+  | { kind: 'copy'; id: string; rel: string; size: number; mtimeMs: number; offset: number; length: number; method: 'gzip' | 'zstd' | 'store'; replaceType?: boolean; dstExists?: boolean; delta?: PackDelta }
   | { kind: 'mkdir'; id: string; rel: string; replaceType?: boolean; dstExists?: boolean }
   | { kind: 'delete'; id: string; rel: string; isDir: boolean; onlyIfEmpty?: boolean };
 
@@ -72,10 +72,14 @@ export interface RelayTargetResult {
   backedUpOps?: string[];
   /** The machine's command after applying, as a health check. */
   check?: import('./types').TargetCheck;
+  /** For the relay's own apply of a pack: how long it took there, in milliseconds. */
+  ms?: number;
 }
 
 export interface RelayResult {
   id: string;
+  /** When the relay took the job (its clock, like finishedAt): the sender tells how long the relay was at it. */
+  startedAt?: number;
   finishedAt: number;
   targets: RelayTargetResult[];
 }

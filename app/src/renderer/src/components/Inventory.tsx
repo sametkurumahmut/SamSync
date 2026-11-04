@@ -156,7 +156,6 @@ export function Inventory() {
   // once when the card appears, and again after every finished run
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyVersion]);
 
   const columns = useMemo(() => {

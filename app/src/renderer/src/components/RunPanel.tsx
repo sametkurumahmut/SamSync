@@ -360,7 +360,13 @@ export function RunPanel() {
                 <Clock size={12} /> {duration(elapsed)}
               </span>
               {pace != null && <span className="tabular">{speedText(pace)}</span>}
-              {remaining != null && <span className="tabular">{t('kalan {time}', { time: duration(Math.round(remaining)) })}</span>}
+              {remaining != null && (
+                <span className="tabular">
+                  {t('kalan {time}', { time: duration(Math.round(remaining)) })}
+                  {/* a long one also says when, by the clock */}
+                  {remaining >= 60_000 && ` • ${t('bitiş ≈ {clock}', { clock: new Date(now + remaining).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) })}`}
+                </span>
+              )}
             </div>
           </div>
           <Button variant="ghost" iconOnly size="sm" icon={<Minimize2 size={15} />} tip={t('Küçült')} onClick={() => useApp.setState({ runPanel: false })} />

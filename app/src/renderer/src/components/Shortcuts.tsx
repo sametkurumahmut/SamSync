@@ -39,6 +39,7 @@ export function ShortcutsModal() {
         { keys: [[MOD, 'K']], what: t('Komut paleti') },
         { keys: [[MOD, '/']], what: t('Bu liste') },
         { keys: [[MOD, ',']], what: t('Ayarlar') },
+        { keys: [[MOD, 'F']], what: t('Ayarlar sayfasında ayarlarda ara') },
         { keys: [[MOD, '+'], [MOD, '−']], what: t('Arayüzü büyüt / küçült') },
         { keys: [[MOD, '0']], what: t('Arayüz ölçeğini sıfırla') },
         { keys: [['F1']], what: t('Yardım botu') },

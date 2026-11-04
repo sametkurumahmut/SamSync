@@ -45,6 +45,8 @@
   --green: #16a34a;
   --green-bg: rgb(22 163 74 / 10%);
   --amber: #d97706;
+  /* amber for text: darker on a light page, so small words keep 4.5:1 */
+  --amber-text: #b45309;
   --amber-bg: rgb(217 119 6 / 11%);
   --red: #dc2626;
   --red-bg: rgb(220 38 38 / 9%);
@@ -82,6 +84,7 @@
   --green: #34d399;
   --green-bg: rgb(52 211 153 / 12%);
   --amber: #fbbf24;
+  --amber-text: #fbbf24;
   --amber-bg: rgb(251 191 36 / 12%);
   --red: #f87171;
   --red-bg: rgb(248 113 113 / 12%);
@@ -389,9 +392,17 @@ a {
 }
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
+  justify-content: flex-end;
   gap: 16px;
+  row-gap: 10px;
   padding: 18px 24px 14px;
+}
+/* the title keeps room for its words in a narrow window: the buttons that do not fit go to the next line, on the right */
+.page-head > .grow {
+  flex: 1 1 200px;
+  min-width: 200px;
 }
 .page-head h1 {
   margin: 0;
@@ -425,11 +436,23 @@ a {
 }
 .card-head {
   display: flex;
+  /* in a narrow card the buttons go to the next line instead of squeezing the title and its note word by word */
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  row-gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   min-height: 50px;
+}
+/* a field in the head (a job's name) takes the room there is and gives it back, instead of a line of its own */
+.card-head > .input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+/* what follows the spacer stays on the right when it goes to the next line */
+.card-head > .spacer + * {
+  margin-left: auto;
 }
 .card-head h2,
 .card-head h3 {
@@ -895,7 +918,7 @@ a {
 }
 .badge.amber {
   background: var(--amber-bg);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .badge.red {
   background: var(--red-bg);
@@ -1411,7 +1434,7 @@ a {
 .sign.rightNewer,
 .sign.conflict,
 .sign.U {
-  color: var(--amber);
+  color: var(--amber-text);
   background: var(--amber-bg);
 }
 .sign.extra,

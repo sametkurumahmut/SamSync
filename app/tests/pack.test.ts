@@ -20,6 +20,33 @@ describe('pack', () => {
     expect(packMethodFor('Models/m.fbx')).toBe('gzip');
   });
 
+  it('compresses with zstd when asked, and opens it again', async () => {
+    const dir = await tmpDir();
+    const text = Buffer.from('abc '.repeat(50_000));
+    await fsp.writeFile(path.join(dir, 'a.dll'), text);
+    await fsp.writeFile(path.join(dir, 'b.png'), Buffer.from('png bytes'));
+    const entries: PackEntry[] = [];
+    const packFile = path.join(dir, 'z.pack');
+    const files = [
+      { rel: 'a.dll', size: text.length },
+      { rel: 'b.png', size: 9 },
+    ];
+    await pipeline(
+      packStream(
+        files.map((f) => ({ ...f, mtimeMs: 1700000000000, open: () => fs.createReadStream(path.join(dir, f.rel)) })),
+        entries,
+        undefined,
+        { method: 'zstd', level: 6 },
+      ),
+      fs.createWriteStream(packFile),
+    );
+    // already-compressed formats still go in as they are
+    expect(entries.map((e) => e.method)).toEqual(['zstd', 'store']);
+    expect(entries[0].length).toBeLessThan(text.length / 100);
+    expect((await readAll(openPackEntry(packFile, entries[0]))).equals(text)).toBe(true);
+    expect((await readAll(openPackEntry(packFile, entries[1]))).toString()).toBe('png bytes');
+  });
+
   it('round-trips files through one stream with an index of offsets', async () => {
     const dir = await tmpDir();
     const text = Buffer.from('abc '.repeat(50_000)); // compresses well

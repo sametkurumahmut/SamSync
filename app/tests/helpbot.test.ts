@@ -37,12 +37,15 @@ describe('help bot', () => {
     expect(first(tr, 'gonderim neden bu kadar yavas')?.id).toBe('faq-speed-expectation');
     expect(first(tr, 'telegram bildirimi')?.id).toBe('faq-notify');
     expect(first(tr, 'hangi makinede hangi sürüm var')?.id).toBe('faq-inventory');
+    expect(first(tr, 'ne kadar sürecek')?.id).toBe('faq-send-estimate');
   });
 
   it('answers in English too, and reads the README for what the FAQ does not cover', () => {
     expect(first(en, 'how do I undo a send')?.id).toBe('faq-backup-restore');
     expect(first(en, 'what is a relay')?.id).toBe('faq-relay-what');
     expect(first(en, 'keyboard shortcuts')?.id).toBe('faq-shortcuts');
+    expect(first(en, 'how long will the send take')?.id).toBe('faq-send-estimate');
+    expect(first(en, 'estimated time')?.id).toBe('faq-send-estimate');
     const hit = answer(en, 'import profiles from the old wizard');
     expect(hit.hits[0]?.doc.kind).toBe('readme');
     expect(hit.hits[0]?.doc.body.toLowerCase()).toContain('wizard');
@@ -71,5 +74,21 @@ describe('help bot', () => {
       expect(ids.has(f.id)).toBe(false);
       ids.add(f.id);
     }
+  });
+
+  it('sends settings answers and the command palette to cards the Settings page has', () => {
+    const src = (rel: string) => fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'src', rel), 'utf8');
+    const page = ['pages/SettingsPage.tsx', 'components/AgentSettings.tsx', 'components/WebUiSettings.tsx'].map(src).join('\n');
+    const cards = new Set([...page.matchAll(/\bid="([\w-]+)"/g)].map((m) => m[1]));
+    expect(cards.size).toBeGreaterThan(8);
+    const answers = FAQ.filter((x) => x.section);
+    expect(answers.length).toBeGreaterThan(10);
+    for (const x of answers) {
+      expect(x.page, x.id).toBe('settings');
+      expect([...cards], x.id).toContain(x.section);
+    }
+    const palette = [...src('components/CommandPalette.tsx').matchAll(/\['([\w-]+)', tk\(/g)].map((m) => m[1]);
+    expect(palette.length).toBeGreaterThan(8);
+    for (const id of palette) expect([...cards], id).toContain(id);
   });
 });

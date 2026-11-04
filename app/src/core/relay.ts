@@ -11,7 +11,7 @@ import { RELAY_FOLDER, type RelayJob, type RelayProgress, type RelayResult, type
 import type { CoreContext } from './context';
 import type { ExecGroup, ExecOp, RunHandle } from './executor';
 import { FsTransport, transportForNode, type Transport } from './transport';
-import { buildSendPlan, sendFilter } from './plan';
+import { buildSendPlan, sendFilter, type PlanScans } from './plan';
 import { scanTree } from './scan';
 import { saveManifestSubtree } from './manifest';
 import { probeNode } from './probe';
@@ -25,6 +25,7 @@ import { compareVersions } from '../shared/version';
 import { busyPrograms, listProcesses } from './processes';
 import { LOCK_FILE, MANIFEST_FILE } from '../shared/files';
 import { CancelToken, CancelledError, errMessage, newId, sleep } from './util';
+import { ZSTD } from './pack';
 import { t } from '../shared/i18n';
 
 const JOBS = relJoin(RELAY_FOLDER, 'jobs');
@@ -69,6 +70,8 @@ export interface Heartbeat {
   hashes?: boolean;
   /** answers block lists and applies packs with block deltas (see delta.ts) */
   blocks?: boolean;
+  /** opens zstd pack members (pack.ts PackCompression): senders compress for it with zstd instead of gzip */
+  zstd?: boolean;
   /** the machine as it sees itself, for the sender's card */
   role?: 'relay' | 'agent';
   host?: string;
@@ -257,7 +260,8 @@ export interface RelayHost {
   ctx(): CoreContext;
   /** Runs a plan with the planner's selection; null when there is nothing to do. */
   /** `report`: tell the team's channel when it ends (a delivery from the queue, which no sender is waiting for). */
-  runPlan(plan: SendPlan, label: string, report?: boolean): RunHandle | null;
+  /** `scans`: what the plan read on the machines, so their manifests are written again after the copy. */
+  runPlan(plan: SendPlan, label: string, report?: boolean, scans?: PlanScans): RunHandle | null;
   /** Runs ready-made groups (the pack applied to this machine's own disk), tracked like any run. */
   runGroups(groups: ExecGroup[], label: string, opts: { options: SendOptions; backup: boolean; verify: boolean }): RunHandle;
   /** This machine's settings as a receiver: commands around the apply, the notification. */
@@ -524,6 +528,7 @@ export class RelayService {
       version: this.version,
       hashes: true,
       blocks: true,
+      zstd: ZSTD || undefined,
       role: this.role,
       host: os.hostname(),
       root: this.localRoot,
@@ -628,7 +633,7 @@ export class RelayService {
       return;
     }
     log.info(t('Röle'), t('{from} gönderdi: {n} öğe → {targets}', { from: job.from ?? '?', n: job.sources.length, targets: job.targetIds.join(', ') || '-' }));
-    const result: RelayResult = { id, finishedAt: 0, targets: [] };
+    const result: RelayResult = { id, startedAt: Date.now(), finishedAt: 0, targets: [] };
     const ctl: JobControl = { label: job.label, cancelled: false, paused: false, handles: new Set() };
     await this.watchJob(id, ctl);
     const watch = setInterval(() => void this.watchJob(id, ctl), 1000);
@@ -641,7 +646,11 @@ export class RelayService {
         // cancelled before anything happened here: the commands around the apply do not run either
         own = { ...cancelled(this.node.id), opsFailed: job.pack.ops.length, failedOps: job.pack.ops.map((o) => o.id) };
         await fsp.rm(path.join(this.jobsDir, `${id}.pack`), { force: true }).catch(() => undefined);
-      } else own = await this.applyPack(id, job, ctl);
+      } else {
+        const applyAt = Date.now();
+        own = await this.applyPack(id, job, ctl);
+        own.ms = Date.now() - applyAt;
+      }
       result.targets.push(own);
       ownOk = own.status !== 'failed' && own.status !== 'cancelled';
       // the sender learns at once that this machine is done, before the machines behind it are
@@ -656,10 +665,13 @@ export class RelayService {
       }
       if (!ownOk) throw new Error(t('Paket bu makineye uygulanamadı; dağıtım yapılmadı'));
       const sources: SourceSpec[] = job.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
-      const req: SendRequest = { sources, targetIds: job.targetIds, options: { ...job.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle: {label}', { label: job.label }), direct: true };
-      const plan = await buildSendPlan(ctx, req, job.stash ? { stash: { ...job.stash, dir: this.stashDir(id) } } : {});
+      const req: SendRequest = { sources, targetIds: job.targetIds, options: { ...job.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle: {label}', { label: job.label }), direct: true, relayed: true };
+      // what the comparison read on each machine: their manifests are written again after the copy (and an agent
+      // behind this relay writes its own), so the next send does not walk their folders again
+      const scans: PlanScans = new Map();
+      const plan = await buildSendPlan(ctx, req, { scans, ...(job.stash ? { stash: { ...job.stash, dir: this.stashDir(id) } } : {}) });
       // cancelled while the machines were compared: nothing goes out
-      const handle = ctl.cancelled ? null : this.host.runPlan(plan, req.label!);
+      const handle = ctl.cancelled ? null : this.host.runPlan(plan, req.label!, false, scans);
       if (handle) this.track(ctl, handle);
       // how far each machine is, every few seconds: the sender shows it and knows this relay is still at it
       const report = () =>
@@ -905,12 +917,13 @@ export class RelayService {
         while (p.jobs.length) {
           const j = p.jobs[0];
           const sources: SourceSpec[] = j.sources.map((s) => ({ kind: s.kind, path: path.join(this.localRoot, ...s.rel.split('/')) }));
-          const req: SendRequest = { sources, targetIds: [p.targetId], options: { ...j.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle (kuyruktan): {label}', { label: j.label }), direct: true };
+          const req: SendRequest = { sources, targetIds: [p.targetId], options: { ...j.options, dryRun: false, notify: false }, origin: 'send', label: t('Röle (kuyruktan): {label}', { label: j.label }), direct: true, relayed: true };
           try {
-            const plan = await buildSendPlan(ctx, req, j.stash ? { stash: { ...j.stash, dir: this.stashDir(j.id) } } : {});
+            const scans: PlanScans = new Map();
+            const plan = await buildSendPlan(ctx, req, { scans, ...(j.stash ? { stash: { ...j.stash, dir: this.stashDir(j.id) } } : {}) });
             const tp = plan.targets.find((x) => x.targetId === p.targetId);
             if (tp && !tp.reachable) throw new Error(tp.error ?? t('erişilemedi'));
-            const h = this.host.runPlan(plan, req.label!, true);
+            const h = this.host.runPlan(plan, req.label!, true, scans);
             const d = h ? await h.done : null;
             if (d && (d.status === 'failed' || d.status === 'cancelled')) throw new Error(d.targets[0]?.error ?? d.status);
             p.jobs.shift();

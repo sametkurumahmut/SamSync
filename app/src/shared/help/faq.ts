@@ -14,6 +14,8 @@ export interface FaqEntry {
   keywords?: string[];
   /** Where to go for it. */
   page?: Page;
+  /** On the Settings page: the card (its id there) the answer is about. */
+  section?: string;
 }
 
 export type FaqTopic = 'start' | 'send' | 'review' | 'relay' | 'pack' | 'automation' | 'compare' | 'backup' | 'targets' | 'settings' | 'trouble';
@@ -121,6 +123,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['izleyici', 'viewer', 'salt okunur', 'read-only', 'web', 'parola', 'password'],
     page: 'settings',
+    section: 'webui',
   },
   {
     id: 'web-phone',
@@ -132,6 +135,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['telefon', 'tablet', 'mobil', 'phone', 'mobile', 'ipad', 'android', 'iphone', 'web'],
     page: 'settings',
+    section: 'webui',
   },
   {
     id: 'agent',
@@ -187,6 +191,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['https', 'tls', 'şifreli', 'encrypted', 'sertifika', 'certificate', 'web'],
     page: 'settings',
+    section: 'webui',
   },
   {
     id: 'retry-in-use',
@@ -242,6 +247,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['sıra', 'queue', 'aynı anda', 'at once', 'çakışma', 'conflict', 'iki gönderim', 'two sends', 'bekle', 'wait'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'retry-failed',
@@ -253,6 +259,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['yeniden dene', 'retry', 'hatalı', 'failed', 'tekrar', 'again', 'otomatik', 'automatic'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'bulk-select',
@@ -286,6 +293,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['haftalık', 'weekly', 'özet', 'summary', 'rapor', 'report', 'pazartesi', 'monday', 'telegram', 'webhook'],
     page: 'settings',
+    section: 'notifications',
   },
   {
     id: 'free-space',
@@ -297,6 +305,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['boş alan', 'free space', 'disk', 'kırmızı', 'red', 'dolu', 'full', 'gb'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'last-seen',
@@ -374,6 +383,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['sağlık', 'health', 'denetim', 'check', 'komut', 'command', 'çıkış kodu', 'exit code', 'çalışıyor mu', 'works'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'relay-takeover',
@@ -385,6 +395,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['röle kapalı', 'relay off', 'yedek röle', 'stand-in', 'devral', 'takeover', 'grup', 'group'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'stage-switch',
@@ -429,6 +440,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['değişken', 'variable', 'şablon', 'template', 'ayar dosyası', 'config', 'ini', 'makine adı', 'machine name', 'adres', 'address', 'yer tutucu', 'placeholder'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'agent-status',
@@ -473,6 +485,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['makineye özel', 'machine folder', 'tek makine', 'one machine', 'farklı', 'different', 'ayar dosyası', 'config file', 'katman', 'overlay', '_machines', 'grup', 'group'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'drift',
@@ -594,6 +607,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['sağ tık', 'context menu', 'notepad++', 'menü'],
     page: 'settings',
+    section: 'integration',
   },
   {
     id: 'speed-expectation',
@@ -606,7 +620,29 @@ export const FAQ: FaqEntry[] = [
     keywords: ['yavaş', 'slow', 'hız', 'süre', 'wifi', 'performance'],
     page: 'targets',
   },
+  {
+    id: 'send-time',
+    topic: 'relay',
+    q: { tr: 'Röleye gönderimin süresi nereye gidiyor?', en: 'Where does the time of a send to a relay go?' },
+    a: {
+      tr: 'Çalıştırma panelinin günlüğü her makine için söyler: **Paket** satırı paketin boyutunu, sıkıştırmayı (`zstd 6` gibi), ağda kaç saniye sürdüğünü ve hızını; ardından **Röle kendi kopyasını … sn, dağıtımı … sn içinde bitirdi** satırı rölenin kendi diskine uygulamasını ve arkasındaki makinelere dağıtmasını ayrı ayrı. Paket satırındaki hız düşükse yavaş olan sizinle röle arasındaki bağlantıdır; dağıtım uzunsa grubun kendi ağı ya da oradaki diskler. Karşı makine destekliyorsa paket gzip yerine **zstd** ile sıkıştırılır (%14–20 daha az veri); röle de arkasında SamSync çalışan makinelere paket gönderir. Bunlar için röle ve ajanlarda da aynı ya da daha yeni SamSync olmalı; eskiyse günlük bunu söyler.',
+      en: 'The run panel’s log says it for each machine: the **Pack** line gives the pack’s size, its compression (such as `zstd 6`), how many seconds it took on the network and at what speed; then **The relay finished its own copy in … s and the distribution in … s** tells the relay’s apply to its own disk apart from passing it on to the machines behind it. A low speed on the pack line means the link between you and the relay is the slow part; a long distribution means the group’s own network or the disks there. When the machine on the other end can, the pack is compressed with **zstd** instead of gzip (14–20% less data), and a relay sends packs on to the machines behind it that run SamSync. For these the relay and the agents need the same SamSync or a newer one; the log says so when one is older.',
+    },
+    keywords: ['süre', 'time', 'yavaş', 'slow', 'röle', 'relay', 'zstd', 'paket', 'pack', 'dağıtım', 'distribution', 'günlük', 'log'],
+    page: 'targets',
+  },
   // ---- review
+  {
+    id: 'send-estimate',
+    topic: 'review',
+    q: { tr: 'Gönderim ne kadar sürecek?', en: 'How long will a send take?' },
+    a: {
+      tr: 'Gönderim planının altında, işlem sayısının yanında **yaklaşık …** yazar. Bu süre aynı makinelere yapılan son gerçek gönderimlerin hızından çıkar: her makine için hem bayt hızına hem de dosya başına süreye bakılır, eşzamanlı hedef sayısı da hesaba katılır; aşamalı gönderimde aşamalar art arda sayılır. Listede her makinenin kendi tahmini de durur. Daha önce hiç gönderilmemiş bir makine için öteki makinelerin hızı kullanılır. Denemeler, geri yüklemeler ve 2 saniyeden kısa süren yazmalar sayılmaz; geçmişte bunlardan başka bir şey yoksa tahmin gösterilmez. Gönderim sürerken çalıştırma paneli kalan süreyi ve uzun bir gönderimde saat kaçta biteceğini yazar. Bir makinenin tek tek gönderimlerdeki hızını **Hedefler** sayfasında makinenin **geçmiş** düğmesinde, bir çalıştırmanın makine başına hızını **Geçmiş**’te görürsünüz.',
+      en: 'Under the send plan, next to the operation count, it says **about …**. The time comes from the speed of the last real sends to the same machines: for each machine both its byte rate and its time per file count, and so does the number of parallel targets; in a staged send the stages count one after the other. Each machine’s own estimate is in the list too. A machine that never got a send uses the speed of the others. Dry runs, restores and writes shorter than 2 seconds are left out; when the history holds nothing else, no estimate is shown. While a send runs, the run panel shows the time left and, for a long one, when it should be done by the clock. A machine’s speed in each send is in its **history** button on the **Targets** page, and a run’s speed per machine in **History**.',
+    },
+    keywords: ['süre', 'ne kadar', 'tahmin', 'tahmini', 'yaklaşık', 'how long', 'estimate', 'estimated', 'time', 'hız', 'speed', 'bitiş', 'finish'],
+    page: 'send',
+  },
   {
     id: 'review-signs',
     topic: 'review',
@@ -730,6 +766,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['bildirim', 'notification', 'webhook', 'telegram', 'teams', 'slack'],
     page: 'settings',
+    section: 'notifications',
   },
   // ---- compare (git & sync)
   {
@@ -787,6 +824,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['saklanacak yedek', 'backups to keep', 'yer', 'space', 'temizle'],
     page: 'settings',
+    section: 'copy',
   },
   // ---- targets
   {
@@ -828,8 +866,8 @@ export const FAQ: FaqEntry[] = [
     topic: 'settings',
     q: { tr: 'Klavye kısayolları neler?', en: 'What are the keyboard shortcuts?' },
     a: {
-      tr: 'Ctrl K komut paleti • Ctrl / bütün kısayolların listesi • Ctrl , Ayarlar • Ctrl 1…9 sayfalar (1 Genel bakış, 2 Gönder…) • Ctrl Enter Gönder sayfasında inceleme, incelemede gönder (Shift ile deneme) • Ctrl + / − / 0 arayüz ölçeği • Esc açık olanı kapatır • F12 geliştirici araçları • F1 bu yardım botu.',
-      en: 'Ctrl K command palette • Ctrl / the list of every shortcut • Ctrl , Settings • Ctrl 1…9 pages (1 Overview, 2 Send…) • Ctrl Enter review on the Send page, send from the review (Shift for a dry run) • Ctrl + / − / 0 UI scale • Esc closes what is open • F12 developer tools • F1 this help bot.',
+      tr: 'Ctrl K komut paleti (bir makinenin adını yazınca Hedefler sayfasında ona gider) • Ctrl / bütün kısayolların listesi • Ctrl , Ayarlar • Ctrl 1…9 sayfalar (1 Genel bakış, 2 Gönder…) • Ctrl Enter Gönder sayfasında inceleme, incelemede gönder (Shift ile deneme) • Ctrl + / − / 0 arayüz ölçeği • Esc açık olanı kapatır • F12 geliştirici araçları • F1 bu yardım botu.',
+      en: 'Ctrl K command palette (type a machine’s name to go to it on the Targets page) • Ctrl / the list of every shortcut • Ctrl , Settings • Ctrl 1…9 pages (1 Overview, 2 Send…) • Ctrl Enter review on the Send page, send from the review (Shift for a dry run) • Ctrl + / − / 0 UI scale • Esc closes what is open • F12 developer tools • F1 this help bot.',
     },
     keywords: ['kısayol', 'shortcut', 'klavye', 'keyboard', 'tuş'],
     page: 'settings',
@@ -844,6 +882,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['dil', 'language', 'tema', 'theme', 'ölçek', 'scale', 'büyüt', 'zoom'],
     page: 'settings',
+    section: 'look',
   },
   {
     id: 'license',
@@ -855,6 +894,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['lisans', 'license', 'licence', 'gpl', 'gnu', 'açık kaynak', 'open source', 'telif', 'copyright', 'ücretsiz', 'free'],
     page: 'settings',
+    section: 'about',
   },
   {
     id: 'update',
@@ -866,6 +906,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['güncelleme', 'update', 'setup', 'sürüm', 'version', 'kurulum'],
     page: 'settings',
+    section: 'updates',
   },
   {
     id: 'whats-changed',
@@ -877,6 +918,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['yenilikler', 'değişiklikler', 'sürüm notları', 'changelog', 'release notes', 'what is new', 'whats new', 'changes'],
     page: 'settings',
+    section: 'about',
   },
   {
     id: 'config-file',
@@ -888,6 +930,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['config', 'yapılandırma', 'json', 'paylaşım'],
     page: 'settings',
+    section: 'config',
   },
   {
     id: 'cli',
@@ -955,6 +998,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['boş pencere', 'blank', 'çöktü', 'crash', 'hata', 'tanı', 'diagnostics', 'günlük', 'log'],
     page: 'settings',
+    section: 'about',
   },
   {
     id: 'error-hints',
@@ -999,6 +1043,7 @@ export const FAQ: FaqEntry[] = [
     },
     keywords: ['bant', 'bandwidth', 'saat', 'hours', 'mesai', 'working hours', 'yavaş', 'slow', 'sınır', 'limit'],
     page: 'settings',
+    section: 'copy',
   },
   {
     id: 'targets-state',

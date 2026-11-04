@@ -7,8 +7,10 @@ import { InUseError, type Transport } from './transport';
 import { RelayError, heartbeatFresh, readHeartbeat, signalRelayJob, submitRelayJob, submitRelayPack, waitRelayResult } from './relay';
 import { AgentHasher } from './agenthash';
 import { DELTA_BLOCK, DELTA_MIN, changedBlocks, patchedStream, type BlockList, type DeltaInfo } from './delta';
-import { openPackEntry, packStream, type PackEntry, type PackSource } from './pack';
+import { ZSTD, openPackEntry, packStream, type PackCompression, type PackEntry, type PackSource } from './pack';
 import type { PackOp, RelayJob, RelayProgress, RelayTargetProgress } from '../shared/relay';
+import { compareVersions } from '../shared/version';
+import { duration, seconds } from '../shared/units';
 import { blobStream } from './git';
 import { openPlain, openVars } from './template';
 import { hashStream, hashing } from './compare';
@@ -288,10 +290,9 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const allFailed = states.length > 0 && states.every((x) => x.status === 'failed');
     sum.status = cancel.cancelled ? 'cancelled' : allFailed ? 'failed' : anyFailed ? 'partial' : 'ok';
     sum.finishedAt = Date.now();
-    const secs = ((sum.finishedAt - startedAt) / 1000).toFixed(1);
     log(
       sum.status === 'ok' ? 'ok' : sum.status === 'cancelled' ? 'warn' : 'error',
-      t('Bitti: {ok} başarılı, {failed} hatalı, {size}, {s} sn', { ok: sum.opsOk, failed: sum.opsFailed, size: formatBytes(sum.bytes), s: secs }),
+      t('Bitti: {ok} başarılı, {failed} hatalı, {size}, {time}', { ok: sum.opsOk, failed: sum.opsFailed, size: formatBytes(sum.bytes), time: duration(sum.finishedAt - startedAt) }),
     );
     emitLog.flush();
     await sink?.close();
@@ -752,7 +753,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         log(st.status === 'ok' ? 'ok' : 'error', doneMsg, g.key);
         // how fast this machine took the data: a slow one stands out in the log and in the history
         const took = Date.now() - (st.startedAt ?? startedAt);
-        if (st.bytesDone > 0 && took >= 500 && !s.dryRun) log('info', t('{size} • {s} sn • {speed}/sn', { size: formatBytes(st.bytesDone), s: (took / 1000).toFixed(1), speed: formatBytes((st.bytesDone / took) * 1000) }), g.key);
+        if (st.bytesDone > 0 && took >= 500 && !s.dryRun) log('info', t('{size} • {s} sn • {speed}/sn', { size: formatBytes(st.bytesDone), s: seconds(took), speed: formatBytes((st.bytesDone / took) * 1000) }), g.key);
         if (st.status === 'ok' && !s.dryRun && s.postCommand && g.node) {
           const r = await runHook(t('Sonrası komut'), s.postCommand, s.postCommandTimeoutSeconds, g, tgt, s.postSource, (lvl, m) => log(lvl, m, g.key));
           st.check = { label: t('Sonrası komut'), ok: r.ok, code: r.code, output: r.output };
@@ -816,9 +817,16 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     // big files already there go as the blocks that differ, when SamSync on the target applies block deltas
     const deltas = new Map<string, { list: BlockList; out: { info?: DeltaInfo; size: number; sent: number } }>();
     const big = copies.filter((o) => o.dstExists && !o.replaceType && o.size >= DELTA_MIN && o.src!.kind === 'fs');
+    // what SamSync there can open: zstd where it says so (a relay's link is the slow one: the smaller level there)
+    const beat = await readHeartbeat(tgt).catch(() => null);
+    const fresh = !!beat && heartbeatFresh(beat);
+    const compression: PackCompression | undefined = ZSTD && fresh && beat!.zstd ? { method: 'zstd', level: (relayed.get(g.key) ?? []).length ? 6 : 3 } : undefined;
+    // an older SamSync there works as it did: say so, since what came since (progress on the way, zstd) is missing
+    if (fresh && beat!.version && ctx.appVersion && compareVersions(beat!.version, ctx.appVersion) < 0) {
+      log('warn', t('{name} üzerinde SamSync {version} çalışıyor, bu bilgisayardan eski; Hedefler › Ajanları güncelle ile güncelleyince orada da yenilikler çalışır', { name: g.title, version: beat!.version }), g.key);
+    }
     if (big.length) {
-      const beat = await readHeartbeat(tgt).catch(() => null);
-      if (beat?.blocks && heartbeatFresh(beat)) {
+      if (beat?.blocks && fresh) {
         log('info', t('{n} büyük dosyanın blok listesi hedeften isteniyor', { n: big.length }), g.key);
         const lists = await new AgentHasher(tgt, () => groupCancel.get(g.key)!.cancelled).blocks(big.map((o) => ({ rel: o.rel, size: o.size })), DELTA_BLOCK);
         for (const o of big) {
@@ -849,26 +857,41 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     for (const f of g.stash ?? []) sources.push({ rel: stashRel(f), size: f.size, mtimeMs: f.mtimeMs, open: () => openPlain(f.src) });
     let written = 0;
     let packed = 0;
-    const stream = packStream(sources, entries, (src) => {
-      if (src.rel.startsWith(`${RELAY_FOLDER}/`)) return;
-      written += src.size;
-      st.bytesDone = written;
-      st.current = src.rel;
-      emitProgress();
-    });
+    const stream = packStream(
+      sources,
+      entries,
+      (src) => {
+        if (src.rel.startsWith(`${RELAY_FOLDER}/`)) return;
+        written += src.size;
+        st.bytesDone = written;
+        st.current = src.rel;
+        emitProgress();
+      },
+      compression,
+    );
     const limiter = s.bandwidthMBps && s.bandwidthMBps > 0 ? new RateLimiter(s.bandwidthMBps * 1024 * 1024) : null;
     const gc = groupCancel.get(g.key)!;
     // the upload is most of the time on a slow link: Pause holds it between chunks, Cancel stops it at once
+    // (the time held is kept apart: it is no time on the network)
+    let heldMs = 0;
     const gate = new Transform({
       transform(chunk: Buffer, _enc, cb) {
-        if (!paused) cb(null, chunk);
-        else void holdWhilePaused().then(() => cb(null, chunk));
+        if (!paused) return cb(null, chunk);
+        const heldAt = Date.now();
+        void holdWhilePaused().then(() => {
+          heldMs += Date.now() - heldAt;
+          cb(null, chunk);
+        });
       },
     });
     // one chain: an error anywhere (a source gone, a cancel, the network) ends every part, the pack's open files too
     pipeline([stream, ...(limiter ? [limiter.transform()] : []), gate], () => undefined);
+    // how long the pack took on the wire and how long the machine took after it: where the time of a send goes
+    const upAt = Date.now();
+    let upMs = 0;
     try {
       packed = await submitRelayPack(tgt, job.id, gate, undefined, gc.signal);
+      upMs = Date.now() - upAt - heldMs;
     } catch (e) {
       const stopped = gc.cancelled;
       st.status = stopped ? 'cancelled' : 'failed';
@@ -884,7 +907,8 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       return;
     }
     const total = entries.reduce((a, e) => a + e.size, 0);
-    if (total > 0) log('info', t('Paket: {size} → {packed} (%{pct})', { size: formatBytes(total), packed: formatBytes(packed), pct: Math.round((100 * packed) / total) }), g.key);
+    const wire = upMs >= 500 ? ` • ${t('{s} sn • {speed}/sn', { s: seconds(upMs), speed: formatBytes((packed / upMs) * 1000) })}` : '';
+    if (total > 0) log('info', t('Paket: {size} → {packed} (%{pct})', { size: formatBytes(total), packed: formatBytes(packed), pct: Math.round((100 * packed) / total) }) + (compression ? ` • zstd ${compression.level}` : '') + wire, g.key);
     if (deltas.size) {
       const ds = [...deltas.values()];
       log('info', t('Blok farkı: {n} dosyanın {size} boyutundan yalnızca değişen {sent} gönderildi', { n: ds.length, size: formatBytes(ds.reduce((a, d) => a + d.out.size, 0)), sent: formatBytes(ds.reduce((a, d) => a + d.out.sent, 0)) }), g.key);
@@ -914,16 +938,31 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     const ownStatus = (x: string): RunTargetState['status'] => (x === 'cancelled' ? (groupCancel.get(g.key)!.cancelled ? 'cancelled' : 'failed') : x === 'deferred' ? 'failed' : (x as RunTargetState['status']));
     try {
       await submitRelayJob(tgt, job);
+      const jobAt = Date.now();
+      let ownMs: number | undefined;
+      // the row says what it waits for once the pack is there (its bar is full by then)
+      const phase = (text: string) => {
+        if (st.status !== 'running') return;
+        st.current = text;
+        emitProgress();
+      };
+      phase(t('paket orada, alınması bekleniyor…'));
       log('info', rows.length ? t('Röle işi bırakıldı: {targets}', { targets: rows.map((r) => r.title).join(', ') }) : t('Paket bırakıldı; makine kendisi uyguluyor'), g.key);
       const result = await waitRelay(g, tgt, job.id, rows.length ? t('Röle işi aldı, dağıtıyor') : t('Makine paketi aldı, uyguluyor'), (p) => {
         // the relay applied its own copy before sending on: its row (and its group's count) says so at once
+        if (p.own && ownMs === undefined) ownMs = Date.now() - jobAt;
         if (p.own && st.status === 'running') {
-          Object.assign(st, { status: ownStatus(p.own.status), error: p.own.error, failed: p.own.opsFailed, done: g.ops.length, bytesDone: st.bytesTotal });
+          Object.assign(st, { status: ownStatus(p.own.status), error: p.own.error, failed: p.own.opsFailed, done: g.ops.length, bytesDone: st.bytesTotal, current: undefined });
           if (p.own.status === 'ok' && g.ops.length) log('ok', t('Paket uygulandı: {ok}/{n} işlem', { ok: p.own.opsOk, n: g.ops.length }), g.key);
           ownLogged = true;
         }
         followRelay(rows, p.targets);
-      });
+      }, () =>
+        // taken: words true until the end, also for a relay up to 2.4.14 that tells nothing in between
+        // (a newer one clears this as soon as it reports its own copy)
+        phase(g.ops.length ? (rows.length ? t('paketi uyguluyor, ardından dağıtacak…') : t('paketi uyguluyor…')) : t('işi aldı, dağıtıyor…')),
+      );
+      st.current = undefined;
       // the relay's own apply
       const own = result.targets.find((x) => x.targetId === g.key);
       if (!own) {
@@ -954,11 +993,20 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
       st.done = g.ops.length;
       st.bytesDone = st.bytesTotal;
       applyRelayResult(rows, result);
+      // the machine's own clock where it says (a newer SamSync), else this one's (with the wait for it to look in)
+      // (one clock for both numbers: the relay's only when it timed its own apply too)
+      const relayClock = !!result.startedAt && (own?.ms !== undefined || !rows.length);
+      const allMs = relayClock ? result.finishedAt - result.startedAt! : Date.now() - jobAt;
+      const applyMs = own?.ms ?? ownMs;
+      if (!rows.length) log('info', t('Makine paketi {s} sn içinde uyguladı', { s: seconds(applyMs ?? allMs) }), g.key);
+      else if (applyMs !== undefined) log('info', t('Röle kendi kopyasını {own} sn, dağıtımı {all} sn içinde bitirdi', { own: seconds(applyMs), all: seconds(allMs - applyMs) }), g.key);
+      else log('info', t('Röle işi {s} sn içinde bitirdi', { s: seconds(allMs) }), g.key);
     } catch (e) {
       const unanswered = e instanceof RelayError && e.unanswered;
       const stopped = groupCancel.get(g.key)!.cancelled;
       const why = stopped ? t('İptal edildi') : errMessage(e);
       st.status = stopped ? 'cancelled' : 'failed';
+      st.current = undefined;
       st.error = why;
       st.relayUnanswered = unanswered || undefined;
       for (const op of g.ops) results.push({ key: g.key, opId: op.id, rel: op.rel, kind: op.kind, ok: false, error: why });
@@ -1002,7 +1050,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   }
 
   /** Waits for a relay's answer; meanwhile the run's pause and cancel go on to the relay, and its progress shows. */
-  async function waitRelay(g: ExecGroup, tgt: Transport, jobId: string, acked: string, onProgress?: (p: RelayProgress) => void) {
+  async function waitRelay(g: ExecGroup, tgt: Transport, jobId: string, acked: string, onProgress?: (p: RelayProgress) => void, onAcked?: () => void) {
     relayWaits.set(g.key, { tgt, id: jobId });
     if (paused) void signalRelayJob(tgt, jobId, 'pause').catch(() => undefined);
     try {
@@ -1012,7 +1060,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         doneMs: s.relayDoneMs ?? 15 * 60_000,
         cancelGraceMs: s.relayCancelGraceMs,
         paused: () => paused,
-        onAck: () => log('info', acked, g.key),
+        onAck: () => {
+          log('info', acked, g.key);
+          onAcked?.();
+        },
         onProgress,
         onCancelSent: () => log('warn', t('İptal makineye bildirildi; orada yapılanlar bekleniyor'), g.key),
       });

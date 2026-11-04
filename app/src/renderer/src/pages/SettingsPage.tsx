@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Palette, Copy as CopyIcon, FileJson, MousePointerClick, Download, Info, Save, RotateCcw, FolderOpen, Upload, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Monitor, Sun, Moon, Globe, FolderSync, Power, ExternalLink, FileText, Cloud, PanelBottomClose, Languages, Minus, Plus, Sparkles, Bell, Send, Bot, Trash2, Volume2, Wrench } from 'lucide-react';
 import type { CopySettings, LocalSettings, NotificationSettings, NotifyKind, UpdateConfig, UpdateSource } from '@shared/types';
 import { useApp, UI_SCALES, stepUiScale, uiScaleOf } from '../store/app';
 import { api } from '../lib/api';
 import { playFinishSound } from '../lib/sounds';
-import { Button, Checkbox, Field, Progress, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { Button, Checkbox, Field, Progress, SearchInput, Segmented, Switch, TagInput, ToggleRow } from '../components/ui';
+import { clearFind, findInCards } from '../lib/find';
+import { foldText } from '@shared/fold';
 import { ago, cls, dateTime } from '../lib/format';
 import { parseHours } from '@shared/machine';
 import { getLang, t, tk } from '@shared/i18n';
@@ -70,6 +72,71 @@ export function SettingsPage() {
   useUnsaved('settings.update', t('Güncelleme kaynağı'), updDirty);
 
   useEffect(() => setCopy(boot.config.copy), [boot.config.copy]);
+
+  // a search over the cards: the ones without the text step aside, the text is marked in the others
+  const [find, setFind] = useState('');
+  const [found, setFound] = useState<number | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const findRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const root = gridRef.current;
+    if (!root) return;
+    const run = () => setFound(findInCards(root, find, '.settings-section'));
+    run();
+    if (!find.trim()) return;
+    // and again whenever a card's text changes (a card that fills in later, a switch that changes its words); only
+    // text and nodes are watched, not the classes the search itself sets
+    let frame = 0;
+    const mo = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => ((frame = 0), run()));
+    });
+    mo.observe(root, { childList: true, characterData: true, subtree: true });
+    return () => {
+      mo.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [find]);
+  useEffect(() => clearFind, []);
+  // the command palette sends the page to a card or a search
+  const jump = useApp((st) => st.settingsJump);
+  const jumpTimers = useRef<number[]>([]);
+  useEffect(() => {
+    if (!jump) return;
+    useApp.setState({ settingsJump: null });
+    if (jump.find !== undefined) {
+      setFind(jump.find);
+      findRef.current?.focus();
+      return;
+    }
+    setFind('');
+    // once the cards have places, and again once they have settled (a card may move while the page opens)
+    const el = () => (jump.section ? document.getElementById(jump.section) : null);
+    // (the timers outlive this effect: taking the jump back out of the store runs it again at once)
+    jumpTimers.current.forEach(clearTimeout);
+    jumpTimers.current = [
+      window.setTimeout(() => {
+        el()?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        el()?.classList.add('flash');
+      }, 150),
+      window.setTimeout(() => el()?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 1300),
+      window.setTimeout(() => el()?.classList.remove('flash'), 1800),
+    ];
+  }, [jump]);
+  useEffect(() => () => jumpTimers.current.forEach(clearTimeout), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // not while something is open over the page (a dialog, the palette, the help bot, a drawer): its own fields keep the keys
+      const st = useApp.getState();
+      const over = !!document.querySelector('[aria-modal="true"], [role="dialog"]') || st.palette || st.helpBot || st.noticesOpen || st.shortcuts;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f' && !over) {
+        e.preventDefault();
+        findRef.current?.focus();
+        findRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     void api.integrationStatus().then((st) => useApp.setState({ integration: st }));
   }, []);
@@ -159,9 +226,11 @@ export function SettingsPage() {
           <h1>{t('Ayarlar')}</h1>
           <div className="sub">{t('Görünüm bu bilgisayara, kopyalama ve güncelleme ayarları paylaşılan yapılandırmaya yazılır.')}</div>
         </div>
+        <SearchInput value={find} onChange={setFind} placeholder={t('Ayarlarda ara')} inputRef={findRef} style={{ width: 240 }} size="md" />
       </div>
-      <div className="page-body">
-        <Masonry className="settings-grid">
+      <div className="page-body" ref={gridRef}>
+        {found === 0 && <div className="empty-find faint">{t('“{q}” hiçbir ayarda geçmiyor', { q: find.trim() })}</div>}
+        <Masonry className="settings-grid" relayout={foldText(find.trim())}>
           <Section id="look" icon={<Palette size={15} />} title={t('Görünüm')}>
             <Field label={t('Dil')}>
               <Segmented
@@ -497,7 +566,7 @@ export function SettingsPage() {
                     <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
                       {integration.explorer.expanded.length > 0 && <div>{t('Alt menüsüyle: {groups}', { groups: integration.explorer.expanded.join(', ') })}</div>}
                       {integration.explorer.collapsed.length > 0 && <div>{t('Tek girdi (bütün gruba gönderir): {groups}', { groups: integration.explorer.collapsed.join(', ') })}</div>}
-                      {integration.explorer.overBudget && <div style={{ color: 'var(--amber)' }}>{t('Menüde 16 girdiden fazlası var; Windows bazılarını göstermeyebilir')}</div>}
+                      {integration.explorer.overBudget && <div style={{ color: 'var(--amber-text)' }}>{t('Menüde 16 girdiden fazlası var; Windows bazılarını göstermeyebilir')}</div>}
                     </div>
                     {integration.explorer.command && (
                       <div className="mono faint selectable" style={{ fontSize: 11.5, marginTop: 6, wordBreak: 'break-all' }}>
@@ -539,7 +608,7 @@ export function SettingsPage() {
                         {i.configDir}
                       </div>
                       {i.warnings.map((w) => (
-                        <div key={w} style={{ color: 'var(--amber)', fontSize: 12 }}>
+                        <div key={w} style={{ color: 'var(--amber-text)', fontSize: 12 }}>
                           {w}
                         </div>
                       ))}

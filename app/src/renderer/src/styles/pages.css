@@ -379,7 +379,7 @@
   color: var(--accent);
 }
 .op-status.targetNewer {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .op-status.extra {
   color: var(--violet);
@@ -518,7 +518,7 @@
   color: var(--red);
 }
 .log-line.warn .lm {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .log-line.ok .lm {
   color: var(--green);
@@ -626,13 +626,16 @@
   color: var(--green);
 }
 .diff-file.changed .sign {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .diff-file.removed .sign {
   color: var(--red);
 }
 
 /* a staged send: the choice in the review, and the go for the rest in the run window */
+.plan-warn {
+  margin-bottom: 12px;
+}
 .stages-card {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -782,7 +785,7 @@
   margin-top: 3px;
   font-size: 11.5px;
   line-height: 1.4;
-  color: var(--amber);
+  color: var(--amber-text);
   white-space: normal;
 }
 .error-hint svg {
@@ -910,6 +913,15 @@
   background: var(--bg-elev);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
+}
+/* "1 source → 4 targets" stays one line; the badges after it go under it when the bar is short of room */
+.action-bar > .grow {
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.action-bar > .grow > .tabular {
+  white-space: nowrap;
 }
 .target-btn {
   max-width: 360px;
@@ -1328,6 +1340,39 @@
 .settings-grid {
   max-width: 1400px;
 }
+/* the search in the page head (lib/find.ts): cards without the text step aside, the text is marked */
+.settings-section.find-hidden {
+  display: none;
+}
+::highlight(samsync-find) {
+  background-color: rgb(var(--accent-rgb) / 0.38);
+  color: var(--text);
+}
+.empty-find {
+  padding: 28px 4px;
+  font-size: 13px;
+}
+/* the card the command palette went to */
+.settings-section.flash,
+.target-card.flash {
+  animation: card-flash 1.5s ease-out;
+}
+@keyframes card-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-section.flash,
+  .target-card.flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+}
 /* components/Masonry.tsx sets each card's width and place */
 .masonry {
   position: relative;
@@ -1617,7 +1662,7 @@
   color: var(--text-3);
 }
 .inv-cell.old {
-  color: var(--amber);
+  color: var(--amber-text);
   background: rgb(var(--amber-rgb, 245 158 11) / 7%);
 }
 .inv-cell.none,
@@ -1996,9 +2041,40 @@
 .hs-target .faint {
   text-align: right;
 }
+/* narrower: the numbers and the chart side by side, the machines under them */
 @media (max-width: 1100px) {
   .history-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .hs-targets {
+    grid-column: 1 / -1;
+  }
+}
+/* a short window keeps its height for the runs: the machines that received the most give way (a phone scrolls the page instead) */
+@media (max-height: 800px) and (max-width: 1100px) and (min-width: 821px), (max-height: 680px) and (min-width: 821px) {
+  .hs-targets {
+    display: none;
+  }
+}
+/* a run's numbers in History */
+.history-stat-grid {
+  padding: 14px;
+}
+/* and in a short window its four numbers sit in one row of small tiles, so its machines show under them */
+@media (max-height: 800px) and (min-width: 821px) {
+  .history-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .history-stat-grid .stat {
+    padding: 6px 10px;
+  }
+  .history-stat-grid .stat .k {
+    font-size: 10.5px;
+  }
+  .history-stat-grid .stat .v {
+    font-size: 16px;
   }
 }
 
@@ -2171,7 +2247,7 @@
 .help-error {
   margin-top: 6px;
   font-size: 11.5px;
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .help-input {
   gap: 8px;
@@ -2297,8 +2373,13 @@
   align-items: baseline;
   gap: 7px;
 }
+/* short of room the address gives way first (cut with an ellipsis), the name last */
+.mname.inline .mname-title {
+  flex: 0 1 auto;
+}
 .mname.inline .mname-sub {
-  flex: none;
+  flex: 0 100 auto;
+  min-width: 0;
 }
 .lat-spark {
   display: block;
@@ -2803,5 +2884,48 @@ a.titlebar-btn {
   }
   .action-bar .btn.primary {
     flex: 1 1 100%;
+  }
+}
+/* a machine card's buttons: one block at the right end of its last line */
+.target-card .card-actions {
+  gap: 6px;
+  margin-left: auto;
+}
+/* the plan's machine that holds the send up */
+.plan-slow {
+  color: var(--amber-text);
+  font-weight: 600;
+}
+/* the send plan in a short window: its numbers in one row of small tiles, so the machines and files keep room */
+@media (max-height: 760px) and (min-width: 821px) {
+  .plan-stats {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .plan-stat {
+    padding: 6px 10px;
+  }
+  .plan-stat::before {
+    top: 6px;
+    bottom: 6px;
+  }
+  .plan-stat .k {
+    font-size: 10.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .plan-stat .v {
+    font-size: 15px;
+  }
+  .stages-card {
+    padding: 6px 10px;
+    margin-bottom: 8px;
+  }
+  .plan-warn {
+    margin-bottom: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
 }

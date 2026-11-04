@@ -321,7 +321,7 @@ export function answer(index: HelpIndex, question: string): HelpAnswer {
 }
 
 /** A few questions to start with, in the given language. */
-export function starterQuestions(lang: HelpLang): FaqEntry[] {
+export function starterQuestions(_lang: HelpLang): FaqEntry[] {
   const ids = ['first-send', 'relay-what', 'pack-write', 'backup-restore', 'schedule', 'speed-expectation'];
   return ids.map((id) => FAQ.find((f) => f.id === id)!).filter(Boolean);
 }

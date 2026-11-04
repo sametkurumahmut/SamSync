@@ -68,8 +68,8 @@ export function NotificationCenter() {
   const go = (n: Notice) => {
     const st = useApp.getState();
     useApp.setState({ notices: st.notices.map((x) => (x.id === n.id ? { ...x, read: true } : x)) });
-    if (n.runId) useApp.setState({ openRunId: n.runId });
-    if (n.page) st.setPage(n.page);
+    // the run itself in History, once the page could change (as everywhere else a run is opened)
+    if (n.page) void st.openPage(n.page, n.runId ? { run: n.runId } : undefined);
     useApp.setState({ noticesOpen: false });
   };
   return (

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
-import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec } from '@shared/types';
+import { ArrowLeftRight, CheckCircle2, Timer, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
+import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec, RunSummary } from '@shared/types';
+import { estimateSend, slowTargets } from '@shared/estimate';
 import { useApp } from '../store/app';
 import { Button, Checkbox, Field, Modal, SearchInput, Progress, Switch } from './ui';
 import { DiffView } from './DiffView';
@@ -17,12 +18,15 @@ import { BusyBadge } from './BusyBadge';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
+/** An estimated time in whole seconds: tenths would claim more than an estimate knows. */
+const approx = (ms: number) => (ms < 9500 ? t('{s} sn', { s: Math.max(1, Math.round(ms / 1000)) }) : duration(Math.round(ms / 1000) * 1000));
+
 /**
  * A staged send: the machines picked here get it first, the others once these went through (and their health
  * check said yes); then by themselves, or after a go in the run window. Off unless switched on for this send.
  */
 /** "Send later": the reviewed send at a time of its own, planned again then; the machines that are off can be woken before. */
-function LaterModal({ planId, onClose, onDone }: { planId: string; onClose: () => void; onDone: () => void }) {
+function LaterModal({ planId, estimateMs, onClose, onDone }: { planId: string; estimateMs?: number; onClose: () => void; onDone: () => void }) {
   const toast = useApp((s) => s.toast);
   // tonight at 22:00, or in an hour when that has passed
   const initial = (() => {
@@ -65,6 +69,16 @@ function LaterModal({ planId, onClose, onDone }: { planId: string; onClose: () =
       <Field label={t('Ne zaman')} help={t('Bu bilgisayar o saatte açık ve SamSync çalışıyor olmalı; kaçırılan saat SamSync açılınca çalışır.')}>
         <input className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
       </Field>
+      {/* how long it should take with today's differences, and so when it should be done */}
+      {estimateMs != null && estimateMs >= 1000 && Number.isFinite(at) && (
+        <p className="faint row" style={{ gap: 5, fontSize: 12, margin: '6px 0 0' }}>
+          <Timer size={13} />
+          {t('Bugünkü farklarla yaklaşık {time} sürer; saat {clock} gibi biter', {
+            time: approx(estimateMs),
+            clock: new Date(at + estimateMs).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }),
+          })}
+        </p>
+      )}
       <label className="check-label" style={{ marginTop: 10 }} onClick={() => setWake(!wake)}>
         <Switch on={wake} onChange={(v) => setWake(v)} />
         {t('Kapalı makineleri 5 dakika önce uyandır')}
@@ -225,6 +239,9 @@ export function PlanningOverlay() {
   );
 }
 
+const NO_SELECTION: Record<string, Set<string>> = {};
+const NO_TARGETS: TargetPlan[] = [];
+
 export function PlanReview() {
   const review = useApp((s) => s.review);
   const close = useApp((s) => s.closeReview);
@@ -234,11 +251,25 @@ export function PlanReview() {
   const [dry, setDry] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [later, setLater] = useState(false);
+  const [past, setPast] = useState<RunSummary[] | null>(null);
 
   const plan = review?.plan;
-  const selected = review?.selected ?? {};
-  const targets = plan?.targets ?? [];
+  const selected = review?.selected ?? NO_SELECTION;
+  const targets = plan?.targets ?? NO_TARGETS;
   useEffect(() => setActive(null), [plan?.id]);
+  // the speed of the last sends, for how long this one should take
+  const planId = plan?.id;
+  useEffect(() => {
+    if (!planId) return;
+    let live = true;
+    void api.runs().then(
+      (r) => live && setPast(r),
+      () => live && setPast([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [planId]);
   // Ctrl Enter sends, Ctrl Shift Enter runs it as a dry run
   const runRef = useRef<((asDry: boolean) => Promise<void>) | null>(null);
   useEffect(() => {
@@ -255,7 +286,7 @@ export function PlanReview() {
     targets.find((tp) => tp.targetId === active) ?? targets.find((tp) => tp.reachable && tp.ops.length) ?? targets.find((tp) => tp.reachable) ?? targets[0];
 
   const totals = useMemo(() => {
-    const r = { new: 0, changed: 0, targetNewer: 0, remove: 0, same: 0, ops: 0, bytes: 0, targets: 0, unreachable: 0 };
+    const r = { new: 0, changed: 0, targetNewer: 0, remove: 0, same: 0, ops: 0, bytes: 0, targets: 0, unreachable: 0, per: [] as { id: string; bytes: number; ops: number }[] };
     for (const tp of targets) {
       if (!tp.reachable) {
         r.unreachable++;
@@ -263,21 +294,44 @@ export function PlanReview() {
       }
       const sel = selected[tp.targetId] ?? new Set();
       let any = false;
+      const one = { id: tp.targetId, bytes: 0, ops: 0 };
       for (const o of tp.ops) {
         if (!sel.has(o.id)) continue;
         any = true;
         r.ops++;
-        if (o.kind === 'copy') r.bytes += o.size;
+        one.ops++;
+        if (o.kind === 'copy') {
+          r.bytes += o.size;
+          one.bytes += o.size;
+        }
         if (o.category === 'new') r.new++;
         else if (o.category === 'changed') r.changed++;
         else if (o.category === 'targetNewer') r.targetNewer++;
         else if (o.category === 'extra' || o.category === 'deleted') r.remove++;
       }
       r.same += tp.counts.same;
-      if (any) r.targets++;
+      if (any) {
+        r.targets++;
+        r.per.push(one);
+      }
     }
     return r;
   }, [targets, selected]);
+  const parallel = plan?.request.options.parallelTargets ?? 1;
+  const firstStage = review?.stages?.first;
+  const estimate = useMemo(() => (past ? estimateSend(past, totals.per, parallel, firstStage) : null), [past, totals.per, parallel, firstStage]);
+  const slow = useMemo(() => (estimate ? slowTargets(estimate.perTarget) : {}), [estimate]);
+  // a send set for later is planned again then and sends every difference, in one go: so is its estimate
+  const laterMs = useMemo(() => {
+    if (!past) return undefined;
+    const per = targets
+      .filter((tp) => tp.reachable)
+      .map((tp) => {
+        const ops = tp.ops.filter((o) => o.selected);
+        return { id: tp.targetId, ops: ops.length, bytes: ops.reduce((a, o) => a + (o.kind === 'copy' ? o.size : 0), 0) };
+      });
+    return estimateSend(past, per, parallel)?.ms;
+  }, [past, targets, parallel]);
 
   if (!review || !plan) return null;
   const dryRun = dry ?? plan.request.options.dryRun;
@@ -330,6 +384,11 @@ export function PlanReview() {
           <span className="tabular">
             {tx('{ops} işlem • {size} • {n} hedef', { ops: <b>{num(totals.ops)}</b>, size: <b>{bytes(totals.bytes)}</b>, n: <b>{totals.targets}</b> }, { opsCount: totals.ops, count: totals.targets })}
           </span>
+          {!dryRun && estimate && estimate.ms >= 1000 && (
+            <span className="faint tabular row" style={{ gap: 4 }} data-tip={t('Bu makinelere son gönderimlerin hızına göre ({n} gönderim)', { n: estimate.samples })}>
+              <Timer size={13} /> {t('yaklaşık {time}', { time: approx(estimate.ms) })}
+            </span>
+          )}
           {totals.unreachable > 0 && <span className="badge red">{t('{n} erişilemedi', { n: totals.unreachable })}</span>}
           <span className="spacer" />
           <label className="check-label" onClick={() => setDry(!dryRun)}>
@@ -342,7 +401,7 @@ export function PlanReview() {
               {t('Sonra gönder…')}
             </Button>
           )}
-          {later && <LaterModal planId={plan.id} onClose={() => setLater(false)} onDone={() => {
+          {later && <LaterModal planId={plan.id} estimateMs={laterMs} onClose={() => setLater(false)} onDone={() => {
                 setLater(false);
                 close();
               }} />}
@@ -370,7 +429,7 @@ export function PlanReview() {
           <Stat label={t('Yazılacak veri')} value={bytes(totals.bytes)} cls="bytes" />
         </div>
         {plan.warnings.length > 0 && (
-          <div className="alert warn" style={{ marginBottom: 12 }}>
+          <div className="alert warn plan-warn">
             <AlertTriangle size={16} />
             <div>
               <b>{t('Dikkat')}</b>
@@ -398,6 +457,15 @@ export function PlanReview() {
                       {tp.targetName}
                     </span>
                     {tp.reachable && !!tp.busyBy?.length && <BusyBadge nodeId={tp.targetId} name={tp.targetName} programs={tp.busyBy} held={tp.held} small />}
+                    {tp.reachable && !dryRun && (estimate?.perTarget[tp.targetId] ?? 0) >= 1000 && (
+                      <span
+                        className={cls('tabular nowrap', slow[tp.targetId] ? 'plan-slow' : 'faint')}
+                        style={{ fontSize: 11 }}
+                        data-tip={slow[tp.targetId] ? t('Bu makine gönderimi uzatıyor: ötekilerin {n} katı sürer (son gönderimlerin hızına göre)', { n: slow[tp.targetId] }) : t('Bu makinenin tahmini süresi')}
+                      >
+                        ≈{approx(estimate!.perTarget[tp.targetId])}
+                      </span>
+                    )}
                     {tp.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
                   </div>
                   {(tp.mode !== plan.request.options.mode || tp.backup !== plan.request.options.backup) && (
@@ -454,7 +522,6 @@ function TargetOps({
   plan,
   selected,
   onChange,
-  sources,
   onApplyAll,
 }: {
   plan: TargetPlan;
