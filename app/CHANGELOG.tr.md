@@ -2,6 +2,24 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.16 — 2026-11-05
+
+- **Daha hızlı paketler:** SamSync çalışan bir makineye giden paket, o makine alabiliyorsa zstd ile sıkıştırılır (gzip'e göre %14–20 daha az veri; dağıtan röle için düzey 6, tek makine için 3). Karşıda daha eski bir SamSync varsa eskisi gibi gzip gider; günlük, makinede bundan eski bir SamSync çalıştığını da söyler.
+- **Röle paketi iletir:** röle, arkasında SamSync çalışan makinelere paket gönderir ve klasörlerini ağ üzerinden taramak yerine manifestlerini kullanır. Her kopyadan sonra bu manifestleri yeniden yazar; bir sonraki gönderim de oradan başlar.
+- **Süre nereye gitti:** çalıştırma günlüğü paketin boyutunu, sıkıştırmasını, ağda geçen süreyi ve hızı yazar (`Paket: … • zstd 6 • 52,0 sn • 15 MB/sn`), ardından rölenin kendi kopyasını ve dağıtımını ayrı ayrı (`Röle kendi kopyasını 4,1 sn, dağıtımı 38,0 sn içinde bitirdi`). Röle çalışırken satırı neyi beklediğini söyler ("paket orada, alınması bekleniyor", "paketi uyguluyor, ardından dağıtacak").
+- **Gönderim ne kadar sürecek:** gönderim planı işlem sayısının yanında **yaklaşık …** yazar; aynı makinelere yapılan son gönderimlerin hızından (bayt hızı, dosya başına süre, eşzamanlı hedef, aşamalı gönderimde aşamalar art arda). Listede her makine kendi tahminini gösterir; gönderimi uzatan makine (ötekilerin iki katı ve en az 20 sn) sarıyla işaretlenir. **Sonra gönder…** gönderimin saat kaçta biteceğini söyler. Çalıştırma paneli uzun bir gönderimde kalan süreyi ve bitiş saatini gösterir.
+- **Geçmiş'te hızlar:** bir çalıştırmanın makine satırları her makinenin ne kadar veri aldığını ve hangi hızla aldığını gösterir; bir makinenin geçmişi (Hedefler) ve çalıştırmanın HTML raporu da her gönderimin hızını gösterir.
+- **Ayarlarda arama:** Ayarlar sayfasında arama kutusu var (Ctrl F): metni içermeyen kartlar gizlenir, eşleşmeler işaretlenir. Komut paleti (Ctrl K) Ayarlar kartlarını listeler, yazılan her şey için "Ayarlarda ara: …" önerir, büyük-küçük harf ve aksanlara bakmaz, sorgunun her kelimesini ayrı eşler. Bir ayarla ilgili yardım yanıtları doğru kartı açar.
+- **Komut paletinde makineler:** bir makinenin adını, grubunu ya da adresini yazınca Hedefler'de kartına gider; **Son çalıştırmayı Geçmiş'te aç** da orada.
+- **Dar ve kısa pencereler:** en küçük pencere boyutunda sayfa başlıkları artık kelime kelime kırılmaz; sığmayan düğmeler alt satıra iner. Kart başlıkları, makine kartları, gönderim çubuğu, Geçmiş şeridi ve çalıştırma ayrıntıları ve gönderim planı 980×620'de de okunur kalır.
+- **Genel bakış:** son gönderimlerden birine tıklamak o çalıştırmayı Geçmiş'te açar; manifest yoksa Envanter kutucuğu "—" gösterir.
+- **Boyutlar ve süreler** günlükte, mesajlarda ve raporlarda sayfalardaki gibi arayüz dilinde yazılır (2,4 MB, 3,4 sn); kısa çalıştırmalar artık "0.0 sn" demez.
+- **Açık tema:** sarı yazılar daha koyu; küçük yazılar okunur kalır.
+- **Tahmin uydurmaz:** geçmişte dayanacak bir şey yoksa (çok sayıda küçük dosya ve henüz ölçülmüş küçük dosya gönderimi yok) plan, çok yanlış bir tahmin yerine hiç tahmin göstermez.
+- **Düzeltme:** bir programla meşgul (ve beklemesini isteyen) bir makineye işi ileten röle, işi kendi kuyruğuna alıyordu; bu, işi daha sonra o makinenin kendi dosyaları olmadan gönderebilirdi. Röle artık makineye eskisi gibi yazar.
+- **Belgeler:** README'de rölenin ilerleme dosyasının yolundaki hatalı karakter düzeltildi (`_SamSyncRelay\results\<id>.progress.json`).
+- zstd paketleri, röle ilerlemesi ve röle süre satırları için röle ve ajanlarda da bu sürüm olmalı; daha eskisiyle her şey önceki gibi çalışır.
+
 ## 2.4.15 — 2026-11-02
 
 - **Röle ilerlemesi:** röle artık çalışırken gönderene ne kadar ilerlediğini bildiriyor. Çalıştırma panelindeki kendi satırı ve üstteki grup sayısı (örneğin `Lab-B 1/4`), arkasındaki makineler de bitene kadar beklemeden, kendi kopyası uygulanır uygulanmaz bitti oluyor. O makinelerin satırları dağıtım sırasında 0'da beklemek yerine her birinin ne kadar ilerlediğini gösteriyor. Rölenin de bu sürümde olması gerekir; eski sürümdeki bir röleyle eskisi gibi çalışır.

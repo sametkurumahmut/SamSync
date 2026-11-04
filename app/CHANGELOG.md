@@ -2,6 +2,24 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.16 — 2026-11-05
+
+- **Faster packs:** a pack to a machine that runs SamSync is compressed with zstd when that machine can take it (14–20% less data than gzip; level 6 for a relay, which passes it on, and 3 for a single machine). An older SamSync on the other end gets gzip as before, and the log warns when a machine runs an older SamSync than this one.
+- **A relay passes packs on:** a relay sends packs to the machines behind it that run SamSync, and uses their manifests instead of walking their folders over the network. After each copy it writes those manifests again, so the next send starts from them too.
+- **Where the time went:** the run log gives the pack's size, compression, time on the network and speed (`Pack: … • zstd 6 • 52.0 s • 15 MB/s`), then the relay's own copy and its distribution apart (`The relay finished its own copy in 4.1 s and the distribution in 38.0 s`). While a relay works, its row says what it is waiting for ("the pack is there, waiting for it to be taken", "applying the pack, then passing it on").
+- **How long a send will take:** the send plan says **about …** next to the operation count, from the speed of the last sends to the same machines (byte rate, time per file, parallel targets, a staged send's stages one after the other). Each machine in the list shows its own estimate, and one that holds the send up (twice the others and at least 20 s) is marked in amber. **Send later…** says when the send should be done. In the run panel, a long send shows the time left and when it should finish by the clock.
+- **Speeds in History:** a run's machine rows show how much each machine got and at what speed; a machine's history (Targets) shows the speed of each send, and so does the HTML report of a run.
+- **Settings search:** Settings has a search box (Ctrl F): cards without the text hide, the matches are marked. The command palette (Ctrl K) lists the Settings cards, offers "Search settings: …" for anything typed, ignores case and accents, and matches each word of a query on its own. Help answers about a setting open the right card.
+- **Machines in the command palette:** type a machine's name, group or address to go to its card on Targets; **Open the last run in History** is there too.
+- **Narrow and short windows:** page headings no longer break word by word at the smallest window size; buttons that do not fit go to the next line. Card headers, machine cards, the send bar, the History strip and run details, and the send plan keep their text readable at 980×620.
+- **Overview:** a click on a recent send opens that run in History; the Inventory tile shows "—" when there is no manifest yet.
+- **Sizes and times** in the log, messages and reports are written in the UI's language, like on the pages (2,4 MB and 3,4 s in Turkish), and short runs no longer say "0.0 s".
+- **Light theme:** amber text is darker, so small words keep their contrast.
+- **No guessing:** when the history has nothing to go on for a send (many small files and no small-file send measured yet), the plan shows no estimate rather than one far off.
+- **Fix:** a relay that passed a job on to a machine busy with a program (and asked to wait for it) put the job in its own queue, which would later have sent it without that machine's own files; the relay now writes the machine as before.
+- **Docs:** a wrong character in the README path of the relay's progress file (`_SamSyncRelay\results\<id>.progress.json`) is fixed.
+- The relay and the agents need this version for zstd packs, relay progress and the relay timing lines; with an older one everything works as before.
+
 ## 2.4.15 — 2026-11-02
 
 - **Relay progress:** a relay now tells its sender how far it is while it works. Its own row in the run panel, and its group's count above (for example `Lab-B 1/4`), turns done as soon as its own copy is applied, instead of only when the machines behind it are done too. The rows of those machines show how far each one is during the distribution instead of waiting at 0. The relay needs this version too; with an older relay it works as before.
