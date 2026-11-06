@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowLeftRight, CheckCircle2, Timer, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Timer, Maximize2, Minimize2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
 import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec, RunSummary } from '@shared/types';
 import { estimateSend, slowTargets } from '@shared/estimate';
 import { useApp } from '../store/app';
@@ -17,6 +17,13 @@ import { MODE_OPTIONS } from '../pages/SendPage';
 import { BusyBadge } from './BusyBadge';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
+
+/** The status column of the plan's file list: its width by default, within these, and where it is kept. */
+const STATUS_W = 180;
+const STATUS_W_MIN = 90;
+const STATUS_W_MAX = 420;
+const STATUS_W_KEY = 'samsync.review.statusW';
+const statusWidth = (w: number) => Math.round(Math.min(STATUS_W_MAX, Math.max(STATUS_W_MIN, Number.isFinite(w) ? w : STATUS_W)));
 
 /** An estimated time in whole seconds: tenths would claim more than an estimate knows. */
 const approx = (ms: number) => (ms < 9500 ? t('{s} sn', { s: Math.max(1, Math.round(ms / 1000)) }) : duration(Math.round(ms / 1000) * 1000));
@@ -252,6 +259,12 @@ export function PlanReview() {
   const [busy, setBusy] = useState(false);
   const [later, setLater] = useState(false);
   const [past, setPast] = useState<RunSummary[] | null>(null);
+  // the plan over the whole window, kept for the next one
+  const [full, setFull] = useState(() => readStored<boolean>('samsync.planFull', false));
+  const toggleFull = () => {
+    setFull(!full);
+    writeStored('samsync.planFull', !full);
+  };
 
   const plan = review?.plan;
   const selected = review?.selected ?? NO_SELECTION;
@@ -362,8 +375,11 @@ export function PlanReview() {
 
   return (
     <Modal
-      size="wide"
+      size={full ? 'full' : 'wide'}
       closeOnScrim={false}
+      headActions={
+        <Button variant="ghost" iconOnly size="sm" icon={full ? <Minimize2 size={15} /> : <Maximize2 size={15} />} tip={full ? t('Pencere boyutuna dön') : t('Tam ekran')} onClick={toggleFull} />
+      }
       title={
         <span className="row" style={{ gap: 10 }}>
           {t('Gönderim planı')}
@@ -534,6 +550,13 @@ function TargetOps({
   const [q, setQ] = useState('');
   const [diffOp, setDiffOp] = useState<PlanOp | null>(null);
   const parent = useRef<HTMLDivElement>(null);
+  // the path column takes what the status column leaves: dragging their border sets the status width (kept)
+  const [statusW, setStatusW] = useState(() => statusWidth(readStored<number>(STATUS_W_KEY, STATUS_W)));
+  const drag = useRef<{ x: number; w: number } | null>(null);
+  const keepStatusW = (w: number) => {
+    setStatusW(w);
+    writeStored(STATUS_W_KEY, w);
+  };
   // the list as a folder tree or flat; the choice is kept
   const [view, setViewState] = useState<'tree' | 'flat'>(() => (readStored<string>('samsync.review.view', 'tree') === 'flat' ? 'flat' : 'tree'));
   const setView = (val: 'tree' | 'flat') => {
@@ -749,7 +772,49 @@ function TargetOps({
             <Checkbox checked={visSel === rows.length} mixed={visSel > 0 && visSel < rows.length} onChange={setAll} />
             <span style={{ width: 20 }} />
             <span className="grow">{t('Göreli yol')}</span>
-            <span style={{ width: 180 }}>{t('Durum')}</span>
+            <span className="col-status-head" style={{ width: statusW }}>
+              {/* the border between the path and the status: drag it, or use the arrow keys; a double click resets it */}
+              <span
+                className={cls('col-resize', drag.current && 'dragging')}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t('Göreli yol sütununun genişliği')}
+                aria-valuenow={statusW}
+                aria-valuemin={STATUS_W_MIN}
+                aria-valuemax={STATUS_W_MAX}
+                tabIndex={0}
+                // the system's own tooltip: the list around clips the drawn ones
+                title={t('Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir')}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  drag.current = { x: e.clientX, w: statusW };
+                  document.body.classList.add('col-resizing');
+                }}
+                onPointerMove={(e) => {
+                  if (drag.current) setStatusW(statusWidth(drag.current.w - (e.clientX - drag.current.x)));
+                }}
+                onPointerUp={(e) => {
+                  if (!drag.current) return;
+                  keepStatusW(statusWidth(drag.current.w - (e.clientX - drag.current.x)));
+                  drag.current = null;
+                  document.body.classList.remove('col-resizing');
+                }}
+                onPointerCancel={() => {
+                  drag.current = null;
+                  document.body.classList.remove('col-resizing');
+                }}
+                onDoubleClick={() => keepStatusW(STATUS_W)}
+                onKeyDown={(e) => {
+                  // right gives the path more room, left takes it back
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    keepStatusW(statusWidth(statusW + (e.key === 'ArrowRight' ? -16 : 16)));
+                  }
+                }}
+              />
+              {t('Durum')}
+            </span>
             <span style={{ width: 80, textAlign: 'right' }}>{t('Boyut')}</span>
             <span style={{ width: 150 }}>{t('Kaynak → hedef tarihi')}</span>
             <span style={{ width: 28 }} />
@@ -805,7 +870,7 @@ function TargetOps({
                         {o.isDir ? '/' : ''}
                       </span>
                     </span>
-                    <span className={cls('op-status', o.category)} style={{ width: 180 }}>
+                    <span className={cls('op-status', o.category)} style={{ width: statusW }}>
                       {opStatus(o, on)}
                     </span>
                     <span className="faint tabular" style={{ width: 80, textAlign: 'right' }}>

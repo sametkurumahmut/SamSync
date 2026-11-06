@@ -825,6 +825,10 @@ const d: Dict = {
   'Bu makinenin tahmini süresi': 'This machine’s estimated time',
   'Bu makine gönderimi uzatıyor: ötekilerin {n} katı sürer (son gönderimlerin hızına göre)': 'This machine holds the send up: it takes {n} times as long as the others (from the speed of the last sends)',
   'Bugünkü farklarla yaklaşık {time} sürer; saat {clock} gibi biter': 'With today’s differences it takes about {time}; done around {clock}',
+  'Tam ekran': 'Full screen',
+  'Pencere boyutuna dön': 'Back to window size',
+  'Göreli yol sütununun genişliği': 'Width of the relative path column',
+  'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Drag to widen or narrow the relative path column; a double click resets it',
 };
 
 export default d;

@@ -311,14 +311,18 @@ export function Modal({
   footer,
   size,
   closeOnScrim = true,
+  headActions,
 }: {
   title: ReactNode;
   icon?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'wide' | 'medium';
+  /** full: the whole window, a few pixels in */
+  size?: 'wide' | 'medium' | 'full';
   closeOnScrim?: boolean;
+  /** Buttons of its own in the title bar, before the close button (full screen, say). */
+  headActions?: ReactNode;
 }) {
   useEscapeLayer(onClose);
   return createPortal(
@@ -327,6 +331,7 @@ export function Modal({
         <div className="modal-head">
           {icon}
           <h2 className="grow">{title}</h2>
+          {headActions}
           <Button variant="ghost" iconOnly size="sm" icon={<X size={16} />} onClick={onClose} />
         </div>
         <div className="modal-body">{children}</div>
