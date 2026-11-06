@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.18 — 2026-11-06
+
+- **Gönderim planı tam ekran:** planın kapat düğmesinin yanındaki düğme onu bütün pencereye açıyor ve geri alıyor; seçim bir sonraki plan için hatırlanıyor.
+- **Daha geniş yol sütunu:** planın dosya listesinde *Göreli yol* ile *Durum* arasındaki sınır sürüklenebiliyor; uzun dosya adları artık kesilmiyor. Odaktayken ok tuşları da kaydırıyor, çift tık eski hâline getiriyor, genişlik hatırlanıyor. Durum sütunu her zaman olağan sözcüklerinin sığacağı kadar yer tutuyor.
+
 ## 2.4.17 — 2026-11-06
 
 - **Kaynaklar yeniden okunabiliyor:** Gönder sayfasında Kaynaklar başlığındaki **Yenile** bütün kaynakları yeniden okuyor (geri takılan bir disk, değişen klasörler). Bir satırın yenile düğmesi (üzerine gelince), sağ tıktaki **Yeniden oku** ve seçililer için **Yeniden oku** yalnızca onları okuyor; bulunamayan kaynakların uyarısında da **Yeniden oku** düğmesi var.

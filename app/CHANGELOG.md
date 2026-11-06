@@ -2,6 +2,11 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.18 — 2026-11-06
+
+- **Send plan in full screen:** the button next to the plan's close button opens it over the whole window and back; the choice is kept for the next plan.
+- **A wider path column:** in the plan's file list the border between *Relative path* and *Status* can be dragged, so long file names are no longer cut off. With the focus on it the arrow keys move it too, a double click puts it back, and the width is kept. The status column keeps at least the room of its usual words.
+
 ## 2.4.17 — 2026-11-06
 
 - **Sources that can be read again:** on the Send page, **Refresh** in the Sources header reads every source again (a disk plugged back in, folders that changed). A row's refresh button (on hover), **Read again** in its right-click menu and **Read again** for the picked rows read only those, and the warning about sources not found has a **Read again** button too.
