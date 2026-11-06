@@ -2929,3 +2929,18 @@ a.titlebar-btn {
     padding-bottom: 8px;
   }
 }
+/* a source row's "read again": shown on hover and focus, always on a source that was not found */
+.source-row .row-refresh {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.source-row:hover .row-refresh,
+.source-row.missing .row-refresh,
+.source-row .row-refresh:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .source-row .row-refresh {
+    opacity: 1;
+  }
+}

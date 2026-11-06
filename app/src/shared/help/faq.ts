@@ -945,6 +945,17 @@ export const FAQ: FaqEntry[] = [
   },
   // ---- trouble
   {
+    id: 'source-reread',
+    topic: 'trouble',
+    q: { tr: 'Harici diski yeniden taktım ama kaynak hâlâ bulunamadı görünüyor', en: 'I plugged the external disk back in but the source still shows as not found' },
+    a: {
+      tr: 'Gönder sayfasında Kaynaklar başlığındaki **Yenile** bütün kaynakları yeniden okur; bulunamayan kaynakların uyarısındaki **Yeniden oku** yalnızca onları, bir satırın yenile düğmesi (üzerine gelince) ya da sağ tık **Yeniden oku** yalnızca o satırı okur. Okunmakta olan bir kaynak sağdaki × ile hemen listeden çıkarılır, okuması bırakılır. Yanıt vermeyen bir disk ya da paylaşım listeyi bekletmez: 15 saniye sonra bulunamadı olarak görünür, üzerine gelince nedeni yazar.',
+      en: 'On the Send page, **Refresh** in the Sources header reads every source again; **Read again** in the warning about sources not found reads only those, and a row’s refresh button (on hover) or **Read again** in its right-click menu reads only that row. A source that is still being read comes off the list at once with its ×, and its reading is dropped. A disk or share that does not answer does not hold up the list: after 15 seconds it shows as not found, and hovering says why.',
+    },
+    keywords: ['harici', 'disk', 'usb', 'external', 'bulunamadı', 'not found', 'yenile', 'refresh', 'yeniden oku', 'read again', 'okunuyor', 'reading', 'kaynak', 'source'],
+    page: 'send',
+  },
+  {
     id: 'unreachable',
     topic: 'trouble',
     q: { tr: 'Makine "erişilemedi" görünüyor', en: 'A machine shows "unreachable"' },

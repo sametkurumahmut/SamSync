@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Lock, KeyRound, ScanSearch, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock, RotateCcw, Undo2, Layers, Megaphone } from 'lucide-react';
+import { Lock, KeyRound, ScanSearch, RefreshCw, FilePlus, FolderPlus, File, Folder, FolderInput, FolderOpen, X, Trash2, Copy, UploadCloud, ArrowRight, ShieldCheck, Bell, Terminal, FlaskConical, History as HistoryIcon, Filter, ChevronDown, ChevronRight, AlertTriangle, Send, Eye, EyeOff, Zap, Plus, Package, Pencil, CalendarClock, RotateCcw, Undo2, Layers, Megaphone } from 'lucide-react';
 import { useApp } from '../store/app';
 import { TargetPicker } from '../components/TargetPicker';
 import { PackUnlockDialog, PackWriteDialog } from '../components/PackDialogs';
@@ -68,6 +68,7 @@ export function SendPage() {
   const sendSources = useApp((s) => s.sendSources);
   const remove = useApp((s) => s.removeSendPath);
   const removeMany = useApp((s) => s.removeSendPaths);
+  const refresh = useApp((s) => s.refreshSendSources);
   const off = useApp((s) => s.sendOff);
   const setEnabled = useApp((s) => s.setSendEnabled);
   const platform = useApp((s) => s.boot!.platform);
@@ -145,6 +146,7 @@ export function SendPage() {
         onClick: () => void (i.isDir ? api.openPath(i.path) : api.showInFolder(i.path)).catch((err) => toast('error', t('Klasör açılamadı'), (err as Error).message)),
       },
       { label: many ? t('{n} yolu kopyala', { n: rows.length }) : t('Yolu kopyala'), icon: <Copy size={15} />, onClick: () => copyPaths(rows) },
+      { label: many ? t('{n} kaynağı yeniden oku', { n: rows.length }) : t('Yeniden oku'), icon: <RefreshCw size={15} />, onClick: () => void refresh(rows) },
       { sep: true },
       allOn
         ? { label: many ? t('{n} kaynağı devre dışı bırak', { n: rows.length }) : t('Devre dışı bırak'), icon: <EyeOff size={15} />, onClick: () => setEnabled(rows, false) }
@@ -237,6 +239,9 @@ export function SendPage() {
                     <Button size="sm" variant="ghost" icon={<EyeOff size={13} />} onClick={() => setEnabled(picked, false)}>
                       {t('Devre dışı bırak')}
                     </Button>
+                    <Button size="sm" variant="ghost" icon={<RefreshCw size={13} />} onClick={() => void refresh(picked)} tip={t('Seçili kaynakları yeniden okur')}>
+                      {t('Yeniden oku')}
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -261,8 +266,12 @@ export function SendPage() {
                   </span>
                 )}
                 <span className="spacer" />
-                {infos.length > 0 && (
+                {/* also while the sources are still read: a list can be cleared or read again before it settles */}
+                {paths.length > 0 && (
                   <>
+                    <Button size="sm" variant="ghost" icon={<RefreshCw size={13} />} onClick={() => void refresh()} tip={t('Bütün kaynakları yeniden okur: geri takılan bir disk, değişen klasörler')}>
+                      {t('Yenile')}
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -311,8 +320,13 @@ export function SendPage() {
               ) : (
                 <div className="source-list" role="region" aria-label={t('Kaynak listesi')} tabIndex={0} onKeyDown={listKeys}>
                   {missing > 0 && (
-                    <div className="alert error" style={{ margin: 10 }}>
-                      <AlertTriangle size={15} /> {t('{n} öğe bulunamadı; gönderimde atlanacak.', { n: missing })}
+                    <div className="alert error row" style={{ margin: 10, gap: 8 }}>
+                      <AlertTriangle size={15} />
+                      <span className="grow">{t('{n} öğe bulunamadı; gönderimde atlanacak.', { n: missing })}</span>
+                      {/* a disk plugged back in, a share that answers again */}
+                      <Button size="sm" icon={<RefreshCw size={13} />} onClick={() => void refresh(infos.filter((i) => !i.exists).map((i) => i.path))}>
+                        {t('Yeniden oku')}
+                      </Button>
                     </div>
                   )}
                   {infos.map((i, at) => (
@@ -329,7 +343,11 @@ export function SendPage() {
                           <span className="ellipsis" style={{ fontWeight: 580 }}>
                             {baseName(i.path)}
                           </span>
-                          {!i.exists && <span className="badge red">{t('bulunamadı')}</span>}
+                          {!i.exists && (
+                            <span className="badge red" data-tip={i.error}>
+                              {t('bulunamadı')}
+                            </span>
+                          )}
                           {isOff(i.path) && <span className="badge">{t('devre dışı')}</span>}
                           {i.pack && (
                             <span className="badge accent" data-tip={t('{label} • {from} • {when}', { label: i.pack.label, from: i.pack.from, when: new Date(i.pack.createdAt).toLocaleString() })}>
@@ -354,7 +372,8 @@ export function SendPage() {
                           )}
                         </div>
                         {!i.pack && !i.locked && i.places?.length ? (
-                          <div className="row faint mono" style={{ fontSize: 11.5, gap: 6, minWidth: 0 }}>
+                          // in a narrow list "Make local root" goes under the place instead of over the size
+                          <div className="row faint mono" style={{ fontSize: 11.5, gap: 6, rowGap: 4, minWidth: 0, flexWrap: 'wrap' }}>
                             <ArrowRight size={11} style={{ flex: 'none' }} />
                             {typing === i.path ? (
                               <input
@@ -427,6 +446,7 @@ export function SendPage() {
                       <span className="faint tabular nowrap" style={{ fontSize: 12 }}>
                         {i.isDir || i.pack ? `${t('{n} dosya', { n: num(i.fileCount ?? 0) + (i.fileCountCapped ? '+' : '') })} • ${bytes(i.size)}` : bytes(i.size)}
                       </span>
+                      <Button size="sm" variant="ghost" iconOnly className="row-refresh" icon={<RefreshCw size={13} />} onClick={() => void refresh([i.path])} tip={t('Yeniden oku')} />
                       <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(i.path)} tip={t('Listeden çıkar')} />
                     </div>
                   ))}
@@ -441,6 +461,8 @@ export function SendPage() {
                         </div>
                         <div style={{ fontSize: 11.5 }}>{t('Okunuyor: dosyalar sayılıyor…')}</div>
                       </div>
+                      {/* taken off while it is read: the reading is dropped */}
+                      <Button size="sm" variant="ghost" iconOnly icon={<X size={14} />} onClick={() => remove(p)} tip={t('Listeden çıkar')} />
                     </div>
                   ))}
                 </div>

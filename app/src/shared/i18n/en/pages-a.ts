@@ -467,6 +467,10 @@ const d: Dict = {
   'Hedef diskinde boş alan': 'Free space on the target disk',
   'Ekibe bildir': 'Notify the team',
   'Telegram ve web kancasına gider (Ayarlar › Bildirimler); kendi klasörlerinizin listesinde kapatabilirsiniz': 'Goes to Telegram and the webhook (Settings › Notifications); switch it off in the list of your own folders',
+  'Yeniden oku': 'Read again',
+  'Seçili kaynakları yeniden okur': 'Reads the selected sources again',
+  'Bütün kaynakları yeniden okur: geri takılan bir disk, değişen klasörler': 'Reads every source again: a disk plugged back in, folders that changed',
+  '{n} kaynağı yeniden oku': 'Read {n} sources again',
 };
 
 export default d;

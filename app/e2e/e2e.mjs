@@ -166,6 +166,30 @@ try {
     if (!inView) throw new Error(`${pc2.id}'s card is not in view after the jump`);
   });
 
+  await step('send: a source folder that went away (a disk taken out) is read again once it is back', async () => {
+    const disk = path.join(demo, 'ext');
+    const dir = path.join(disk, 'Contents');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'a');
+    await page.keyboard.press('Control+2');
+    const box = page.getByPlaceholder('…or paste a full path and press Enter').last();
+    await box.fill(dir);
+    await box.press('Enter');
+    const row = page.locator('.source-row:not(.loading)', { hasText: 'Contents' });
+    await row.waitFor();
+    // the disk goes: Refresh marks it as not found
+    fs.renameSync(disk, `${disk}-away`);
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    const missing = page.getByText(/item was not found/);
+    await missing.waitFor();
+    // and back: Read again in the warning reads it in
+    fs.renameSync(`${disk}-away`, disk);
+    await page.locator('.alert').getByRole('button', { name: 'Read again', exact: true }).click();
+    await missing.waitFor({ state: 'detached' });
+    await row.waitFor();
+    if (await row.locator('.badge.red').count()) throw new Error('the folder is still marked as not found');
+  });
+
   await step('accessibility: no critical or serious axe-core violations on the main pages', async () => {
     const axe = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
     // the smallest window the app allows: lists overflow there, as on a CI runner's small screen

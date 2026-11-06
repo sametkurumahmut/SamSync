@@ -553,6 +553,7 @@ const d: Dict = {
   'paketi uyguluyor…': 'wendet das Paket an…',
   'paketi uyguluyor, ardından dağıtacak…': 'wendet das Paket an, gibt es dann weiter…',
   'işi aldı, dağıtıyor…': 'hat den Auftrag, gibt ihn weiter…',
+  '{s} sn içinde yanıt vermedi; disk ya da paylaşım hazır olunca yeniden okuyun': 'hat in {s} s nicht geantwortet; neu lesen, sobald Festplatte oder Freigabe bereit ist',
 };
 
 export default d;

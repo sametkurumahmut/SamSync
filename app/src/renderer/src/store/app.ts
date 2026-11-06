@@ -230,6 +230,8 @@ interface State {
 
   /** `rels`: target paths picked earlier for some of them (a quick send, a run sent again). */
   addSendPaths(paths: string[], rels?: Record<string, string>): Promise<void>;
+  /** Reads these sources again (all of them without a list): a disk plugged back in, a folder that changed. */
+  refreshSendSources(paths?: string[]): Promise<void>;
   /** Places a source outside every local root on the targets (null: back to the default place). */
   setSendRel(path: string, rel: string | null): Promise<void>;
   /** The Send page's list as send sources (the ones turned on), with the places picked by hand. */
@@ -416,7 +418,9 @@ export const useApp = create<State>((set, get) => ({
       if (boot.initialPaths.length) pendingOpen.unshift({ paths: boot.initialPaths, targets: boot.initialTargets.length ? boot.initialTargets : undefined });
       if (active?.paths.length) {
         set({ sendOff: active.off ?? [] });
-        await get().addSendPaths(active.paths, active.rels);
+        // read in the background: a big folder or a disk that does not answer holds up neither the machines' check
+        // below nor what was opened with the app; the rows fill in as they are read
+        void get().addSendPaths(active.paths, active.rels);
       }
       for (const r of pendingOpen.splice(0)) await handleOpen(r);
       void get().probe();
@@ -511,12 +515,15 @@ export const useApp = create<State>((set, get) => ({
     const nextRels = picked ? { ...get().sendRels, ...picked } : get().sendRels;
     set({ sendPaths: next, sendRels: nextRels });
     // only the new ones are read (a big folder is counted once, not again with every addition); the rows wait meanwhile
-    try {
-      const infos = await api.describeSources(add, true, undefined, nextRels);
-      set((s) => ({ sendInfos: mergeInfos(s.sendInfos, infos, s.sendPaths) }));
-    } catch (e) {
-      get().toast('error', t('Kaynaklar okunamadı'), (e as Error).message);
-    }
+    await readSources(add);
+  },
+  async refreshSendSources(paths) {
+    const st = get();
+    const which = (paths ?? st.sendPaths).filter((p) => st.sendPaths.some((x) => samePath(x, p)));
+    if (!which.length) return;
+    // their rows go back to reading until the new look comes in
+    set((s) => ({ sendInfos: s.sendInfos.filter((i) => !which.some((p) => samePath(p, i.path))) }));
+    await readSources(which);
   },
   async setSendRel(path, rel) {
     const st = get();
@@ -823,6 +830,36 @@ function mergeInfos(cur: SourceInfo[], fresh: SourceInfo[], order: string[]): So
   const at = (p: string) => order.findIndex((o) => samePath(o, p));
   const all = [...cur.filter((i) => !fresh.some((f) => samePath(f.path, i.path))), ...fresh];
   return all.filter((i) => at(i.path) >= 0).sort((a, b) => at(a.path) - at(b.path));
+}
+
+/** The latest read of each source path: an older answer that comes in later is dropped. */
+const readSeq = new Map<string, number>();
+let readCounter = 0;
+
+/**
+ * Reads the Send page's sources one by one, four at a time: each row fills in when its own source is read, a slow
+ * folder or a disk that does not answer holds up no other row, and a row removed meanwhile stays removed.
+ */
+async function readSources(paths: string[]): Promise<void> {
+  const queue = [...paths];
+  const one = async (p: string) => {
+    // taken off the list while it waited: not read at all
+    if (!useApp.getState().sendPaths.some((x) => samePath(x, p))) return;
+    const key = p.toLowerCase();
+    const mine = ++readCounter;
+    readSeq.set(key, mine);
+    try {
+      const [info] = await api.describeSources([p], true, undefined, useApp.getState().sendRels);
+      if (readSeq.get(key) !== mine || !info) return;
+      useApp.setState((s) => ({ sendInfos: mergeInfos(s.sendInfos, [info], s.sendPaths) }));
+    } catch (e) {
+      if (readSeq.get(key) === mine && useApp.getState().sendPaths.some((x) => samePath(x, p))) useApp.getState().toast('error', t('Kaynaklar okunamadı'), (e as Error).message);
+    }
+  };
+  const worker = async () => {
+    for (let p = queue.shift(); p !== undefined; p = queue.shift()) await one(p);
+  };
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
 }
 
 // a development run can reach the store from the page (the web preview, a screenshot script): never in a packaged build

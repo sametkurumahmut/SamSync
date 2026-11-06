@@ -17,7 +17,7 @@ import { PackLockedError, PackPasswordError } from './packcrypt';
 import { probeNode } from './probe';
 import { otherBackupRoots } from './backups';
 import { IGNORE_FILE, ignoreExcludes, readLocalIgnore } from './ignore';
-import { CancelToken, errMessage, formatBytes, mapLimit, newId } from './util';
+import { CancelToken, errMessage, formatBytes, mapLimit, newId, withTimeout } from './util';
 import { t } from '../shared/i18n';
 import { targetOptions } from '../shared/options';
 import { RELAY_FOLDER, relayRouting } from '../shared/relay';
@@ -110,6 +110,9 @@ export async function sendIgnorePatterns(req: SendRequest): Promise<string[]> {
   return [...patterns];
 }
 
+/** How long the first look at a source may take before it counts as not answering. */
+const SOURCE_LOOK_MS = 15_000;
+
 /** Counts files and bytes below a folder, giving up (capped = true) after a file or time budget. */
 async function countTree(dir: string, maxFiles = 20000, budgetMs = 2500): Promise<{ files: number; bytes: number; capped: boolean }> {
   const started = Date.now();
@@ -127,9 +130,14 @@ async function countTree(dir: string, maxFiles = 20000, budgetMs = 2500): Promis
     }
     const fileEnts = ents.filter((e) => e.isFile());
     for (const e of ents) if (e.isDirectory()) stack.push(`${d}/${e.name}`);
-    const sizes = await mapLimit(fileEnts, 32, async (e) => (await fsp.stat(`${d}/${e.name}`).catch(() => null))?.size ?? 0);
-    files += fileEnts.length;
-    for (const n of sizes) bytes += n;
+    // a folder of very many files is sized a slice at a time, so the budget also holds inside one folder
+    for (let i = 0; i < fileEnts.length; i += 512) {
+      if (files >= maxFiles || Date.now() - started > budgetMs) return { files: files + fileEnts.length - i, bytes, capped: true };
+      const slice = fileEnts.slice(i, i + 512);
+      const sizes = await mapLimit(slice, 32, async (e) => (await fsp.stat(`${d}/${e.name}`).catch(() => null))?.size ?? 0);
+      files += slice.length;
+      for (const n of sizes) bytes += n;
+    }
   }
   return { files, bytes, capped: false };
 }
@@ -179,7 +187,9 @@ export async function describeSources(ctx: CoreContext, paths: string[], count =
     const abs = normalizeAbs(p);
     let m = mapSource(abs, ctx.localRoots, false, outside, rels?.[p]);
     try {
-      const st = await fsp.stat(abs);
+      // a disk that is waking up or gone, or a share that does not answer, can hold the first look for long:
+      // the source then shows as not answering and can be read again from the list
+      const st = await withTimeout(fsp.stat(abs), SOURCE_LOOK_MS, t('{s} sn içinde yanıt vermedi; disk ya da paylaşım hazır olunca yeniden okuyun', { s: SOURCE_LOOK_MS / 1000 }));
       m = mapSource(abs, ctx.localRoots, st.isDirectory(), outside, rels?.[p]);
       if (!st.isDirectory() && isPackFile(abs)) {
         try {
