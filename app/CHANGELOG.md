@@ -2,6 +2,15 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.17 — 2026-11-06
+
+- **Sources that can be read again:** on the Send page, **Refresh** in the Sources header reads every source again (a disk plugged back in, folders that changed). A row's refresh button (on hover), **Read again** in its right-click menu and **Read again** for the picked rows read only those, and the warning about sources not found has a **Read again** button too.
+- **A source can be taken off while it is read:** the row of a source that is still being counted has its × now, and *Copy* and *Clear* are there while the list is read. A source taken off is not read any further.
+- **No more waiting on one slow source:** each source is read on its own and its row fills in as soon as it is done, instead of every row waiting for the slowest folder. A disk or share that does not answer shows as not found after 15 seconds (hovering says why) instead of holding up the list, and counting a folder of very many files keeps to its time limit.
+- **Faster start:** the machines are checked right away when the app starts, instead of after the Send page's sources have been read.
+- **Fix:** in a narrow window, *Make local root* on a source outside the roots no longer covers the size of the source.
+- **Help:** a new question about a source that still shows as not found after a disk was plugged back in.
+
 ## 2.4.16 — 2026-11-05
 
 - **Faster packs:** a pack to a machine that runs SamSync is compressed with zstd when that machine can take it (14–20% less data than gzip; level 6 for a relay, which passes it on, and 3 for a single machine). An older SamSync on the other end gets gzip as before, and the log warns when a machine runs an older SamSync than this one.

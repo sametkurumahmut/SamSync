@@ -2,6 +2,15 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.17 — 2026-11-06
+
+- **Kaynaklar yeniden okunabiliyor:** Gönder sayfasında Kaynaklar başlığındaki **Yenile** bütün kaynakları yeniden okuyor (geri takılan bir disk, değişen klasörler). Bir satırın yenile düğmesi (üzerine gelince), sağ tıktaki **Yeniden oku** ve seçililer için **Yeniden oku** yalnızca onları okuyor; bulunamayan kaynakların uyarısında da **Yeniden oku** düğmesi var.
+- **Okunurken çıkarılabiliyor:** hâlâ sayılan bir kaynağın satırında artık × var; liste okunurken *Kopyala* ve *Temizle* de görünüyor. Çıkarılan kaynak artık okunmuyor.
+- **Yavaş bir kaynak ötekileri bekletmiyor:** her kaynak ayrı okunuyor ve satırı biter bitmez doluyor; bütün satırlar en yavaş klasörü beklemiyor. Yanıt vermeyen bir disk ya da paylaşım listeyi bekletmek yerine 15 saniye sonra bulunamadı olarak görünüyor (üzerine gelince nedeni yazıyor); çok dosyalı bir klasörün sayımı da süre sınırına uyuyor.
+- **Daha hızlı açılış:** makineler, Gönder sayfasının kaynakları okunmayı beklemeden uygulama açılır açılmaz yoklanıyor.
+- **Düzeltme:** dar pencerede kök dışı bir kaynaktaki *Yerel kök yap* artık kaynağın boyutunun üstüne binmiyor.
+- **Yardım:** disk yeniden takıldığı hâlde hâlâ bulunamadı görünen kaynak için yeni bir soru.
+
 ## 2.4.16 — 2026-11-05
 
 - **Daha hızlı paketler:** SamSync çalışan bir makineye giden paket, o makine alabiliyorsa zstd ile sıkıştırılır (gzip'e göre %14–20 daha az veri; dağıtan röle için düzey 6, tek makine için 3). Karşıda daha eski bir SamSync varsa eskisi gibi gzip gider; günlük, makinede bundan eski bir SamSync çalıştığını da söyler.
