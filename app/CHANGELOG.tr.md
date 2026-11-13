@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.19 — 2026-11-13
+
+- **Grup ya da makineye göre günlük:** çalıştırma panelinde bir grubun çipi (örneğin `Lab-A 4/4`) alttaki günlüğü o grubun makinelerine daraltıyor; çalıştırmada tek grup varken çipin çevresindeki şeride tıklamak da aynısını yapıyor. Bir makinenin satırı günlüğü o makineye, geldiği röleyle birlikte daraltıyor; Ctrl bir makine daha ekliyor. Günlük başlığındaki çip ya da aynı tıklama yeniden bütün günlüğü getiriyor. Bütün çalıştırmanın satırları (başlangıcı ve sonu) her zaman kalıyor, hata sayısı da süzgece uyuyor.
+
 ## 2.4.18 — 2026-11-06
 
 - **Gönderim planı tam ekran:** planın kapat düğmesinin yanındaki düğme onu bütün pencereye açıyor ve geri alıyor; seçim bir sonraki plan için hatırlanıyor.

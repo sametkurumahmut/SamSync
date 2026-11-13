@@ -2,6 +2,10 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.19 — 2026-11-13
+
+- **Run log by group or machine:** in the run panel, a group's chip (for example `Lab-A 4/4`) narrows the log below to that group's machines; with one group in the run, a click on the strip around the chip does the same. A machine's row narrows it to that machine, together with the relay it came through, and Ctrl adds another machine. The chip in the log's header, or the same click again, brings the whole log back. The lines of the whole run (its start and its end) always stay, and the error count follows the filter.
+
 ## 2.4.18 — 2026-11-06
 
 - **Send plan in full screen:** the button next to the plan's close button opens it over the whole window and back; the choice is kept for the next plan.
