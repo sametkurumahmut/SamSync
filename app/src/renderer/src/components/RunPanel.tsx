@@ -234,8 +234,11 @@ function Throughput({ run, now }: { run: LiveRun; now: number }) {
   );
 }
 
-/** Per group: how many of its machines are done, so "Lab-A 3/5" reads at a glance. */
-function GroupChips({ run }: { run: LiveRun }) {
+/**
+ * Per group: how many of its machines are done, so "Lab-A 3/5" reads at a glance. A chip filters the log to its group's
+ * machines (again: all of the log); the strip's empty space does it for a run of one group and clears the filter otherwise.
+ */
+function GroupChips({ run, active, onPick }: { run: LiveRun; active?: string; onPick: (group: string | null) => void }) {
   const nodes = useApp((s) => s.boot?.config.nodes);
   const groups = useMemo(() => {
     const byId = new Map((nodes ?? []).map((n) => [n.id, n.group || '']));
@@ -254,15 +257,25 @@ function GroupChips({ run }: { run: LiveRun }) {
   }, [nodes, run.targets]);
   if (!groups.length) return null;
   return (
-    <div className="run-groups">
+    <div className="run-groups" onClick={() => onPick(groups.length === 1 && active !== groups[0][0] ? groups[0][0] : null)}>
       {groups.map(([g, e]) => (
-        <span key={g} className={cls('chip static', e.failed ? 'bad' : e.done === e.total ? 'ok' : e.running ? 'hot' : '')}>
+        <button
+          key={g}
+          type="button"
+          className={cls('chip', e.failed ? 'bad' : e.done === e.total ? 'ok' : e.running ? 'hot' : '', active === g && 'on')}
+          aria-pressed={active === g}
+          data-tip={active === g ? t('Bütün günlüğü göster') : t('Günlükte yalnızca {group} makineleri', { group: g })}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onPick(active === g ? null : g);
+          }}
+        >
           <b>{g}</b>
           <span className="tabular">
             {e.done + e.failed}/{e.total}
           </span>
           {e.failed > 0 && <span style={{ color: 'var(--red)' }}>{t('{n} hata', { n: e.failed })}</span>}
-        </span>
+        </button>
       ))}
     </div>
   );
@@ -287,6 +300,10 @@ export function RunPanel() {
   const now = useNow(!!run && !run.done && open);
   const [logFilter, setLogFilter] = useState<'all' | 'errors'>('all');
   const [logQuery, setLogQuery] = useState('');
+  /** The log of one group's machines, or of the machines clicked in the list (Ctrl adds one); null: all of it. */
+  const [logPick, setLogPick] = useState<{ group: string } | { keys: string[] } | null>(null);
+  const runId = run?.summary.id;
+  useEffect(() => setLogPick(null), [runId]);
   /** The run a cancel was asked for: the button says so until the run ends (a relay may take a few seconds to stop). */
   const [cancelAsked, setCancelAsked] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -318,7 +335,20 @@ export function RunPanel() {
   const remaining = !run.done && pace && tot.bt > tot.bd ? ((tot.bt - tot.bd) / pace) * 1000 : undefined;
   const titleFor = (key?: string) => (key ? run.targets.find((x) => x.key === key)?.title ?? key : '');
   const q = logQuery.trim().toLocaleLowerCase(locale());
-  const log = run.log.filter((l) => (logFilter === 'all' || l.level === 'error' || l.level === 'warn') && (!q || l.message.toLocaleLowerCase(locale()).includes(q) || (!!l.key && titleFor(l.key).toLocaleLowerCase(locale()).includes(q))));
+  // the machines the log is narrowed to, and the relays they came through (a relay logs their pack and its fan-out)
+  const pickedKeys = logPick ? new Set('group' in logPick ? run.targets.filter((x) => groupOf.get(x.key) === logPick.group).map((x) => x.key) : logPick.keys) : null;
+  const logKeys = pickedKeys ? new Set([...pickedKeys, ...run.targets.filter((x) => pickedKeys.has(x.key) && x.via).map((x) => x.via!)]) : null;
+  // lines of the whole run (its start, its end) stay: they belong to every machine
+  const ofPicked = (l: RunLogLine) => !logKeys || !l.key || logKeys.has(l.key);
+  const pickTarget = (key: string, add: boolean) =>
+    setLogPick((cur) => {
+      const keys = cur && 'keys' in cur ? cur.keys : [];
+      if (!add) return keys.length === 1 && keys[0] === key ? null : { keys: [key] };
+      const next = keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
+      return next.length ? { keys: next } : null;
+    });
+  const pickLabel = !logPick ? '' : 'group' in logPick ? logPick.group : logPick.keys.map((k) => titleFor(k).split(' - ')[0]).join(', ');
+  const log = run.log.filter((l) => ofPicked(l) && (logFilter === 'all' || l.level === 'error' || l.level === 'warn') && (!q || l.message.toLocaleLowerCase(locale()).includes(q) || (!!l.key && titleFor(l.key).toLocaleLowerCase(locale()).includes(q))));
 
   const copyLog = () => {
     const text = run.log.map((l) => `${new Date(l.t).toLocaleTimeString(locale())} [${l.level}]${l.key ? ` [${titleFor(l.key)}]` : ''} ${l.message}`).join('\n');
@@ -390,7 +420,7 @@ export function RunPanel() {
           </div>
           <Progress value={run.done ? 100 : tot.pct} state={run.done ? (s.status === 'ok' ? 'ok' : s.status === 'cancelled' ? undefined : 'bad') : undefined} />
           {!s.dryRun && <Throughput run={run} now={now} />}
-          <GroupChips run={run} />
+          <GroupChips run={run} active={logPick && 'group' in logPick ? logPick.group : undefined} onPick={(g) => setLogPick(g ? { group: g } : null)} />
         </div>
 
         <div className="drawer-targets">
@@ -399,7 +429,20 @@ export function RunPanel() {
             // a running target shows its pace; a finished one its average, so a slow machine stands out
             const own = x.startedAt ? rate(x.bytesDone, (x.finishedAt ?? now) - x.startedAt) : undefined;
             return (
-              <div key={x.key} className="run-target">
+              <div
+                key={x.key}
+                className={cls('run-target', 'pickable', pickedKeys?.has(x.key) && 'picked')}
+                role="button"
+                tabIndex={0}
+                aria-pressed={!!pickedKeys?.has(x.key)}
+                // a click narrows the log to this machine (again: all of it), Ctrl adds or drops one
+                onClick={(ev) => pickTarget(x.key, ev.ctrlKey || ev.metaKey)}
+                onKeyDown={(ev) => {
+                  if (ev.target !== ev.currentTarget || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+                  ev.preventDefault();
+                  pickTarget(x.key, ev.ctrlKey || ev.metaKey);
+                }}
+              >
                 <StatusIcon status={x.status} />
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row">
@@ -418,7 +461,18 @@ export function RunPanel() {
                       {x.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: x.failed })}</span>}
                     </span>
                     {!run.done && !x.via && (x.status === 'running' || x.status === 'queued') && (
-                      <Button variant="ghost" iconOnly size="sm" className="run-target-x" icon={<X size={12} />} tip={t('Bu hedefi çalıştırmadan çıkar; diğerleri sürer')} onClick={() => void api.cancelRunTarget(s.id, x.key)} />
+                      <Button
+                        variant="ghost"
+                        iconOnly
+                        size="sm"
+                        className="run-target-x"
+                        icon={<X size={12} />}
+                        tip={t('Bu hedefi çalıştırmadan çıkar; diğerleri sürer')}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void api.cancelRunTarget(s.id, x.key);
+                        }}
+                      />
                     )}
                   </div>
                   <div style={{ margin: '5px 0 3px' }}>
@@ -438,6 +492,12 @@ export function RunPanel() {
           <span className="section-title" style={{ margin: 0 }}>
             {t('Günlük')}
           </span>
+          {logPick && (
+            <button type="button" className="chip on log-pick" data-tip={t('Bütün günlüğü göster')} onClick={() => setLogPick(null)}>
+              <span className="ellipsis">{pickLabel}</span>
+              <X size={11} />
+            </button>
+          )}
           <span className="spacer" />
           <SearchInput value={logQuery} onChange={setLogQuery} placeholder={t('Günlükte ara')} style={{ width: 180 }} />
           <Segmented
@@ -446,7 +506,7 @@ export function RunPanel() {
             onChange={setLogFilter}
             options={[
               { value: 'all', label: t('Tümü') },
-              { value: 'errors', label: t('Hata/uyarı {n}', { n: run.log.filter((l) => l.level === 'error' || l.level === 'warn').length }) },
+              { value: 'errors', label: t('Hata/uyarı {n}', { n: run.log.filter((l) => ofPicked(l) && (l.level === 'error' || l.level === 'warn')).length }) },
             ]}
           />
         </div>

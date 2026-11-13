@@ -829,6 +829,8 @@ const d: Dict = {
   'Pencere boyutuna dön': 'Back to window size',
   'Göreli yol sütununun genişliği': 'Width of the relative path column',
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Drag to widen or narrow the relative path column; a double click resets it',
+  'Bütün günlüğü göster': 'Show the whole log',
+  'Günlükte yalnızca {group} makineleri': 'Only the {group} machines in the log',
 };
 
 export default d;

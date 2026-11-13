@@ -832,6 +832,8 @@ const d: Dict = {
   'Pencere boyutuna dön': 'Volver al tamaño de la ventana',
   'Göreli yol sütununun genişliği': 'Ancho de la columna de ruta relativa',
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Arrastre para ensanchar o estrechar la columna de ruta relativa; un doble clic la restablece',
+  'Bütün günlüğü göster': 'Mostrar todo el registro',
+  'Günlükte yalnızca {group} makineleri': 'Solo las máquinas de {group} en el registro',
 };
 
 export default d;

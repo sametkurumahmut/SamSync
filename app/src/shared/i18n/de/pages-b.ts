@@ -829,6 +829,8 @@ const d: Dict = {
   'Pencere boyutuna dön': 'Zurück zur Fenstergröße',
   'Göreli yol sütununun genişliği': 'Breite der Spalte für den relativen Pfad',
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Ziehen: macht die Spalte für den relativen Pfad breiter oder schmaler; Doppelklick setzt sie zurück',
+  'Bütün günlüğü göster': 'Ganzes Protokoll zeigen',
+  'Günlükte yalnızca {group} makineleri': 'Im Protokoll nur die Maschinen von {group}',
 };
 
 export default d;
