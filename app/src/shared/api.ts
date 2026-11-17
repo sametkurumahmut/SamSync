@@ -173,11 +173,12 @@ export interface Api {
   cancelTask(taskId: string): Promise<void>;
   /** `selected`: target id -> ids of the plan operations to run. */
   /** `stages`: the machines that get it first; the rest follow once they went through (by themselves with `auto`). */
-  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean } }): Promise<string>;
+  /** `exclude`: machines taken out of the send in the review (a relay takes the machines behind it along). */
+  executePlan(planId: string, selected: Record<string, string[]>, overrides?: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean }; exclude?: string[] }): Promise<string>;
   /** A staged send whose first stage was this run, and going on with it (the second stage's run id) or dropping it. */
   stagedSend(runId: string): Promise<StagedSend | null>;
   /** The reviewed send at a time of its own (planned again then, with the sources as they are); `wake` wakes the machines off before. */
-  scheduleSend(planId: string, at: number, wake: boolean): Promise<ScheduledSend>;
+  scheduleSend(planId: string, at: number, wake: boolean, exclude?: string[]): Promise<ScheduledSend>;
   scheduledSends(): Promise<ScheduledSend[]>;
   cancelScheduledSend(id: string): Promise<boolean>;
   continueStaged(runId: string): Promise<string>;

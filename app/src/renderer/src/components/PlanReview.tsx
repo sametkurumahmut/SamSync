@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowLeftRight, CheckCircle2, Timer, Maximize2, Minimize2, ClipboardList, FlaskConical, Send, WifiOff, AlertTriangle, Copy, HardDrive, FolderPlus, Share2, ListTree, List, ChevronRight, ChevronDown, Folder, UnfoldVertical, FoldVertical, Layers, CalendarClock } from 'lucide-react';
 import type { PlanCategory, PlanOp, PlanTargetProgress, TargetPlan, DiffResult, SourceSpec, RunSummary } from '@shared/types';
@@ -15,7 +15,7 @@ import { tx } from '../lib/i18n';
 import { locale, t, tk } from '@shared/i18n';
 import { MODE_OPTIONS } from '../pages/SendPage';
 import { BusyBadge } from './BusyBadge';
-import { StatusIcon } from './RunPanel';
+import { StatusIcon, useGroupOf } from './RunPanel';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
@@ -34,7 +34,7 @@ const approx = (ms: number) => (ms < 9500 ? t('{s} sn', { s: Math.max(1, Math.ro
  * check said yes); then by themselves, or after a go in the run window. Off unless switched on for this send.
  */
 /** "Send later": the reviewed send at a time of its own, planned again then; the machines that are off can be woken before. */
-function LaterModal({ planId, estimateMs, onClose, onDone }: { planId: string; estimateMs?: number; onClose: () => void; onDone: () => void }) {
+function LaterModal({ planId, estimateMs, exclude, onClose, onDone }: { planId: string; estimateMs?: number; exclude?: string[]; onClose: () => void; onDone: () => void }) {
   const toast = useApp((s) => s.toast);
   // tonight at 22:00, or in an hour when that has passed
   const initial = (() => {
@@ -51,7 +51,7 @@ function LaterModal({ planId, estimateMs, onClose, onDone }: { planId: string; e
   const save = async () => {
     setBusy(true);
     try {
-      await api.scheduleSend(planId, at, wake);
+      await api.scheduleSend(planId, at, wake, exclude?.length ? exclude : undefined);
       toast('ok', t('Gönderim zamanlandı'), new Date(at).toLocaleString(locale()));
       onDone();
     } catch (e) {
@@ -249,6 +249,7 @@ export function PlanningOverlay() {
 
 const NO_SELECTION: Record<string, Set<string>> = {};
 const NO_TARGETS: TargetPlan[] = [];
+const NO_IDS: string[] = [];
 
 export function PlanReview() {
   const review = useApp((s) => s.review);
@@ -294,6 +295,35 @@ export function PlanReview() {
   const plan = shown?.plan;
   const selected = shown?.selected ?? NO_SELECTION;
   const targets = plan?.targets ?? NO_TARGETS;
+  // machines taken out of this send here: greyed in the list, left out of the counts and of the send
+  const excluded = shown?.excluded ?? NO_IDS;
+  const outSet = useMemo(() => new Set(excluded), [excluded]);
+  const setExcluded = useApp((s) => s.setReviewExcluded);
+  const include = (ids: string[], on: boolean) => {
+    const next = new Set(excluded);
+    for (const id of ids) on ? next.delete(id) : next.add(id);
+    // a machine behind a relay comes back with its relay, and a relay brings its machines back with it
+    if (on)
+      for (const id of ids) {
+        const via = targets.find((x) => x.targetId === id)?.via;
+        if (via) next.delete(via);
+        for (const x of targets) if (x.via === id) next.delete(x.targetId);
+      }
+    // the relay sends from its own disk: without it the machines behind it get nothing either
+    for (const x of targets) if (x.via && next.has(x.via)) next.add(x.targetId);
+    setExcluded([...next]);
+  };
+  // the machines by their group, in the order they come (a list without groups stays as it is)
+  const groupOf = useGroupOf();
+  const grouped = useMemo(() => {
+    const m = new Map<string, TargetPlan[]>();
+    for (const tp of targets) {
+      const g = groupOf.get(tp.targetId) ?? '';
+      m.set(g, [...(m.get(g) ?? []), tp]);
+    }
+    return [...m.entries()];
+  }, [targets, groupOf]);
+  const showGroups = grouped.some(([g]) => g);
   useEffect(() => setActive(null), [plan?.id]);
   // the speed of the last sends, for how long this one should take
   const planId = plan?.id;
@@ -324,8 +354,12 @@ export function PlanReview() {
     targets.find((tp) => tp.targetId === active) ?? targets.find((tp) => tp.reachable && tp.ops.length) ?? targets.find((tp) => tp.reachable) ?? targets[0];
 
   const totals = useMemo(() => {
-    const r = { new: 0, changed: 0, targetNewer: 0, remove: 0, same: 0, ops: 0, bytes: 0, targets: 0, unreachable: 0, per: [] as { id: string; bytes: number; ops: number }[] };
+    const r = { new: 0, changed: 0, targetNewer: 0, remove: 0, same: 0, ops: 0, bytes: 0, targets: 0, unreachable: 0, out: 0, per: [] as { id: string; bytes: number; ops: number }[] };
     for (const tp of targets) {
+      if (outSet.has(tp.targetId)) {
+        r.out++;
+        continue;
+      }
       if (!tp.reachable) {
         r.unreachable++;
         continue;
@@ -354,7 +388,7 @@ export function PlanReview() {
       }
     }
     return r;
-  }, [targets, selected]);
+  }, [targets, selected, outSet]);
   const parallel = plan?.request.options.parallelTargets ?? 1;
   const firstStage = review?.stages?.first;
   const estimate = useMemo(() => (past ? estimateSend(past, totals.per, parallel, firstStage) : null), [past, totals.per, parallel, firstStage]);
@@ -450,6 +484,7 @@ export function PlanReview() {
             </span>
           )}
           {totals.unreachable > 0 && <span className="badge red">{t('{n} erişilemedi', { n: totals.unreachable })}</span>}
+          {totals.out > 0 && <span className="badge">{t('{n} makine çıkarıldı', { n: totals.out })}</span>}
           <span className="spacer" />
           <label className="check-label" onClick={() => setDry(!dryRun)}>
             <Switch on={dryRun} onChange={(v) => setDry(v)} />
@@ -461,7 +496,7 @@ export function PlanReview() {
               {t('Sonra gönder…')}
             </Button>
           )}
-          {later && <LaterModal planId={plan.id} estimateMs={laterMs} onClose={() => setLater(false)} onDone={() => {
+          {later && <LaterModal planId={plan.id} estimateMs={laterMs} exclude={excluded} onClose={() => setLater(false)} onDone={() => {
                 setLater(false);
                 close();
               }} />}
@@ -505,18 +540,46 @@ export function PlanReview() {
             </div>
           </div>
         )}
-        {!dryRun && !readOnly && <StagesCard targets={targets} selected={selected} />}
+        {!dryRun && !readOnly && <StagesCard targets={targets.filter((tp) => !outSet.has(tp.targetId) && !(tp.via && outSet.has(tp.via)))} selected={selected} />}
         <div className="plan-split">
           <div className="plan-targets">
-            {targets.map((tp) => {
+            {grouped.map(([g, list]) => (
+              <Fragment key={g || '-'}>
+                {showGroups && (
+                  // a group as a whole: in or out of this send
+                  <div className="plan-group-head">
+                    <Checkbox
+                      checked={list.some((x) => !outSet.has(x.targetId))}
+                      mixed={list.some((x) => outSet.has(x.targetId)) && list.some((x) => !outSet.has(x.targetId))}
+                      onChange={(v) => include(list.map((x) => x.targetId), v)}
+                      disabled={readOnly}
+                      label={t('{name} grubu gönderilsin', { name: g || t('Grupsuz') })}
+                    />
+                    <b className="ellipsis grow">{g || t('Grupsuz')}</b>
+                    <span className="faint tabular">
+                      {list.filter((x) => !outSet.has(x.targetId)).length}/{list.length}
+                    </span>
+                  </div>
+                )}
+                {list.map((tp) => {
               const sel = selected[tp.targetId] ?? new Set();
+              const isOut = outSet.has(tp.targetId);
               return (
-                <button key={tp.targetId} className={cls('plan-target', current?.targetId === tp.targetId && 'active', !tp.reachable && 'down')} onClick={() => setActive(tp.targetId)}>
+                <div key={tp.targetId} className={cls('plan-target-row', isOut && 'out')}>
+                <Checkbox
+                  checked={!isOut}
+                  onChange={(v) => include([tp.targetId], v)}
+                  disabled={readOnly}
+                  label={t('{name} gönderilsin', { name: tp.targetName })}
+                  tip={isOut ? t('Bu gönderimden çıkarıldı; işaretleyince geri gelir') : t('İşareti kaldırınca bu makine gönderimden çıkar')}
+                />
+                <button className={cls('plan-target', current?.targetId === tp.targetId && 'active', !tp.reachable && 'down')} onClick={() => setActive(tp.targetId)}>
                   <div className="row">
                     {readOnly && runTarget(tp.targetId) ? <StatusIcon status={runTarget(tp.targetId)!.status} size={13} /> : <span className={cls('dot', !tp.reachable ? 'bad' : tp.busyBy?.length ? 'busy' : 'ok')} />}
                     <span className="ellipsis grow" style={{ fontWeight: 580 }}>
                       {tp.targetName}
                     </span>
+                    {isOut && <span className="badge">{t('çıkarıldı')}</span>}
                     {tp.reachable && !!tp.busyBy?.length && <BusyBadge nodeId={tp.targetId} name={tp.targetName} programs={tp.busyBy} held={tp.held} small />}
                     {tp.reachable && !dryRun && !readOnly && (estimate?.perTarget[tp.targetId] ?? 0) >= 1000 && (
                       <span
@@ -561,8 +624,11 @@ export function PlanReview() {
                     </div>
                   )}
                 </button>
+                </div>
               );
             })}
+              </Fragment>
+            ))}
           </div>
           {current && (
             <TargetOps
@@ -630,22 +696,31 @@ function TargetOps({
     setViewState(val);
     writeStored('samsync.review.view', val);
   };
-  /** Folders the user unfolded; null until touched, then the first level opens by itself. */
+  /** Folders the user unfolded; null until touched, then the first level opens by itself (or none, once closed all). */
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
+  const [startClosed, setStartClosed] = useState(() => readStored<boolean>('samsync.review.closed', false));
 
   const ql = q.trim().toLowerCase();
   const f = FILTERS.find((x) => x.id === filter)!;
   const rows = useMemo(() => plan.ops.filter((o) => f.match(o) && (!ql || o.rel.toLowerCase().includes(ql))), [plan.ops, f, ql]);
   const tree = useMemo(() => (view === 'tree' ? buildOpTree(rows) : null), [rows, view]);
-  const open = useMemo(() => expanded ?? new Set(tree ? defaultExpanded(tree) : []), [expanded, tree]);
+  const open = useMemo(() => expanded ?? new Set(tree && !startClosed ? defaultExpanded(tree) : []), [expanded, tree, startClosed]);
   // while searching, every match stays in sight
   const isOpen = (p: string) => !!ql || open.has(p);
   const items = useMemo<TreeRow[]>(() => (tree ? flattenTree(tree, isOpen) : rows.map((op) => ({ kind: 'op', op, depth: 0 }))), [tree, rows, open, ql]); // eslint-disable-line react-hooks/exhaustive-deps
   const v = useVirtualizer({ count: items.length, getScrollElement: () => parent.current, estimateSize: () => 34, overscan: 20 });
-  const toggleFolder = (p: string) => {
+  // Alt: the folder with every folder below it
+  const toggleFolder = (p: string, deep?: TreeNode) => {
     const next = new Set(open);
-    next.has(p) ? next.delete(p) : next.add(p);
+    const opening = !next.has(p);
+    for (const f of [p, ...(deep ? allFolders(deep) : [])]) opening ? next.add(f) : next.delete(f);
     setExpanded(next);
+  };
+  // all closed or all open; closing all is kept, so the next plan starts closed too
+  const foldAll = (close: boolean) => {
+    setExpanded(close || !tree ? new Set() : new Set(allFolders(tree)));
+    setStartClosed(close);
+    writeStored('samsync.review.closed', close);
   };
   const branchState = (n: TreeNode) => {
     const sel = n.all.filter((o) => selected.has(o.id)).length;
@@ -814,8 +889,15 @@ function TargetOps({
         <span className="spacer" />
         {view === 'tree' && tree && (
           <>
-            <Button size="sm" variant="ghost" iconOnly icon={<UnfoldVertical size={13} />} tip={t('Tümünü aç')} onClick={() => setExpanded(new Set(allFolders(tree)))} />
-            <Button size="sm" variant="ghost" iconOnly icon={<FoldVertical size={13} />} tip={t('Tümünü kapat')} onClick={() => setExpanded(new Set())} />
+            {open.size > 0 ? (
+              <Button size="sm" variant="ghost" icon={<FoldVertical size={13} />} tip={t('Bütün klasörleri kapatır; sonraki planlar da kapalı açılır. Alt+tık bir klasörü altındakilerle birlikte açar ya da kapatır')} onClick={() => foldAll(true)}>
+                {t('Tümünü kapat')}
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" icon={<UnfoldVertical size={13} />} tip={t('Bütün klasörleri açar')} onClick={() => foldAll(false)}>
+                {t('Tümünü aç')}
+              </Button>
+            )}
           </>
         )}
         <span className="segmented sm" role="group">
@@ -899,7 +981,7 @@ function TargetOps({
                   const st = branchState(n);
                   const isOn = isOpen(n.path);
                   return (
-                    <div key={`d:${n.path}`} className={cls('list-row', 'op-row', 'tree-row', !st.all && !st.some && 'off')} style={{ ...place, paddingLeft: 12 + (n.depth - 1) * 18 }} onClick={() => toggleFolder(n.path)}>
+                    <div key={`d:${n.path}`} className={cls('list-row', 'op-row', 'tree-row', !st.all && !st.some && 'off')} style={{ ...place, paddingLeft: 12 + (n.depth - 1) * 18 }} onClick={(e) => toggleFolder(n.path, e.altKey ? n : undefined)}>
                       <span onClick={(e) => e.stopPropagation()}>
                         <Checkbox checked={st.all} mixed={st.some} onChange={(val) => toggleBranch(n, val)} disabled={readOnly} />
                       </span>

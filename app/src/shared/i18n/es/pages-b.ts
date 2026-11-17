@@ -844,6 +844,14 @@ const d: Dict = {
   'gönderilmiyor': 'no se envía',
   'yazıldı': 'escrito',
   hata: 'error',
+  '{n} makine çıkarıldı': pl('1 máquina quitada', '{n} máquinas quitadas'),
+  '{name} grubu gönderilsin': 'Enviar al grupo {name}',
+  Grupsuz: 'Sin grupo',
+  'Bu gönderimden çıkarıldı; işaretleyince geri gelir': 'Quitada de este envío; márquela para volver a incluirla',
+  'İşareti kaldırınca bu makine gönderimden çıkar': 'Desmarque para quitar esta máquina del envío',
+  'çıkarıldı': 'quitada',
+  'Bütün klasörleri kapatır; sonraki planlar da kapalı açılır. Alt+tık bir klasörü altındakilerle birlikte açar ya da kapatır': 'Cierra todas las carpetas; los próximos planes se abren cerrados también. Alt+clic abre o cierra una carpeta con todo lo que contiene',
+  'Bütün klasörleri açar': 'Abre todas las carpetas',
 };
 
 export default d;

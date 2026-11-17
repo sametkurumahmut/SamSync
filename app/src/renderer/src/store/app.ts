@@ -126,6 +126,8 @@ export interface Review {
   selected: Record<string, Set<string>>;
   /** A staged send: these machines first, the rest once they went through (by themselves with auto). */
   stages?: { first: string[]; auto: boolean };
+  /** Machines taken out of the send here (they stay in the list, greyed). */
+  excluded?: string[];
 }
 
 export const DEFAULT_OPTIONS: SendOptions = DEFAULT_SEND_OPTIONS;
@@ -269,6 +271,7 @@ interface State {
   closeReview(): void;
   setReviewSelection(targetId: string, ids: Set<string>): void;
   setReviewStages(stages: Review['stages']): void;
+  setReviewExcluded(ids: string[]): void;
   executeReview(dryRun?: boolean): Promise<void>;
   watchRun(runId: string): void;
 
@@ -781,6 +784,13 @@ export const useApp = create<State>((set, get) => ({
     if (!r) return;
     set({ review: { ...r, selected: { ...r.selected, [targetId]: ids } } });
   },
+  setReviewExcluded(ids) {
+    const r = get().review;
+    if (!r) return;
+    // a stage of machines that are out is no stage
+    const first = r.stages?.first.filter((id) => !ids.includes(id));
+    set({ review: { ...r, excluded: ids.length ? ids : undefined, stages: r.stages && first?.length ? { ...r.stages, first } : undefined } });
+  },
   setReviewStages(stages) {
     const r = get().review;
     if (r) set({ review: { ...r, stages } });
@@ -796,7 +806,7 @@ export const useApp = create<State>((set, get) => ({
     const dry = dryRun ?? r.plan.request.options.dryRun;
     if (deletes && !dry && !(await askConfirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }), { danger: true }))) return;
     try {
-      const runId = await api.executePlan(r.plan.id, selected, { ...(dryRun != null ? { dryRun } : {}), ...(r.stages?.first.length && !dry ? { stages: r.stages } : {}) });
+      const runId = await api.executePlan(r.plan.id, selected, { ...(dryRun != null ? { dryRun } : {}), ...(r.stages?.first.length && !dry ? { stages: r.stages } : {}), ...(r.excluded?.length ? { exclude: r.excluded } : {}) });
       // the plan stays with its run, so it can be looked at while the files go (the last three)
       const kept = Object.entries({ ...get().runPlans, [runId]: r }).slice(-3);
       set({ review: null, runPlans: Object.fromEntries(kept) });

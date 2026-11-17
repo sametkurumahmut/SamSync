@@ -261,11 +261,14 @@ export class Service implements Api {
   /** Sends set for a time of their own (Send later in the review). */
   readonly later: ScheduledSends;
 
-  async scheduleSend(planId: string, at: number, wake: boolean): Promise<ScheduledSend> {
+  async scheduleSend(planId: string, at: number, wake: boolean, exclude?: string[]): Promise<ScheduledSend> {
     const plan = this.plans.get(planId);
     if (!plan) throw new Error(t('Plan bulunamadı ya da eskidi; yeniden inceleyin.'));
     if (at < Date.now() + 10_000) throw new Error(t('Gelecekte bir zaman seçin.'));
-    const item = await this.later.add(plan.request, at, wake);
+    // machines taken out in the review stay out: the machines of the plan by name (a group or a tag would bring them back)
+    const out = new Set(exclude ?? []);
+    const request = out.size ? { ...plan.request, targetIds: plan.targets.map((tp) => tp.targetId).filter((id) => !out.has(id)) } : plan.request;
+    const item = await this.later.add(request, at, wake);
     this.log.info(t('Sonra gönder'), t('{label}: {at} için kuruldu', { label: plan.request.label || t('Gönderim'), at: new Date(at).toLocaleString() }));
     return item;
   }
@@ -1317,8 +1320,10 @@ export class Service implements Api {
   runPlan(
     plan: SendPlan,
     selected: Record<string, string[]> | 'default',
-    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; kind?: NotifyKind; stages?: { first: string[]; auto: boolean }; fromRelay?: 'job' | 'queue' } = {},
+    overrides: { dryRun?: boolean; notify?: boolean; unreachableFails?: boolean; queueUnreachable?: boolean; nodes?: NodeConfig[]; channel?: boolean; kind?: NotifyKind; stages?: { first: string[]; auto: boolean }; fromRelay?: 'job' | 'queue'; exclude?: string[] } = {},
   ): RunHandle {
+    // machines taken out in the review: nothing goes to them, and a relay taken out takes the machines behind it along
+    const out = new Set(overrides.exclude ?? []);
     const ctx = this.ctx();
     // targets outside the configuration (a watch's plain folders) come with the plan
     const nodeOf = (id: string) => findNode(this.config, id) ?? overrides.nodes?.find((n) => n.id === id);
@@ -1327,7 +1332,7 @@ export class Service implements Api {
     // the machines behind a relay: they ride on the relay's group
     const relayed = new Map<string, NodeConfig[]>();
     for (const tp of plan.targets) {
-      if (!tp.via) continue;
+      if (!tp.via || out.has(tp.targetId) || out.has(tp.via)) continue;
       const n = nodeOf(tp.targetId);
       if (n && tp.reachable) relayed.set(tp.via, [...(relayed.get(tp.via) ?? []), n]);
       else if (overrides.unreachableFails) {
@@ -1348,7 +1353,7 @@ export class Service implements Api {
       stash: relayed.get(relayId)?.length ? plan.stash?.[relayId]?.info : undefined,
     });
     for (const tp of plan.targets) {
-      if (tp.via) continue;
+      if (tp.via || out.has(tp.targetId)) continue;
       // a machine that asked to be left alone while a program keeps it busy: the send waits here until it closes
       if (tp.reachable && tp.held && !(overrides.dryRun ?? req.options.dryRun) && (req.origin === 'send' || req.origin === 'git')) {
         this.pending.add(req, tp.targetId, tp.targetName);
@@ -1651,13 +1656,13 @@ export class Service implements Api {
   }
 
   /** remember: false for the one-click menu sends, so "send with last settings" keeps what was last reviewed. */
-  async executePlan(planId: string, selected: Record<string, string[]>, overrides: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean } } = {}): Promise<string> {
+  async executePlan(planId: string, selected: Record<string, string[]>, overrides: { dryRun?: boolean; remember?: boolean; stages?: { first: string[]; auto: boolean }; exclude?: string[] } = {}): Promise<string> {
     const plan = this.plans.get(planId);
     if (!plan) throw new Error(t('Plan bulunamadı ya da eskidi; yeniden inceleyin.'));
-    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true, queueUnreachable: true, stages: overrides.stages });
+    const handle = this.runPlan(plan, selected, { dryRun: overrides.dryRun, unreachableFails: true, queueUnreachable: true, stages: overrides.stages, exclude: overrides.exclude });
     if (overrides.remember !== false) {
-      // remember what the user picked, not just the targets that happened to need changes
-      this.settings.lastTargets = plan.targets.map((tp) => tp.targetId);
+      // remember what the user picked, not just the targets that happened to need changes (nor the ones taken out)
+      this.settings.lastTargets = plan.targets.map((tp) => tp.targetId).filter((id) => !overrides.exclude?.includes(id));
       void this.persistSettings();
     }
     return handle.id;
