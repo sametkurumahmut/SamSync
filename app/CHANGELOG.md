@@ -2,6 +2,12 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.20 — 2026-11-17
+
+- **The plan while it is sent:** **Open plan** in the run panel shows the plan the send was started from, read only, while the files go: each row says whether it was written, failed or is still waiting, each machine shows how far it is, and the footer how many operations are done. The run panel steps aside meanwhile and comes back when the plan is closed.
+- **Errors behind a relay:** the relay now sends the files that failed on the machines behind it and why, while it works and at the end; they show in the log under that machine. The error count at the top of the run panel and on a machine's row show those errors in the log. The relay needs this version for it.
+- **Relay notification:** a relay that applied its own copy and still passes the pack on says *Pack applied, passing it on* with the number of machines, and *Passed on* once they have it too.
+
 ## 2.4.19 — 2026-11-13
 
 - **Run log by group or machine:** in the run panel, a group's chip (for example `Lab-A 4/4`) narrows the log below to that group's machines; with one group in the run, a click on the strip around the chip does the same. A machine's row narrows it to that machine, together with the relay it came through, and Ctrl adds another machine. The chip in the log's header, or the same click again, brings the whole log back. The lines of the whole run (its start and its end) always stay, and the error count follows the filter.

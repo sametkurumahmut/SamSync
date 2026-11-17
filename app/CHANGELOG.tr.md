@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.20 — 2026-11-17
+
+- **Gönderilirken plan:** çalıştırma panelindeki **Planı aç**, gönderimin başlatıldığı planı dosyalar giderken salt okunur gösteriyor: her satır yazıldı mı, hata mı verdi, sırada mı; her makine ne kadar ilerledi; altta kaç işlemin yapıldığı. Çalıştırma paneli bu sırada kenara çekiliyor, plan kapanınca geri geliyor.
+- **Rölenin arkasındaki hatalar:** röle artık arkasındaki makinelerde başarısız olan dosyaları ve nedenlerini çalışırken ve sonunda gönderiyor; günlükte o makinenin adıyla görünüyorlar. Çalıştırma panelinin üstündeki ve bir makinenin satırındaki hata sayısı bu hataları günlükte gösteriyor. Bunun için rölede de bu sürüm olmalı.
+- **Röle bildirimi:** kendi kopyasını uygulayıp paketi dağıtmaya devam eden röle *Paket uygulandı, dağıtılıyor* diyor ve makine sayısını yazıyor; onlar da aldığında *Dağıtım bitti* diyor.
+
 ## 2.4.19 — 2026-11-13
 
 - **Grup ya da makineye göre günlük:** çalıştırma panelinde bir grubun çipi (örneğin `Lab-A 4/4`) alttaki günlüğü o grubun makinelerine daraltıyor; çalıştırmada tek grup varken çipin çevresindeki şeride tıklamak da aynısını yapıyor. Bir makinenin satırı günlüğü o makineye, geldiği röleyle birlikte daraltıyor; Ctrl bir makine daha ekliyor. Günlük başlığındaki çip ya da aynı tıklama yeniden bütün günlüğü getiriyor. Bütün çalıştırmanın satırları (başlangıcı ve sonu) her zaman kalıyor, hata sayısı da süzgece uyuyor.
