@@ -834,6 +834,16 @@ const d: Dict = {
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Arrastre para ensanchar o estrechar la columna de ruta relativa; un doble clic la restablece',
   'Bütün günlüğü göster': 'Mostrar todo el registro',
   'Günlükte yalnızca {group} makineleri': 'Solo las máquinas de {group} en el registro',
+  'Planı aç': 'Abrir plan',
+  'Bu gönderimin planı: ne gönderildiğini, hangilerinin yazıldığını gösterir': 'El plan de este envío: qué se envía y qué archivos ya están escritos',
+  'Günlükte hataları göster': 'Mostrar los errores en el registro',
+  'Bu makinenin hatalarını günlükte göster': 'Mostrar los errores de esta máquina en el registro',
+  'gönderiliyor': 'enviando',
+  '{done}/{total} işlem yapıldı': '{done}/{total} operaciones hechas',
+  'Gönderim başladığı için seçim değiştirilemez': 'El envío ya empezó; la selección no se puede cambiar',
+  'gönderilmiyor': 'no se envía',
+  'yazıldı': 'escrito',
+  hata: 'error',
 };
 
 export default d;

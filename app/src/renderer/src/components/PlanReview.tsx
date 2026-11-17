@@ -15,6 +15,7 @@ import { tx } from '../lib/i18n';
 import { locale, t, tk } from '@shared/i18n';
 import { MODE_OPTIONS } from '../pages/SendPage';
 import { BusyBadge } from './BusyBadge';
+import { StatusIcon } from './RunPanel';
 
 export const SIGN: Record<PlanCategory, string> = { new: '+', changed: '~', targetNewer: '!', extra: '−', deleted: '−', same: '=' };
 
@@ -251,7 +252,31 @@ const NO_TARGETS: TargetPlan[] = [];
 
 export function PlanReview() {
   const review = useApp((s) => s.review);
-  const close = useApp((s) => s.closeReview);
+  // or the plan a run was started from, opened read only from the run panel while the files go
+  const viewRunId = useApp((s) => (s.review ? null : s.planView));
+  const kept = useApp((s) => (viewRunId ? s.runPlans[viewRunId] : undefined));
+  const liveRun = useApp((s) => (viewRunId ? s.runs[viewRunId] : undefined));
+  const shown = review ?? kept;
+  const readOnly = !review && !!kept;
+  const closeReview = useApp((s) => s.closeReview);
+  // back to the run panel it was opened from
+  const close = readOnly ? () => useApp.setState({ planView: null, runPanel: true }) : closeReview;
+  // what each operation came to: live from the run, then from its record once it is over
+  const runDone = !!liveRun?.done;
+  const [finalOps, setFinalOps] = useState<Map<string, boolean> | null>(null);
+  useEffect(() => {
+    setFinalOps(null);
+    if (!viewRunId || !runDone) return;
+    let live = true;
+    void api.run(viewRunId).then(
+      (d) => live && d && setFinalOps(new Map(d.results.map((r) => [`${r.key}|${r.opId}`, r.ok]))),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [viewRunId, runDone]);
+  const opsDone = finalOps ?? liveRun?.opsDone;
   const setSel = useApp((s) => s.setReviewSelection);
   const execute = useApp((s) => s.executeReview);
   const [active, setActive] = useState<string | null>(null);
@@ -266,8 +291,8 @@ export function PlanReview() {
     writeStored('samsync.planFull', !full);
   };
 
-  const plan = review?.plan;
-  const selected = review?.selected ?? NO_SELECTION;
+  const plan = shown?.plan;
+  const selected = shown?.selected ?? NO_SELECTION;
   const targets = plan?.targets ?? NO_TARGETS;
   useEffect(() => setActive(null), [plan?.id]);
   // the speed of the last sends, for how long this one should take
@@ -286,7 +311,7 @@ export function PlanReview() {
   // Ctrl Enter sends, Ctrl Shift Enter runs it as a dry run
   const runRef = useRef<((asDry: boolean) => Promise<void>) | null>(null);
   useEffect(() => {
-    if (!plan) return;
+    if (!plan || readOnly) return;
     const k = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') return;
       e.preventDefault();
@@ -294,7 +319,7 @@ export function PlanReview() {
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [plan]);
+  }, [plan, readOnly]);
   const current =
     targets.find((tp) => tp.targetId === active) ?? targets.find((tp) => tp.reachable && tp.ops.length) ?? targets.find((tp) => tp.reachable) ?? targets[0];
 
@@ -346,7 +371,10 @@ export function PlanReview() {
     return estimateSend(past, per, parallel)?.ms;
   }, [past, targets, parallel]);
 
-  if (!review || !plan) return null;
+  if (!shown || !plan) return null;
+  // the run as a whole, for the read-only footer: its operations done out of all (machines behind a relay too)
+  const runOps = liveRun ? liveRun.targets.reduce((a, x) => ({ done: a.done + x.done, total: a.total + x.total }), { done: 0, total: 0 }) : null;
+  const runTarget = (id: string) => liveRun?.targets.find((x) => x.key === id);
   const dryRun = dry ?? plan.request.options.dryRun;
   const run = async (asDry: boolean) => {
     if (busy || !totals.ops) return;
@@ -384,6 +412,7 @@ export function PlanReview() {
         <span className="row" style={{ gap: 10 }}>
           {t('Gönderim planı')}
           <span className="badge">{plan.request.label || (plan.request.origin === 'git' ? 'Git' : t('Gönder'))}</span>
+          {readOnly && <span className={cls('badge', !liveRun ? '' : runDone ? (liveRun.summary.status === 'ok' ? 'green' : 'amber') : 'blue')}>{!liveRun ? t('salt okunur') : runDone ? t('bitti') : t('gönderiliyor')}</span>}
           <span className="faint" style={{ fontSize: 12.5, fontWeight: 500 }}>
             {t('{n} kaynak', { n: plan.sources.length })} → {t('{n} hedef', { n: targets.length })} • {t('{time} içinde incelendi', { time: duration(plan.durationMs) })}
           </span>
@@ -396,6 +425,21 @@ export function PlanReview() {
       }
       onClose={close}
       footer={
+        readOnly ? (
+          <>
+            <span className="tabular">
+              {tx('{ops} işlem • {size} • {n} hedef', { ops: <b>{num(totals.ops)}</b>, size: <b>{bytes(totals.bytes)}</b>, n: <b>{totals.targets}</b> }, { opsCount: totals.ops, count: totals.targets })}
+            </span>
+            {runOps && <span className="faint tabular">{t('{done}/{total} işlem yapıldı', { done: num(runOps.done), total: num(runOps.total) })}</span>}
+            <span className="spacer" />
+            <span className="faint" style={{ fontSize: 12 }}>
+              {t('Gönderim başladığı için seçim değiştirilemez')}
+            </span>
+            <Button variant="primary" onClick={close}>
+              {t('Kapat')}
+            </Button>
+          </>
+        ) : (
         <>
           <span className="tabular">
             {tx('{ops} işlem • {size} • {n} hedef', { ops: <b>{num(totals.ops)}</b>, size: <b>{bytes(totals.bytes)}</b>, n: <b>{totals.targets}</b> }, { opsCount: totals.ops, count: totals.targets })}
@@ -433,6 +477,7 @@ export function PlanReview() {
             {dryRun ? t('Denemeyi başlat') : t('Gönder')}
           </Button>
         </>
+        )
       }
     >
       <div className="plan">
@@ -460,7 +505,7 @@ export function PlanReview() {
             </div>
           </div>
         )}
-        {!dryRun && <StagesCard targets={targets} selected={selected} />}
+        {!dryRun && !readOnly && <StagesCard targets={targets} selected={selected} />}
         <div className="plan-split">
           <div className="plan-targets">
             {targets.map((tp) => {
@@ -468,12 +513,12 @@ export function PlanReview() {
               return (
                 <button key={tp.targetId} className={cls('plan-target', current?.targetId === tp.targetId && 'active', !tp.reachable && 'down')} onClick={() => setActive(tp.targetId)}>
                   <div className="row">
-                    <span className={cls('dot', !tp.reachable ? 'bad' : tp.busyBy?.length ? 'busy' : 'ok')} />
+                    {readOnly && runTarget(tp.targetId) ? <StatusIcon status={runTarget(tp.targetId)!.status} size={13} /> : <span className={cls('dot', !tp.reachable ? 'bad' : tp.busyBy?.length ? 'busy' : 'ok')} />}
                     <span className="ellipsis grow" style={{ fontWeight: 580 }}>
                       {tp.targetName}
                     </span>
                     {tp.reachable && !!tp.busyBy?.length && <BusyBadge nodeId={tp.targetId} name={tp.targetName} programs={tp.busyBy} held={tp.held} small />}
-                    {tp.reachable && !dryRun && (estimate?.perTarget[tp.targetId] ?? 0) >= 1000 && (
+                    {tp.reachable && !dryRun && !readOnly && (estimate?.perTarget[tp.targetId] ?? 0) >= 1000 && (
                       <span
                         className={cls('tabular nowrap', slow[tp.targetId] ? 'plan-slow' : 'faint')}
                         style={{ fontSize: 11 }}
@@ -482,7 +527,8 @@ export function PlanReview() {
                         ≈{approx(estimate!.perTarget[tp.targetId])}
                       </span>
                     )}
-                    {tp.reachable && <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>}
+                    {/* read only: how far this machine is; otherwise how many of its operations are picked */}
+                    {tp.reachable && (readOnly && runTarget(tp.targetId) ? <span className="faint tabular" style={{ fontSize: 11.5 }}>{runTarget(tp.targetId)!.done}/{runTarget(tp.targetId)!.total}</span> : <span className="faint tabular" style={{ fontSize: 11.5 }}>{sel.size}</span>)}
                   </div>
                   {(tp.mode !== plan.request.options.mode || tp.backup !== plan.request.options.backup) && (
                     <div className="row" style={{ gap: 4, marginTop: 4 }} data-tip={t('Bu hedefe özel kip ve yedek')}>
@@ -518,7 +564,19 @@ export function PlanReview() {
               );
             })}
           </div>
-          {current && <TargetOps key={current.targetId} plan={current} selected={selected[current.targetId] ?? new Set()} onChange={(s) => setSel(current.targetId, s)} sources={plan.request.sources} onApplyAll={targets.length > 1 ? applyToAll : undefined} />}
+          {current && (
+            <TargetOps
+              key={current.targetId}
+              plan={current}
+              selected={selected[current.targetId] ?? new Set()}
+              onChange={(s) => setSel(current.targetId, s)}
+              sources={plan.request.sources}
+              onApplyAll={targets.length > 1 && !readOnly ? applyToAll : undefined}
+              readOnly={readOnly}
+              opState={readOnly ? (id) => opsDone?.get(`${current.targetId}|${id}`) : undefined}
+              running={readOnly && !!liveRun && !runDone}
+            />
+          )}
         </div>
       </div>
     </Modal>
@@ -539,12 +597,21 @@ function TargetOps({
   selected,
   onChange,
   onApplyAll,
+  readOnly,
+  opState,
+  running,
 }: {
   plan: TargetPlan;
   selected: Set<string>;
   onChange: (s: Set<string>) => void;
   sources: SourceSpec[];
   onApplyAll?: () => void;
+  /** The plan of a run that already started: nothing can be picked, each row says what became of it. */
+  readOnly?: boolean;
+  /** An operation written (true) or failed (false); undefined: not yet, or not known. */
+  opState?: (opId: string) => boolean | undefined;
+  /** The run still goes: a picked row with no result yet is waiting its turn. */
+  running?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
@@ -618,6 +685,7 @@ function TargetOps({
 
   const visSel = rows.filter((o) => selected.has(o.id)).length;
   const toggle = (op: PlanOp, on: boolean) => {
+    if (readOnly) return;
     const next = new Set(selected);
     const affected = op.isDir && op.kind !== 'mkdir' ? plan.ops.filter((o) => o === op || o.rel.toLowerCase().startsWith(op.rel.toLowerCase() + '/')) : [op];
     for (const o of affected) on ? next.add(o.id) : next.delete(o.id);
@@ -626,11 +694,13 @@ function TargetOps({
     onChange(next);
   };
   const setAll = (on: boolean) => {
+    if (readOnly) return;
     const next = new Set(selected);
     for (const o of rows) on ? next.add(o.id) : next.delete(o.id);
     onChange(next);
   };
   const toggleBranch = (n: TreeNode, on: boolean) => {
+    if (readOnly) return;
     const next = new Set(selected);
     for (const o of n.all) on ? next.add(o.id) : next.delete(o.id);
     onChange(next);
@@ -769,7 +839,7 @@ function TargetOps({
       ) : (
         <>
           <div className="table-head">
-            <Checkbox checked={visSel === rows.length} mixed={visSel > 0 && visSel < rows.length} onChange={setAll} />
+            <Checkbox checked={visSel === rows.length} mixed={visSel > 0 && visSel < rows.length} onChange={setAll} disabled={readOnly} />
             <span style={{ width: 20 }} />
             <span className="grow">{t('Göreli yol')}</span>
             <span className="col-status-head" style={{ width: statusW }}>
@@ -831,7 +901,7 @@ function TargetOps({
                   return (
                     <div key={`d:${n.path}`} className={cls('list-row', 'op-row', 'tree-row', !st.all && !st.some && 'off')} style={{ ...place, paddingLeft: 12 + (n.depth - 1) * 18 }} onClick={() => toggleFolder(n.path)}>
                       <span onClick={(e) => e.stopPropagation()}>
-                        <Checkbox checked={st.all} mixed={st.some} onChange={(val) => toggleBranch(n, val)} />
+                        <Checkbox checked={st.all} mixed={st.some} onChange={(val) => toggleBranch(n, val)} disabled={readOnly} />
                       </span>
                       <span className="tree-chevron">{isOn ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
                       <Folder size={13} className="tree-folder-icon" />
@@ -861,7 +931,7 @@ function TargetOps({
                 const canDiff = o.kind === 'copy' && !o.isDir && o.dstSize != null;
                 return (
                   <div key={o.id} className={cls('list-row', 'op-row', !on && 'off')} style={{ ...place, paddingLeft: view === 'tree' ? 12 + item.depth * 18 + 20 : undefined }} onClick={() => toggle(o, !on)}>
-                    <Checkbox checked={on} onChange={(val) => toggle(o, val)} />
+                    <Checkbox checked={on} onChange={(val) => toggle(o, val)} disabled={readOnly} />
                     <span className={cls('sign', o.category)}>{o.isDir && o.category === 'new' ? <FolderPlus size={12} /> : SIGN[o.category]}</span>
                     <span className="path grow" title={o.note ? `${o.rel}\n${o.note}` : o.rel}>
                       {view === 'flat' && dir && <span className="dir">{'\u200e' + dir + '\u200e'}</span>}
@@ -870,9 +940,16 @@ function TargetOps({
                         {o.isDir ? '/' : ''}
                       </span>
                     </span>
-                    <span className={cls('op-status', o.category)} style={{ width: statusW }}>
-                      {opStatus(o, on)}
-                    </span>
+                    {(() => {
+                      // read only: what became of it in the run; otherwise what the plan will do
+                      const got = readOnly ? opState?.(o.id) : undefined;
+                      const text = !readOnly ? opStatus(o, on) : !on ? t('gönderilmiyor') : got === true ? (o.kind === 'delete' ? t('silindi') : t('yazıldı')) : got === false ? t('hata') : running ? t('sırada') : opStatus(o, on);
+                      return (
+                        <span className={cls('op-status', readOnly && on && got !== undefined ? (got ? 'written' : 'failed') : o.category)} style={{ width: statusW }}>
+                          {text}
+                        </span>
+                      );
+                    })()}
                     <span className="faint tabular" style={{ width: 80, textAlign: 'right' }}>
                       {o.isDir ? '' : bytes(o.kind === 'delete' ? o.dstSize ?? o.size : o.size)}
                     </span>

@@ -831,6 +831,16 @@ const d: Dict = {
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Ziehen: macht die Spalte für den relativen Pfad breiter oder schmaler; Doppelklick setzt sie zurück',
   'Bütün günlüğü göster': 'Ganzes Protokoll zeigen',
   'Günlükte yalnızca {group} makineleri': 'Im Protokoll nur die Maschinen von {group}',
+  'Planı aç': 'Plan öffnen',
+  'Bu gönderimin planı: ne gönderildiğini, hangilerinin yazıldığını gösterir': 'Plan dieser Sendung: was gesendet wird und welche Dateien schon geschrieben sind',
+  'Günlükte hataları göster': 'Fehler im Protokoll zeigen',
+  'Bu makinenin hatalarını günlükte göster': 'Fehler dieser Maschine im Protokoll zeigen',
+  'gönderiliyor': 'wird gesendet',
+  '{done}/{total} işlem yapıldı': '{done}/{total} Vorgänge erledigt',
+  'Gönderim başladığı için seçim değiştirilemez': 'Die Sendung läuft, die Auswahl lässt sich nicht mehr ändern',
+  'gönderilmiyor': 'wird nicht gesendet',
+  'yazıldı': 'geschrieben',
+  hata: 'Fehler',
 };
 
 export default d;

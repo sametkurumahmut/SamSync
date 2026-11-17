@@ -831,6 +831,16 @@ const d: Dict = {
   'Sürükleyin: göreli yol sütununu genişletir ya da daraltır; çift tık eski hâline getirir': 'Drag to widen or narrow the relative path column; a double click resets it',
   'Bütün günlüğü göster': 'Show the whole log',
   'Günlükte yalnızca {group} makineleri': 'Only the {group} machines in the log',
+  'Planı aç': 'Open plan',
+  'Bu gönderimin planı: ne gönderildiğini, hangilerinin yazıldığını gösterir': 'This send’s plan: what is being sent and which files are written already',
+  'Günlükte hataları göster': 'Show the errors in the log',
+  'Bu makinenin hatalarını günlükte göster': 'Show this machine’s errors in the log',
+  'gönderiliyor': 'sending',
+  '{done}/{total} işlem yapıldı': '{done}/{total} operations done',
+  'Gönderim başladığı için seçim değiştirilemez': 'The send has started, so the selection cannot change',
+  'gönderilmiyor': 'not sent',
+  'yazıldı': 'written',
+  hata: 'error',
 };
 
 export default d;

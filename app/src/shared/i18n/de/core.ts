@@ -554,6 +554,12 @@ const d: Dict = {
   'paketi uyguluyor, ardından dağıtacak…': 'wendet das Paket an, gibt es dann weiter…',
   'işi aldı, dağıtıyor…': 'hat den Auftrag, gibt ihn weiter…',
   '{s} sn içinde yanıt vermedi; disk ya da paylaşım hazır olunca yeniden okuyun': 'hat in {s} s nicht geantwortet; neu lesen, sobald Festplatte oder Freigabe bereit ist',
+  '✓ Paket uygulandı, dağıtılıyor: {label}': '✓ Paket angewendet, wird weitergegeben: {label}',
+  '{n} makineye dağıtılıyor': 'wird an {n} Maschinen weitergegeben',
+  '✓ Dağıtım bitti: {label}': '✓ Weitergegeben: {label}',
+  '✕ Dağıtım hatalı bitti: {label}': '✕ Weitergabe mit Fehlern beendet: {label}',
+  '{ok}/{n} makine tamam': '{ok}/{n} Maschinen fertig',
+  '{name}: {n} hata daha; hepsi rölenin Geçmiş sayfasında': '{name}: {n} weitere Fehler; alle stehen auf der Verlaufsseite des Relais',
 };
 
 export default d;

@@ -72,6 +72,8 @@ export interface RelayTargetResult {
   backedUpOps?: string[];
   /** The machine's command after applying, as a health check. */
   check?: import('./types').TargetCheck;
+  /** For a machine behind the relay: the files that failed there and why (the first 100), so the sender can say. */
+  failures?: RelayFailure[];
   /** For the relay's own apply of a pack: how long it took there, in milliseconds. */
   ms?: number;
 }
@@ -93,6 +95,14 @@ export interface RelayTargetProgress {
   failed: number;
   bytesDone: number;
   bytesTotal: number;
+  /** The last files that failed on this machine and why, while the job runs (a relay up to 2.4.19 tells none). */
+  errors?: RelayFailure[];
+}
+
+/** One file that could not be written on a machine behind a relay. */
+export interface RelayFailure {
+  rel: string;
+  error: string;
 }
 
 /**

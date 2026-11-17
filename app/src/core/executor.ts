@@ -118,6 +118,8 @@ export interface RunHandle {
   cancelTarget(key: string): void;
   /** Where every target is right now (copies, for a relay telling its sender). */
   targets(): RunTargetState[];
+  /** The last `max` operations that failed on a target, with why (a relay tells its sender). */
+  failures(key: string, max: number): { rel: string; error: string }[];
 }
 
 const TMP_SUFFIX = '.samsync-tmp';
@@ -241,7 +243,13 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     };
   };
 
-  const emitProgress = throttle(() => ctx.emit({ type: 'run-progress', runId: id, targets: states.map((x) => ({ ...x })) }), 150);
+  // with the machines' state, the operations finished since the last time: the plan can be followed file by file
+  let sentOps = 0;
+  const emitProgress = throttle(() => {
+    const fresh = results.slice(sentOps);
+    sentOps = results.length;
+    ctx.emit({ type: 'run-progress', runId: id, targets: states.map((x) => ({ ...x })), ops: fresh.length ? fresh.map((r): [string, string, 0 | 1] => [r.key, r.opId, r.ok ? 1 : 0]) : undefined });
+  }, 150);
   // the lines go to the run's log file as they come; memory keeps only the tail of a big run
   const sink = ctx.runLog?.(id);
   const emitLog = throttle(() => {
@@ -1020,7 +1028,7 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   }
 
   /** The rows of the machines behind a relay follow what the relay reported for them. */
-  function applyRelayResult(rows: RunTargetState[], result: { targets: { targetId: string; status: string; opsOk: number; opsFailed: number; bytes: number; error?: string; check?: RunTargetState['check'] }[] }) {
+  function applyRelayResult(rows: RunTargetState[], result: { targets: { targetId: string; status: string; opsOk: number; opsFailed: number; bytes: number; error?: string; check?: RunTargetState['check']; failures?: { rel: string; error: string }[] }[] }) {
     for (const r of rows) {
       const got = result.targets.find((x) => x.targetId === r.key);
       if (!got) {
@@ -1031,7 +1039,10 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
         log('warn', t('{name}: kapalı; röle açılınca teslim edecek', { name: r.title }), r.key);
       } else {
         Object.assign(r, { status: got.status, done: got.opsOk + got.opsFailed, failed: got.opsFailed, total: Math.max(got.opsOk + got.opsFailed, 1), bytesTotal: got.bytes, bytesDone: got.bytes, error: got.error, check: got.check });
+        // which files failed there and why: the ones the relay told while it ran, then the rest of its list
+        const told = logRelayErrors(r.key, got.failures);
         if (got.status !== 'ok') log('error', t('{name}: röle dağıtımı başarısız ({ok} başarılı, {failed} hatalı){error}', { name: r.title, ok: got.opsOk, failed: got.opsFailed, error: got.error ? `: ${got.error}` : '' }), r.key);
+        if (got.opsFailed > told && told > 0) log('warn', t('{name}: {n} hata daha; hepsi rölenin Geçmiş sayfasında', { name: r.title, n: got.opsFailed - told }), r.key);
         else log('ok', t('{name}: röle dağıttı ({ok} işlem, {size})', { name: r.title, ok: got.opsOk, size: formatBytes(got.bytes) }), r.key);
       }
       r.finishedAt = Date.now();
@@ -1039,8 +1050,22 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
   }
 
   /** The rows of the machines behind a relay while it sends to them: how far each is, and the ones already through. */
+  /** The files a relay said failed on a machine behind it, logged once each under that machine. */
+  const relayErrSeen = new Map<string, Set<string>>();
+  function logRelayErrors(key: string, errs: { rel: string; error: string }[] | undefined): number {
+    const seen = relayErrSeen.get(key) ?? new Set<string>();
+    relayErrSeen.set(key, seen);
+    for (const e of errs ?? []) {
+      if (seen.has(e.rel)) continue;
+      seen.add(e.rel);
+      log('error', `${e.rel}: ${e.error}`, key);
+    }
+    return seen.size;
+  }
+
   function followRelay(rows: RunTargetState[], progress: RelayTargetProgress[] | undefined) {
     for (const x of progress ?? []) {
+      logRelayErrors(x.targetId, x.errors);
       const r = rows.find((y) => y.key === x.targetId);
       if (!r || r.status !== 'running') continue;
       const through = x.status === 'ok' || x.status === 'partial' || x.status === 'failed';
@@ -1123,6 +1148,14 @@ export function startRun(ctx: CoreContext, groups: ExecGroup[], s: ExecSettings)
     },
     targets() {
       return states.map((x) => ({ ...x }));
+    },
+    failures(key: string, max: number) {
+      const out: { rel: string; error: string }[] = [];
+      for (let i = results.length - 1; i >= 0 && out.length < max; i--) {
+        const r = results[i];
+        if (r.key === key && !r.ok) out.push({ rel: r.rel, error: r.error ?? '' });
+      }
+      return out.reverse();
     },
   };
 }

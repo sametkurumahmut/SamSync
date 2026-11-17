@@ -116,6 +116,9 @@ export interface LiveRun {
 
   /** Bytes done over time (all targets together), for the throughput chart. */
   samples: Sample[];
+  /** The operations written (true) or failed (false) so far, by `key|opId`, and when that last changed. */
+  opsDone?: Map<string, boolean>;
+  opsAt?: number;
 }
 
 export interface Review {
@@ -159,6 +162,10 @@ interface State {
   palette: boolean;
   /** Where the Settings page goes when it opens or this changes (the command palette): a card by its id, or a search. */
   settingsJump: { section?: string; find?: string; at: number } | null;
+  /** The plan each recent run was started from (the last few), to look at it while the run goes on. */
+  runPlans: Record<string, Review>;
+  /** The run whose plan is open, read only (from the run panel). */
+  planView: string | null;
   /** The machine the Targets page shows when it opens or this changes (the command palette). */
   targetsJump: { node: string; at: number } | null;
   /** The keyboard shortcuts list is open. */
@@ -348,6 +355,8 @@ export const useApp = create<State>((set, get) => ({
   palette: false,
   settingsJump: null,
   targetsJump: null,
+  runPlans: {},
+  planView: null,
   shortcuts: false,
   whatsNew: null,
   helpBot: false,
@@ -788,7 +797,9 @@ export const useApp = create<State>((set, get) => ({
     if (deletes && !dry && !(await askConfirm(t('Ayna kipi hedeflerde toplam {n} öğe silecek. Gönderim sürsün mü?', { n: deletes }), { danger: true }))) return;
     try {
       const runId = await api.executePlan(r.plan.id, selected, { ...(dryRun != null ? { dryRun } : {}), ...(r.stages?.first.length && !dry ? { stages: r.stages } : {}) });
-      set({ review: null });
+      // the plan stays with its run, so it can be looked at while the files go (the last three)
+      const kept = Object.entries({ ...get().runPlans, [runId]: r }).slice(-3);
+      set({ review: null, runPlans: Object.fromEntries(kept) });
       get().watchRun(runId);
     } catch (e) {
       get().toast('error', t('Gönderim başlatılamadı'), (e as Error).message);
@@ -898,6 +909,8 @@ function handleEvent(e: AppEvent) {
       useApp.setState((s) => ({ staged: { ...s.staged, [e.state.runId]: e.state } }));
       // the second stage started by itself: the run panel follows it
       if (e.state.status === 'continued' && e.state.nextRunId && st.activeRunId === e.state.runId) st.watchRun(e.state.nextRunId);
+      // the next stage is the same plan
+      if (e.state.nextRunId && st.runPlans[e.state.runId] && !st.runPlans[e.state.nextRunId]) useApp.setState((s) => ({ runPlans: { ...s.runPlans, [e.state.nextRunId!]: s.runPlans[e.state.runId] } }));
       break;
     case 'run-start':
       useApp.setState((s) => ({ runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: [], done: false, paused: e.run.paused, samples: [{ t: Date.now(), b: 0 }] } } }));
@@ -914,7 +927,10 @@ function handleEvent(e: AppEvent) {
         if (!r) return {};
         let b = 0;
         for (const x of e.targets) b += x.bytesDone;
-        return { runs: { ...s.runs, [e.runId]: { ...r, targets: e.targets, samples: pushSample(r.samples, { t: Date.now(), b }) } } };
+        // the finished operations go into one map kept with the run (a big send has tens of thousands)
+        const opsDone = e.ops?.length ? (r.opsDone ?? new Map<string, boolean>()) : r.opsDone;
+        if (e.ops?.length) for (const [k, op, ok] of e.ops) opsDone!.set(`${k}|${op}`, ok === 1);
+        return { runs: { ...s.runs, [e.runId]: { ...r, targets: e.targets, samples: pushSample(r.samples, { t: Date.now(), b }), opsDone, opsAt: e.ops?.length ? Date.now() : r.opsAt } } };
       });
       break;
     case 'run-log':
@@ -933,7 +949,7 @@ function handleEvent(e: AppEvent) {
         const r = s.runs[e.run.id];
         return {
           historyVersion: s.historyVersion + 1,
-          runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: r?.log ?? [], done: true, samples: r?.samples ?? [] } },
+          runs: { ...s.runs, [e.run.id]: { summary: e.run, targets: e.run.targets, log: r?.log ?? [], done: true, samples: r?.samples ?? [], opsDone: r?.opsDone, opsAt: r?.opsAt } },
         };
       });
       const r = e.run;

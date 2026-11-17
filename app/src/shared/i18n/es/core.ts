@@ -554,6 +554,12 @@ const d: Dict = {
   'paketi uyguluyor, ardından dağıtacak…': 'aplica el paquete y luego lo reparte…',
   'işi aldı, dağıtıyor…': 'tomó el trabajo, lo reparte…',
   '{s} sn içinde yanıt vermedi; disk ya da paylaşım hazır olunca yeniden okuyun': 'no respondió en {s} s; vuelva a leerla cuando el disco o el recurso compartido esté listo',
+  '✓ Paket uygulandı, dağıtılıyor: {label}': '✓ Paquete aplicado, repartiéndolo: {label}',
+  '{n} makineye dağıtılıyor': 'repartiéndolo a {n} máquinas',
+  '✓ Dağıtım bitti: {label}': '✓ Reparto terminado: {label}',
+  '✕ Dağıtım hatalı bitti: {label}': '✕ El reparto terminó con errores: {label}',
+  '{ok}/{n} makine tamam': '{ok}/{n} máquinas listas',
+  '{name}: {n} hata daha; hepsi rölenin Geçmiş sayfasında': '{name}: {n} errores más; todos están en la página Historial del relé',
 };
 
 export default d;

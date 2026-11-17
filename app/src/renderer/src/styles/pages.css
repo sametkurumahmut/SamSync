@@ -2973,3 +2973,19 @@ a.titlebar-btn {
   gap: 4px;
   font-size: 11.5px;
 }
+/* the run panel's error count: a click shows the errors in the log */
+.badge-btn {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.badge-btn:hover {
+  filter: brightness(1.15);
+}
+/* the plan of a running send, read only: what became of each row */
+.op-status.written {
+  color: var(--green);
+}
+.op-status.failed {
+  color: var(--red);
+}

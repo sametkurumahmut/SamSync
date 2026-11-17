@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw, Lock, PowerOff } from 'lucide-react';
+import { CheckCircle2, XCircle, MinusCircle, Loader2, Minimize2, X, Copy, FileSpreadsheet, Square, Clock, FlaskConical, AlertTriangle, CircleDashed, Activity, Pause, Play, RotateCcw, Lock, PowerOff, ClipboardList } from 'lucide-react';
 import type { HolderReport, NodeConfig, RunTargetState, RunLogLine } from '@shared/types';
 import { useApp, type LiveRun } from '../store/app';
 import { Button, Progress, SearchInput, Segmented, useEscapeLayer } from './ui';
@@ -302,6 +302,7 @@ export function RunPanel() {
   const [logQuery, setLogQuery] = useState('');
   /** The log of one group's machines, or of the machines clicked in the list (Ctrl adds one); null: all of it. */
   const [logPick, setLogPick] = useState<{ group: string } | { keys: string[] } | null>(null);
+  const hasPlan = useApp((st) => !!(activeId && st.runPlans[activeId]));
   const runId = run?.summary.id;
   useEffect(() => setLogPick(null), [runId]);
   /** The run a cancel was asked for: the button says so until the run ends (a relay may take a few seconds to stop). */
@@ -399,6 +400,12 @@ export function RunPanel() {
               )}
             </div>
           </div>
+          {/* the plan it was started from, read only, while the files go (the panel steps aside meanwhile) */}
+          {hasPlan && (
+            <Button size="sm" variant="ghost" icon={<ClipboardList size={14} />} tip={t('Bu gönderimin planı: ne gönderildiğini, hangilerinin yazıldığını gösterir')} onClick={() => useApp.setState({ planView: s.id, runPanel: false })}>
+              {t('Planı aç')}
+            </Button>
+          )}
           <Button variant="ghost" iconOnly size="sm" icon={<Minimize2 size={15} />} tip={t('Küçült')} onClick={() => useApp.setState({ runPanel: false })} />
           {run.done && <Button variant="ghost" iconOnly size="sm" icon={<X size={16} />} onClick={() => useApp.setState({ runPanel: false, activeRunId: undefined })} />}
         </div>
@@ -415,7 +422,20 @@ export function RunPanel() {
               )}
             </span>
             <span className="spacer" />
-            {tot.failed > 0 && <span className="badge red">{t('{n} hata', { n: tot.failed })}</span>}
+            {/* the errors: a click shows them in the log below */}
+            {tot.failed > 0 && (
+              <button
+                type="button"
+                className="badge red badge-btn"
+                data-tip={t('Günlükte hataları göster')}
+                onClick={() => {
+                  setLogPick(null);
+                  setLogFilter('errors');
+                }}
+              >
+                {t('{n} hata', { n: tot.failed })}
+              </button>
+            )}
             <b className="tabular">{t('%{pct}', { pct: Math.round(run.done ? 100 : tot.pct) })}</b>
           </div>
           <Progress value={run.done ? 100 : tot.pct} state={run.done ? (s.status === 'ok' ? 'ok' : s.status === 'cancelled' ? undefined : 'bad') : undefined} />
@@ -458,7 +478,24 @@ export function RunPanel() {
                     <span className="faint tabular" style={{ fontSize: 11.5 }}>
                       {x.done}/{x.total}
                       {own != null && x.status !== 'queued' && ` • ${speedText(own)}`}
-                      {x.failed > 0 && <span style={{ color: 'var(--red)' }}> • {t('{n} hata', { n: x.failed })}</span>}
+                      {x.failed > 0 && (
+                        <>
+                          {' • '}
+                          <button
+                            type="button"
+                            className="link-btn"
+                            style={{ color: 'var(--red)' }}
+                            data-tip={t('Bu makinenin hatalarını günlükte göster')}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setLogPick({ keys: [x.key] });
+                              setLogFilter('errors');
+                            }}
+                          >
+                            {t('{n} hata', { n: x.failed })}
+                          </button>
+                        </>
+                      )}
                     </span>
                     {!run.done && !x.via && (x.status === 'running' || x.status === 'queued') && (
                       <Button

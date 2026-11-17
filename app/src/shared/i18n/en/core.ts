@@ -554,6 +554,12 @@ const d: Dict = {
   'paketi uyguluyor, ardından dağıtacak…': 'applying the pack, then passing it on…',
   'işi aldı, dağıtıyor…': 'took the job, passing it on…',
   '{s} sn içinde yanıt vermedi; disk ya da paylaşım hazır olunca yeniden okuyun': 'did not answer within {s} s; read it again once the disk or share is ready',
+  '✓ Paket uygulandı, dağıtılıyor: {label}': '✓ Pack applied, passing it on: {label}',
+  '{n} makineye dağıtılıyor': 'passing it on to {n} machines',
+  '✓ Dağıtım bitti: {label}': '✓ Passed on: {label}',
+  '✕ Dağıtım hatalı bitti: {label}': '✕ Passing it on ended with errors: {label}',
+  '{ok}/{n} makine tamam': '{ok}/{n} machines done',
+  '{name}: {n} hata daha; hepsi rölenin Geçmiş sayfasında': '{name}: {n} more errors; all of them are on the relay’s History page',
 };
 
 export default d;

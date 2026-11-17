@@ -1240,7 +1240,13 @@ export interface RunDetail extends RunSummary {
 
 export type AppEvent =
   | { type: 'run-start'; run: RunSummary }
-  | { type: 'run-progress'; runId: string; targets: RunTargetState[] }
+  | {
+      type: 'run-progress';
+      runId: string;
+      targets: RunTargetState[];
+      /** Operations finished since the last progress: target key, operation id, 1 written / 0 failed. */
+      ops?: [string, string, 0 | 1][];
+    }
   | { type: 'run-log'; runId: string; lines: RunLogLine[] }
   | { type: 'run-done'; run: RunSummary }
   | { type: 'history-changed' }

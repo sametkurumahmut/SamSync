@@ -254,6 +254,12 @@ export async function waitRelayResult(tgt: Transport, id: string, w: RelayWait):
   }
 }
 
+/** The files that failed on one machine of a relay's run and why (the first 100), for the sender. */
+function failuresOf(detail: RunDetail | null, key: string): { rel: string; error: string }[] | undefined {
+  const out = (detail?.results ?? []).filter((r) => r.key === key && !r.ok).slice(0, 100).map((r) => ({ rel: r.rel, error: r.error ?? '' }));
+  return out.length ? out : undefined;
+}
+
 // ------------------------------------------------------------------ the relay's side
 
 export interface RelayHost {
@@ -678,7 +684,8 @@ export class RelayService {
         handle &&
         this.writeProgress(id, {
           own: ownResult,
-          targets: handle.targets().map((x) => ({ targetId: x.key, status: x.status, done: x.done, total: x.total, failed: x.failed, bytesDone: x.bytesDone, bytesTotal: x.bytesTotal })),
+          // with the last files that failed on each machine, so the sender's log says which and why
+          targets: handle.targets().map((x) => ({ targetId: x.key, status: x.status, done: x.done, total: x.total, failed: x.failed, bytesDone: x.bytesDone, bytesTotal: x.bytesTotal, errors: x.failed ? handle.failures(x.key, 20) : undefined })),
         });
       const ticker = handle ? setInterval(() => void report(), PROGRESS_EVERY_MS) : null;
       const detail: RunDetail | null = handle ? await handle.done.finally(() => ticker && clearInterval(ticker)) : null;
@@ -692,7 +699,7 @@ export class RelayService {
         const r: RelayTargetResult = !tp.reachable
           ? await this.deferOrFail(job, tp.targetId, tp.error)
           : got
-            ? { targetId: tp.targetId, status: got.status === 'queued' || got.status === 'running' ? 'failed' : got.status, opsOk: got.done - got.failed, opsFailed: got.failed, bytes: got.bytesDone, error: got.error, check: got.check }
+            ? { targetId: tp.targetId, status: got.status === 'queued' || got.status === 'running' ? 'failed' : got.status, opsOk: got.done - got.failed, opsFailed: got.failed, bytes: got.bytesDone, error: got.error, check: got.check, failures: failuresOf(detail, tp.targetId) }
             : { targetId: tp.targetId, status: 'ok', opsOk: 0, opsFailed: 0, bytes: 0 };
         result.targets.push(r);
       }
@@ -706,6 +713,15 @@ export class RelayService {
     }
     clearInterval(watch);
     result.finishedAt = Date.now();
+    // and once the machines behind it have it too (the same switch as the apply's notification)
+    const behind = result.targets.filter((x) => x.targetId !== this.node.id);
+    if (job.targetIds.length && behind.length && !ctl.cancelled && this.host.agent?.()?.notifyOnApply !== false) {
+      const okCount = behind.filter((x) => x.status === 'ok').length;
+      this.host.notify?.(
+        okCount === behind.length ? t('✓ Dağıtım bitti: {label}', { label: job.label }) : t('✕ Dağıtım hatalı bitti: {label}', { label: job.label }),
+        t('{ok}/{n} makine tamam', { ok: okCount, n: behind.length }),
+      );
+    }
     // the stash goes once nobody waits for it (a machine that was off gets it later from the queue)
     if (job.stash && !result.targets.some((x) => x.status === 'deferred')) await fsp.rm(this.stashDir(id), { recursive: true, force: true }).catch(() => undefined);
     // what just arrived is no drift: count again once the manifest is written
@@ -1013,7 +1029,12 @@ export class RelayService {
     if (agent?.notifyOnApply !== false && job.pack!.ops.length) {
       const sender = job.from ? (this.host.ctx().config.nodes.find((n) => n.id === job.from)?.name ?? job.from) : undefined;
       const who = sender ? t('{from} gönderdi', { from: sender }) : t('paket');
-      this.host.notify?.(own.status === 'ok' ? t('✓ Paket uygulandı: {label}', { label: job.label }) : t('✕ Paket uygulanamadı: {label}', { label: job.label }), `${who} • ${t('{ok} başarılı, {failed} hatalı', { ok: own.opsOk, failed: own.opsFailed })}`);
+      // a relay is not done yet when its own copy is: it says it goes on with the machines behind it
+      const passing = own.status === 'ok' && job.targetIds.length > 0;
+      this.host.notify?.(
+        passing ? t('✓ Paket uygulandı, dağıtılıyor: {label}', { label: job.label }) : own.status === 'ok' ? t('✓ Paket uygulandı: {label}', { label: job.label }) : t('✕ Paket uygulanamadı: {label}', { label: job.label }),
+        `${who} • ${t('{ok} başarılı, {failed} hatalı', { ok: own.opsOk, failed: own.opsFailed })}${passing ? ` • ${t('{n} makineye dağıtılıyor', { n: job.targetIds.length })}` : ''}`,
+      );
     }
     return own;
   }
