@@ -2,6 +2,11 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.21 — 2026-11-17
+
+- **Machines in or out of a send, by group:** the send plan lists the machines under their group. The box in front of a machine, or of a whole group, takes it out of this send and puts it back; a machine taken out stays in the list, greyed, and is left out of the counts, the estimate, a staged send and *Send later…*. A relay taken out takes the machines behind it along, as it sends to them from its own disk, and a machine behind it brings its relay back.
+- **Folding the file list:** *Close all* folds every folder of the plan's file list in one go, and the next plans open folded too until *Open all*. Alt+click on a folder opens or closes it with everything below it.
+
 ## 2.4.20 — 2026-11-17
 
 - **The plan while it is sent:** **Open plan** in the run panel shows the plan the send was started from, read only, while the files go: each row says whether it was written, failed or is still waiting, each machine shows how far it is, and the footer how many operations are done. The run panel steps aside meanwhile and comes back when the plan is closed.

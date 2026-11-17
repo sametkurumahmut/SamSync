@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.21 — 2026-11-17
+
+- **Gruba göre makineleri gönderime alma ya da çıkarma:** gönderim planı makineleri gruplarının altında listeliyor. Bir makinenin ya da bütün bir grubun önündeki kutu onu bu gönderimden çıkarıyor ve geri alıyor; çıkarılan makine listede soluk kalıyor, sayılara, tahmine, aşamalı gönderime ve *Sonra gönder…*'e girmiyor. Çıkarılan bir röle, arkasındaki makinelere kendi diskinden gönderdiği için onları da götürüyor; arkasındaki bir makine geri alınınca rölesi de geliyor.
+- **Dosya listesini kapatma:** *Tümünü kapat* planın dosya listesindeki bütün klasörleri tek seferde kapatıyor; sonraki planlar da *Tümünü aç*'a kadar kapalı açılıyor. Bir klasöre Alt+tık onu altındakilerle birlikte açıyor ya da kapatıyor.
+
 ## 2.4.20 — 2026-11-17
 
 - **Gönderilirken plan:** çalıştırma panelindeki **Planı aç**, gönderimin başlatıldığı planı dosyalar giderken salt okunur gösteriyor: her satır yazıldı mı, hata mı verdi, sırada mı; her makine ne kadar ilerledi; altta kaç işlemin yapıldığı. Çalıştırma paneli bu sırada kenara çekiliyor, plan kapanınca geri geliyor.
