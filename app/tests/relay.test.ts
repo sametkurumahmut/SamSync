@@ -470,8 +470,8 @@ describe('relay delivery queue', () => {
       expect(read(path.join(s.pc2, 'Data', 'b.txt'))).toBe('B');
       expect(fs.existsSync(path.join(pendingDir, 'PC2.json'))).toBe(false);
       expect((await s.relay!.relayState()).pending).toEqual([]);
-      const relayRuns = await s.relay!.runs();
-      expect(relayRuns.filter((r) => /kuyruktan|from the queue/.test(r.label)).length).toBeGreaterThanOrEqual(1);
+      // the run's record is written just after the run ends: a slow machine may not have it at once
+      await until(async () => (await s.relay!.runs()).some((r) => /kuyruktan|from the queue/.test(r.label)));
     } finally {
       s.stop();
     }
