@@ -3018,3 +3018,21 @@ a.titlebar-btn {
 .plan-target-row.out .plan-target {
   opacity: 0.5;
 }
+/* the run panel's line under the title: always one line high, every part whole. A part that has no room left (the
+   finish time first, as it comes last) drops to a second line that is cut off, so nothing is half shown and nothing jumps */
+.run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  height: 18px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.run-meta > * {
+  flex: none;
+}

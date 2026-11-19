@@ -373,7 +373,8 @@ export function RunPanel() {
                 </span>
               )}
             </div>
-            <div className="muted row" style={{ gap: 10, fontSize: 12.5 }}>
+            {/* one line that does not jump as its numbers change: the finish time gives way first */}
+            <div className="muted run-meta">
               <span>
                 {run.done
                   ? s.status === 'ok'
@@ -387,15 +388,20 @@ export function RunPanel() {
                     ? t('Duraklatıldı')
                     : t('Çalışıyor')}
               </span>
-              <span className="row" style={{ gap: 4 }}>
+              <span className="row tabular" style={{ gap: 4 }}>
                 <Clock size={12} /> {duration(elapsed)}
               </span>
               {pace != null && <span className="tabular">{speedText(pace)}</span>}
+              {/* the finish time also on hover: it gives way first when the line is short of room */}
               {remaining != null && (
-                <span className="tabular">
+                <span className="tabular" title={remaining >= 60_000 ? t('bitiş ≈ {clock}', { clock: new Date(now + remaining).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) }) : undefined}>
                   {t('kalan {time}', { time: duration(Math.round(remaining)) })}
-                  {/* a long one also says when, by the clock */}
-                  {remaining >= 60_000 && ` • ${t('bitiş ≈ {clock}', { clock: new Date(now + remaining).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) })}`}
+                </span>
+              )}
+              {/* a long one also says when, by the clock */}
+              {remaining != null && remaining >= 60_000 && (
+                <span className="tabular">
+                  • {t('bitiş ≈ {clock}', { clock: new Date(now + remaining).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) })}
                 </span>
               )}
             </div>
