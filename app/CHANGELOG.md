@@ -2,6 +2,10 @@
 
 [Türkçe](CHANGELOG.tr.md)
 
+## 2.4.22 — 2026-11-19
+
+- **A steady line in the run panel:** the line under the run's title (state, time, speed, time left, finish time) stays on one line. It no longer breaks word by word and jumps up and down as the numbers change; when it is short of room the finish time gives way whole, and hovering over the time left still shows it.
+
 ## 2.4.21 — 2026-11-17
 
 - **Machines in or out of a send, by group:** the send plan lists the machines under their group. The box in front of a machine, or of a whole group, takes it out of this send and puts it back; a machine taken out stays in the list, greyed, and is left out of the counts, the estimate, a staged send and *Send later…*. A relay taken out takes the machines behind it along, as it sends to them from its own disk, and a machine behind it brings its relay back.

@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 2.4.22 — 2026-11-19
+
+- **Çalıştırma panelinde sabit satır:** çalıştırmanın başlığının altındaki satır (durum, süre, hız, kalan süre, bitiş saati) tek satırda kalıyor. Sayılar değiştikçe kelime kelime alt satıra inip yukarı aşağı oynamıyor; yer yetmediğinde bitiş saati bütünüyle çekiliyor, kalan sürenin üzerine gelince yine görünüyor.
+
 ## 2.4.21 — 2026-11-17
 
 - **Gruba göre makineleri gönderime alma ya da çıkarma:** gönderim planı makineleri gruplarının altında listeliyor. Bir makinenin ya da bütün bir grubun önündeki kutu onu bu gönderimden çıkarıyor ve geri alıyor; çıkarılan makine listede soluk kalıyor, sayılara, tahmine, aşamalı gönderime ve *Sonra gönder…*'e girmiyor. Çıkarılan bir röle, arkasındaki makinelere kendi diskinden gönderdiği için onları da götürüyor; arkasındaki bir makine geri alınınca rölesi de geliyor.
