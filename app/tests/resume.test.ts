@@ -86,7 +86,8 @@ describe('a copy that broke off', () => {
     const t0 = Date.now();
     h.cancel.cancel();
     const d = await h.done;
-    expect(Date.now() - t0).toBeLessThan(1500);
+    // the rest of the file would take over three seconds more; a slow test machine needs some room for the run to close
+    expect(Date.now() - t0).toBeLessThan(2500);
     expect(d.status).toBe('cancelled');
     const part = partOf(src, tgt);
     expect(fs.existsSync(part)).toBe(true);

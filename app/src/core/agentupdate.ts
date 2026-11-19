@@ -97,5 +97,10 @@ export async function finishOrder(localRoot: string, o: UpdateOrder, out: Update
   const dir = path.join(localRoot, ...UPDATE_DIR.split('/'));
   await fsp.rm(path.join(dir, 'order.json'), { force: true }).catch(() => undefined);
   await fsp.rm(path.join(dir, path.basename(o.file)), { force: true }).catch(() => undefined);
-  await fsp.writeFile(path.join(dir, 'result.json'), JSON.stringify(out, null, 1)).catch(() => undefined);
+  // written whole and then put in place, so whoever reads it (the sender over the share) never sees half of it
+  const res = path.join(dir, 'result.json');
+  await fsp
+    .writeFile(`${res}.tmp`, JSON.stringify(out, null, 1))
+    .then(() => fsp.rename(`${res}.tmp`, res))
+    .catch(() => fsp.rm(`${res}.tmp`, { force: true }).catch(() => undefined));
 }
